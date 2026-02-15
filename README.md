@@ -1,18 +1,16 @@
-# Welcome to React Router!
+# Simple Chat App (React Router)
 
-A modern, production-ready template for building full-stack React applications using React Router.
+A minimal desktop-first chat UI with an Azure OpenAI-backed API endpoint.
 
 [![Open in StackBlitz](https://developer.stackblitz.com/img/open_in_stackblitz.svg)](https://stackblitz.com/github/remix-run/react-router-templates/tree/main/default)
 
 ## Features
 
-- 🚀 Server-side rendering
-- ⚡️ Hot Module Replacement (HMR)
-- 📦 Asset bundling and optimization
-- 🔄 Data loading and mutations
-- 🔒 TypeScript by default
-- 🎉 TailwindCSS for styling
-- 📖 [React Router docs](https://reactrouter.com/)
+- Clean desktop chat layout
+- `POST /api/chat` server endpoint
+- DefaultAzureCredential + Azure AD token provider auth
+- Azure env var placeholders (`.env.example`)
+- React Router + TypeScript
 
 ## Getting Started
 
@@ -23,6 +21,19 @@ Install the dependencies:
 ```bash
 npm install
 ```
+
+Create an env file:
+
+```bash
+cp .env.example .env
+```
+
+Then edit `.env` and set:
+
+- `AZURE_BASE_URL` (or `AZURE_OPENAI_BASE_URL`)
+- `AZURE_API_VERSION` (or `AZURE_OPENAI_API_VERSION`)
+
+Auth is done with `DefaultAzureCredential`, so use managed identity / Azure login in your environment.
 
 ### Development
 
