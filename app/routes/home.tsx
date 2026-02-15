@@ -3,14 +3,28 @@ import type { Route } from "./+types/home";
 
 type ChatRole = "user" | "assistant";
 type ReasoningEffort = "none" | "low" | "medium" | "high";
-type McpTransport = "streamable_http" | "sse";
+type McpTransport = "streamable_http" | "sse" | "stdio";
 
-type McpServerConfig = {
+type McpHttpServerConfig = {
   id: string;
   name: string;
+  transport: "streamable_http" | "sse";
   url: string;
-  transport: McpTransport;
 };
+
+type McpStdioServerConfig = {
+  id: string;
+  name: string;
+  transport: "stdio";
+  command: string;
+  args: string[];
+  cwd?: string;
+  env: Record<string, string>;
+};
+
+type McpServerConfig = McpHttpServerConfig | McpStdioServerConfig;
+
+type ParseResult<T> = { ok: true; value: T } | { ok: false; error: string };
 
 type ChatMessage = {
   id: string;
@@ -55,6 +69,10 @@ export default function Home() {
   const [mcpServers, setMcpServers] = useState<McpServerConfig[]>([]);
   const [mcpNameInput, setMcpNameInput] = useState("");
   const [mcpUrlInput, setMcpUrlInput] = useState("");
+  const [mcpCommandInput, setMcpCommandInput] = useState("");
+  const [mcpArgsInput, setMcpArgsInput] = useState("");
+  const [mcpCwdInput, setMcpCwdInput] = useState("");
+  const [mcpEnvInput, setMcpEnvInput] = useState("");
   const [mcpTransport, setMcpTransport] = useState<McpTransport>(DEFAULT_MCP_TRANSPORT);
   const [mcpFormError, setMcpFormError] = useState<string | null>(null);
   const [contextWindowInput, setContextWindowInput] = useState(
@@ -104,11 +122,22 @@ export default function Home() {
           reasoningEffort,
           contextWindowSize,
           agentInstruction,
-          mcpServers: mcpServers.map(({ name, url, transport }) => ({
-            name,
-            url,
-            transport,
-          })),
+          mcpServers: mcpServers.map((server) =>
+            server.transport === "stdio"
+              ? {
+                  name: server.name,
+                  transport: server.transport,
+                  command: server.command,
+                  args: server.args,
+                  cwd: server.cwd,
+                  env: server.env,
+                }
+              : {
+                  name: server.name,
+                  transport: server.transport,
+                  url: server.url,
+                },
+          ),
         }),
       });
 
@@ -179,6 +208,72 @@ export default function Home() {
 
   function handleAddMcpServer() {
     const rawName = mcpNameInput.trim();
+    if (mcpTransport === "stdio") {
+      const command = mcpCommandInput.trim();
+      if (!command) {
+        setMcpFormError("MCP stdio command is required.");
+        return;
+      }
+
+      if (/\s/.test(command)) {
+        setMcpFormError("MCP stdio command must not include spaces.");
+        return;
+      }
+
+      const argsResult = parseStdioArgsInput(mcpArgsInput);
+      if (!argsResult.ok) {
+        setMcpFormError(argsResult.error);
+        return;
+      }
+
+      const envResult = parseStdioEnvInput(mcpEnvInput);
+      if (!envResult.ok) {
+        setMcpFormError(envResult.error);
+        return;
+      }
+
+      const cwd = mcpCwdInput.trim();
+      const name = rawName || command;
+      const duplicated = mcpServers.some((server) =>
+        server.transport !== "stdio"
+          ? false
+          : buildMcpServerKey(server) ===
+            buildMcpServerKey({
+              id: "new",
+              name,
+              transport: "stdio",
+              command,
+              args: argsResult.value,
+              cwd: cwd || undefined,
+              env: envResult.value,
+            }),
+      );
+      if (duplicated) {
+        setMcpFormError("This MCP stdio server is already added.");
+        return;
+      }
+
+      setMcpServers((current) => [
+        ...current,
+        {
+          id: createId("mcp"),
+          name,
+          transport: "stdio",
+          command,
+          args: argsResult.value,
+          cwd: cwd || undefined,
+          env: envResult.value,
+        },
+      ]);
+      setMcpFormError(null);
+      setMcpNameInput("");
+      setMcpCommandInput("");
+      setMcpArgsInput("");
+      setMcpCwdInput("");
+      setMcpEnvInput("");
+      return;
+    }
+
     const rawUrl = mcpUrlInput.trim();
     if (!rawUrl) {
       setMcpFormError("MCP server URL is required.");
@@ -207,8 +302,14 @@ export default function Home() {
     const normalizedUrl = parsed.toString();
     const duplicated = mcpServers.some(
       (server) =>
-        server.name.toLowerCase() === name.toLowerCase() &&
-        server.url.toLowerCase() === normalizedUrl.toLowerCase(),
+        server.transport !== "stdio" &&
+        buildMcpServerKey(server) ===
+          buildMcpServerKey({
+            id: "new",
+            name,
+            transport: mcpTransport,
+            url: normalizedUrl,
+          }),
     );
     if (duplicated) {
       setMcpFormError("This MCP server is already added.");
@@ -391,21 +492,58 @@ export default function Home() {
                 onChange={(event) => setMcpNameInput(event.target.value)}
                 disabled={isSending}
               />
-              <input
-                type="text"
-                placeholder="https://example.com/mcp"
-                value={mcpUrlInput}
-                onChange={(event) => setMcpUrlInput(event.target.value)}
-                disabled={isSending}
-              />
               <select
                 value={mcpTransport}
-                onChange={(event) => setMcpTransport(event.target.value as McpTransport)}
+                onChange={(event) => {
+                  setMcpTransport(event.target.value as McpTransport);
+                  setMcpFormError(null);
+                }}
                 disabled={isSending}
               >
                 <option value="streamable_http">streamable_http</option>
                 <option value="sse">sse</option>
+                <option value="stdio">stdio</option>
               </select>
+              {mcpTransport === "stdio" ? (
+                <>
+                  <input
+                    type="text"
+                    placeholder="Command (e.g. npx)"
+                    value={mcpCommandInput}
+                    onChange={(event) => setMcpCommandInput(event.target.value)}
+                    disabled={isSending}
+                  />
+                  <input
+                    type="text"
+                    placeholder='Args (space-separated or JSON array)'
+                    value={mcpArgsInput}
+                    onChange={(event) => setMcpArgsInput(event.target.value)}
+                    disabled={isSending}
+                  />
+                  <input
+                    type="text"
+                    placeholder="Working directory (optional)"
+                    value={mcpCwdInput}
+                    onChange={(event) => setMcpCwdInput(event.target.value)}
+                    disabled={isSending}
+                  />
+                  <textarea
+                    rows={3}
+                    placeholder={"Environment variables (optional)\nKEY=value"}
+                    value={mcpEnvInput}
+                    onChange={(event) => setMcpEnvInput(event.target.value)}
+                    disabled={isSending}
+                  />
+                </>
+              ) : (
+                <input
+                  type="text"
+                  placeholder="https://example.com/mcp"
+                  value={mcpUrlInput}
+                  onChange={(event) => setMcpUrlInput(event.target.value)}
+                  disabled={isSending}
+                />
+              )}
               <button type="button" className="secondary-btn" onClick={handleAddMcpServer} disabled={isSending}>
                 Add Server
               </button>
@@ -424,8 +562,23 @@ export default function Home() {
                     <article key={server.id} className="mcp-item">
                       <div className="mcp-item-body">
                         <p className="mcp-item-name">{server.name}</p>
-                        <p className="mcp-item-url">{server.url}</p>
-                        <p className="mcp-item-meta">{server.transport}</p>
+                        {server.transport === "stdio" ? (
+                          <>
+                            <p className="mcp-item-url">
+                              {server.command}
+                              {server.args.length > 0 ? ` ${server.args.join(" ")}` : ""}
+                            </p>
+                            {server.cwd ? <p className="mcp-item-meta">cwd: {server.cwd}</p> : null}
+                            <p className="mcp-item-meta">
+                              {server.transport} ({Object.keys(server.env).length} env)
+                            </p>
+                          </>
+                        ) : (
+                          <>
+                            <p className="mcp-item-url">{server.url}</p>
+                            <p className="mcp-item-meta">{server.transport}</p>
+                          </>
+                        )}
                       </div>
                       <button
                         type="button"
@@ -457,6 +610,7 @@ function createMessage(role: ChatRole, content: string): ChatMessage {
 }
 
 const REASONING_EFFORT_OPTIONS: ReasoningEffort[] = ["none", "low", "medium", "high"];
+const ENV_KEY_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 function validateContextWindowInput(input: string): {
   isValid: boolean;
@@ -497,6 +651,92 @@ function validateContextWindowInput(input: string): {
     value: parsed,
     message: null,
   };
+}
+
+function buildMcpServerKey(server: McpServerConfig): string {
+  if (server.transport === "stdio") {
+    const argsKey = server.args.join("\u0000");
+    const cwdKey = (server.cwd ?? "").toLowerCase();
+    const envKey = Object.entries(server.env)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, value]) => `${key}=${value}`)
+      .join("\u0000");
+    return `stdio:${server.command.toLowerCase()}:${argsKey}:${cwdKey}:${envKey}`;
+  }
+
+  return `${server.transport}:${server.url.toLowerCase()}`;
+}
+
+function parseStdioArgsInput(input: string): ParseResult<string[]> {
+  const trimmed = input.trim();
+  if (!trimmed) {
+    return { ok: true, value: [] };
+  }
+
+  if (trimmed.startsWith("[")) {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(trimmed);
+    } catch {
+      return {
+        ok: false,
+        error: "Args must be space-separated text or a JSON string array.",
+      };
+    }
+
+    if (!Array.isArray(parsed) || !parsed.every((entry) => typeof entry === "string")) {
+      return {
+        ok: false,
+        error: "Args JSON must be an array of strings.",
+      };
+    }
+
+    return { ok: true, value: parsed.map((entry) => entry.trim()).filter(Boolean) };
+  }
+
+  return {
+    ok: true,
+    value: trimmed.split(/\s+/).filter(Boolean),
+  };
+}
+
+function parseStdioEnvInput(input: string): ParseResult<Record<string, string>> {
+  const trimmed = input.trim();
+  if (!trimmed) {
+    return { ok: true, value: {} };
+  }
+
+  const env: Record<string, string> = {};
+  const lines = input.split(/\r?\n/);
+
+  for (const [index, line] of lines.entries()) {
+    const lineTrimmed = line.trim();
+    if (!lineTrimmed) {
+      continue;
+    }
+
+    const separatorIndex = lineTrimmed.indexOf("=");
+    if (separatorIndex <= 0) {
+      return {
+        ok: false,
+        error: `ENV line ${index + 1} must use KEY=value format.`,
+      };
+    }
+
+    const key = lineTrimmed.slice(0, separatorIndex).trim();
+    const value = lineTrimmed.slice(separatorIndex + 1);
+
+    if (!ENV_KEY_PATTERN.test(key)) {
+      return {
+        ok: false,
+        error: `ENV line ${index + 1} has invalid key.`,
+      };
+    }
+
+    env[key] = value;
+  }
+
+  return { ok: true, value: env };
 }
 
 function getFileExtension(fileName: string): string {
