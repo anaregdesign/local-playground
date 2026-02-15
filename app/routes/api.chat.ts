@@ -1,6 +1,14 @@
 import type { Route } from "./+types/api.chat";
 import { DefaultAzureCredential, getBearerTokenProvider } from "@azure/identity";
-import { Agent, assistant, run, user } from "@openai/agents";
+import {
+  Agent,
+  MCPServerSSE,
+  MCPServerStreamableHttp,
+  assistant,
+  run,
+  user,
+  type MCPServer,
+} from "@openai/agents";
 import { OpenAIChatCompletionsModel } from "@openai/agents-openai";
 import OpenAI from "openai";
 
@@ -12,9 +20,20 @@ type ClientMessage = {
 };
 
 type ReasoningEffort = "none" | "low" | "medium" | "high";
+type McpTransport = "streamable_http" | "sse";
+type ClientMcpServerConfig = {
+  name: string;
+  url: string;
+  transport: McpTransport;
+};
+
+type ParseResult<T> = { ok: true; value: T } | { ok: false; error: string };
+
 const DEFAULT_CONTEXT_WINDOW_SIZE = 10;
 const MIN_CONTEXT_WINDOW_SIZE = 1;
 const MAX_CONTEXT_WINDOW_SIZE = 200;
+const MAX_MCP_SERVERS = 8;
+const MAX_MCP_SERVER_NAME_LENGTH = 80;
 
 const AZURE_OPENAI_BASE_URL =
   process.env.AZURE_BASE_URL ?? process.env.AZURE_OPENAI_BASE_URL ?? "";
@@ -56,6 +75,11 @@ export async function action({ request }: Route.ActionArgs) {
   const history = readHistory(payload, contextWindowSize);
   const reasoningEffort = readReasoningEffort(payload);
   const agentInstruction = readAgentInstruction(payload);
+  const mcpServersResult = readMcpServers(payload);
+  if (!mcpServersResult.ok) {
+    return Response.json({ error: mcpServersResult.error }, { status: 400 });
+  }
+
   if (!AZURE_OPENAI_BASE_URL) {
     return Response.json({
       message:
@@ -82,7 +106,23 @@ export async function action({ request }: Route.ActionArgs) {
     );
   }
 
+  const connectedMcpServers: MCPServer[] = [];
+
   try {
+    for (const serverConfig of mcpServersResult.value) {
+      const server = createMcpServer(serverConfig);
+
+      try {
+        await server.connect();
+      } catch (error) {
+        throw new Error(
+          `Failed to connect MCP server "${serverConfig.name}" (${serverConfig.url}): ${readErrorMessage(error)}`,
+        );
+      }
+
+      connectedMcpServers.push(server);
+    }
+
     const model = new OpenAIChatCompletionsModel(
       getAzureOpenAIClient(),
       AZURE_OPENAI_DEPLOYMENT_NAME,
@@ -98,6 +138,7 @@ export async function action({ request }: Route.ActionArgs) {
           effort: reasoningEffort,
         },
       },
+      mcpServers: connectedMcpServers,
     });
 
     const result = await run(agent, [
@@ -123,6 +164,8 @@ export async function action({ request }: Route.ActionArgs) {
       },
       { status: 502 },
     );
+  } finally {
+    await Promise.allSettled(connectedMcpServers.map((server) => server.close()));
   }
 }
 
@@ -257,6 +300,97 @@ function readAgentInstruction(payload: unknown): string {
   return trimmed.slice(0, MAX_AGENT_INSTRUCTION_LENGTH);
 }
 
+function readMcpServers(payload: unknown): ParseResult<ClientMcpServerConfig[]> {
+  if (!isRecord(payload)) {
+    return { ok: true, value: [] };
+  }
+
+  const value = payload.mcpServers;
+  if (value === undefined) {
+    return { ok: true, value: [] };
+  }
+
+  if (!Array.isArray(value)) {
+    return { ok: false, error: "`mcpServers` must be an array." };
+  }
+
+  if (value.length > MAX_MCP_SERVERS) {
+    return { ok: false, error: `You can add up to ${MAX_MCP_SERVERS} MCP servers.` };
+  }
+
+  const result: ClientMcpServerConfig[] = [];
+  const dedupeKeys = new Set<string>();
+
+  for (const [index, entry] of value.entries()) {
+    if (!isRecord(entry)) {
+      return { ok: false, error: `mcpServers[${index}] is invalid.` };
+    }
+
+    const rawUrl = typeof entry.url === "string" ? entry.url.trim() : "";
+    if (!rawUrl) {
+      return { ok: false, error: `mcpServers[${index}].url is required.` };
+    }
+
+    let parsedUrl: URL;
+    try {
+      parsedUrl = new URL(rawUrl);
+    } catch {
+      return { ok: false, error: `mcpServers[${index}].url is invalid.` };
+    }
+
+    if (parsedUrl.protocol !== "http:" && parsedUrl.protocol !== "https:") {
+      return {
+        ok: false,
+        error: `mcpServers[${index}].url must start with http:// or https://.`,
+      };
+    }
+
+    const rawName = typeof entry.name === "string" ? entry.name.trim() : "";
+    const name = (rawName || parsedUrl.hostname).slice(0, MAX_MCP_SERVER_NAME_LENGTH);
+    if (!name) {
+      return { ok: false, error: `mcpServers[${index}].name is required.` };
+    }
+
+    const rawTransport = entry.transport;
+    let transport: McpTransport;
+    if (rawTransport === "sse") {
+      transport = "sse";
+    } else if (rawTransport === "streamable_http" || rawTransport === undefined) {
+      transport = "streamable_http";
+    } else {
+      return {
+        ok: false,
+        error: `mcpServers[${index}].transport must be "streamable_http" or "sse".`,
+      };
+    }
+
+    const url = parsedUrl.toString();
+    const dedupeKey = `${transport}:${url.toLowerCase()}`;
+    if (dedupeKeys.has(dedupeKey)) {
+      continue;
+    }
+
+    dedupeKeys.add(dedupeKey);
+    result.push({ name, url, transport });
+  }
+
+  return { ok: true, value: result };
+}
+
+function createMcpServer(config: ClientMcpServerConfig): MCPServer {
+  if (config.transport === "sse") {
+    return new MCPServerSSE({
+      name: config.name,
+      url: config.url,
+    });
+  }
+
+  return new MCPServerStreamableHttp({
+    name: config.name,
+    url: config.url,
+  });
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object";
 }
@@ -287,4 +421,8 @@ function buildUpstreamErrorMessage(error: unknown): string {
   }
 
   return error.message;
+}
+
+function readErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : "Unknown error.";
 }

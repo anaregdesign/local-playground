@@ -3,6 +3,14 @@ import type { Route } from "./+types/home";
 
 type ChatRole = "user" | "assistant";
 type ReasoningEffort = "none" | "low" | "medium" | "high";
+type McpTransport = "streamable_http" | "sse";
+
+type McpServerConfig = {
+  id: string;
+  name: string;
+  url: string;
+  transport: McpTransport;
+};
 
 type ChatMessage = {
   id: string;
@@ -28,6 +36,7 @@ const MAX_CONTEXT_WINDOW_SIZE = 200;
 const DEFAULT_AGENT_INSTRUCTION = "You are a concise assistant for a simple chat app.";
 const MAX_INSTRUCTION_FILE_SIZE_BYTES = 200_000;
 const ALLOWED_INSTRUCTION_EXTENSIONS = new Set(["md", "txt", "xml", "json"]);
+const DEFAULT_MCP_TRANSPORT: McpTransport = "streamable_http";
 
 export function meta({}: Route.MetaArgs) {
   return [
@@ -43,6 +52,11 @@ export default function Home() {
   const [agentInstruction, setAgentInstruction] = useState(DEFAULT_AGENT_INSTRUCTION);
   const [loadedInstructionFileName, setLoadedInstructionFileName] = useState<string | null>(null);
   const [instructionFileError, setInstructionFileError] = useState<string | null>(null);
+  const [mcpServers, setMcpServers] = useState<McpServerConfig[]>([]);
+  const [mcpNameInput, setMcpNameInput] = useState("");
+  const [mcpUrlInput, setMcpUrlInput] = useState("");
+  const [mcpTransport, setMcpTransport] = useState<McpTransport>(DEFAULT_MCP_TRANSPORT);
+  const [mcpFormError, setMcpFormError] = useState<string | null>(null);
   const [contextWindowInput, setContextWindowInput] = useState(
     String(DEFAULT_CONTEXT_WINDOW_SIZE),
   );
@@ -90,6 +104,11 @@ export default function Home() {
           reasoningEffort,
           contextWindowSize,
           agentInstruction,
+          mcpServers: mcpServers.map(({ name, url, transport }) => ({
+            name,
+            url,
+            transport,
+          })),
         }),
       });
 
@@ -156,6 +175,63 @@ export default function Home() {
     } finally {
       input.value = "";
     }
+  }
+
+  function handleAddMcpServer() {
+    const rawName = mcpNameInput.trim();
+    const rawUrl = mcpUrlInput.trim();
+    if (!rawUrl) {
+      setMcpFormError("MCP server URL is required.");
+      return;
+    }
+
+    let parsed: URL;
+    try {
+      parsed = new URL(rawUrl);
+    } catch {
+      setMcpFormError("MCP server URL is invalid.");
+      return;
+    }
+
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      setMcpFormError("MCP server URL must start with http:// or https://.");
+      return;
+    }
+
+    const name = rawName || parsed.hostname;
+    if (!name) {
+      setMcpFormError("MCP server name is required.");
+      return;
+    }
+
+    const normalizedUrl = parsed.toString();
+    const duplicated = mcpServers.some(
+      (server) =>
+        server.name.toLowerCase() === name.toLowerCase() &&
+        server.url.toLowerCase() === normalizedUrl.toLowerCase(),
+    );
+    if (duplicated) {
+      setMcpFormError("This MCP server is already added.");
+      return;
+    }
+
+    setMcpServers((current) => [
+      ...current,
+      {
+        id: createId("mcp"),
+        name,
+        url: normalizedUrl,
+        transport: mcpTransport,
+      },
+    ]);
+    setMcpFormError(null);
+    setMcpNameInput("");
+    setMcpUrlInput("");
+    setMcpTransport(DEFAULT_MCP_TRANSPORT);
+  }
+
+  function handleRemoveMcpServer(id: string) {
+    setMcpServers((current) => current.filter((server) => server.id !== id));
   }
 
   return (
@@ -298,6 +374,74 @@ export default function Home() {
             </section>
           </div>
         </aside>
+
+        <aside className="mcp-shell" aria-label="MCP server settings">
+          <header className="mcp-header">
+            <h2>MCP Servers</h2>
+          </header>
+          <div className="mcp-content">
+            <section className="setting-group">
+              <div className="setting-group-header">
+                <h3>Add MCP Server</h3>
+              </div>
+              <input
+                type="text"
+                placeholder="Server name (optional)"
+                value={mcpNameInput}
+                onChange={(event) => setMcpNameInput(event.target.value)}
+                disabled={isSending}
+              />
+              <input
+                type="text"
+                placeholder="https://example.com/mcp"
+                value={mcpUrlInput}
+                onChange={(event) => setMcpUrlInput(event.target.value)}
+                disabled={isSending}
+              />
+              <select
+                value={mcpTransport}
+                onChange={(event) => setMcpTransport(event.target.value as McpTransport)}
+                disabled={isSending}
+              >
+                <option value="streamable_http">streamable_http</option>
+                <option value="sse">sse</option>
+              </select>
+              <button type="button" className="secondary-btn" onClick={handleAddMcpServer} disabled={isSending}>
+                Add Server
+              </button>
+              {mcpFormError ? <p className="field-error">{mcpFormError}</p> : null}
+            </section>
+
+            <section className="setting-group">
+              <div className="setting-group-header">
+                <h3>Added Servers</h3>
+              </div>
+              {mcpServers.length === 0 ? (
+                <p className="field-hint">No MCP servers added.</p>
+              ) : (
+                <div className="mcp-list">
+                  {mcpServers.map((server) => (
+                    <article key={server.id} className="mcp-item">
+                      <div className="mcp-item-body">
+                        <p className="mcp-item-name">{server.name}</p>
+                        <p className="mcp-item-url">{server.url}</p>
+                        <p className="mcp-item-meta">{server.transport}</p>
+                      </div>
+                      <button
+                        type="button"
+                        className="mcp-remove-btn"
+                        onClick={() => handleRemoveMcpServer(server.id)}
+                        disabled={isSending}
+                      >
+                        Remove
+                      </button>
+                    </article>
+                  ))}
+                </div>
+              )}
+            </section>
+          </div>
+        </aside>
       </div>
     </main>
   );
@@ -358,4 +502,9 @@ function validateContextWindowInput(input: string): {
 function getFileExtension(fileName: string): string {
   const parts = fileName.toLowerCase().split(".");
   return parts.length > 1 ? parts[parts.length - 1] : "";
+}
+
+function createId(prefix: string): string {
+  const randomPart = Math.random().toString(36).slice(2);
+  return `${prefix}-${Date.now()}-${randomPart}`;
 }
