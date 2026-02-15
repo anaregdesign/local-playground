@@ -9,6 +9,7 @@ A minimal desktop-first chat UI with an Azure OpenAI-backed API endpoint.
 - Clean desktop chat layout
 - `POST /api/chat` server endpoint
 - DefaultAzureCredential + Azure AD token provider auth
+- Azure v1 endpoint (`.../openai/v1/`) via `openai` TypeScript client
 - Azure env var placeholders (`.env.example`)
 - React Router + TypeScript
 
@@ -31,7 +32,8 @@ cp .env.example .env
 Then edit `.env` and set:
 
 - `AZURE_BASE_URL` (or `AZURE_OPENAI_BASE_URL`)
-- `AZURE_API_VERSION` (or `AZURE_OPENAI_API_VERSION`)
+- `AZURE_API_VERSION` (or `AZURE_OPENAI_API_VERSION`) with value `v1`
+- `AZURE_DEPLOYMENT_NAME` (or `AZURE_OPENAI_DEPLOYMENT_NAME`)
 
 Auth is done with `DefaultAzureCredential`, so use managed identity / Azure login in your environment.
 

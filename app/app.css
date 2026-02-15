@@ -43,9 +43,17 @@ body {
   padding: 2rem;
 }
 
-.chat-shell {
-  width: min(980px, 100%);
+.chat-layout {
+  width: min(1240px, 100%);
   height: min(84vh, 760px);
+  display: grid;
+  grid-template-columns: minmax(720px, 1fr) 280px;
+  gap: 1rem;
+}
+
+.chat-shell {
+  width: 100%;
+  height: 100%;
   display: grid;
   grid-template-rows: auto 1fr auto;
   border-radius: 24px;
@@ -166,6 +174,61 @@ body {
   cursor: not-allowed;
 }
 
+.settings-shell {
+  height: 100%;
+  border-radius: 24px;
+  border: 1px solid var(--surface-border);
+  background: var(--surface);
+  box-shadow: var(--shadow-soft);
+  display: grid;
+  grid-template-rows: auto 1fr;
+  overflow: hidden;
+}
+
+.settings-header {
+  padding: 1.1rem 1rem;
+  border-bottom: 1px solid var(--surface-border);
+  background: linear-gradient(180deg, rgba(248, 250, 252, 0.95), rgba(255, 253, 249, 0.9));
+}
+
+.settings-header h2 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.settings-header p {
+  margin: 0.3rem 0 0;
+  color: var(--text-subtle);
+  font-size: 0.82rem;
+}
+
+.settings-content {
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.settings-content label {
+  font-size: 0.88rem;
+  color: var(--text-subtle);
+}
+
+.settings-content select {
+  border-radius: 10px;
+  border: 1px solid var(--surface-border);
+  padding: 0.58rem 0.65rem;
+  font: inherit;
+  color: inherit;
+  background: #fff;
+}
+
+.settings-content select:focus {
+  outline: 2px solid rgba(44, 98, 123, 0.24);
+  outline-offset: 1px;
+}
+
 .sr-only {
   position: absolute;
   width: 1px;
@@ -183,8 +246,18 @@ body {
     padding: 1rem;
   }
 
+  .chat-layout {
+    height: auto;
+    grid-template-columns: 1fr;
+    gap: 0.85rem;
+  }
+
   .chat-shell {
     height: 92vh;
+  }
+
+  .settings-shell {
+    height: auto;
   }
 
   .message-row {

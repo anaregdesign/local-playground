@@ -1,6 +1,6 @@
 import type { Route } from "./+types/api.chat";
 import { DefaultAzureCredential, getBearerTokenProvider } from "@azure/identity";
-import { AzureOpenAI } from "openai";
+import OpenAI from "openai";
 
 type ChatRole = "user" | "assistant";
 
@@ -9,14 +9,18 @@ type ClientMessage = {
   content: string;
 };
 
+type ReasoningEffort = "none" | "low" | "medium" | "high";
+
 const AZURE_OPENAI_BASE_URL =
   process.env.AZURE_BASE_URL ?? process.env.AZURE_OPENAI_BASE_URL ?? "";
 const AZURE_OPENAI_API_VERSION =
-  process.env.AZURE_API_VERSION ?? process.env.AZURE_OPENAI_API_VERSION ?? "";
-const AZURE_OPENAI_DEPLOYMENT_NAME = "gpt-4o-mini";
+  (process.env.AZURE_API_VERSION ?? process.env.AZURE_OPENAI_API_VERSION ?? "v1").trim();
+const AZURE_OPENAI_DEPLOYMENT_NAME = (
+  process.env.AZURE_DEPLOYMENT_NAME ?? process.env.AZURE_OPENAI_DEPLOYMENT_NAME ?? ""
+).trim();
 const AZURE_COGNITIVE_SERVICES_SCOPE = "https://cognitiveservices.azure.com/.default";
 const SYSTEM_PROMPT = "You are a concise assistant for a simple chat app.";
-let azureOpenAIClient: AzureOpenAI | null = null;
+let azureOpenAIClient: OpenAI | null = null;
 
 export function loader({}: Route.LoaderArgs) {
   return Response.json(
@@ -43,12 +47,31 @@ export async function action({ request }: Route.ActionArgs) {
   }
 
   const history = readHistory(payload);
-  if (!AZURE_OPENAI_BASE_URL || !AZURE_OPENAI_API_VERSION) {
+  const reasoningEffort = readReasoningEffort(payload);
+  if (!AZURE_OPENAI_BASE_URL) {
     return Response.json({
       message:
-        "Azure OpenAI is not configured. Set AZURE_BASE_URL/AZURE_OPENAI_BASE_URL and AZURE_API_VERSION/AZURE_OPENAI_API_VERSION, then restart the server.",
+        "Azure OpenAI is not configured. Set AZURE_BASE_URL/AZURE_OPENAI_BASE_URL, then restart the server.",
       placeholder: true,
     });
+  }
+  if (!AZURE_OPENAI_DEPLOYMENT_NAME) {
+    return Response.json(
+      {
+        error:
+          "Azure deployment is not configured. Set AZURE_DEPLOYMENT_NAME (or AZURE_OPENAI_DEPLOYMENT_NAME).",
+      },
+      { status: 400 },
+    );
+  }
+  if (AZURE_OPENAI_API_VERSION && AZURE_OPENAI_API_VERSION !== "v1") {
+    return Response.json(
+      {
+        error:
+          "For Azure OpenAI v1 endpoint, set AZURE_API_VERSION (or AZURE_OPENAI_API_VERSION) to `v1`.",
+      },
+      { status: 400 },
+    );
   }
 
   try {
@@ -60,6 +83,7 @@ export async function action({ request }: Route.ActionArgs) {
         { role: "user", content: message },
       ],
       temperature: 0.7,
+      reasoning_effort: reasoningEffort,
     });
 
     const assistantMessage = extractAssistantMessage(completion.choices?.[0]?.message?.content);
@@ -74,17 +98,14 @@ export async function action({ request }: Route.ActionArgs) {
   } catch (error) {
     return Response.json(
       {
-        error:
-          error instanceof Error
-            ? error.message
-            : "Could not connect to Azure OpenAI.",
+        error: buildUpstreamErrorMessage(error),
       },
       { status: 502 },
     );
   }
 }
 
-function getAzureOpenAIClient(): AzureOpenAI {
+function getAzureOpenAIClient(): OpenAI {
   if (azureOpenAIClient) {
     return azureOpenAIClient;
   }
@@ -95,13 +116,25 @@ function getAzureOpenAIClient(): AzureOpenAI {
     AZURE_COGNITIVE_SERVICES_SCOPE,
   );
 
-  azureOpenAIClient = new AzureOpenAI({
-    azureADTokenProvider,
-    baseURL: AZURE_OPENAI_BASE_URL,
-    apiVersion: AZURE_OPENAI_API_VERSION,
+  azureOpenAIClient = new OpenAI({
+    baseURL: normalizeAzureOpenAIBaseURL(AZURE_OPENAI_BASE_URL),
+    apiKey: azureADTokenProvider,
   });
 
   return azureOpenAIClient;
+}
+
+function normalizeAzureOpenAIBaseURL(rawValue: string): string {
+  const trimmed = rawValue.trim().replace(/\/+$/, "");
+  if (!trimmed) {
+    return "";
+  }
+
+  if (/\/openai\/v1$/i.test(trimmed)) {
+    return `${trimmed}/`;
+  }
+
+  return `${trimmed}/openai/v1/`;
 }
 
 function readMessage(payload: unknown): string {
@@ -143,6 +176,18 @@ function readHistory(payload: unknown): ClientMessage[] {
     .slice(-10);
 }
 
+function readReasoningEffort(payload: unknown): ReasoningEffort {
+  if (!isRecord(payload)) {
+    return "none";
+  }
+
+  const value = payload.reasoningEffort;
+  if (value === "none" || value === "low" || value === "medium" || value === "high") {
+    return value;
+  }
+  return "none";
+}
+
 function extractAssistantMessage(
   content: string | Array<{ type?: string; text?: string }> | null | undefined,
 ): string {
@@ -160,4 +205,19 @@ function extractAssistantMessage(
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object";
+}
+
+function buildUpstreamErrorMessage(error: unknown): string {
+  if (!(error instanceof Error)) {
+    return "Could not connect to Azure OpenAI.";
+  }
+
+  if (error.message.includes("Resource not found")) {
+    return `${error.message} Check AZURE_BASE_URL and deployment name (${AZURE_OPENAI_DEPLOYMENT_NAME}).`;
+  }
+  if (error.message.includes("Unavailable model")) {
+    return `${error.message} Check AZURE_DEPLOYMENT_NAME (or AZURE_OPENAI_DEPLOYMENT_NAME).`;
+  }
+
+  return error.message;
 }

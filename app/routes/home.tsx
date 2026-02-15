@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { Route } from "./+types/home";
 
 type ChatRole = "user" | "assistant";
+type ReasoningEffort = "none" | "low" | "medium" | "high";
 
 type ChatMessage = {
   id: string;
@@ -32,6 +33,7 @@ export function meta({}: Route.MetaArgs) {
 export default function Home() {
   const [messages, setMessages] = useState<ChatMessage[]>(INITIAL_MESSAGES);
   const [draft, setDraft] = useState("");
+  const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffort>("none");
   const [isSending, setIsSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const endOfMessagesRef = useRef<HTMLDivElement | null>(null);
@@ -68,6 +70,7 @@ export default function Home() {
         body: JSON.stringify({
           message: content,
           history,
+          reasoningEffort,
         }),
       });
 
@@ -101,52 +104,76 @@ export default function Home() {
 
   return (
     <main className="chat-page">
-      <section className="chat-shell">
-        <header className="chat-header">
-          <h1>Simple Chat</h1>
-          <p>Set AZURE_BASE_URL and AZURE_API_VERSION to enable responses.</p>
-        </header>
+      <div className="chat-layout">
+        <section className="chat-shell">
+          <header className="chat-header">
+            <h1>Simple Chat</h1>
+            <p>Set AZURE_BASE_URL, AZURE_API_VERSION=v1, and AZURE_DEPLOYMENT_NAME.</p>
+          </header>
 
-        <div className="chat-log" aria-live="polite">
-          {messages.map((message) => (
-            <article
-              key={message.id}
-              className={`message-row ${message.role === "user" ? "user" : "assistant"}`}
-            >
-              <p>{message.content}</p>
-            </article>
-          ))}
+          <div className="chat-log" aria-live="polite">
+            {messages.map((message) => (
+              <article
+                key={message.id}
+                className={`message-row ${message.role === "user" ? "user" : "assistant"}`}
+              >
+                <p>{message.content}</p>
+              </article>
+            ))}
 
-          {isSending ? (
-            <article className="message-row assistant">
-              <p className="typing">Thinking...</p>
-            </article>
-          ) : null}
-          <div ref={endOfMessagesRef} />
-        </div>
+            {isSending ? (
+              <article className="message-row assistant">
+                <p className="typing">Thinking...</p>
+              </article>
+            ) : null}
+            <div ref={endOfMessagesRef} />
+          </div>
 
-        <footer className="chat-footer">
-          {error ? <p className="chat-error">{error}</p> : null}
-          <form className="chat-form" onSubmit={handleSubmit}>
-            <label className="sr-only" htmlFor="chat-input">
-              Message
-            </label>
-            <textarea
-              id="chat-input"
-              name="message"
-              rows={2}
-              placeholder="Type a message..."
-              value={draft}
-              onChange={(event) => setDraft(event.target.value)}
-              onKeyDown={handleInputKeyDown}
+          <footer className="chat-footer">
+            {error ? <p className="chat-error">{error}</p> : null}
+            <form className="chat-form" onSubmit={handleSubmit}>
+              <label className="sr-only" htmlFor="chat-input">
+                Message
+              </label>
+              <textarea
+                id="chat-input"
+                name="message"
+                rows={2}
+                placeholder="Type a message..."
+                value={draft}
+                onChange={(event) => setDraft(event.target.value)}
+                onKeyDown={handleInputKeyDown}
+                disabled={isSending}
+              />
+              <button type="submit" disabled={isSending || draft.trim().length === 0}>
+                Send
+              </button>
+            </form>
+          </footer>
+        </section>
+
+        <aside className="settings-shell" aria-label="Chat settings">
+          <header className="settings-header">
+            <h2>Settings</h2>
+            <p>Model behavior options</p>
+          </header>
+          <div className="settings-content">
+            <label htmlFor="reasoning-effort">Reasoning effort</label>
+            <select
+              id="reasoning-effort"
+              value={reasoningEffort}
+              onChange={(event) => setReasoningEffort(event.target.value as ReasoningEffort)}
               disabled={isSending}
-            />
-            <button type="submit" disabled={isSending || draft.trim().length === 0}>
-              Send
-            </button>
-          </form>
-        </footer>
-      </section>
+            >
+              {REASONING_EFFORT_OPTIONS.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+          </div>
+        </aside>
+      </div>
     </main>
   );
 }
@@ -159,3 +186,5 @@ function createMessage(role: ChatRole, content: string): ChatMessage {
     content,
   };
 }
+
+const REASONING_EFFORT_OPTIONS: ReasoningEffort[] = ["none", "low", "medium", "high"];
