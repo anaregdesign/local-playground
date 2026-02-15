@@ -12,6 +12,9 @@ type ClientMessage = {
 };
 
 type ReasoningEffort = "none" | "low" | "medium" | "high";
+const DEFAULT_CONTEXT_WINDOW_SIZE = 10;
+const MIN_CONTEXT_WINDOW_SIZE = 1;
+const MAX_CONTEXT_WINDOW_SIZE = 200;
 
 const AZURE_OPENAI_BASE_URL =
   process.env.AZURE_BASE_URL ?? process.env.AZURE_OPENAI_BASE_URL ?? "";
@@ -22,6 +25,7 @@ const AZURE_OPENAI_DEPLOYMENT_NAME = (
 ).trim();
 const AZURE_COGNITIVE_SERVICES_SCOPE = "https://cognitiveservices.azure.com/.default";
 const SYSTEM_PROMPT = "You are a concise assistant for a simple chat app.";
+const MAX_AGENT_INSTRUCTION_LENGTH = 4000;
 let azureOpenAIClient: OpenAI | null = null;
 
 export function loader({}: Route.LoaderArgs) {
@@ -48,8 +52,10 @@ export async function action({ request }: Route.ActionArgs) {
     return Response.json({ error: "`message` is required." }, { status: 400 });
   }
 
-  const history = readHistory(payload);
+  const contextWindowSize = readContextWindowSize(payload);
+  const history = readHistory(payload, contextWindowSize);
   const reasoningEffort = readReasoningEffort(payload);
+  const agentInstruction = readAgentInstruction(payload);
   if (!AZURE_OPENAI_BASE_URL) {
     return Response.json({
       message:
@@ -84,7 +90,7 @@ export async function action({ request }: Route.ActionArgs) {
 
     const agent = new Agent({
       name: "SimpleChatAgent",
-      instructions: SYSTEM_PROMPT,
+      instructions: agentInstruction,
       model,
       modelSettings: {
         temperature: 0.7,
@@ -180,7 +186,7 @@ function readMessage(payload: unknown): string {
   return message.trim();
 }
 
-function readHistory(payload: unknown): ClientMessage[] {
+function readHistory(payload: unknown, contextWindowSize: number): ClientMessage[] {
   if (!isRecord(payload) || !Array.isArray(payload.history)) {
     return [];
   }
@@ -205,7 +211,20 @@ function readHistory(payload: unknown): ClientMessage[] {
       return { role, content: trimmedContent };
     })
     .filter((entry): entry is ClientMessage => entry !== null)
-    .slice(-10);
+    .slice(-contextWindowSize);
+}
+
+function readContextWindowSize(payload: unknown): number {
+  if (!isRecord(payload)) {
+    return DEFAULT_CONTEXT_WINDOW_SIZE;
+  }
+
+  const value = payload.contextWindowSize;
+  if (typeof value !== "number" || !Number.isSafeInteger(value)) {
+    return DEFAULT_CONTEXT_WINDOW_SIZE;
+  }
+
+  return clamp(value, MIN_CONTEXT_WINDOW_SIZE, MAX_CONTEXT_WINDOW_SIZE);
 }
 
 function readReasoningEffort(payload: unknown): ReasoningEffort {
@@ -220,8 +239,36 @@ function readReasoningEffort(payload: unknown): ReasoningEffort {
   return "none";
 }
 
+function readAgentInstruction(payload: unknown): string {
+  if (!isRecord(payload)) {
+    return SYSTEM_PROMPT;
+  }
+
+  const value = payload.agentInstruction;
+  if (typeof value !== "string") {
+    return SYSTEM_PROMPT;
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return SYSTEM_PROMPT;
+  }
+
+  return trimmed.slice(0, MAX_AGENT_INSTRUCTION_LENGTH);
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object";
+}
+
+function clamp(value: number, min: number, max: number): number {
+  if (value < min) {
+    return min;
+  }
+  if (value > max) {
+    return max;
+  }
+  return value;
 }
 
 function buildUpstreamErrorMessage(error: unknown): string {
