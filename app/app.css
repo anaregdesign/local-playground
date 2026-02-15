@@ -40,12 +40,12 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 2rem;
+  padding: 0.75rem 2rem;
 }
 
 .chat-layout {
   width: min(1680px, 100%);
-  height: min(84vh, 760px);
+  height: min(90vh, 800px);
   display: grid;
   grid-template-columns: minmax(0, 1fr) 320px 320px;
   gap: 1.1rem;
@@ -472,7 +472,7 @@ body {
 
 @media (max-width: 900px) {
   .chat-page {
-    padding: 1rem;
+    padding: 0.5rem 1rem;
   }
 
   .chat-shell {
