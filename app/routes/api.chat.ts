@@ -1,5 +1,7 @@
 import type { Route } from "./+types/api.chat";
 import { DefaultAzureCredential, getBearerTokenProvider } from "@azure/identity";
+import { Agent, assistant, run, user } from "@openai/agents";
+import { OpenAIChatCompletionsModel } from "@openai/agents-openai";
 import OpenAI from "openai";
 
 type ChatRole = "user" | "assistant";
@@ -75,18 +77,31 @@ export async function action({ request }: Route.ActionArgs) {
   }
 
   try {
-    const completion = await getAzureOpenAIClient().chat.completions.create({
-      model: AZURE_OPENAI_DEPLOYMENT_NAME,
-      messages: [
-        { role: "system", content: SYSTEM_PROMPT },
-        ...history,
-        { role: "user", content: message },
-      ],
-      temperature: 0.7,
-      reasoning_effort: reasoningEffort,
+    const model = new OpenAIChatCompletionsModel(
+      getAzureOpenAIClient(),
+      AZURE_OPENAI_DEPLOYMENT_NAME,
+    );
+
+    const agent = new Agent({
+      name: "SimpleChatAgent",
+      instructions: SYSTEM_PROMPT,
+      model,
+      modelSettings: {
+        temperature: 0.7,
+        reasoning: {
+          effort: reasoningEffort,
+        },
+      },
     });
 
-    const assistantMessage = extractAssistantMessage(completion.choices?.[0]?.message?.content);
+    const result = await run(agent, [
+      ...history.map((entry) =>
+        entry.role === "user" ? user(entry.content) : assistant(entry.content),
+      ),
+      user(message),
+    ]);
+
+    const assistantMessage = extractAgentFinalOutput(result.finalOutput);
     if (!assistantMessage) {
       return Response.json(
         { error: "Azure OpenAI returned an empty message." },
@@ -103,6 +118,23 @@ export async function action({ request }: Route.ActionArgs) {
       { status: 502 },
     );
   }
+}
+
+function extractAgentFinalOutput(finalOutput: unknown): string {
+  if (typeof finalOutput === "string") {
+    return finalOutput.trim();
+  }
+  if (typeof finalOutput === "number" || typeof finalOutput === "boolean") {
+    return String(finalOutput);
+  }
+  if (finalOutput && typeof finalOutput === "object") {
+    try {
+      return JSON.stringify(finalOutput);
+    } catch {
+      return "";
+    }
+  }
+  return "";
 }
 
 function getAzureOpenAIClient(): OpenAI {
@@ -188,21 +220,6 @@ function readReasoningEffort(payload: unknown): ReasoningEffort {
   return "none";
 }
 
-function extractAssistantMessage(
-  content: string | Array<{ type?: string; text?: string }> | null | undefined,
-): string {
-  if (typeof content === "string") {
-    return content.trim();
-  }
-  if (Array.isArray(content)) {
-    return content
-      .map((piece) => (typeof piece.text === "string" ? piece.text : ""))
-      .join("\n")
-      .trim();
-  }
-  return "";
-}
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object";
 }
@@ -217,6 +234,9 @@ function buildUpstreamErrorMessage(error: unknown): string {
   }
   if (error.message.includes("Unavailable model")) {
     return `${error.message} Check AZURE_DEPLOYMENT_NAME (or AZURE_OPENAI_DEPLOYMENT_NAME).`;
+  }
+  if (error.message.includes("Model behavior error")) {
+    return `${error.message} Verify your model/deployment supports the selected reasoning effort.`;
   }
 
   return error.message;
