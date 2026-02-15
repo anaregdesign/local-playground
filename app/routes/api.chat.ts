@@ -3,6 +3,7 @@ import { DefaultAzureCredential, getBearerTokenProvider } from "@azure/identity"
 import {
   Agent,
   MCPServerSSE,
+  MCPServerStdio,
   MCPServerStreamableHttp,
   assistant,
   run,
@@ -20,12 +21,21 @@ type ClientMessage = {
 };
 
 type ReasoningEffort = "none" | "low" | "medium" | "high";
-type McpTransport = "streamable_http" | "sse";
-type ClientMcpServerConfig = {
+type McpTransport = "streamable_http" | "sse" | "stdio";
+type ClientMcpHttpServerConfig = {
   name: string;
+  transport: "streamable_http" | "sse";
   url: string;
-  transport: McpTransport;
 };
+type ClientMcpStdioServerConfig = {
+  name: string;
+  transport: "stdio";
+  command: string;
+  args: string[];
+  cwd?: string;
+  env: Record<string, string>;
+};
+type ClientMcpServerConfig = ClientMcpHttpServerConfig | ClientMcpStdioServerConfig;
 
 type ParseResult<T> = { ok: true; value: T } | { ok: false; error: string };
 
@@ -34,6 +44,9 @@ const MIN_CONTEXT_WINDOW_SIZE = 1;
 const MAX_CONTEXT_WINDOW_SIZE = 200;
 const MAX_MCP_SERVERS = 8;
 const MAX_MCP_SERVER_NAME_LENGTH = 80;
+const MAX_MCP_STDIO_ARGS = 64;
+const MAX_MCP_STDIO_ENV_VARS = 64;
+const ENV_KEY_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 const AZURE_OPENAI_BASE_URL =
   process.env.AZURE_BASE_URL ?? process.env.AZURE_OPENAI_BASE_URL ?? "";
@@ -116,7 +129,7 @@ export async function action({ request }: Route.ActionArgs) {
         await server.connect();
       } catch (error) {
         throw new Error(
-          `Failed to connect MCP server "${serverConfig.name}" (${serverConfig.url}): ${readErrorMessage(error)}`,
+          `Failed to connect MCP server "${serverConfig.name}" (${describeMcpServer(serverConfig)}): ${readErrorMessage(error)}`,
         );
       }
 
@@ -326,6 +339,66 @@ function readMcpServers(payload: unknown): ParseResult<ClientMcpServerConfig[]> 
       return { ok: false, error: `mcpServers[${index}] is invalid.` };
     }
 
+    const rawName = typeof entry.name === "string" ? entry.name.trim() : "";
+
+    const rawTransport = entry.transport;
+    let transport: McpTransport;
+    if (rawTransport === "sse") {
+      transport = "sse";
+    } else if (rawTransport === "stdio") {
+      transport = "stdio";
+    } else if (rawTransport === "streamable_http" || rawTransport === undefined || rawTransport === null) {
+      transport = "streamable_http";
+    } else {
+      return {
+        ok: false,
+        error: `mcpServers[${index}].transport must be "streamable_http", "sse", or "stdio".`,
+      };
+    }
+
+    if (transport === "stdio") {
+      const command = typeof entry.command === "string" ? entry.command.trim() : "";
+      if (!command) {
+        return { ok: false, error: `mcpServers[${index}].command is required for stdio.` };
+      }
+
+      if (/\s/.test(command)) {
+        return { ok: false, error: `mcpServers[${index}].command must not include spaces.` };
+      }
+
+      const argsResult = parseStdioArgs(entry.args, index);
+      if (!argsResult.ok) {
+        return argsResult;
+      }
+
+      const envResult = parseStdioEnv(entry.env, index);
+      if (!envResult.ok) {
+        return envResult;
+      }
+
+      const cwd = typeof entry.cwd === "string" ? entry.cwd.trim() : "";
+      const name = (rawName || command).slice(0, MAX_MCP_SERVER_NAME_LENGTH);
+      if (!name) {
+        return { ok: false, error: `mcpServers[${index}].name is required.` };
+      }
+
+      const dedupeKey = `${transport}:${command.toLowerCase()}:${argsResult.value.join("\u0000")}:${cwd.toLowerCase()}`;
+      if (dedupeKeys.has(dedupeKey)) {
+        continue;
+      }
+
+      dedupeKeys.add(dedupeKey);
+      result.push({
+        name,
+        transport,
+        command,
+        args: argsResult.value,
+        cwd: cwd || undefined,
+        env: envResult.value,
+      });
+      continue;
+    }
+
     const rawUrl = typeof entry.url === "string" ? entry.url.trim() : "";
     if (!rawUrl) {
       return { ok: false, error: `mcpServers[${index}].url is required.` };
@@ -345,23 +418,9 @@ function readMcpServers(payload: unknown): ParseResult<ClientMcpServerConfig[]> 
       };
     }
 
-    const rawName = typeof entry.name === "string" ? entry.name.trim() : "";
     const name = (rawName || parsedUrl.hostname).slice(0, MAX_MCP_SERVER_NAME_LENGTH);
     if (!name) {
       return { ok: false, error: `mcpServers[${index}].name is required.` };
-    }
-
-    const rawTransport = entry.transport;
-    let transport: McpTransport;
-    if (rawTransport === "sse") {
-      transport = "sse";
-    } else if (rawTransport === "streamable_http" || rawTransport === undefined) {
-      transport = "streamable_http";
-    } else {
-      return {
-        ok: false,
-        error: `mcpServers[${index}].transport must be "streamable_http" or "sse".`,
-      };
     }
 
     const url = parsedUrl.toString();
@@ -378,6 +437,16 @@ function readMcpServers(payload: unknown): ParseResult<ClientMcpServerConfig[]> 
 }
 
 function createMcpServer(config: ClientMcpServerConfig): MCPServer {
+  if (config.transport === "stdio") {
+    return new MCPServerStdio({
+      name: config.name,
+      command: config.command,
+      args: config.args,
+      cwd: config.cwd,
+      env: config.env,
+    });
+  }
+
   if (config.transport === "sse") {
     return new MCPServerSSE({
       name: config.name,
@@ -389,6 +458,85 @@ function createMcpServer(config: ClientMcpServerConfig): MCPServer {
     name: config.name,
     url: config.url,
   });
+}
+
+function parseStdioArgs(argsValue: unknown, index: number): ParseResult<string[]> {
+  if (argsValue === undefined || argsValue === null) {
+    return { ok: true, value: [] };
+  }
+
+  if (!Array.isArray(argsValue)) {
+    return { ok: false, error: `mcpServers[${index}].args must be an array of strings.` };
+  }
+
+  if (argsValue.length > MAX_MCP_STDIO_ARGS) {
+    return {
+      ok: false,
+      error: `mcpServers[${index}].args can include up to ${MAX_MCP_STDIO_ARGS} entries.`,
+    };
+  }
+
+  const args: string[] = [];
+  for (const [argIndex, arg] of argsValue.entries()) {
+    if (typeof arg !== "string") {
+      return { ok: false, error: `mcpServers[${index}].args[${argIndex}] must be a string.` };
+    }
+
+    const trimmed = arg.trim();
+    if (!trimmed) {
+      return { ok: false, error: `mcpServers[${index}].args[${argIndex}] must not be empty.` };
+    }
+
+    args.push(trimmed);
+  }
+
+  return { ok: true, value: args };
+}
+
+function parseStdioEnv(
+  envValue: unknown,
+  index: number,
+): ParseResult<Record<string, string>> {
+  if (envValue === undefined || envValue === null) {
+    return { ok: true, value: {} };
+  }
+
+  if (!isRecord(envValue)) {
+    return { ok: false, error: `mcpServers[${index}].env must be an object.` };
+  }
+
+  const entries = Object.entries(envValue);
+  if (entries.length > MAX_MCP_STDIO_ENV_VARS) {
+    return {
+      ok: false,
+      error: `mcpServers[${index}].env can include up to ${MAX_MCP_STDIO_ENV_VARS} entries.`,
+    };
+  }
+
+  const env: Record<string, string> = {};
+
+  for (const [key, value] of entries) {
+    if (!ENV_KEY_PATTERN.test(key)) {
+      return { ok: false, error: `mcpServers[${index}].env key "${key}" is invalid.` };
+    }
+
+    if (typeof value !== "string") {
+      return { ok: false, error: `mcpServers[${index}].env["${key}"] must be a string.` };
+    }
+
+    env[key] = value;
+  }
+
+  return { ok: true, value: env };
+}
+
+function describeMcpServer(config: ClientMcpServerConfig): string {
+  if (config.transport === "stdio") {
+    const argsPart = config.args.length > 0 ? ` ${config.args.join(" ")}` : "";
+    return `stdio:${config.command}${argsPart}`;
+  }
+
+  return config.url;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
