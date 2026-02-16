@@ -600,6 +600,33 @@ body {
   overflow-y: auto;
 }
 
+.mcp-content {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(300px, 0.9fr);
+  grid-template-areas:
+    "added saved"
+    "added add";
+  align-items: start;
+}
+
+.mcp-added-section {
+  grid-area: added;
+  border-color: #99c6ef;
+  box-shadow: inset 0 0 0 1px rgba(15, 108, 189, 0.12);
+}
+
+.mcp-added-section .setting-group-header h3 {
+  font-size: 1rem;
+}
+
+.mcp-saved-section {
+  grid-area: saved;
+}
+
+.mcp-add-section {
+  grid-area: add;
+}
+
 .setting-group {
   background: #ffffff;
   border: 1px solid var(--surface-border);
@@ -966,6 +993,15 @@ body {
     grid-row: auto;
     height: auto;
     max-height: none;
+  }
+
+  .mcp-content {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .mcp-added-section {
+    order: -1;
   }
 }
 

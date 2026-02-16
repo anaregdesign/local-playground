@@ -1375,7 +1375,7 @@ export default function Home() {
             <p>Model behavior options</p>
           </header>
           <div className="settings-content">
-            <section className="setting-group">
+            <section className="setting-group mcp-saved-section">
               <div className="setting-group-header">
                 <h3>Azure Connection 🔐</h3>
                 <p>Select project and deployment for chat requests.</p>
@@ -1553,7 +1553,7 @@ export default function Home() {
               )}
             </section>
 
-            <section className="setting-group">
+            <section className="setting-group mcp-add-section">
               <div className="setting-group-header">
                 <h3>Agent Instruction 🧾</h3>
                 <p>System instruction used for the agent.</p>
@@ -1668,6 +1668,62 @@ export default function Home() {
             <h2>MCP Servers 🧩</h2>
           </header>
           <div className="mcp-content">
+            <section className="setting-group">
+              <div className="setting-group-header">
+                <h3>Saved Configs 💾</h3>
+              </div>
+              <Field label="Saved config">
+                <Select
+                  id="mcp-saved-config"
+                  value={selectedSavedMcpServerId}
+                  onChange={(event) => {
+                    setSelectedSavedMcpServerId(event.target.value);
+                    setSavedMcpError(null);
+                  }}
+                  disabled={isSending || isLoadingSavedMcpServers || savedMcpServers.length === 0}
+                >
+                  {savedMcpServers.length === 0 ? (
+                    <option value="">No saved MCP servers</option>
+                  ) : null}
+                  {savedMcpServers.map((server) => (
+                    <option key={server.id} value={server.id}>
+                      {formatMcpServerOption(server)}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+              <div className="mcp-action-row">
+                <Button
+                  type="button"
+                  appearance="secondary"
+                  onClick={handleLoadSavedMcpServerToForm}
+                  disabled={
+                    isSending ||
+                    isLoadingSavedMcpServers ||
+                    savedMcpServers.length === 0 ||
+                    !selectedSavedMcpServerId
+                  }
+                >
+                  📥 Load Selected
+                </Button>
+                <Button
+                  type="button"
+                  appearance="secondary"
+                  onClick={() => {
+                    void loadSavedMcpServers();
+                  }}
+                  disabled={isSending || isLoadingSavedMcpServers}
+                >
+                  {isLoadingSavedMcpServers ? "🔄 Loading..." : "🔄 Reload"}
+                </Button>
+              </div>
+              {savedMcpError ? (
+                <MessageBar intent="error" className="setting-message-bar">
+                  <MessageBarBody>{savedMcpError}</MessageBarBody>
+                </MessageBar>
+              ) : null}
+            </section>
+
             <section className="setting-group">
               <div className="setting-group-header">
                 <h3>Add MCP Server ➕</h3>
@@ -1864,65 +1920,9 @@ export default function Home() {
               ) : null}
             </section>
 
-            <section className="setting-group">
+            <section className="setting-group mcp-added-section">
               <div className="setting-group-header">
-                <h3>Saved Configs 💾</h3>
-              </div>
-              <Field label="Saved config">
-                <Select
-                  id="mcp-saved-config"
-                  value={selectedSavedMcpServerId}
-                  onChange={(event) => {
-                    setSelectedSavedMcpServerId(event.target.value);
-                    setSavedMcpError(null);
-                  }}
-                  disabled={isSending || isLoadingSavedMcpServers || savedMcpServers.length === 0}
-                >
-                  {savedMcpServers.length === 0 ? (
-                    <option value="">No saved MCP servers</option>
-                  ) : null}
-                  {savedMcpServers.map((server) => (
-                    <option key={server.id} value={server.id}>
-                      {formatMcpServerOption(server)}
-                    </option>
-                  ))}
-                </Select>
-              </Field>
-              <div className="mcp-action-row">
-                <Button
-                  type="button"
-                  appearance="secondary"
-                  onClick={handleLoadSavedMcpServerToForm}
-                  disabled={
-                    isSending ||
-                    isLoadingSavedMcpServers ||
-                    savedMcpServers.length === 0 ||
-                    !selectedSavedMcpServerId
-                  }
-                >
-                  📥 Load Selected
-                </Button>
-                <Button
-                  type="button"
-                  appearance="secondary"
-                  onClick={() => {
-                    void loadSavedMcpServers();
-                  }}
-                  disabled={isSending || isLoadingSavedMcpServers}
-                >
-                  {isLoadingSavedMcpServers ? "🔄 Loading..." : "🔄 Reload"}
-                </Button>
-              </div>
-              {savedMcpError ? (
-                <MessageBar intent="error" className="setting-message-bar">
-                  <MessageBarBody>{savedMcpError}</MessageBarBody>
-                </MessageBar>
-              ) : null}
-            </section>
-
-            <section className="setting-group">
-              <div className="setting-group-header">
-                <h3>Added Servers 📡</h3>
+                <h3>Added MCP Servers 📡</h3>
               </div>
               {mcpServers.length === 0 ? (
                 <p className="field-hint">No MCP servers added.</p>
