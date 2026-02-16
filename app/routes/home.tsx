@@ -1532,7 +1532,7 @@ const MAIN_VIEW_TAB_OPTIONS: Array<{ id: MainViewTab; label: string }> = [
 const REASONING_EFFORT_OPTIONS: ReasoningEffort[] = ["none", "low", "medium", "high"];
 const ENV_KEY_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
-function validateContextWindowInput(input: string): {
+export function validateContextWindowInput(input: string): {
   isValid: boolean;
   value: number | null;
   message: string | null;
@@ -1573,11 +1573,11 @@ function validateContextWindowInput(input: string): {
   };
 }
 
-function readTenantIdFromUnknown(value: unknown): string {
+export function readTenantIdFromUnknown(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
-function readAzureSelectionFromUnknown(
+export function readAzureSelectionFromUnknown(
   value: unknown,
   expectedTenantId: string,
 ): AzureSelectionPreference | null {

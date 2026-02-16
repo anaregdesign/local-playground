@@ -77,7 +77,7 @@ function readTenantIdFromUrl(rawUrl: string): string {
   return typeof tenantId === "string" ? tenantId.trim() : "";
 }
 
-function parseAzureSelectionPreference(value: unknown): AzureSelectionPreference | null {
+export function parseAzureSelectionPreference(value: unknown): AzureSelectionPreference | null {
   if (!isRecord(value)) {
     return null;
   }

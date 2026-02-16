@@ -473,7 +473,7 @@ async function getArmAccessToken(): Promise<{ ok: true; token: string; tenantId:
   }
 }
 
-function readTenantIdFromAccessToken(accessToken: string): string {
+export function readTenantIdFromAccessToken(accessToken: string): string {
   const parts = accessToken.split(".");
   if (parts.length < 2) {
     return "";
