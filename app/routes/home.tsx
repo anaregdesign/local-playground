@@ -97,6 +97,7 @@ export default function Home() {
   );
   const [temperatureInput, setTemperatureInput] = useState("");
   const [isSending, setIsSending] = useState(false);
+  const [isComposing, setIsComposing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const endOfMessagesRef = useRef<HTMLDivElement | null>(null);
   const contextWindowValidation = validateContextWindowInput(contextWindowInput);
@@ -190,6 +191,10 @@ export default function Home() {
   }
 
   function handleInputKeyDown(event: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (event.nativeEvent.isComposing || isComposing || event.nativeEvent.keyCode === 229) {
+      return;
+    }
+
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
       void sendMessage();
@@ -403,6 +408,8 @@ export default function Home() {
                 value={draft}
                 onChange={(event) => setDraft(event.target.value)}
                 onKeyDown={handleInputKeyDown}
+                onCompositionStart={() => setIsComposing(true)}
+                onCompositionEnd={() => setIsComposing(false)}
                 disabled={isSending}
               />
               <button
