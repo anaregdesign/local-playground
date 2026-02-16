@@ -14,6 +14,7 @@
 - Reload deployments when the selected project changes.
 - Show only Agents SDK-compatible deployments.
 - Use Azure OpenAI v1 endpoint format (`.../openai/v1/`).
+- Persist the last-used Azure project/deployment per `tenantId` in `~/.foundry_local_playground/azure-selection.json`.
 - If authentication is unavailable, lock Playground usage and guide users to Settings login.
 
 ## Agents SDK / Playground

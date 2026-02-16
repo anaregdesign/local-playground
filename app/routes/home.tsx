@@ -68,7 +68,17 @@ type AzureActionApiResponse = {
 type AzureConnectionsApiResponse = {
   projects?: unknown;
   deployments?: unknown;
+  tenantId?: unknown;
   authRequired?: boolean;
+  error?: string;
+};
+type AzureSelectionPreference = {
+  tenantId: string;
+  projectId: string;
+  deploymentName: string;
+};
+type AzureSelectionApiResponse = {
+  selection?: unknown;
   error?: string;
 };
 
@@ -149,6 +159,8 @@ export default function Home() {
   const [azureLogoutError, setAzureLogoutError] = useState<string | null>(null);
   const endOfMessagesRef = useRef<HTMLDivElement | null>(null);
   const azureDeploymentRequestSeqRef = useRef(0);
+  const activeAzureTenantIdRef = useRef("");
+  const preferredAzureSelectionRef = useRef<AzureSelectionPreference | null>(null);
   const contextWindowValidation = validateContextWindowInput(contextWindowInput);
   const isChatLocked = isAzureAuthRequired;
   const previousChatLockedRef = useRef(isChatLocked);
@@ -156,6 +168,10 @@ export default function Home() {
     azureConnections.find((connection) => connection.id === selectedAzureConnectionId) ??
     azureConnections[0] ??
     null;
+  const canClearAgentInstruction =
+    agentInstruction.length > 0 ||
+    loadedInstructionFileName !== null ||
+    instructionFileError !== null;
 
   useEffect(() => {
     endOfMessagesRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -207,6 +223,45 @@ export default function Home() {
 
     void loadAzureDeployments(activeAzureConnection.id);
   }, [activeAzureConnection]);
+
+  useEffect(() => {
+    if (isAzureAuthRequired) {
+      return;
+    }
+
+    const tenantId = activeAzureTenantIdRef.current.trim();
+    const projectId = selectedAzureConnectionId.trim();
+    const deploymentName = selectedAzureDeploymentName.trim();
+    if (!tenantId || !projectId || !deploymentName) {
+      return;
+    }
+
+    if (!azureConnections.some((connection) => connection.id === projectId)) {
+      return;
+    }
+
+    if (!azureDeployments.includes(deploymentName)) {
+      return;
+    }
+
+    const preferred = preferredAzureSelectionRef.current;
+    if (
+      preferred &&
+      preferred.tenantId === tenantId &&
+      preferred.projectId === projectId &&
+      preferred.deploymentName === deploymentName
+    ) {
+      return;
+    }
+
+    void saveAzureSelectionPreference({ tenantId, projectId, deploymentName });
+  }, [
+    azureConnections,
+    azureDeployments,
+    isAzureAuthRequired,
+    selectedAzureConnectionId,
+    selectedAzureDeploymentName,
+  ]);
 
   useEffect(() => {
     if (isChatLocked && activeMainTab === "chat") {
@@ -271,6 +326,51 @@ export default function Home() {
     }
   }
 
+  async function loadAzureSelectionPreference(
+    tenantId: string,
+  ): Promise<AzureSelectionPreference | null> {
+    const normalizedTenantId = tenantId.trim();
+    if (!normalizedTenantId) {
+      return null;
+    }
+
+    try {
+      const response = await fetch(
+        `/api/azure-selection?tenantId=${encodeURIComponent(normalizedTenantId)}`,
+        {
+          method: "GET",
+        },
+      );
+      const payload = (await response.json()) as AzureSelectionApiResponse;
+      if (!response.ok) {
+        return null;
+      }
+
+      return readAzureSelectionFromUnknown(payload.selection, normalizedTenantId);
+    } catch {
+      return null;
+    }
+  }
+
+  async function saveAzureSelectionPreference(selection: AzureSelectionPreference): Promise<void> {
+    preferredAzureSelectionRef.current = selection;
+
+    try {
+      const response = await fetch("/api/azure-selection", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(selection),
+      });
+      if (!response.ok) {
+        return;
+      }
+    } catch {
+      // Ignore persistence failures and continue normal UI flow.
+    }
+  }
+
   async function loadAzureConnections(): Promise<boolean> {
     setIsLoadingAzureConnections(true);
 
@@ -282,6 +382,8 @@ export default function Home() {
       const payload = (await response.json()) as AzureConnectionsApiResponse;
       if (!response.ok) {
         const authRequired = payload.authRequired === true || response.status === 401;
+        activeAzureTenantIdRef.current = "";
+        preferredAzureSelectionRef.current = null;
         setIsAzureAuthRequired(authRequired);
         setAzureConnections([]);
         setAzureDeployments([]);
@@ -293,6 +395,12 @@ export default function Home() {
       }
 
       const parsedProjects = readAzureProjectList(payload.projects);
+      const tenantId = readTenantIdFromUnknown(payload.tenantId);
+      activeAzureTenantIdRef.current = tenantId;
+      const preferredSelection = tenantId ? await loadAzureSelectionPreference(tenantId) : null;
+      preferredAzureSelectionRef.current = preferredSelection;
+      const preferredProjectId = preferredSelection?.projectId ?? "";
+
       setAzureConnections(parsedProjects);
       setAzureDeployments([]);
       setIsAzureAuthRequired(payload.authRequired === true ? true : false);
@@ -301,10 +409,14 @@ export default function Home() {
       setSelectedAzureConnectionId((current) =>
         current && parsedProjects.some((connection) => connection.id === current)
           ? current
-          : parsedProjects[0]?.id ?? "",
+          : preferredProjectId && parsedProjects.some((connection) => connection.id === preferredProjectId)
+            ? preferredProjectId
+            : parsedProjects[0]?.id ?? "",
       );
       return payload.authRequired === true;
     } catch (loadError) {
+      activeAzureTenantIdRef.current = "";
+      preferredAzureSelectionRef.current = null;
       setIsAzureAuthRequired(false);
       setAzureConnections([]);
       setAzureDeployments([]);
@@ -358,10 +470,27 @@ export default function Home() {
       }
 
       const parsedDeployments = readAzureDeploymentList(payload.deployments);
+      const tenantIdFromPayload = readTenantIdFromUnknown(payload.tenantId);
+      if (tenantIdFromPayload) {
+        activeAzureTenantIdRef.current = tenantIdFromPayload;
+      }
+
+      const preferredSelection = preferredAzureSelectionRef.current;
+      const preferredDeploymentName =
+        preferredSelection &&
+        preferredSelection.tenantId === activeAzureTenantIdRef.current &&
+        preferredSelection.projectId === projectId
+          ? preferredSelection.deploymentName
+          : "";
+
       setIsAzureAuthRequired(false);
       setAzureDeployments(parsedDeployments);
       setSelectedAzureDeploymentName((current) =>
-        parsedDeployments.includes(current) ? current : parsedDeployments[0] ?? "",
+        parsedDeployments.includes(current)
+          ? current
+          : preferredDeploymentName && parsedDeployments.includes(preferredDeploymentName)
+            ? preferredDeploymentName
+            : parsedDeployments[0] ?? "",
       );
       setAzureDeploymentError(
         parsedDeployments.length === 0
@@ -1041,8 +1170,25 @@ export default function Home() {
                     id="azure-deployment"
                     value={selectedAzureDeploymentName}
                     onChange={(event) => {
-                      setSelectedAzureDeploymentName(event.target.value);
+                      const nextDeploymentName = event.target.value.trim();
+                      setSelectedAzureDeploymentName(nextDeploymentName);
                       setError(null);
+
+                      const tenantId = activeAzureTenantIdRef.current.trim();
+                      const projectId = (activeAzureConnection?.id ?? "").trim();
+                      if (!tenantId || !projectId || !nextDeploymentName) {
+                        return;
+                      }
+
+                      if (!azureDeployments.includes(nextDeploymentName)) {
+                        return;
+                      }
+
+                      void saveAzureSelectionPreference({
+                        tenantId,
+                        projectId,
+                        deploymentName: nextDeploymentName,
+                      });
                     }}
                     disabled={
                       isSending ||
@@ -1119,6 +1265,18 @@ export default function Home() {
                 <label htmlFor="agent-instruction-file" className="file-picker-button">
                   📂 Load File
                 </label>
+                <button
+                  type="button"
+                  className="file-picker-button"
+                  onClick={() => {
+                    setAgentInstruction("");
+                    setLoadedInstructionFileName(null);
+                    setInstructionFileError(null);
+                  }}
+                  disabled={isSending || !canClearAgentInstruction}
+                >
+                  🧹 Clear
+                </button>
                 <span className="file-picker-name">
                   {loadedInstructionFileName ?? "No file loaded"}
                 </span>
@@ -1418,6 +1576,36 @@ function validateContextWindowInput(input: string): {
     isValid: true,
     value: parsed,
     message: null,
+  };
+}
+
+function readTenantIdFromUnknown(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function readAzureSelectionFromUnknown(
+  value: unknown,
+  expectedTenantId: string,
+): AzureSelectionPreference | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const tenantId = typeof value.tenantId === "string" ? value.tenantId.trim() : "";
+  const projectId = typeof value.projectId === "string" ? value.projectId.trim() : "";
+  const deploymentName = typeof value.deploymentName === "string" ? value.deploymentName.trim() : "";
+  if (!tenantId || !projectId || !deploymentName) {
+    return null;
+  }
+
+  if (expectedTenantId && tenantId !== expectedTenantId) {
+    return null;
+  }
+
+  return {
+    tenantId,
+    projectId,
+    deploymentName,
   };
 }
 

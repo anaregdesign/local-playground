@@ -42,6 +42,7 @@ _Desktop UI: switch between Playground, Settings, and MCP Servers tabs to manage
 - Re-add servers from Saved Configs
 - Review and remove Added Servers
 - Persistent config path: `~/.foundry_local_playground/mcp-servers.json`
+- Last-used Azure project/deployment per tenant: `~/.foundry_local_playground/azure-selection.json`
 
 ## Core Specifications
 

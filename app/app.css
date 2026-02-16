@@ -590,6 +590,11 @@ body {
   background: #f0f6fa;
 }
 
+.file-picker-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 .file-picker-name {
   font-size: 0.78rem;
   color: var(--text-subtle);

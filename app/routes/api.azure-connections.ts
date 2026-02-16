@@ -83,7 +83,7 @@ export async function loader({ request }: Route.LoaderArgs) {
   try {
     if (!projectId) {
       const projects = await listAzureProjects(tokenResult.token);
-      return Response.json({ projects, authRequired: false });
+      return Response.json({ projects, tenantId: tokenResult.tenantId, authRequired: false });
     }
 
     const projectRef = parseProjectId(projectId);
@@ -92,7 +92,7 @@ export async function loader({ request }: Route.LoaderArgs) {
     }
 
     const deployments = await listProjectDeployments(tokenResult.token, projectRef);
-    return Response.json({ deployments, authRequired: false });
+    return Response.json({ deployments, tenantId: tokenResult.tenantId, authRequired: false });
   } catch (error) {
     return Response.json(
       {
@@ -455,7 +455,7 @@ function parseResourceGroupFromResourceId(resourceId: string): string {
   return match?.[1] ?? "";
 }
 
-async function getArmAccessToken(): Promise<{ ok: true; token: string } | { ok: false }> {
+async function getArmAccessToken(): Promise<{ ok: true; token: string; tenantId: string } | { ok: false }> {
   try {
     const credential = new DefaultAzureCredential();
     const token = await credential.getToken(ARM_SCOPE);
@@ -463,9 +463,33 @@ async function getArmAccessToken(): Promise<{ ok: true; token: string } | { ok: 
       return { ok: false };
     }
 
-    return { ok: true, token: token.token };
+    return {
+      ok: true,
+      token: token.token,
+      tenantId: readTenantIdFromAccessToken(token.token),
+    };
   } catch {
     return { ok: false };
+  }
+}
+
+function readTenantIdFromAccessToken(accessToken: string): string {
+  const parts = accessToken.split(".");
+  if (parts.length < 2) {
+    return "";
+  }
+
+  try {
+    const payload = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8")) as unknown;
+    if (!isRecord(payload)) {
+      return "";
+    }
+
+    const tid = typeof payload.tid === "string" ? payload.tid.trim() : "";
+    const tenantId = typeof payload.tenantId === "string" ? payload.tenantId.trim() : "";
+    return tid || tenantId;
+  } catch {
+    return "";
   }
 }
 
@@ -534,4 +558,3 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function readErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Unknown error.";
 }
-
