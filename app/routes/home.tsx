@@ -1181,11 +1181,29 @@ export default function Home() {
                   <article
                     className={`message-row ${message.role === "user" ? "user" : "assistant"}`}
                   >
-                    {renderMessageContent(message)}
+                    <div className="message-content">
+                      {renderMessageContent(message)}
+                    </div>
+                    <button
+                      type="button"
+                      className="copy-symbol-btn message-copy-btn"
+                      aria-label="Copy message"
+                      onClick={() => {
+                        void copyTextToClipboard(message.content).catch(() => {
+                          setError("Failed to copy message to clipboard.");
+                        });
+                      }}
+                    >
+                      ⎘
+                    </button>
                   </article>
                   {shouldRenderTurnMcpLog ? (
                     <article className="mcp-turn-log-row">
-                      {renderTurnMcpLog(turnMcpHistory, false)}
+                      {renderTurnMcpLog(turnMcpHistory, false, (text) => {
+                        void copyTextToClipboard(text).catch(() => {
+                          setError("Failed to copy MCP log to clipboard.");
+                        });
+                      })}
                     </article>
                   ) : null}
                 </Fragment>
@@ -1217,12 +1235,21 @@ export default function Home() {
                 {renderTurnMcpLog(
                   activeTurnId ? (mcpHistoryByTurnId.get(activeTurnId) ?? []) : [],
                   true,
+                  (text) => {
+                    void copyTextToClipboard(text).catch(() => {
+                      setError("Failed to copy MCP log to clipboard.");
+                    });
+                  },
                 )}
               </article>
             ) : null}
             {!isSending && errorTurnMcpHistory.length > 0 ? (
               <article className="mcp-turn-log-row">
-                {renderTurnMcpLog(errorTurnMcpHistory, false)}
+                {renderTurnMcpLog(errorTurnMcpHistory, false, (text) => {
+                  void copyTextToClipboard(text).catch(() => {
+                    setError("Failed to copy MCP log to clipboard.");
+                  });
+                })}
               </article>
             ) : null}
             <div ref={endOfMessagesRef} />
@@ -2020,11 +2047,31 @@ function appendProgressMessage(
   });
 }
 
-function renderTurnMcpLog(entries: McpRpcHistoryEntry[], isLive: boolean) {
+function renderTurnMcpLog(
+  entries: McpRpcHistoryEntry[],
+  isLive: boolean,
+  onCopyText: (text: string) => void,
+) {
   return (
     <details className="mcp-turn-log" open={isLive}>
       <summary>
-        🧩 MCP Operation Log ({entries.length})
+        <span>🧩 MCP Operation Log ({entries.length})</span>
+        <button
+          type="button"
+          className="copy-symbol-btn mcp-log-copy-btn"
+          aria-label="Copy MCP operation log"
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            onCopyText(
+              formatJsonForDisplay(
+                entries.map((entry) => buildMcpEntryCopyPayload(entry)),
+              ),
+            );
+          }}
+        >
+          ⎘
+        </button>
       </summary>
       {entries.length === 0 ? (
         <p className="mcp-turn-log-empty">
@@ -2041,6 +2088,18 @@ function renderTurnMcpLog(entries: McpRpcHistoryEntry[], isLive: boolean) {
                 <span className={`mcp-history-state ${entry.isError ? "error" : "ok"}`}>
                   {entry.isError ? "error" : "ok"}
                 </span>
+                <button
+                  type="button"
+                  className="copy-symbol-btn mcp-history-copy-btn"
+                  aria-label="Copy MCP operation entry"
+                  onClick={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    onCopyText(formatJsonForDisplay(buildMcpEntryCopyPayload(entry)));
+                  }}
+                >
+                  ⎘
+                </button>
               </summary>
               <div className="mcp-history-body">
                 <p className="mcp-history-time">
@@ -2048,9 +2107,41 @@ function renderTurnMcpLog(entries: McpRpcHistoryEntry[], isLive: boolean) {
                   {" -> "}
                   {entry.completedAt}
                 </p>
-                <p className="mcp-history-label">request</p>
+                <p className="mcp-history-label-row">
+                  <span className="mcp-history-label">request</span>
+                  <button
+                    type="button"
+                    className="copy-symbol-btn mcp-part-copy-btn"
+                    aria-label="Copy MCP request payload"
+                    onClick={() => {
+                      onCopyText(
+                        formatJsonForDisplay({
+                          request: entry.request ?? null,
+                        }),
+                      );
+                    }}
+                  >
+                    ⎘
+                  </button>
+                </p>
                 {renderHighlightedJson(entry.request, "MCP request JSON", "compact")}
-                <p className="mcp-history-label">response</p>
+                <p className="mcp-history-label-row">
+                  <span className="mcp-history-label">response</span>
+                  <button
+                    type="button"
+                    className="copy-symbol-btn mcp-part-copy-btn"
+                    aria-label="Copy MCP response payload"
+                    onClick={() => {
+                      onCopyText(
+                        formatJsonForDisplay({
+                          response: entry.response ?? null,
+                        }),
+                      );
+                    }}
+                  >
+                    ⎘
+                  </button>
+                </p>
                 {renderHighlightedJson(entry.response, "MCP response JSON", "compact")}
               </div>
             </details>
@@ -2672,6 +2763,46 @@ function getFileExtension(fileName: string): string {
 function createId(prefix: string): string {
   const randomPart = Math.random().toString(36).slice(2);
   return `${prefix}-${Date.now()}-${randomPart}`;
+}
+
+function buildMcpEntryCopyPayload(entry: McpRpcHistoryEntry): Record<string, unknown> {
+  return {
+    id: entry.id,
+    sequence: entry.sequence,
+    serverName: entry.serverName,
+    method: entry.method,
+    startedAt: entry.startedAt,
+    completedAt: entry.completedAt,
+    request: entry.request ?? null,
+    response: entry.response ?? null,
+    isError: entry.isError,
+    turnId: entry.turnId,
+  };
+}
+
+async function copyTextToClipboard(text: string): Promise<void> {
+  if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+
+  if (typeof document === "undefined") {
+    throw new Error("Clipboard API is not available.");
+  }
+
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.setAttribute("readonly", "true");
+  textarea.style.position = "fixed";
+  textarea.style.opacity = "0";
+  textarea.style.pointerEvents = "none";
+  document.body.append(textarea);
+  textarea.select();
+  const copied = document.execCommand("copy");
+  textarea.remove();
+  if (!copied) {
+    throw new Error("Failed to copy text.");
+  }
 }
 
 function renderMessageContent(message: ChatMessage) {

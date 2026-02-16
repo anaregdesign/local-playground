@@ -202,11 +202,45 @@ body {
 
 .message-row {
   max-width: 72%;
-  padding: 0.8rem 0.95rem;
+  padding: 0.8rem 0.85rem 0.8rem 0.95rem;
   border-radius: 14px;
   line-height: 1.45;
   word-break: break-word;
   white-space: pre-wrap;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.35rem;
+}
+
+.message-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.copy-symbol-btn {
+  border: 0;
+  background: transparent;
+  color: var(--text-subtle);
+  cursor: pointer;
+  font-size: 0.9rem;
+  line-height: 1;
+  padding: 0.12rem 0.18rem;
+  opacity: 0.7;
+}
+
+.copy-symbol-btn:hover {
+  opacity: 1;
+}
+
+.copy-symbol-btn:focus-visible {
+  outline: 2px solid rgba(44, 98, 123, 0.3);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+.message-copy-btn {
+  flex-shrink: 0;
+  margin-top: 0.05rem;
 }
 
 .message-row p {
@@ -390,11 +424,18 @@ body {
 }
 
 .mcp-turn-log > summary {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
   cursor: pointer;
   padding: 0.48rem 0.62rem;
   font-size: 0.82rem;
   font-weight: 700;
   color: var(--text-main);
+}
+
+.mcp-log-copy-btn {
+  margin-left: auto;
 }
 
 .mcp-turn-log[open] > summary {
@@ -463,6 +504,10 @@ body {
   color: var(--danger);
 }
 
+.mcp-history-copy-btn {
+  margin-left: 0.1rem;
+}
+
 .mcp-history-body {
   display: flex;
   flex-direction: column;
@@ -485,11 +530,27 @@ body {
   letter-spacing: 0.02em;
 }
 
+.mcp-history-label-row {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem;
+}
+
+.mcp-history-label-row .mcp-history-label {
+  margin: 0;
+}
+
 .mcp-history-json {
   max-height: 180px;
   overflow: auto;
   margin: 0;
   font-size: 0.74rem;
+}
+
+.mcp-part-copy-btn {
+  flex-shrink: 0;
 }
 
 .chat-footer {
