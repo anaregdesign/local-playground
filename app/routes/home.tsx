@@ -106,6 +106,21 @@ type SaveInstructionPromptApiResponse = {
   savedPath?: unknown;
   error?: string;
 };
+type InstructionLanguage = "japanese" | "english" | "mixed" | "unknown";
+type InstructionDiffLineType = "context" | "added" | "removed";
+type InstructionDiffLine = {
+  type: InstructionDiffLineType;
+  oldLineNumber: number | null;
+  newLineNumber: number | null;
+  content: string;
+};
+type InstructionEnhanceComparison = {
+  original: string;
+  enhanced: string;
+  extension: string;
+  language: InstructionLanguage;
+  diffLines: InstructionDiffLine[];
+};
 type ChatStreamProgressEvent = {
   type: "progress";
   message?: unknown;
@@ -181,6 +196,15 @@ const DEFAULT_AGENT_INSTRUCTION = "You are a concise assistant for a local playg
 const MAX_INSTRUCTION_FILE_SIZE_BYTES = 1_000_000;
 const MAX_INSTRUCTION_FILE_SIZE_LABEL = "1MB";
 const ALLOWED_INSTRUCTION_EXTENSIONS = new Set(["md", "txt", "xml", "json"]);
+const DEFAULT_INSTRUCTION_EXTENSION = "txt";
+const MAX_INSTRUCTION_DIFF_MATRIX_CELLS = 250_000;
+const ENHANCE_INSTRUCTION_SYSTEM_PROMPT = [
+  "You are an expert editor for agent system instructions.",
+  "Rewrite the provided instruction to remove contradictions and ambiguity.",
+  "Keep the original intent, constraints, and safety boundaries.",
+  "Preserve the language and file-format style requested by the user.",
+  "Return only the revised instruction text with no explanations.",
+].join(" ");
 const DEFAULT_MCP_TRANSPORT: McpTransport = "streamable_http";
 const DEFAULT_MCP_AZURE_AUTH_SCOPE = "https://cognitiveservices.azure.com/.default";
 const DEFAULT_MCP_TIMEOUT_SECONDS = 30;
@@ -219,6 +243,11 @@ export default function Home() {
   const [instructionSaveError, setInstructionSaveError] = useState<string | null>(null);
   const [instructionSaveSuccess, setInstructionSaveSuccess] = useState<string | null>(null);
   const [isSavingInstructionPrompt, setIsSavingInstructionPrompt] = useState(false);
+  const [instructionEnhanceError, setInstructionEnhanceError] = useState<string | null>(null);
+  const [instructionEnhanceSuccess, setInstructionEnhanceSuccess] = useState<string | null>(null);
+  const [isEnhancingInstruction, setIsEnhancingInstruction] = useState(false);
+  const [instructionEnhanceComparison, setInstructionEnhanceComparison] =
+    useState<InstructionEnhanceComparison | null>(null);
   const [mcpServers, setMcpServers] = useState<McpServerConfig[]>([]);
   const [savedMcpServers, setSavedMcpServers] = useState<McpServerConfig[]>([]);
   const [selectedSavedMcpServerId, setSelectedSavedMcpServerId] = useState("");
@@ -275,6 +304,7 @@ export default function Home() {
     loadedInstructionFileName !== null ||
     instructionFileError !== null;
   const canSaveAgentInstructionPrompt = agentInstruction.trim().length > 0;
+  const canEnhanceAgentInstruction = agentInstruction.trim().length > 0;
   const mcpHistoryByTurnId = buildMcpHistoryByTurnId(mcpRpcHistory);
   const activeTurnMcpHistory = activeTurnId ? (mcpHistoryByTurnId.get(activeTurnId) ?? []) : [];
   const errorTurnMcpHistory = lastErrorTurnId ? (mcpHistoryByTurnId.get(lastErrorTurnId) ?? []) : [];
@@ -928,6 +958,9 @@ export default function Home() {
       setInstructionSaveFileNameInput(file.name);
       setInstructionSaveError(null);
       setInstructionSaveSuccess(null);
+      setInstructionEnhanceError(null);
+      setInstructionEnhanceSuccess(null);
+      setInstructionEnhanceComparison(null);
     } catch {
       setInstructionFileError("Failed to read the selected instruction file.");
     } finally {
@@ -988,6 +1021,171 @@ export default function Home() {
     } finally {
       setIsSavingInstructionPrompt(false);
     }
+  }
+
+  async function handleEnhanceInstruction() {
+    if (isEnhancingInstruction) {
+      return;
+    }
+
+    setInstructionEnhanceError(null);
+    setInstructionEnhanceSuccess(null);
+    setInstructionEnhanceComparison(null);
+
+    const currentInstruction = agentInstruction.trim();
+    if (!currentInstruction) {
+      setInstructionEnhanceError("Instruction is empty.");
+      return;
+    }
+
+    if (isChatLocked) {
+      setActiveMainTab("settings");
+      setInstructionEnhanceError(
+        "Playground is unavailable while logged out. Open Azure Connection and sign in first.",
+      );
+      return;
+    }
+
+    if (!activeAzureConnection) {
+      setInstructionEnhanceError("No Azure project is selected.");
+      return;
+    }
+
+    const deploymentName = selectedAzureDeploymentName.trim();
+    if (isLoadingAzureDeployments) {
+      setInstructionEnhanceError("Deployment list is loading. Please wait.");
+      return;
+    }
+
+    if (!deploymentName || !azureDeployments.includes(deploymentName)) {
+      setInstructionEnhanceError("Select an Azure deployment before enhancing.");
+      return;
+    }
+
+    const sourceFileName = resolveInstructionSourceFileName(
+      loadedInstructionFileName,
+      instructionSaveFileNameInput,
+    );
+    const instructionExtension = resolveInstructionFormatExtension(
+      sourceFileName,
+      currentInstruction,
+    );
+    const instructionLanguage = detectInstructionLanguage(currentInstruction);
+    const enhanceRequestMessage = buildInstructionEnhanceMessage({
+      instruction: currentInstruction,
+      extension: instructionExtension,
+      language: instructionLanguage,
+    });
+
+    setIsEnhancingInstruction(true);
+
+    try {
+      const response = await fetch("/api/chat", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({
+          message: enhanceRequestMessage,
+          history: [],
+          azureConfig: {
+            projectName: activeAzureConnection.projectName,
+            baseUrl: activeAzureConnection.baseUrl,
+            apiVersion: activeAzureConnection.apiVersion,
+            deploymentName,
+          },
+          reasoningEffort: "none",
+          contextWindowSize: 1,
+          agentInstruction: ENHANCE_INSTRUCTION_SYSTEM_PROMPT,
+          mcpServers: [],
+        }),
+      });
+
+      const payload = (await response.json()) as ChatApiResponse;
+      if (!response.ok || payload.error) {
+        if (payload.errorCode === "azure_login_required") {
+          setIsAzureAuthRequired(true);
+          setShowAzureLoginButton(true);
+        }
+
+        throw new Error(payload.error || "Failed to enhance instruction.");
+      }
+
+      const rawEnhancedInstruction =
+        typeof payload.message === "string" ? payload.message.trim() : "";
+      if (!rawEnhancedInstruction) {
+        throw new Error("Enhancement response is empty.");
+      }
+
+      const normalizedEnhancedInstruction = normalizeEnhancedInstructionResponse(
+        rawEnhancedInstruction,
+      );
+      const formatValidation = validateEnhancedInstructionFormat(
+        normalizedEnhancedInstruction,
+        instructionExtension,
+      );
+      if (!formatValidation.ok) {
+        throw new Error(formatValidation.error);
+      }
+
+      const languageValidation = validateInstructionLanguagePreserved(
+        currentInstruction,
+        normalizedEnhancedInstruction,
+      );
+      if (!languageValidation.ok) {
+        throw new Error(languageValidation.error);
+      }
+
+      if (normalizedEnhancedInstruction === currentInstruction) {
+        setInstructionEnhanceSuccess("No changes were suggested.");
+        return;
+      }
+
+      setInstructionEnhanceComparison({
+        original: currentInstruction,
+        enhanced: normalizedEnhancedInstruction,
+        extension: instructionExtension,
+        language: instructionLanguage,
+        diffLines: buildInstructionDiffLines(currentInstruction, normalizedEnhancedInstruction),
+      });
+      setInstructionFileError(null);
+      setInstructionSaveError(null);
+      setInstructionSaveSuccess(null);
+      setInstructionEnhanceSuccess("Review the diff and choose which version to adopt.");
+    } catch (enhanceError) {
+      setInstructionEnhanceError(
+        enhanceError instanceof Error ? enhanceError.message : "Failed to enhance instruction.",
+      );
+    } finally {
+      setIsEnhancingInstruction(false);
+    }
+  }
+
+  function handleAdoptEnhancedInstruction() {
+    if (!instructionEnhanceComparison) {
+      return;
+    }
+
+    setAgentInstruction(instructionEnhanceComparison.enhanced);
+    setInstructionEnhanceComparison(null);
+    setInstructionEnhanceError(null);
+    setInstructionSaveError(null);
+    setInstructionSaveSuccess(null);
+    setInstructionEnhanceSuccess("Enhanced instruction applied.");
+  }
+
+  function handleAdoptOriginalInstruction() {
+    if (!instructionEnhanceComparison) {
+      return;
+    }
+
+    setAgentInstruction(instructionEnhanceComparison.original);
+    setInstructionEnhanceComparison(null);
+    setInstructionEnhanceError(null);
+    setInstructionSaveError(null);
+    setInstructionSaveSuccess(null);
+    setInstructionEnhanceSuccess("Kept original instruction.");
   }
 
   async function handleAddMcpServer() {
@@ -1446,7 +1644,7 @@ export default function Home() {
             <p>Model behavior options</p>
           </header>
           <div className="settings-content">
-            <section className="setting-group mcp-saved-section">
+            <section className="setting-group">
               <div className="setting-group-header">
                 <h3>Azure Connection 🔐</h3>
                 <p>Select project and deployment for chat requests.</p>
@@ -1624,7 +1822,7 @@ export default function Home() {
               )}
             </section>
 
-            <section className="setting-group mcp-add-section">
+            <section className="setting-group">
               <div className="setting-group-header">
                 <h3>Agent Instruction 🧾</h3>
                 <p>System instruction used for the agent.</p>
@@ -1637,6 +1835,9 @@ export default function Home() {
                   setAgentInstruction(data.value);
                   setInstructionSaveError(null);
                   setInstructionSaveSuccess(null);
+                  setInstructionEnhanceError(null);
+                  setInstructionEnhanceSuccess(null);
+                  setInstructionEnhanceComparison(null);
                 }}
                 disabled={isSending}
                 placeholder="System instruction for the agent"
@@ -1650,8 +1851,10 @@ export default function Home() {
                     setInstructionSaveFileNameInput(data.value);
                     setInstructionSaveError(null);
                     setInstructionSaveSuccess(null);
+                    setInstructionEnhanceError(null);
+                    setInstructionEnhanceSuccess(null);
                   }}
-                  disabled={isSending || isSavingInstructionPrompt}
+                  disabled={isSending || isSavingInstructionPrompt || isEnhancingInstruction}
                 />
               </Field>
               <div className="file-picker-row">
@@ -1682,9 +1885,25 @@ export default function Home() {
                   onClick={() => {
                     void handleSaveInstructionPrompt();
                   }}
-                  disabled={isSending || isSavingInstructionPrompt || !canSaveAgentInstructionPrompt}
+                  disabled={
+                    isSending ||
+                    isSavingInstructionPrompt ||
+                    isEnhancingInstruction ||
+                    !canSaveAgentInstructionPrompt
+                  }
                 >
                   {isSavingInstructionPrompt ? "💾 Saving..." : "💾 Save"}
+                </Button>
+                <Button
+                  type="button"
+                  appearance="primary"
+                  size="small"
+                  onClick={() => {
+                    void handleEnhanceInstruction();
+                  }}
+                  disabled={isSending || isEnhancingInstruction || !canEnhanceAgentInstruction}
+                >
+                  {isEnhancingInstruction ? "✨ Enhancing..." : "✨ Enhance"}
                 </Button>
                 <Button
                   type="button"
@@ -1697,6 +1916,9 @@ export default function Home() {
                     setInstructionFileError(null);
                     setInstructionSaveError(null);
                     setInstructionSaveSuccess(null);
+                    setInstructionEnhanceError(null);
+                    setInstructionEnhanceSuccess(null);
+                    setInstructionEnhanceComparison(null);
                   }}
                   disabled={isSending || !canClearAgentInstruction}
                 >
@@ -1708,8 +1930,64 @@ export default function Home() {
               </div>
               <p className="field-hint">Supported: .md, .txt, .xml, .json (max 1MB)</p>
               <p className="field-hint">
+                Enhance uses the currently selected Azure project + deployment in Azure Connection.
+              </p>
+              <p className="field-hint">
                 Save destination: `~/.foundry_local_playground/prompts` (leave file name empty to auto-generate).
               </p>
+              {instructionEnhanceComparison ? (
+                <section className="instruction-diff-panel" aria-label="Instruction diff review">
+                  <div className="instruction-diff-header">
+                    <p className="instruction-diff-title">🔀 Enhanced Diff Preview</p>
+                    <div className="instruction-diff-actions">
+                      <Button
+                        type="button"
+                        appearance="primary"
+                        size="small"
+                        onClick={handleAdoptEnhancedInstruction}
+                        disabled={isSending || isEnhancingInstruction}
+                      >
+                        ✅ Adopt Enhanced
+                      </Button>
+                      <Button
+                        type="button"
+                        appearance="secondary"
+                        size="small"
+                        onClick={handleAdoptOriginalInstruction}
+                        disabled={isSending || isEnhancingInstruction}
+                      >
+                        ↩️ Keep Original
+                      </Button>
+                    </div>
+                  </div>
+                  <p className="instruction-diff-meta">
+                    Format: .{instructionEnhanceComparison.extension} | Language:{" "}
+                    {describeInstructionLanguage(instructionEnhanceComparison.language)}
+                  </p>
+                  <div className="instruction-diff-table" role="table" aria-label="Instruction diff">
+                    {instructionEnhanceComparison.diffLines.map((line, index) => (
+                      <div
+                        key={`instruction-diff-${index}-${line.oldLineNumber ?? "n"}-${line.newLineNumber ?? "n"}`}
+                        className={`instruction-diff-row ${line.type}`}
+                        role="row"
+                      >
+                        <span className="instruction-diff-line-number old" aria-hidden="true">
+                          {line.oldLineNumber ?? ""}
+                        </span>
+                        <span className="instruction-diff-line-number new" aria-hidden="true">
+                          {line.newLineNumber ?? ""}
+                        </span>
+                        <span className={`instruction-diff-sign ${line.type}`} aria-hidden="true">
+                          {line.type === "added" ? "+" : line.type === "removed" ? "-" : " "}
+                        </span>
+                        <code className="instruction-diff-content">
+                          {line.content.length > 0 ? line.content : " "}
+                        </code>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              ) : null}
               {instructionFileError ? (
                 <MessageBar intent="error" className="setting-message-bar">
                   <MessageBarBody>{instructionFileError}</MessageBarBody>
@@ -1725,9 +2003,19 @@ export default function Home() {
                   <MessageBarBody>{instructionSaveSuccess}</MessageBarBody>
                 </MessageBar>
               ) : null}
+              {instructionEnhanceError ? (
+                <MessageBar intent="error" className="setting-message-bar">
+                  <MessageBarBody>{instructionEnhanceError}</MessageBarBody>
+                </MessageBar>
+              ) : null}
+              {instructionEnhanceSuccess ? (
+                <MessageBar intent="success" className="setting-message-bar">
+                  <MessageBarBody>{instructionEnhanceSuccess}</MessageBarBody>
+                </MessageBar>
+              ) : null}
             </section>
 
-            <section className="setting-group">
+            <section className="setting-group mcp-saved-section">
               <div className="setting-group-header">
                 <h3>Reasoning Effort 🧠</h3>
                 <p>How much internal reasoning the model should use.</p>
@@ -1746,7 +2034,7 @@ export default function Home() {
               </Select>
             </section>
 
-            <section className="setting-group">
+            <section className="setting-group mcp-add-section">
               <div className="setting-group-header">
                 <h3>Context Window 🧵</h3>
                 <p>Number of recent messages to include as context.</p>
@@ -3042,6 +3330,419 @@ function readMcpTimeoutSecondsFromUnknown(value: unknown): number {
   }
 
   return value;
+}
+
+export function resolveInstructionSourceFileName(
+  loadedFileName: string | null,
+  saveFileNameInput: string,
+): string | null {
+  const loaded = (loadedFileName ?? "").trim();
+  if (loaded) {
+    return loaded;
+  }
+
+  const saveInput = saveFileNameInput.trim();
+  return saveInput || null;
+}
+
+export function resolveInstructionFormatExtension(
+  sourceFileName: string | null,
+  instruction: string,
+): string {
+  const sourceExtension = getFileExtension(sourceFileName ?? "");
+  if (ALLOWED_INSTRUCTION_EXTENSIONS.has(sourceExtension)) {
+    return sourceExtension;
+  }
+
+  const trimmedInstruction = instruction.trim();
+  if (!trimmedInstruction) {
+    return DEFAULT_INSTRUCTION_EXTENSION;
+  }
+
+  if (
+    (trimmedInstruction.startsWith("{") || trimmedInstruction.startsWith("[")) &&
+    canParseJson(trimmedInstruction)
+  ) {
+    return "json";
+  }
+
+  if (looksLikeXmlDocument(trimmedInstruction)) {
+    return "xml";
+  }
+
+  if (looksLikeMarkdownText(trimmedInstruction)) {
+    return "md";
+  }
+
+  return DEFAULT_INSTRUCTION_EXTENSION;
+}
+
+export function detectInstructionLanguage(value: string): InstructionLanguage {
+  const hasJapanese = /[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff]/.test(value);
+  const hasEnglish = /[A-Za-z]/.test(value);
+  if (hasJapanese && hasEnglish) {
+    return "mixed";
+  }
+  if (hasJapanese) {
+    return "japanese";
+  }
+  if (hasEnglish) {
+    return "english";
+  }
+  return "unknown";
+}
+
+export function buildInstructionEnhanceMessage(options: {
+  instruction: string;
+  extension: string;
+  language: InstructionLanguage;
+}): string {
+  const languageLabel = describeInstructionLanguage(options.language);
+  return [
+    "Improve the following agent instruction.",
+    "Requirements:",
+    "- Remove contradictions and ambiguity.",
+    "- Keep original intent, guardrails, and constraints.",
+    "- Normalize and improve formatting for readability.",
+    `- Preserve the original language (${languageLabel}).`,
+    `- Preserve the original file format style for .${options.extension}.`,
+    "- Return only the revised instruction text.",
+    "",
+    "<instruction>",
+    options.instruction,
+    "</instruction>",
+  ].join("\n");
+}
+
+export function normalizeEnhancedInstructionResponse(value: string): string {
+  return unwrapCodeFence(value).trim();
+}
+
+export function validateEnhancedInstructionFormat(
+  instruction: string,
+  extension: string,
+): ParseResult<true> {
+  const normalizedExtension = extension.trim().toLowerCase();
+  if (normalizedExtension === "json" && !canParseJson(instruction.trim())) {
+    return {
+      ok: false,
+      error: "Enhanced instruction is not valid JSON. Please retry.",
+    };
+  }
+
+  if (normalizedExtension === "xml" && !looksLikeXmlDocument(instruction.trim())) {
+    return {
+      ok: false,
+      error: "Enhanced instruction is not valid XML-like content. Please retry.",
+    };
+  }
+
+  return { ok: true, value: true };
+}
+
+export function validateInstructionLanguagePreserved(
+  originalInstruction: string,
+  enhancedInstruction: string,
+): ParseResult<true> {
+  const originalLanguage = detectInstructionLanguage(originalInstruction);
+  if (originalLanguage === "unknown" || originalLanguage === "mixed") {
+    return { ok: true, value: true };
+  }
+
+  const enhancedHasJapanese = /[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff]/.test(
+    enhancedInstruction,
+  );
+  const enhancedHasEnglish = /[A-Za-z]/.test(enhancedInstruction);
+
+  if (originalLanguage === "japanese" && !enhancedHasJapanese) {
+    return {
+      ok: false,
+      error: "Enhanced instruction changed language unexpectedly. Please retry.",
+    };
+  }
+
+  if (originalLanguage === "english" && !enhancedHasEnglish) {
+    return {
+      ok: false,
+      error: "Enhanced instruction changed language unexpectedly. Please retry.",
+    };
+  }
+
+  return { ok: true, value: true };
+}
+
+function describeInstructionLanguage(language: InstructionLanguage): string {
+  if (language === "japanese") {
+    return "Japanese";
+  }
+  if (language === "english") {
+    return "English";
+  }
+  if (language === "mixed") {
+    return "mixed language";
+  }
+  return "same language as source";
+}
+
+function canParseJson(value: string): boolean {
+  try {
+    JSON.parse(value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function looksLikeXmlDocument(value: string): boolean {
+  const trimmed = value.trim();
+  if (!trimmed.startsWith("<") || !trimmed.endsWith(">")) {
+    return false;
+  }
+
+  if (/^<([A-Za-z_][A-Za-z0-9:_.-]*)(?:\s[^>]*)?\/>\s*$/.test(trimmed)) {
+    return true;
+  }
+
+  const firstTag = trimmed.match(/^<([A-Za-z_][A-Za-z0-9:_.-]*)(?:\s[^>]*)?>/);
+  if (!firstTag) {
+    return false;
+  }
+
+  const rootTagName = firstTag[1];
+  if (new RegExp(`<\\/${rootTagName}>\\s*$`).test(trimmed)) {
+    return true;
+  }
+
+  return /\/>\s*$/.test(trimmed);
+}
+
+function looksLikeMarkdownText(value: string): boolean {
+  if (/^(#{1,6})\s/m.test(value)) {
+    return true;
+  }
+  if (/```/.test(value)) {
+    return true;
+  }
+  return /^\s*[-*+]\s/m.test(value);
+}
+
+function unwrapCodeFence(value: string): string {
+  const trimmed = value.trim();
+  const fenced = trimmed.match(/^```[^\n]*\n([\s\S]*?)\n```$/);
+  if (fenced) {
+    return fenced[1];
+  }
+
+  const fencedWithoutTrailingNewLine = trimmed.match(/^```[^\n]*\n([\s\S]*?)```$/);
+  if (fencedWithoutTrailingNewLine) {
+    return fencedWithoutTrailingNewLine[1];
+  }
+
+  return value;
+}
+
+export function buildInstructionDiffLines(
+  originalInstruction: string,
+  enhancedInstruction: string,
+  options: {
+    maxMatrixCells?: number;
+  } = {},
+): InstructionDiffLine[] {
+  const originalLines = splitInstructionLines(originalInstruction);
+  const enhancedLines = splitInstructionLines(enhancedInstruction);
+  const maxMatrixCells = options.maxMatrixCells ?? MAX_INSTRUCTION_DIFF_MATRIX_CELLS;
+  const operations = computeInstructionDiffOperations(
+    originalLines,
+    enhancedLines,
+    maxMatrixCells,
+  );
+
+  let oldLineNumber = 0;
+  let newLineNumber = 0;
+  const diffLines: InstructionDiffLine[] = [];
+  for (const operation of operations) {
+    if (operation.type === "context") {
+      oldLineNumber += 1;
+      newLineNumber += 1;
+      diffLines.push({
+        type: "context",
+        oldLineNumber,
+        newLineNumber,
+        content: operation.content,
+      });
+      continue;
+    }
+
+    if (operation.type === "removed") {
+      oldLineNumber += 1;
+      diffLines.push({
+        type: "removed",
+        oldLineNumber,
+        newLineNumber: null,
+        content: operation.content,
+      });
+      continue;
+    }
+
+    newLineNumber += 1;
+    diffLines.push({
+      type: "added",
+      oldLineNumber: null,
+      newLineNumber,
+      content: operation.content,
+    });
+  }
+
+  if (diffLines.length > 0) {
+    return diffLines;
+  }
+
+  return [
+    {
+      type: "context",
+      oldLineNumber: 1,
+      newLineNumber: 1,
+      content: "",
+    },
+  ];
+}
+
+type InstructionDiffOperation = {
+  type: "context" | "added" | "removed";
+  content: string;
+};
+
+function computeInstructionDiffOperations(
+  originalLines: string[],
+  enhancedLines: string[],
+  maxMatrixCells: number,
+): InstructionDiffOperation[] {
+  const totalMatrixCells = originalLines.length * enhancedLines.length;
+  if (totalMatrixCells <= 0) {
+    if (originalLines.length === 0 && enhancedLines.length === 0) {
+      return [];
+    }
+
+    return [
+      ...originalLines.map((content) => ({ type: "removed", content }) as InstructionDiffOperation),
+      ...enhancedLines.map((content) => ({ type: "added", content }) as InstructionDiffOperation),
+    ];
+  }
+
+  if (totalMatrixCells > maxMatrixCells) {
+    return computeInstructionDiffOperationsFast(originalLines, enhancedLines);
+  }
+
+  const matrix: number[][] = Array.from({ length: originalLines.length + 1 }, () =>
+    Array.from({ length: enhancedLines.length + 1 }, () => 0),
+  );
+
+  for (let i = originalLines.length - 1; i >= 0; i -= 1) {
+    for (let j = enhancedLines.length - 1; j >= 0; j -= 1) {
+      if (originalLines[i] === enhancedLines[j]) {
+        matrix[i][j] = matrix[i + 1][j + 1] + 1;
+      } else {
+        matrix[i][j] = Math.max(matrix[i + 1][j], matrix[i][j + 1]);
+      }
+    }
+  }
+
+  const operations: InstructionDiffOperation[] = [];
+  let oldCursor = 0;
+  let newCursor = 0;
+  while (oldCursor < originalLines.length && newCursor < enhancedLines.length) {
+    if (originalLines[oldCursor] === enhancedLines[newCursor]) {
+      operations.push({
+        type: "context",
+        content: originalLines[oldCursor],
+      });
+      oldCursor += 1;
+      newCursor += 1;
+      continue;
+    }
+
+    if (matrix[oldCursor + 1][newCursor] >= matrix[oldCursor][newCursor + 1]) {
+      operations.push({
+        type: "removed",
+        content: originalLines[oldCursor],
+      });
+      oldCursor += 1;
+      continue;
+    }
+
+    operations.push({
+      type: "added",
+      content: enhancedLines[newCursor],
+    });
+    newCursor += 1;
+  }
+
+  while (oldCursor < originalLines.length) {
+    operations.push({
+      type: "removed",
+      content: originalLines[oldCursor],
+    });
+    oldCursor += 1;
+  }
+
+  while (newCursor < enhancedLines.length) {
+    operations.push({
+      type: "added",
+      content: enhancedLines[newCursor],
+    });
+    newCursor += 1;
+  }
+
+  return operations;
+}
+
+function computeInstructionDiffOperationsFast(
+  originalLines: string[],
+  enhancedLines: string[],
+): InstructionDiffOperation[] {
+  const operations: InstructionDiffOperation[] = [];
+  let oldCursor = 0;
+  let newCursor = 0;
+  while (oldCursor < originalLines.length || newCursor < enhancedLines.length) {
+    const hasOld = oldCursor < originalLines.length;
+    const hasNew = newCursor < enhancedLines.length;
+    if (hasOld && hasNew && originalLines[oldCursor] === enhancedLines[newCursor]) {
+      operations.push({
+        type: "context",
+        content: originalLines[oldCursor],
+      });
+      oldCursor += 1;
+      newCursor += 1;
+      continue;
+    }
+
+    if (hasOld) {
+      operations.push({
+        type: "removed",
+        content: originalLines[oldCursor],
+      });
+      oldCursor += 1;
+    }
+
+    if (hasNew) {
+      operations.push({
+        type: "added",
+        content: enhancedLines[newCursor],
+      });
+      newCursor += 1;
+    }
+  }
+
+  return operations;
+}
+
+function splitInstructionLines(value: string): string[] {
+  const normalized = value.replace(/\r\n/g, "\n");
+  if (!normalized) {
+    return [];
+  }
+
+  return normalized.split("\n");
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

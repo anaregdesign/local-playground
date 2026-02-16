@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildInstructionEnhanceMessage,
+  buildInstructionDiffLines,
+  detectInstructionLanguage,
+  normalizeEnhancedInstructionResponse,
+  resolveInstructionFormatExtension,
+  resolveInstructionSourceFileName,
   parseAzureAuthScopeInput,
   parseMcpTimeoutSecondsInput,
   parseHttpHeadersInput,
@@ -9,6 +15,8 @@ import {
   readAzureSelectionFromUnknown,
   readTenantIdFromUnknown,
   upsertMcpRpcHistoryEntry,
+  validateEnhancedInstructionFormat,
+  validateInstructionLanguagePreserved,
   validateContextWindowInput,
 } from "./home";
 
@@ -40,6 +48,142 @@ describe("validateContextWindowInput", () => {
       value: null,
       message: "Context window must be between 1 and 200.",
     });
+  });
+});
+
+describe("instruction enhance helpers", () => {
+  it("resolves source file name with loaded file precedence", () => {
+    expect(resolveInstructionSourceFileName("prompt.md", "override.json")).toBe("prompt.md");
+    expect(resolveInstructionSourceFileName(null, "override.json")).toBe("override.json");
+    expect(resolveInstructionSourceFileName(null, "   ")).toBeNull();
+  });
+
+  it("resolves extension from file name and content fallback", () => {
+    expect(resolveInstructionFormatExtension("prompt.json", "text")).toBe("json");
+    expect(resolveInstructionFormatExtension(null, '{"a":1}')).toBe("json");
+    expect(resolveInstructionFormatExtension(null, "<root><a>1</a></root>")).toBe("xml");
+    expect(resolveInstructionFormatExtension(null, "# Title\n- item")).toBe("md");
+    expect(resolveInstructionFormatExtension(null, "plain text")).toBe("txt");
+  });
+
+  it("detects language from script usage", () => {
+    expect(detectInstructionLanguage("こんにちは")).toBe("japanese");
+    expect(detectInstructionLanguage("Hello world")).toBe("english");
+    expect(detectInstructionLanguage("Hello こんにちは")).toBe("mixed");
+  });
+
+  it("builds enhance message with language and extension constraints", () => {
+    const message = buildInstructionEnhanceMessage({
+      instruction: "You are concise.",
+      extension: "md",
+      language: "english",
+    });
+    expect(message).toContain("Preserve the original language (English).");
+    expect(message).toContain("Preserve the original file format style for .md.");
+    expect(message).toContain("<instruction>");
+  });
+
+  it("unwraps top-level fenced output from model response", () => {
+    const normalized = normalizeEnhancedInstructionResponse("```markdown\n# title\n```");
+    expect(normalized).toBe("# title");
+  });
+
+  it("validates enhanced format and language preservation", () => {
+    expect(validateEnhancedInstructionFormat('{"a":1}', "json")).toEqual({
+      ok: true,
+      value: true,
+    });
+    expect(validateEnhancedInstructionFormat("not-json", "json")).toEqual({
+      ok: false,
+      error: "Enhanced instruction is not valid JSON. Please retry.",
+    });
+    expect(validateEnhancedInstructionFormat("<root/>", "xml")).toEqual({
+      ok: true,
+      value: true,
+    });
+    expect(validateEnhancedInstructionFormat("root text", "xml")).toEqual({
+      ok: false,
+      error: "Enhanced instruction is not valid XML-like content. Please retry.",
+    });
+
+    expect(validateInstructionLanguagePreserved("日本語で回答してください", "簡潔に回答します。")).toEqual({
+      ok: true,
+      value: true,
+    });
+    expect(validateInstructionLanguagePreserved("日本語で回答してください", "Answer briefly.")).toEqual({
+      ok: false,
+      error: "Enhanced instruction changed language unexpectedly. Please retry.",
+    });
+    expect(validateInstructionLanguagePreserved("Answer in English.", "こんにちは")).toEqual({
+      ok: false,
+      error: "Enhanced instruction changed language unexpectedly. Please retry.",
+    });
+  });
+
+  it("builds github-style line diff entries", () => {
+    const diff = buildInstructionDiffLines("line-1\nline-2\nline-3", "line-1\nline-2-updated\nline-3\nline-4");
+    expect(diff).toEqual([
+      {
+        type: "context",
+        oldLineNumber: 1,
+        newLineNumber: 1,
+        content: "line-1",
+      },
+      {
+        type: "removed",
+        oldLineNumber: 2,
+        newLineNumber: null,
+        content: "line-2",
+      },
+      {
+        type: "added",
+        oldLineNumber: null,
+        newLineNumber: 2,
+        content: "line-2-updated",
+      },
+      {
+        type: "context",
+        oldLineNumber: 3,
+        newLineNumber: 3,
+        content: "line-3",
+      },
+      {
+        type: "added",
+        oldLineNumber: null,
+        newLineNumber: 4,
+        content: "line-4",
+      },
+    ]);
+  });
+
+  it("falls back to linear diff strategy when matrix is capped", () => {
+    const diff = buildInstructionDiffLines("a\nb\nc", "a\nx\nc", {
+      maxMatrixCells: 1,
+    });
+    expect(diff.map((line) => line.type)).toEqual([
+      "context",
+      "removed",
+      "added",
+      "context",
+    ]);
+  });
+
+  it("returns only context lines for identical instructions", () => {
+    const diff = buildInstructionDiffLines("same\nlines", "same\nlines");
+    expect(diff).toEqual([
+      {
+        type: "context",
+        oldLineNumber: 1,
+        newLineNumber: 1,
+        content: "same",
+      },
+      {
+        type: "context",
+        oldLineNumber: 2,
+        newLineNumber: 2,
+        content: "lines",
+      },
+    ]);
   });
 });
 

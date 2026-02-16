@@ -776,6 +776,120 @@ body {
   white-space: nowrap;
 }
 
+.instruction-diff-panel {
+  border: 1px solid var(--surface-border);
+  border-radius: 10px;
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  padding: 0.6rem;
+}
+
+.instruction-diff-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.55rem;
+  flex-wrap: wrap;
+}
+
+.instruction-diff-title {
+  margin: 0;
+  font-size: 0.84rem;
+  font-weight: 700;
+  color: var(--text-main);
+}
+
+.instruction-diff-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+
+.instruction-diff-meta {
+  margin: 0;
+  font-size: 0.74rem;
+  color: var(--text-subtle);
+}
+
+.instruction-diff-table {
+  border: 1px solid #d0d7de;
+  border-radius: 8px;
+  overflow: auto;
+  max-height: 340px;
+  background: #ffffff;
+}
+
+.instruction-diff-row {
+  display: grid;
+  grid-template-columns: 3rem 3rem 1.2rem minmax(0, 1fr);
+  align-items: flex-start;
+  font-family: ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas, monospace;
+  font-size: 0.74rem;
+  line-height: 1.38;
+}
+
+.instruction-diff-row + .instruction-diff-row {
+  border-top: 1px solid #d8dee4;
+}
+
+.instruction-diff-line-number {
+  display: inline-flex;
+  justify-content: flex-end;
+  padding: 0.24rem 0.4rem;
+  color: #57606a;
+  background: #f6f8fa;
+  border-right: 1px solid #d8dee4;
+  user-select: none;
+}
+
+.instruction-diff-sign {
+  display: inline-flex;
+  justify-content: center;
+  padding: 0.24rem 0.25rem;
+  color: #57606a;
+  background: #f6f8fa;
+  border-right: 1px solid #d8dee4;
+  user-select: none;
+}
+
+.instruction-diff-content {
+  margin: 0;
+  padding: 0.24rem 0.45rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: #1f2328;
+  background: #ffffff;
+}
+
+.instruction-diff-row.added .instruction-diff-line-number,
+.instruction-diff-row.added .instruction-diff-sign {
+  background: #ccffd8;
+}
+
+.instruction-diff-row.added .instruction-diff-content {
+  background: #e6ffec;
+}
+
+.instruction-diff-row.removed .instruction-diff-line-number,
+.instruction-diff-row.removed .instruction-diff-sign {
+  background: #ffd8d3;
+}
+
+.instruction-diff-row.removed .instruction-diff-content {
+  background: #ffebe9;
+}
+
+.instruction-diff-row.added .instruction-diff-sign {
+  color: #1a7f37;
+}
+
+.instruction-diff-row.removed .instruction-diff-sign {
+  color: #cf222e;
+}
+
 .setting-group .fui-Input[data-invalid="true"],
 .setting-group .fui-Textarea[data-invalid="true"] {
   border-color: var(--danger);
