@@ -106,10 +106,36 @@ body {
   color: var(--text-subtle);
 }
 
+.main-tab-btn.suggested-chat {
+  border-color: #d9bf76;
+  background: #fff8dc;
+  color: #6a4e0f;
+  animation: chat-tab-pulse 1.5s ease-in-out infinite;
+}
+
+.main-tab-btn.suggested-chat:hover {
+  background: #fff3c6;
+  color: #5b4108;
+}
+
 .tab-guidance {
   margin: 0;
   font-size: 0.8rem;
   color: #1f4e67;
+}
+
+.tab-guidance.success {
+  color: #2b6b3f;
+}
+
+@keyframes chat-tab-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(217, 191, 118, 0);
+  }
+  50% {
+    box-shadow: 0 0 0 4px rgba(217, 191, 118, 0.28);
+  }
 }
 
 .main-panel {

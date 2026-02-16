@@ -111,6 +111,7 @@ export default function Home() {
   const [messages, setMessages] = useState<ChatMessage[]>(INITIAL_MESSAGES);
   const [draft, setDraft] = useState("");
   const [activeMainTab, setActiveMainTab] = useState<MainViewTab>("chat");
+  const [isChatTabSuggested, setIsChatTabSuggested] = useState(false);
   const [selectedAzureConnectionId, setSelectedAzureConnectionId] = useState("");
   const [selectedAzureDeploymentName, setSelectedAzureDeploymentName] = useState("");
   const [isLoadingAzureConnections, setIsLoadingAzureConnections] = useState(false);
@@ -154,6 +155,7 @@ export default function Home() {
   const contextWindowValidation = validateContextWindowInput(contextWindowInput);
   const temperatureValidation = validateTemperatureInput(temperatureInput);
   const isChatLocked = isAzureAuthRequired;
+  const previousChatLockedRef = useRef(isChatLocked);
   const activeAzureConnection =
     azureConnections.find((connection) => connection.id === selectedAzureConnectionId) ??
     azureConnections[0] ??
@@ -215,6 +217,33 @@ export default function Home() {
       setActiveMainTab("settings");
     }
   }, [activeMainTab, isChatLocked]);
+
+  useEffect(() => {
+    const wasChatLocked = previousChatLockedRef.current;
+    if (wasChatLocked && !isChatLocked && activeMainTab !== "chat") {
+      setIsChatTabSuggested(true);
+    }
+
+    if (isChatLocked || activeMainTab === "chat") {
+      setIsChatTabSuggested(false);
+    }
+
+    previousChatLockedRef.current = isChatLocked;
+  }, [activeMainTab, isChatLocked]);
+
+  useEffect(() => {
+    if (!isChatTabSuggested) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setIsChatTabSuggested(false);
+    }, 12000);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [isChatTabSuggested]);
 
   async function loadSavedMcpServers() {
     setIsLoadingSavedMcpServers(true);
@@ -413,7 +442,7 @@ export default function Home() {
 
     if (isChatLocked) {
       setActiveMainTab("settings");
-      setError("Chat is unavailable while logged out. Open Settings and sign in.");
+      setError("Chat is unavailable while logged out. Open ⚙️ Settings and sign in.");
       setShowAzureLoginButton(false);
       return;
     }
@@ -825,13 +854,16 @@ export default function Home() {
               aria-disabled={tab.id === "chat" && isChatLocked}
               className={`main-tab-btn ${activeMainTab === tab.id ? "active" : ""} ${
                 tab.id === "chat" && isChatLocked ? "disabled" : ""
-              }`}
+              } ${tab.id === "chat" && isChatTabSuggested ? "suggested-chat" : ""}`}
               onClick={() => {
                 if (tab.id === "chat" && isChatLocked) {
                   setActiveMainTab("settings");
                   return;
                 }
                 setActiveMainTab(tab.id);
+                if (tab.id === "chat") {
+                  setIsChatTabSuggested(false);
+                }
               }}
             >
               {tab.label}
@@ -839,7 +871,9 @@ export default function Home() {
           ))}
         </nav>
         {isChatLocked ? (
-          <p className="tab-guidance">Chat is locked. Open Settings and sign in to Azure.</p>
+          <p className="tab-guidance">🔒 Chat is locked. Open Settings and sign in to Azure.</p>
+        ) : isChatTabSuggested ? (
+          <p className="tab-guidance success">✅ Sign-in complete. Open the 💬 Chat tab to continue.</p>
         ) : null}
 
         <section
@@ -852,7 +886,7 @@ export default function Home() {
           <header className="chat-header">
             <div className="chat-header-row">
               <div className="chat-header-main">
-                <h1>Simple Chat</h1>
+                <h1>Simple Chat 💬</h1>
               </div>
               <button
                 type="button"
@@ -860,7 +894,7 @@ export default function Home() {
                 onClick={handleResetThread}
                 disabled={isSending}
               >
-                Reset Thread
+                🧹 Reset Thread
               </button>
             </div>
           </header>
@@ -896,7 +930,7 @@ export default function Home() {
                     }}
                     disabled={isSending || isStartingAzureLogin}
                   >
-                    {isStartingAzureLogin ? "Starting Azure Login..." : "Azure Login"}
+                    {isStartingAzureLogin ? "🔐 Starting Azure Login..." : "🔐 Azure Login"}
                   </button>
                 ) : null}
                 {azureLoginError ? <p className="chat-error">{azureLoginError}</p> : null}
@@ -932,7 +966,7 @@ export default function Home() {
                   !temperatureValidation.isValid
                 }
               >
-                Send
+                ✉️ Send
               </button>
             </form>
           </footer>
@@ -947,13 +981,13 @@ export default function Home() {
           hidden={activeMainTab !== "settings"}
         >
           <header className="settings-header">
-            <h2>Settings</h2>
+            <h2>Settings ⚙️</h2>
             <p>Model behavior options</p>
           </header>
           <div className="settings-content">
             <section className="setting-group">
               <div className="setting-group-header">
-                <h3>Azure Connection</h3>
+                <h3>Azure Connection 🔐</h3>
                 <p>Select project and deployment for chat requests.</p>
               </div>
               {isAzureAuthRequired ? (
@@ -965,13 +999,13 @@ export default function Home() {
                   }}
                   disabled={isSending || isStartingAzureLogin}
                 >
-                  {isStartingAzureLogin ? "Starting Azure Login..." : "Azure Login"}
+                  {isStartingAzureLogin ? "🔐 Starting Azure Login..." : "🔐 Azure Login"}
                 </button>
               ) : (
                 <>
                   <div className="setting-label-row">
                     <label className="setting-label" htmlFor="azure-project">
-                      Project
+                      Project 🗂️
                     </label>
                     <button
                       type="button"
@@ -1007,7 +1041,7 @@ export default function Home() {
                     ))}
                   </select>
                   <label className="setting-label" htmlFor="azure-deployment">
-                    Deployment
+                    Deployment 🚀
                   </label>
                   <select
                     id="azure-deployment"
@@ -1048,7 +1082,7 @@ export default function Home() {
                       }}
                       disabled={isSending || isLoadingAzureConnections || isStartingAzureLogout}
                     >
-                      {isStartingAzureLogout ? "Logging Out..." : "Logout"}
+                      {isStartingAzureLogout ? "🚪 Logging Out..." : "🚪 Logout"}
                     </button>
                   </div>
                   {activeAzureConnection ? (
@@ -1066,7 +1100,7 @@ export default function Home() {
 
             <section className="setting-group">
               <div className="setting-group-header">
-                <h3>Agent Instruction</h3>
+                <h3>Agent Instruction 🧾</h3>
                 <p>System instruction used for the agent.</p>
               </div>
               <textarea
@@ -1089,7 +1123,7 @@ export default function Home() {
                   disabled={isSending}
                 />
                 <label htmlFor="agent-instruction-file" className="file-picker-button">
-                  Load File
+                  📂 Load File
                 </label>
                 <span className="file-picker-name">
                   {loadedInstructionFileName ?? "No file loaded"}
@@ -1103,7 +1137,7 @@ export default function Home() {
 
             <section className="setting-group">
               <div className="setting-group-header">
-                <h3>Reasoning Effort</h3>
+                <h3>Reasoning Effort 🧠</h3>
                 <p>How much internal reasoning the model should use.</p>
               </div>
               <select
@@ -1122,7 +1156,7 @@ export default function Home() {
 
             <section className="setting-group">
               <div className="setting-group-header">
-                <h3>Temperature</h3>
+                <h3>Temperature 🌡️</h3>
                 <p>Controls response randomness. Leave empty for None.</p>
               </div>
               <input
@@ -1146,7 +1180,7 @@ export default function Home() {
 
             <section className="setting-group">
               <div className="setting-group-header">
-                <h3>Context Window</h3>
+                <h3>Context Window 🧵</h3>
                 <p>Number of recent messages to include as context.</p>
               </div>
               <input
@@ -1179,12 +1213,12 @@ export default function Home() {
           hidden={activeMainTab !== "mcp"}
         >
           <header className="mcp-header">
-            <h2>MCP Servers</h2>
+            <h2>MCP Servers 🧩</h2>
           </header>
           <div className="mcp-content">
             <section className="setting-group">
               <div className="setting-group-header">
-                <h3>Add MCP Server</h3>
+                <h3>Add MCP Server ➕</h3>
               </div>
               <input
                 type="text"
@@ -1253,7 +1287,7 @@ export default function Home() {
                 }}
                 disabled={isSending || isSavingMcpServer}
               >
-                Add Server
+                ➕ Add Server
               </button>
               {mcpFormError ? <p className="field-error">{mcpFormError}</p> : null}
               {mcpFormWarning ? <p className="field-warning">{mcpFormWarning}</p> : null}
@@ -1261,7 +1295,7 @@ export default function Home() {
 
             <section className="setting-group">
               <div className="setting-group-header">
-                <h3>Saved Configs</h3>
+                <h3>Saved Configs 💾</h3>
               </div>
               <select
                 value={selectedSavedMcpServerId}
@@ -1292,7 +1326,7 @@ export default function Home() {
                     !selectedSavedMcpServerId
                   }
                 >
-                  Add Selected
+                  ➕ Add Selected
                 </button>
                 <button
                   type="button"
@@ -1302,7 +1336,7 @@ export default function Home() {
                   }}
                   disabled={isSending || isLoadingSavedMcpServers}
                 >
-                  {isLoadingSavedMcpServers ? "Loading..." : "Reload"}
+                  {isLoadingSavedMcpServers ? "🔄 Loading..." : "🔄 Reload"}
                 </button>
               </div>
               {savedMcpError ? <p className="field-error">{savedMcpError}</p> : null}
@@ -1310,7 +1344,7 @@ export default function Home() {
 
             <section className="setting-group">
               <div className="setting-group-header">
-                <h3>Added Servers</h3>
+                <h3>Added Servers 📡</h3>
               </div>
               {mcpServers.length === 0 ? (
                 <p className="field-hint">No MCP servers added.</p>
@@ -1344,7 +1378,7 @@ export default function Home() {
                         onClick={() => handleRemoveMcpServer(server.id)}
                         disabled={isSending}
                       >
-                        Remove
+                        🗑 Remove
                       </button>
                     </article>
                   ))}
@@ -1368,9 +1402,9 @@ function createMessage(role: ChatRole, content: string): ChatMessage {
 }
 
 const MAIN_VIEW_TAB_OPTIONS: Array<{ id: MainViewTab; label: string }> = [
-  { id: "chat", label: "Chat" },
-  { id: "settings", label: "Settings" },
-  { id: "mcp", label: "MCP Servers" },
+  { id: "chat", label: "💬 Chat" },
+  { id: "settings", label: "⚙️ Settings" },
+  { id: "mcp", label: "🧩 MCP Servers" },
 ];
 
 const REASONING_EFFORT_OPTIONS: ReasoningEffort[] = ["none", "low", "medium", "high"];
