@@ -14,11 +14,19 @@ This application is a development and validation workbench for:
 - Agent Instruction editing and file-based loading
 - MCP server integration (`streamable_http`, `sse`, `stdio`) with reusable profiles
 
-## Screenshot
+## Screenshots
 
-![Local Playground desktop UI](docs/images/local-playground-desktop.png)
+### Playground (Sample Chat Log)
 
-_Desktop UI: switch between Playground, Settings, and MCP Servers tabs to manage connection settings and conversations._
+![Local Playground playground tab with sample chat log](docs/images/local-playground-chat-log.png)
+
+### Settings
+
+![Local Playground settings tab](docs/images/local-playground-settings.png)
+
+### MCP Servers
+
+![Local Playground MCP Servers tab](docs/images/local-playground-mcp-servers.png)
 
 ## Screen Layout
 
