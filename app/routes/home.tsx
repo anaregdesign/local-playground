@@ -24,6 +24,7 @@ const FluentUI = resolveFluentUIExports(FluentUIComponents);
 const {
   Button,
   Checkbox,
+  Field,
   Input,
   MessageBar,
   MessageBarBody,
@@ -1668,94 +1669,126 @@ export default function Home() {
               <div className="setting-group-header">
                 <h3>Add MCP Server ➕</h3>
               </div>
-              <Input
-                placeholder="Server name (optional)"
-                value={mcpNameInput}
-                onChange={(_, data) => setMcpNameInput(data.value)}
-                disabled={isSending}
-              />
-              <Select
-                value={mcpTransport}
-                onChange={(event) => {
-                  setMcpTransport(event.target.value as McpTransport);
-                  setMcpFormError(null);
-                }}
-                disabled={isSending}
-              >
-                <option value="streamable_http">streamable_http</option>
-                <option value="sse">sse</option>
-                <option value="stdio">stdio</option>
-              </Select>
+              <Field label="Server name (optional)">
+                <Input
+                  id="mcp-server-name"
+                  placeholder="Server name (optional)"
+                  value={mcpNameInput}
+                  onChange={(_, data) => setMcpNameInput(data.value)}
+                  disabled={isSending}
+                />
+              </Field>
+              <Field label="Transport">
+                <Select
+                  id="mcp-transport"
+                  value={mcpTransport}
+                  onChange={(event) => {
+                    setMcpTransport(event.target.value as McpTransport);
+                    setMcpFormError(null);
+                  }}
+                  disabled={isSending}
+                >
+                  <option value="streamable_http">streamable_http</option>
+                  <option value="sse">sse</option>
+                  <option value="stdio">stdio</option>
+                </Select>
+              </Field>
               {mcpTransport === "stdio" ? (
                 <>
-                  <Input
-                    placeholder="Command (e.g. npx)"
-                    value={mcpCommandInput}
-                    onChange={(_, data) => setMcpCommandInput(data.value)}
-                    disabled={isSending}
-                  />
-                  <Input
-                    placeholder='Args (space-separated or JSON array)'
-                    value={mcpArgsInput}
-                    onChange={(_, data) => setMcpArgsInput(data.value)}
-                    disabled={isSending}
-                  />
-                  <Input
-                    placeholder="Working directory (optional)"
-                    value={mcpCwdInput}
-                    onChange={(_, data) => setMcpCwdInput(data.value)}
-                    disabled={isSending}
-                  />
-                  <Textarea
-                    rows={3}
-                    placeholder={"Environment variables (optional)\nKEY=value"}
-                    value={mcpEnvInput}
-                    onChange={(_, data) => setMcpEnvInput(data.value)}
-                    disabled={isSending}
-                  />
+                  <Field label="Command">
+                    <Input
+                      id="mcp-command"
+                      placeholder="Command (e.g. npx)"
+                      value={mcpCommandInput}
+                      onChange={(_, data) => setMcpCommandInput(data.value)}
+                      disabled={isSending}
+                    />
+                  </Field>
+                  <Field label="Arguments">
+                    <Input
+                      id="mcp-args"
+                      placeholder='Args (space-separated or JSON array)'
+                      value={mcpArgsInput}
+                      onChange={(_, data) => setMcpArgsInput(data.value)}
+                      disabled={isSending}
+                    />
+                  </Field>
+                  <Field label="Working directory (optional)">
+                    <Input
+                      id="mcp-cwd"
+                      placeholder="Working directory (optional)"
+                      value={mcpCwdInput}
+                      onChange={(_, data) => setMcpCwdInput(data.value)}
+                      disabled={isSending}
+                    />
+                  </Field>
+                  <Field label="Environment variables (optional)">
+                    <Textarea
+                      id="mcp-env"
+                      rows={3}
+                      placeholder={"Environment variables (optional)\nKEY=value"}
+                      value={mcpEnvInput}
+                      onChange={(_, data) => setMcpEnvInput(data.value)}
+                      disabled={isSending}
+                    />
+                  </Field>
                 </>
               ) : (
                 <>
-                  <Input
-                    placeholder="https://example.com/mcp"
-                    value={mcpUrlInput}
-                    onChange={(_, data) => setMcpUrlInput(data.value)}
-                    disabled={isSending}
-                  />
-                  <Textarea
-                    rows={3}
-                    placeholder={"Additional HTTP headers (optional)\nAuthorization=Bearer <token>\nX-Api-Key=<key>"}
-                    value={mcpHeadersInput}
-                    onChange={(_, data) => setMcpHeadersInput(data.value)}
-                    disabled={isSending}
-                  />
-                  <Checkbox
-                    className="field-checkbox"
-                    checked={mcpUseAzureAuthInput}
-                    onChange={(_, data) => {
-                      const checked = data.checked === true;
-                      setMcpUseAzureAuthInput(checked);
-                      if (checked && !mcpAzureAuthScopeInput.trim()) {
-                        setMcpAzureAuthScopeInput(DEFAULT_MCP_AZURE_AUTH_SCOPE);
-                      }
-                    }}
-                    disabled={isSending}
-                    label="Use Azure Bearer token from DefaultAzureCredential"
-                  />
-                  {mcpUseAzureAuthInput ? (
+                  <Field label="Endpoint URL">
                     <Input
-                      placeholder={DEFAULT_MCP_AZURE_AUTH_SCOPE}
-                      value={mcpAzureAuthScopeInput}
-                      onChange={(_, data) => setMcpAzureAuthScopeInput(data.value)}
+                      id="mcp-url"
+                      placeholder="https://example.com/mcp"
+                      value={mcpUrlInput}
+                      onChange={(_, data) => setMcpUrlInput(data.value)}
                       disabled={isSending}
                     />
+                  </Field>
+                  <Field label="Additional HTTP headers (optional)">
+                    <Textarea
+                      id="mcp-headers"
+                      rows={3}
+                      placeholder={"Additional HTTP headers (optional)\nAuthorization=Bearer <token>\nX-Api-Key=<key>"}
+                      value={mcpHeadersInput}
+                      onChange={(_, data) => setMcpHeadersInput(data.value)}
+                      disabled={isSending}
+                    />
+                  </Field>
+                  <Field label="Azure authentication">
+                    <Checkbox
+                      className="field-checkbox"
+                      checked={mcpUseAzureAuthInput}
+                      onChange={(_, data) => {
+                        const checked = data.checked === true;
+                        setMcpUseAzureAuthInput(checked);
+                        if (checked && !mcpAzureAuthScopeInput.trim()) {
+                          setMcpAzureAuthScopeInput(DEFAULT_MCP_AZURE_AUTH_SCOPE);
+                        }
+                      }}
+                      disabled={isSending}
+                      label="Use Azure Bearer token from DefaultAzureCredential"
+                    />
+                  </Field>
+                  {mcpUseAzureAuthInput ? (
+                    <Field label="Token scope">
+                      <Input
+                        id="mcp-azure-auth-scope"
+                        placeholder={DEFAULT_MCP_AZURE_AUTH_SCOPE}
+                        value={mcpAzureAuthScopeInput}
+                        onChange={(_, data) => setMcpAzureAuthScopeInput(data.value)}
+                        disabled={isSending}
+                      />
+                    </Field>
                   ) : null}
-                  <Input
-                    placeholder={String(DEFAULT_MCP_TIMEOUT_SECONDS)}
-                    value={mcpTimeoutSecondsInput}
-                    onChange={(_, data) => setMcpTimeoutSecondsInput(data.value)}
-                    disabled={isSending}
-                  />
+                  <Field label="Timeout (seconds)">
+                    <Input
+                      id="mcp-timeout-seconds"
+                      placeholder={String(DEFAULT_MCP_TIMEOUT_SECONDS)}
+                      value={mcpTimeoutSecondsInput}
+                      onChange={(_, data) => setMcpTimeoutSecondsInput(data.value)}
+                      disabled={isSending}
+                    />
+                  </Field>
                   <p className="field-hint">
                     Timeout (seconds): integer from {MIN_MCP_TIMEOUT_SECONDS} to {MAX_MCP_TIMEOUT_SECONDS}.
                   </p>
@@ -1788,23 +1821,26 @@ export default function Home() {
               <div className="setting-group-header">
                 <h3>Saved Configs 💾</h3>
               </div>
-              <Select
-                value={selectedSavedMcpServerId}
-                onChange={(event) => {
-                  setSelectedSavedMcpServerId(event.target.value);
-                  setSavedMcpError(null);
-                }}
-                disabled={isSending || isLoadingSavedMcpServers || savedMcpServers.length === 0}
-              >
-                {savedMcpServers.length === 0 ? (
-                  <option value="">No saved MCP servers</option>
-                ) : null}
-                {savedMcpServers.map((server) => (
-                  <option key={server.id} value={server.id}>
-                    {formatMcpServerOption(server)}
-                  </option>
-                ))}
-              </Select>
+              <Field label="Saved config">
+                <Select
+                  id="mcp-saved-config"
+                  value={selectedSavedMcpServerId}
+                  onChange={(event) => {
+                    setSelectedSavedMcpServerId(event.target.value);
+                    setSavedMcpError(null);
+                  }}
+                  disabled={isSending || isLoadingSavedMcpServers || savedMcpServers.length === 0}
+                >
+                  {savedMcpServers.length === 0 ? (
+                    <option value="">No saved MCP servers</option>
+                  ) : null}
+                  {savedMcpServers.map((server) => (
+                    <option key={server.id} value={server.id}>
+                      {formatMcpServerOption(server)}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
               <div className="mcp-action-row">
                 <Button
                   type="button"
