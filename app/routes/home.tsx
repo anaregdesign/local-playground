@@ -32,6 +32,20 @@ type ChatMessage = {
   content: string;
 };
 
+type JsonTokenType =
+  | "plain"
+  | "key"
+  | "string"
+  | "number"
+  | "boolean"
+  | "null"
+  | "punctuation";
+
+type JsonToken = {
+  value: string;
+  type: JsonTokenType;
+};
+
 type ChatApiResponse = {
   message?: string;
   error?: string;
@@ -47,8 +61,11 @@ const INITIAL_MESSAGES: ChatMessage[] = [
 const DEFAULT_CONTEXT_WINDOW_SIZE = 10;
 const MIN_CONTEXT_WINDOW_SIZE = 1;
 const MAX_CONTEXT_WINDOW_SIZE = 200;
+const MIN_TEMPERATURE = 0;
+const MAX_TEMPERATURE = 2;
 const DEFAULT_AGENT_INSTRUCTION = "You are a concise assistant for a simple chat app.";
-const MAX_INSTRUCTION_FILE_SIZE_BYTES = 200_000;
+const MAX_INSTRUCTION_FILE_SIZE_BYTES = 1_000_000;
+const MAX_INSTRUCTION_FILE_SIZE_LABEL = "1MB";
 const ALLOWED_INSTRUCTION_EXTENSIONS = new Set(["md", "txt", "xml", "json"]);
 const DEFAULT_MCP_TRANSPORT: McpTransport = "streamable_http";
 
@@ -78,10 +95,12 @@ export default function Home() {
   const [contextWindowInput, setContextWindowInput] = useState(
     String(DEFAULT_CONTEXT_WINDOW_SIZE),
   );
+  const [temperatureInput, setTemperatureInput] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const endOfMessagesRef = useRef<HTMLDivElement | null>(null);
   const contextWindowValidation = validateContextWindowInput(contextWindowInput);
+  const temperatureValidation = validateTemperatureInput(temperatureInput);
 
   useEffect(() => {
     endOfMessagesRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -89,7 +108,12 @@ export default function Home() {
 
   async function sendMessage() {
     const content = draft.trim();
-    if (!content || isSending || !contextWindowValidation.isValid) {
+    if (
+      !content ||
+      isSending ||
+      !contextWindowValidation.isValid ||
+      !temperatureValidation.isValid
+    ) {
       return;
     }
 
@@ -98,6 +122,8 @@ export default function Home() {
     if (contextWindowSize === null) {
       return;
     }
+    const temperature = temperatureValidation.value;
+
     const history = messages
       .slice(-contextWindowSize)
       .map(({ role, content: previousContent }) => ({
@@ -121,6 +147,7 @@ export default function Home() {
           history,
           reasoningEffort,
           contextWindowSize,
+          ...(temperature !== null ? { temperature } : {}),
           agentInstruction,
           mcpServers: mcpServers.map((server) =>
             server.transport === "stdio"
@@ -189,7 +216,7 @@ export default function Home() {
 
     if (file.size > MAX_INSTRUCTION_FILE_SIZE_BYTES) {
       setInstructionFileError(
-        `Instruction file is too large. Max ${Math.floor(MAX_INSTRUCTION_FILE_SIZE_BYTES / 1000)}KB.`,
+        `Instruction file is too large. Max ${MAX_INSTRUCTION_FILE_SIZE_LABEL}.`,
       );
       input.value = "";
       return;
@@ -350,7 +377,7 @@ export default function Home() {
                 key={message.id}
                 className={`message-row ${message.role === "user" ? "user" : "assistant"}`}
               >
-                <p>{message.content}</p>
+                {renderMessageContent(message)}
               </article>
             ))}
 
@@ -380,7 +407,12 @@ export default function Home() {
               />
               <button
                 type="submit"
-                disabled={isSending || draft.trim().length === 0 || !contextWindowValidation.isValid}
+                disabled={
+                  isSending ||
+                  draft.trim().length === 0 ||
+                  !contextWindowValidation.isValid ||
+                  !temperatureValidation.isValid
+                }
               >
                 Send
               </button>
@@ -425,7 +457,7 @@ export default function Home() {
                   {loadedInstructionFileName ?? "No file loaded"}
                 </span>
               </div>
-              <p className="field-hint">Supported: .md, .txt, .xml, .json (max 200KB)</p>
+              <p className="field-hint">Supported: .md, .txt, .xml, .json (max 1MB)</p>
               {instructionFileError ? (
                 <p className="field-error">{instructionFileError}</p>
               ) : null}
@@ -448,6 +480,30 @@ export default function Home() {
                   </option>
                 ))}
               </select>
+            </section>
+
+            <section className="setting-group">
+              <div className="setting-group-header">
+                <h3>Temperature</h3>
+                <p>Controls response randomness. Leave empty for None.</p>
+              </div>
+              <input
+                id="temperature"
+                type="text"
+                inputMode="decimal"
+                placeholder="None"
+                value={temperatureInput}
+                onChange={(event) => setTemperatureInput(event.target.value)}
+                disabled={isSending}
+                aria-invalid={!temperatureValidation.isValid}
+                aria-describedby="temperature-error"
+              />
+              <p className="field-hint">None or number from 0 to 2.</p>
+              {temperatureValidation.message ? (
+                <p id="temperature-error" className="field-error">
+                  {temperatureValidation.message}
+                </p>
+              ) : null}
             </section>
 
             <section className="setting-group">
@@ -653,6 +709,44 @@ function validateContextWindowInput(input: string): {
   };
 }
 
+function validateTemperatureInput(input: string): {
+  isValid: boolean;
+  value: number | null;
+  message: string | null;
+} {
+  const trimmed = input.trim();
+  if (!trimmed) {
+    return {
+      isValid: true,
+      value: null,
+      message: null,
+    };
+  }
+
+  if (!/^-?(?:\d+|\d*\.\d+)$/.test(trimmed)) {
+    return {
+      isValid: false,
+      value: null,
+      message: "Temperature must be a number.",
+    };
+  }
+
+  const parsed = Number(trimmed);
+  if (!Number.isFinite(parsed) || parsed < MIN_TEMPERATURE || parsed > MAX_TEMPERATURE) {
+    return {
+      isValid: false,
+      value: null,
+      message: `Temperature must be between ${MIN_TEMPERATURE} and ${MAX_TEMPERATURE}.`,
+    };
+  }
+
+  return {
+    isValid: true,
+    value: parsed,
+    message: null,
+  };
+}
+
 function buildMcpServerKey(server: McpServerConfig): string {
   if (server.transport === "stdio") {
     const argsKey = server.args.join("\u0000");
@@ -747,4 +841,107 @@ function getFileExtension(fileName: string): string {
 function createId(prefix: string): string {
   const randomPart = Math.random().toString(36).slice(2);
   return `${prefix}-${Date.now()}-${randomPart}`;
+}
+
+function renderMessageContent(message: ChatMessage) {
+  const jsonTokens = message.role === "assistant" ? parseJsonMessageTokens(message.content) : null;
+  if (!jsonTokens) {
+    return <p>{message.content}</p>;
+  }
+
+  return (
+    <pre className="json-message" aria-label="JSON response">
+      {jsonTokens.map((token, index) => (
+        <span
+          key={`${token.type}-${index}`}
+          className={token.type === "plain" ? undefined : `json-token ${token.type}`}
+        >
+          {token.value}
+        </span>
+      ))}
+    </pre>
+  );
+}
+
+function parseJsonMessageTokens(content: string): JsonToken[] | null {
+  const trimmed = content.trim();
+  if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) {
+    return null;
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(trimmed);
+  } catch {
+    return null;
+  }
+
+  const formatted = JSON.stringify(parsed, null, 2);
+  return tokenizeJson(formatted);
+}
+
+function tokenizeJson(input: string): JsonToken[] {
+  const pattern =
+    /"(?:\\u[\da-fA-F]{4}|\\[^u]|[^\\"])*"(?=\s*:)|"(?:\\u[\da-fA-F]{4}|\\[^u]|[^\\"])*"|true|false|null|-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?|[{}[\],:]/g;
+  const tokens: JsonToken[] = [];
+  let lastIndex = 0;
+
+  for (const match of input.matchAll(pattern)) {
+    const tokenIndex = match.index ?? 0;
+    const tokenValue = match[0];
+
+    if (tokenIndex > lastIndex) {
+      tokens.push({
+        value: input.slice(lastIndex, tokenIndex),
+        type: "plain",
+      });
+    }
+
+    tokens.push({
+      value: tokenValue,
+      type: classifyJsonToken(input, tokenIndex, tokenValue),
+    });
+
+    lastIndex = tokenIndex + tokenValue.length;
+  }
+
+  if (lastIndex < input.length) {
+    tokens.push({
+      value: input.slice(lastIndex),
+      type: "plain",
+    });
+  }
+
+  return tokens;
+}
+
+function classifyJsonToken(
+  source: string,
+  tokenIndex: number,
+  tokenValue: string,
+): JsonTokenType {
+  if (tokenValue === "true" || tokenValue === "false") {
+    return "boolean";
+  }
+  if (tokenValue === "null") {
+    return "null";
+  }
+  if (/^-?\d/.test(tokenValue)) {
+    return "number";
+  }
+  if (/^[\[\]{}:,]$/.test(tokenValue)) {
+    return "punctuation";
+  }
+  if (tokenValue.startsWith('"')) {
+    return isJsonKeyToken(source, tokenIndex, tokenValue.length) ? "key" : "string";
+  }
+  return "plain";
+}
+
+function isJsonKeyToken(source: string, tokenIndex: number, tokenLength: number): boolean {
+  let cursor = tokenIndex + tokenLength;
+  while (cursor < source.length && /\s/.test(source[cursor])) {
+    cursor += 1;
+  }
+  return source[cursor] === ":";
 }

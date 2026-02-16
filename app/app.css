@@ -40,12 +40,12 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 2rem;
+  padding: 0.75rem 2rem;
 }
 
 .chat-layout {
   width: min(1680px, 100%);
-  height: min(84vh, 760px);
+  height: min(90vh, 800px);
   display: grid;
   grid-template-columns: minmax(0, 1fr) 320px 320px;
   gap: 1.1rem;
@@ -101,6 +101,39 @@ body {
 
 .message-row p {
   margin: 0;
+}
+
+.json-message {
+  margin: 0;
+  font-family: "IBM Plex Mono", "SFMono-Regular", Menlo, monospace;
+  font-size: 0.8rem;
+  line-height: 1.48;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.json-token.key {
+  color: #2f638e;
+}
+
+.json-token.string {
+  color: #7f5134;
+}
+
+.json-token.number {
+  color: #255f4d;
+}
+
+.json-token.boolean {
+  color: #9f4a3d;
+}
+
+.json-token.null {
+  color: #6b7280;
+}
+
+.json-token.punctuation {
+  color: #2f3d49;
 }
 
 .message-row.assistant {
@@ -472,7 +505,7 @@ body {
 
 @media (max-width: 900px) {
   .chat-page {
-    padding: 1rem;
+    padding: 0.5rem 1rem;
   }
 
   .chat-shell {
