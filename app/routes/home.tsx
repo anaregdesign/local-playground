@@ -51,6 +51,12 @@ type JsonToken = {
 type ChatApiResponse = {
   message?: string;
   error?: string;
+  errorCode?: "azure_login_required";
+};
+
+type AzureLoginApiResponse = {
+  message?: string;
+  error?: string;
 };
 
 type SaveMcpServerRequest = Omit<McpHttpServerConfig, "id"> | Omit<McpStdioServerConfig, "id">;
@@ -115,6 +121,9 @@ export default function Home() {
   const [isSending, setIsSending] = useState(false);
   const [isComposing, setIsComposing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showAzureLoginButton, setShowAzureLoginButton] = useState(false);
+  const [isStartingAzureLogin, setIsStartingAzureLogin] = useState(false);
+  const [azureLoginError, setAzureLoginError] = useState<string | null>(null);
   const endOfMessagesRef = useRef<HTMLDivElement | null>(null);
   const contextWindowValidation = validateContextWindowInput(contextWindowInput);
   const temperatureValidation = validateTemperatureInput(temperatureInput);
@@ -222,6 +231,8 @@ export default function Home() {
     setMessages((current) => [...current, userMessage]);
     setDraft("");
     setError(null);
+    setShowAzureLoginButton(false);
+    setAzureLoginError(null);
     setIsSending(true);
 
     try {
@@ -258,6 +269,7 @@ export default function Home() {
 
       const payload = (await response.json()) as ChatApiResponse;
       if (!response.ok) {
+        setShowAzureLoginButton(payload.errorCode === "azure_login_required");
         throw new Error(payload.error || "Failed to send message.");
       }
       if (!payload.message) {
@@ -265,10 +277,38 @@ export default function Home() {
       }
 
       setMessages((current) => [...current, createMessage("assistant", payload.message!)]);
+      setShowAzureLoginButton(false);
     } catch (sendError) {
       setError(sendError instanceof Error ? sendError.message : "Could not reach the server.");
     } finally {
       setIsSending(false);
+    }
+  }
+
+  async function handleAzureLogin() {
+    if (isStartingAzureLogin) {
+      return;
+    }
+
+    setAzureLoginError(null);
+    setIsStartingAzureLogin(true);
+    try {
+      const response = await fetch("/api/azure-login", {
+        method: "POST",
+      });
+      const payload = (await response.json()) as AzureLoginApiResponse;
+      if (!response.ok) {
+        throw new Error(payload.error || "Failed to start Azure login.");
+      }
+
+      setError(payload.message || "Azure login started. Sign in and retry.");
+      setShowAzureLoginButton(false);
+    } catch (loginError) {
+      setAzureLoginError(
+        loginError instanceof Error ? loginError.message : "Failed to start Azure login.",
+      );
+    } finally {
+      setIsStartingAzureLogin(false);
     }
   }
 
@@ -503,7 +543,6 @@ export default function Home() {
             <div className="chat-header-row">
               <div className="chat-header-main">
                 <h1>Simple Chat</h1>
-                <p>Set AZURE_BASE_URL, AZURE_API_VERSION=v1, and AZURE_DEPLOYMENT_NAME.</p>
               </div>
               <button
                 type="button"
@@ -535,7 +574,24 @@ export default function Home() {
           </div>
 
           <footer className="chat-footer">
-            {error ? <p className="chat-error">{error}</p> : null}
+            {error ? (
+              <div className="chat-error-stack">
+                <p className="chat-error">{error}</p>
+                {showAzureLoginButton ? (
+                  <button
+                    type="button"
+                    className="secondary-btn chat-login-btn"
+                    onClick={() => {
+                      void handleAzureLogin();
+                    }}
+                    disabled={isSending || isStartingAzureLogin}
+                  >
+                    {isStartingAzureLogin ? "Starting Azure Login..." : "Azure Login"}
+                  </button>
+                ) : null}
+                {azureLoginError ? <p className="chat-error">{azureLoginError}</p> : null}
+              </div>
+            ) : null}
             <form className="chat-form" onSubmit={handleSubmit}>
               <label className="sr-only" htmlFor="chat-input">
                 Message

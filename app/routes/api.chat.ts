@@ -38,6 +38,10 @@ type ClientMcpStdioServerConfig = {
 type ClientMcpServerConfig = ClientMcpHttpServerConfig | ClientMcpStdioServerConfig;
 
 type ParseResult<T> = { ok: true; value: T } | { ok: false; error: string };
+type UpstreamErrorPayload = {
+  error: string;
+  errorCode?: "azure_login_required";
+};
 
 const DEFAULT_CONTEXT_WINDOW_SIZE = 10;
 const MIN_CONTEXT_WINDOW_SIZE = 1;
@@ -179,11 +183,10 @@ export async function action({ request }: Route.ActionArgs) {
 
     return Response.json({ message: assistantMessage });
   } catch (error) {
+    const upstreamError = buildUpstreamErrorPayload(error);
     return Response.json(
-      {
-        error: buildUpstreamErrorMessage(error),
-      },
-      { status: 502 },
+      upstreamError.payload,
+      { status: upstreamError.status },
     );
   } finally {
     await Promise.allSettled(connectedMcpServers.map((server) => server.close()));
@@ -590,6 +593,27 @@ function clamp(value: number, min: number, max: number): number {
   return value;
 }
 
+function buildUpstreamErrorPayload(error: unknown): {
+  payload: UpstreamErrorPayload;
+  status: number;
+} {
+  const message = buildUpstreamErrorMessage(error);
+  if (isAzureCredentialError(error)) {
+    return {
+      payload: {
+        error: `${message} Azure CLIでログイン後に再試行してください。`,
+        errorCode: "azure_login_required",
+      },
+      status: 401,
+    };
+  }
+
+  return {
+    payload: { error: message },
+    status: 502,
+  };
+}
+
 function buildUpstreamErrorMessage(error: unknown): string {
   if (!(error instanceof Error)) {
     return "Could not connect to Azure OpenAI.";
@@ -606,6 +630,24 @@ function buildUpstreamErrorMessage(error: unknown): string {
   }
 
   return error.message;
+}
+
+function isAzureCredentialError(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  const message = error.message.toLowerCase();
+  return [
+    "defaultazurecredential",
+    "chainedtokencredential",
+    "credentialunavailableerror",
+    "managedidentitycredential",
+    "azureclicredential",
+    "please run 'az login'",
+    "run az login",
+    "az login",
+  ].some((pattern) => message.includes(pattern));
 }
 
 function readErrorMessage(error: unknown): string {
