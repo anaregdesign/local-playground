@@ -42,6 +42,8 @@ type ParseResult<T> = { ok: true; value: T } | { ok: false; error: string };
 const DEFAULT_CONTEXT_WINDOW_SIZE = 10;
 const MIN_CONTEXT_WINDOW_SIZE = 1;
 const MAX_CONTEXT_WINDOW_SIZE = 200;
+const MIN_TEMPERATURE = 0;
+const MAX_TEMPERATURE = 2;
 const MAX_MCP_SERVERS = 8;
 const MAX_MCP_SERVER_NAME_LENGTH = 80;
 const MAX_MCP_STDIO_ARGS = 64;
@@ -87,6 +89,10 @@ export async function action({ request }: Route.ActionArgs) {
   const contextWindowSize = readContextWindowSize(payload);
   const history = readHistory(payload, contextWindowSize);
   const reasoningEffort = readReasoningEffort(payload);
+  const temperatureResult = readTemperature(payload);
+  if (!temperatureResult.ok) {
+    return Response.json({ error: temperatureResult.error }, { status: 400 });
+  }
   const agentInstruction = readAgentInstruction(payload);
   const mcpServersResult = readMcpServers(payload);
   if (!mcpServersResult.ok) {
@@ -146,7 +152,9 @@ export async function action({ request }: Route.ActionArgs) {
       instructions: agentInstruction,
       model,
       modelSettings: {
-        temperature: 0.7,
+        ...(temperatureResult.value !== null
+          ? { temperature: temperatureResult.value }
+          : {}),
         reasoning: {
           effort: reasoningEffort,
         },
@@ -293,6 +301,35 @@ function readReasoningEffort(payload: unknown): ReasoningEffort {
     return value;
   }
   return "none";
+}
+
+function readTemperature(payload: unknown): ParseResult<number | null> {
+  if (!isRecord(payload) || payload.temperature === undefined || payload.temperature === null) {
+    return { ok: true, value: null };
+  }
+
+  const value = payload.temperature;
+  if (typeof value === "string" && value.trim() === "") {
+    return { ok: true, value: null };
+  }
+
+  const parsed = typeof value === "number" ? value : typeof value === "string" ? Number(value.trim()) : Number.NaN;
+
+  if (!Number.isFinite(parsed)) {
+    return {
+      ok: false,
+      error: "`temperature` must be a number between 0 and 2, or omitted (None).",
+    };
+  }
+
+  if (parsed < MIN_TEMPERATURE || parsed > MAX_TEMPERATURE) {
+    return {
+      ok: false,
+      error: "`temperature` must be between 0 and 2, or omitted (None).",
+    };
+  }
+
+  return { ok: true, value: parsed };
 }
 
 function readAgentInstruction(payload: unknown): string {

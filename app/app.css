@@ -103,6 +103,39 @@ body {
   margin: 0;
 }
 
+.json-message {
+  margin: 0;
+  font-family: "IBM Plex Mono", "SFMono-Regular", Menlo, monospace;
+  font-size: 0.8rem;
+  line-height: 1.48;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.json-token.key {
+  color: #2f638e;
+}
+
+.json-token.string {
+  color: #7f5134;
+}
+
+.json-token.number {
+  color: #255f4d;
+}
+
+.json-token.boolean {
+  color: #9f4a3d;
+}
+
+.json-token.null {
+  color: #6b7280;
+}
+
+.json-token.punctuation {
+  color: #2f3d49;
+}
+
 .message-row.assistant {
   align-self: flex-start;
   background: var(--bubble-assistant);
