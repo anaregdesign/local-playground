@@ -101,6 +101,11 @@ type ChatApiResponse = {
   error?: string;
   errorCode?: "azure_login_required";
 };
+type SaveInstructionPromptApiResponse = {
+  fileName?: unknown;
+  savedPath?: unknown;
+  error?: string;
+};
 type ChatStreamProgressEvent = {
   type: "progress";
   message?: unknown;
@@ -209,7 +214,11 @@ export default function Home() {
   const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffort>("none");
   const [agentInstruction, setAgentInstruction] = useState(DEFAULT_AGENT_INSTRUCTION);
   const [loadedInstructionFileName, setLoadedInstructionFileName] = useState<string | null>(null);
+  const [instructionSaveFileNameInput, setInstructionSaveFileNameInput] = useState("");
   const [instructionFileError, setInstructionFileError] = useState<string | null>(null);
+  const [instructionSaveError, setInstructionSaveError] = useState<string | null>(null);
+  const [instructionSaveSuccess, setInstructionSaveSuccess] = useState<string | null>(null);
+  const [isSavingInstructionPrompt, setIsSavingInstructionPrompt] = useState(false);
   const [mcpServers, setMcpServers] = useState<McpServerConfig[]>([]);
   const [savedMcpServers, setSavedMcpServers] = useState<McpServerConfig[]>([]);
   const [selectedSavedMcpServerId, setSelectedSavedMcpServerId] = useState("");
@@ -262,8 +271,10 @@ export default function Home() {
     null;
   const canClearAgentInstruction =
     agentInstruction.length > 0 ||
+    instructionSaveFileNameInput.trim().length > 0 ||
     loadedInstructionFileName !== null ||
     instructionFileError !== null;
+  const canSaveAgentInstructionPrompt = agentInstruction.trim().length > 0;
   const mcpHistoryByTurnId = buildMcpHistoryByTurnId(mcpRpcHistory);
   const activeTurnMcpHistory = activeTurnId ? (mcpHistoryByTurnId.get(activeTurnId) ?? []) : [];
   const errorTurnMcpHistory = lastErrorTurnId ? (mcpHistoryByTurnId.get(lastErrorTurnId) ?? []) : [];
@@ -914,10 +925,68 @@ export default function Home() {
       const text = await file.text();
       setAgentInstruction(text);
       setLoadedInstructionFileName(file.name);
+      setInstructionSaveFileNameInput(file.name);
+      setInstructionSaveError(null);
+      setInstructionSaveSuccess(null);
     } catch {
       setInstructionFileError("Failed to read the selected instruction file.");
     } finally {
       input.value = "";
+    }
+  }
+
+  async function handleSaveInstructionPrompt() {
+    if (isSavingInstructionPrompt) {
+      return;
+    }
+
+    setInstructionSaveError(null);
+    setInstructionSaveSuccess(null);
+
+    if (!agentInstruction.trim()) {
+      setInstructionSaveError("Instruction is empty.");
+      return;
+    }
+
+    setIsSavingInstructionPrompt(true);
+
+    try {
+      const response = await fetch("/api/instruction-prompts", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          instruction: agentInstruction,
+          fileName: instructionSaveFileNameInput,
+          sourceFileName: loadedInstructionFileName,
+        }),
+      });
+
+      const payload = (await response.json()) as SaveInstructionPromptApiResponse;
+      if (!response.ok) {
+        const errorMessage =
+          typeof payload.error === "string" && payload.error.trim()
+            ? payload.error
+            : "Failed to save instruction prompt.";
+        throw new Error(errorMessage);
+      }
+
+      const savedPath =
+        typeof payload.savedPath === "string" && payload.savedPath.trim()
+          ? payload.savedPath.trim()
+          : "";
+      if (savedPath) {
+        setInstructionSaveSuccess(`Saved to ${savedPath}`);
+      } else {
+        setInstructionSaveSuccess("Saved instruction prompt.");
+      }
+    } catch (saveError) {
+      setInstructionSaveError(
+        saveError instanceof Error ? saveError.message : "Failed to save instruction prompt.",
+      );
+    } finally {
+      setIsSavingInstructionPrompt(false);
     }
   }
 
@@ -1564,10 +1633,27 @@ export default function Home() {
                 id="agent-instruction"
                 rows={6}
                 value={agentInstruction}
-                onChange={(_, data) => setAgentInstruction(data.value)}
+                onChange={(_, data) => {
+                  setAgentInstruction(data.value);
+                  setInstructionSaveError(null);
+                  setInstructionSaveSuccess(null);
+                }}
                 disabled={isSending}
                 placeholder="System instruction for the agent"
               />
+              <Field label="📝 Save file name (optional)">
+                <Input
+                  id="agent-instruction-save-file-name"
+                  placeholder="instruction.md"
+                  value={instructionSaveFileNameInput}
+                  onChange={(_, data) => {
+                    setInstructionSaveFileNameInput(data.value);
+                    setInstructionSaveError(null);
+                    setInstructionSaveSuccess(null);
+                  }}
+                  disabled={isSending || isSavingInstructionPrompt}
+                />
+              </Field>
               <div className="file-picker-row">
                 <input
                   id="agent-instruction-file"
@@ -1594,9 +1680,23 @@ export default function Home() {
                   appearance="secondary"
                   size="small"
                   onClick={() => {
+                    void handleSaveInstructionPrompt();
+                  }}
+                  disabled={isSending || isSavingInstructionPrompt || !canSaveAgentInstructionPrompt}
+                >
+                  {isSavingInstructionPrompt ? "💾 Saving..." : "💾 Save"}
+                </Button>
+                <Button
+                  type="button"
+                  appearance="secondary"
+                  size="small"
+                  onClick={() => {
                     setAgentInstruction("");
+                    setInstructionSaveFileNameInput("");
                     setLoadedInstructionFileName(null);
                     setInstructionFileError(null);
+                    setInstructionSaveError(null);
+                    setInstructionSaveSuccess(null);
                   }}
                   disabled={isSending || !canClearAgentInstruction}
                 >
@@ -1607,9 +1707,22 @@ export default function Home() {
                 </span>
               </div>
               <p className="field-hint">Supported: .md, .txt, .xml, .json (max 1MB)</p>
+              <p className="field-hint">
+                Save destination: `~/.foundry_local_playground/prompts` (leave file name empty to auto-generate).
+              </p>
               {instructionFileError ? (
                 <MessageBar intent="error" className="setting-message-bar">
                   <MessageBarBody>{instructionFileError}</MessageBarBody>
+                </MessageBar>
+              ) : null}
+              {instructionSaveError ? (
+                <MessageBar intent="error" className="setting-message-bar">
+                  <MessageBarBody>{instructionSaveError}</MessageBarBody>
+                </MessageBar>
+              ) : null}
+              {instructionSaveSuccess ? (
+                <MessageBar intent="success" className="setting-message-bar">
+                  <MessageBarBody>{instructionSaveSuccess}</MessageBarBody>
                 </MessageBar>
               ) : null}
             </section>
