@@ -6,22 +6,24 @@ import {
   Scripts,
   ScrollRestoration,
 } from "react-router";
+import * as FluentUIComponents from "@fluentui/react-components";
 
 import type { Route } from "./+types/root";
 import "./app.css";
 
-export const links: Route.LinksFunction = () => [
-  { rel: "preconnect", href: "https://fonts.googleapis.com" },
-  {
-    rel: "preconnect",
-    href: "https://fonts.gstatic.com",
-    crossOrigin: "anonymous",
-  },
-  {
-    rel: "stylesheet",
-    href: "https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+JP:wght@400;500;700&display=swap",
-  },
-];
+function resolveFluentUIExports<T extends object>(moduleExports: T): T {
+  const maybeDefault = Reflect.get(moduleExports, "default");
+  if (maybeDefault && typeof maybeDefault === "object") {
+    return maybeDefault as T;
+  }
+
+  return moduleExports;
+}
+
+const FluentUI = resolveFluentUIExports(FluentUIComponents);
+const { FluentProvider, webLightTheme } = FluentUI;
+
+export const links: Route.LinksFunction = () => [];
 
 export function Layout({ children }: { children: React.ReactNode }) {
   return (
@@ -42,7 +44,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
 }
 
 export default function App() {
-  return <Outlet />;
+  return (
+    <FluentProvider theme={webLightTheme}>
+      <Outlet />
+    </FluentProvider>
+  );
 }
 
 export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {

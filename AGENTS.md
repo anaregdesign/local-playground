@@ -26,6 +26,9 @@
 
 ## UI / Interaction
 
+- Follow Fluent UI design patterns across the entire app.
+- Prefer Fluent UI components, layout patterns, and theming/tokens over custom HTML/CSS controls.
+- Keep custom CSS minimal and only for layout/scoping; avoid overriding Fluent component visuals unless necessary for accessibility or critical UX requirements.
 - Use tab-based main navigation: `Playground`, `Settings`, and `MCP Servers`.
 - Keep labels and actions easy to scan; use emojis effectively but avoid overuse.
 - Keep login/logout actions visually distinct.

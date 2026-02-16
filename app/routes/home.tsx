@@ -6,9 +6,34 @@ import {
   type Dispatch,
   type SetStateAction,
 } from "react";
+import * as FluentUIComponents from "@fluentui/react-components";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { Route } from "./+types/home";
+
+function resolveFluentUIExports<T extends object>(moduleExports: T): T {
+  const maybeDefault = Reflect.get(moduleExports, "default");
+  if (maybeDefault && typeof maybeDefault === "object") {
+    return maybeDefault as T;
+  }
+
+  return moduleExports;
+}
+
+const FluentUI = resolveFluentUIExports(FluentUIComponents);
+const {
+  Button,
+  Checkbox,
+  Input,
+  MessageBar,
+  MessageBarBody,
+  MessageBarTitle,
+  Select,
+  Spinner,
+  Tab,
+  TabList,
+  Textarea,
+} = FluentUI;
 
 type ChatRole = "user" | "assistant";
 type ReasoningEffort = "none" | "low" | "medium" | "high";
@@ -220,6 +245,7 @@ export default function Home() {
   const [azureLogoutError, setAzureLogoutError] = useState<string | null>(null);
   const [mcpRpcHistory, setMcpRpcHistory] = useState<McpRpcHistoryEntry[]>([]);
   const endOfMessagesRef = useRef<HTMLDivElement | null>(null);
+  const instructionFileInputRef = useRef<HTMLInputElement | null>(null);
   const azureDeploymentRequestSeqRef = useRef(0);
   const activeAzureTenantIdRef = useRef("");
   const preferredAzureSelectionRef = useRef<AzureSelectionPreference | null>(null);
@@ -1112,40 +1138,48 @@ export default function Home() {
   return (
     <main className="chat-page">
       <div className="chat-layout tabbed-layout">
-        <nav className="main-tabs" role="tablist" aria-label="Main panels">
+        <TabList
+          className="main-tabs"
+          aria-label="Main panels"
+          appearance="subtle"
+          size="small"
+          selectedValue={activeMainTab}
+          onTabSelect={(_, data) => {
+            const nextTab = String(data.value) as MainViewTab;
+            if (nextTab === "chat" && isChatLocked) {
+              setActiveMainTab("settings");
+              return;
+            }
+
+            setActiveMainTab(nextTab);
+            if (nextTab === "chat") {
+              setIsChatTabSuggested(false);
+            }
+          }}
+        >
           {MAIN_VIEW_TAB_OPTIONS.map((tab) => (
-            <button
+            <Tab
               key={tab.id}
-              type="button"
-              role="tab"
+              value={tab.id}
               id={`tab-${tab.id}`}
               aria-controls={`panel-${tab.id}`}
-              aria-selected={activeMainTab === tab.id}
-              aria-disabled={tab.id === "chat" && isChatLocked}
-              className={`main-tab-btn ${activeMainTab === tab.id ? "active" : ""} ${
-                tab.id === "chat" && isChatLocked ? "disabled" : ""
-              } ${tab.id === "chat" && isChatTabSuggested ? "suggested-chat" : ""}`}
-              onClick={() => {
-                if (tab.id === "chat" && isChatLocked) {
-                  setActiveMainTab("settings");
-                  return;
-                }
-                setActiveMainTab(tab.id);
-                if (tab.id === "chat") {
-                  setIsChatTabSuggested(false);
-                }
-              }}
+              disabled={tab.id === "chat" && isChatLocked}
+              className={`main-tab-btn ${
+                tab.id === "chat" && isChatTabSuggested ? "suggested-chat" : ""
+              }`}
             >
               {tab.label}
-            </button>
+            </Tab>
           ))}
-        </nav>
+        </TabList>
         {isChatLocked ? (
-          <p className="tab-guidance">🔒 Playground is locked. Open Settings and sign in to Azure.</p>
+          <MessageBar intent="warning" className="tab-guidance-bar">
+            <MessageBarBody>🔒 Playground is locked. Open Settings and sign in to Azure.</MessageBarBody>
+          </MessageBar>
         ) : isChatTabSuggested ? (
-          <p className="tab-guidance success">
-            ✅ Sign-in complete. Open the 💬 Playground tab to continue.
-          </p>
+          <MessageBar intent="success" className="tab-guidance-bar">
+            <MessageBarBody>✅ Sign-in complete. Open the 💬 Playground tab to continue.</MessageBarBody>
+          </MessageBar>
         ) : null}
 
         <section
@@ -1160,14 +1194,16 @@ export default function Home() {
               <div className="chat-header-main">
                 <h1>Local Playground 💬</h1>
               </div>
-              <button
+              <Button
                 type="button"
-                className="secondary-btn chat-reset-btn"
+                appearance="secondary"
+                size="small"
+                className="chat-reset-btn"
                 onClick={handleResetThread}
                 disabled={isSending}
               >
                 🧹 Reset Thread
-              </button>
+              </Button>
             </div>
           </header>
 
@@ -1184,8 +1220,10 @@ export default function Home() {
                     <div className="message-content">
                       {renderMessageContent(message)}
                     </div>
-                    <button
+                    <Button
                       type="button"
+                      appearance="subtle"
+                      size="small"
                       className="copy-symbol-btn message-copy-btn"
                       aria-label="Copy message"
                       onClick={() => {
@@ -1195,7 +1233,7 @@ export default function Home() {
                       }}
                     >
                       ⎘
-                    </button>
+                    </Button>
                   </article>
                   {shouldRenderTurnMcpLog ? (
                     <article className="mcp-turn-log-row">
@@ -1258,40 +1296,51 @@ export default function Home() {
           <footer className="chat-footer">
             {error ? (
               <div className="chat-error-stack">
-                <p className="chat-error">{error}</p>
+                <MessageBar intent="error">
+                  <MessageBarBody>
+                    <MessageBarTitle>Request failed</MessageBarTitle>
+                    {error}
+                  </MessageBarBody>
+                </MessageBar>
                 {showAzureLoginButton ? (
-                  <button
+                  <Button
                     type="button"
-                    className="secondary-btn azure-login-btn chat-login-btn"
+                    appearance="primary"
+                    className="azure-login-btn chat-login-btn"
                     onClick={() => {
                       void handleAzureLogin();
                     }}
                     disabled={isSending || isStartingAzureLogin}
                   >
                     {isStartingAzureLogin ? "🔐 Starting Azure Login..." : "🔐 Azure Login"}
-                  </button>
+                  </Button>
                 ) : null}
-                {azureLoginError ? <p className="chat-error">{azureLoginError}</p> : null}
+                {azureLoginError ? (
+                  <MessageBar intent="error">
+                    <MessageBarBody>{azureLoginError}</MessageBarBody>
+                  </MessageBar>
+                ) : null}
               </div>
             ) : null}
             <form className="chat-form" onSubmit={handleSubmit}>
               <label className="sr-only" htmlFor="chat-input">
                 Message
               </label>
-              <textarea
+              <Textarea
                 id="chat-input"
                 name="message"
                 rows={2}
                 placeholder="Type a message..."
                 value={draft}
-                onChange={(event) => setDraft(event.target.value)}
+                onChange={(_, data) => setDraft(data.value)}
                 onKeyDown={handleInputKeyDown}
                 onCompositionStart={() => setIsComposing(true)}
                 onCompositionEnd={() => setIsComposing(false)}
                 disabled={isSending || isChatLocked}
               />
-              <button
+              <Button
                 type="submit"
+                appearance="primary"
                 disabled={
                   isSending ||
                   isChatLocked ||
@@ -1304,7 +1353,7 @@ export default function Home() {
                 }
               >
                 ✉️ Send
-              </button>
+              </Button>
             </form>
           </footer>
         </section>
@@ -1328,21 +1377,22 @@ export default function Home() {
                 <p>Select project and deployment for chat requests.</p>
               </div>
               {isAzureAuthRequired ? (
-                <button
+                <Button
                   type="button"
-                  className="secondary-btn azure-login-btn"
+                  appearance="primary"
+                  className="azure-login-btn"
                   onClick={() => {
                     void handleAzureLogin();
                   }}
                   disabled={isSending || isStartingAzureLogin}
                 >
                   {isStartingAzureLogin ? "🔐 Starting Azure Login..." : "🔐 Azure Login"}
-                </button>
+                </Button>
               ) : (
                 <>
                   {isLoadingAzureConnections || isLoadingAzureDeployments ? (
                     <p className="azure-loading-notice" role="status" aria-live="polite">
-                      <span className="loading-indicator" aria-hidden="true" />
+                      <Spinner size="tiny" />
                       {isLoadingAzureConnections
                         ? "Loading projects from Azure..."
                         : "Loading deployments for the selected project..."}
@@ -1358,8 +1408,10 @@ export default function Home() {
                           Loading...
                         </span>
                       ) : null}
-                      <button
+                      <Button
                         type="button"
+                        appearance="subtle"
+                        size="small"
                         className={`icon-refresh-btn ${isLoadingAzureConnections ? "spinning" : ""}`}
                         aria-label="Reload projects"
                         title="Reload projects"
@@ -1369,10 +1421,10 @@ export default function Home() {
                         disabled={isSending || isLoadingAzureConnections || isStartingAzureLogout}
                       >
                         🔄
-                      </button>
+                      </Button>
                     </div>
                   </div>
-                  <select
+                  <Select
                     id="azure-project"
                     value={activeAzureConnection?.id ?? ""}
                     onChange={(event) => {
@@ -1393,7 +1445,7 @@ export default function Home() {
                         {connection.projectName}
                       </option>
                     ))}
-                  </select>
+                  </Select>
                   <div className="setting-label-row">
                     <label className="setting-label" htmlFor="azure-deployment">
                       Deployment 🚀
@@ -1404,7 +1456,7 @@ export default function Home() {
                       </span>
                     ) : null}
                   </div>
-                  <select
+                  <Select
                     id="azure-deployment"
                     value={selectedAzureDeploymentName}
                     onChange={(event) => {
@@ -1450,18 +1502,19 @@ export default function Home() {
                     ) : (
                       <option value="">No deployments found</option>
                     )}
-                  </select>
+                  </Select>
                   <div className="azure-connection-actions">
-                    <button
+                    <Button
                       type="button"
-                      className="secondary-btn azure-logout-btn"
+                      appearance="outline"
+                      className="azure-logout-btn"
                       onClick={() => {
                         void handleAzureLogout();
                       }}
                       disabled={isSending || isLoadingAzureConnections || isStartingAzureLogout}
                     >
                       {isStartingAzureLogout ? "🚪 Logging Out..." : "🚪 Logout"}
-                    </button>
+                    </Button>
                   </div>
                   {activeAzureConnection ? (
                     <>
@@ -1469,9 +1522,21 @@ export default function Home() {
                       <p className="field-hint">API version: {activeAzureConnection.apiVersion}</p>
                     </>
                   ) : null}
-                  {azureDeploymentError ? <p className="field-error">{azureDeploymentError}</p> : null}
-                  {azureLogoutError ? <p className="field-error">{azureLogoutError}</p> : null}
-                  {azureConnectionError ? <p className="field-error">{azureConnectionError}</p> : null}
+                  {azureDeploymentError ? (
+                    <MessageBar intent="error" className="setting-message-bar">
+                      <MessageBarBody>{azureDeploymentError}</MessageBarBody>
+                    </MessageBar>
+                  ) : null}
+                  {azureLogoutError ? (
+                    <MessageBar intent="error" className="setting-message-bar">
+                      <MessageBarBody>{azureLogoutError}</MessageBarBody>
+                    </MessageBar>
+                  ) : null}
+                  {azureConnectionError ? (
+                    <MessageBar intent="error" className="setting-message-bar">
+                      <MessageBarBody>{azureConnectionError}</MessageBarBody>
+                    </MessageBar>
+                  ) : null}
                 </>
               )}
             </section>
@@ -1481,17 +1546,18 @@ export default function Home() {
                 <h3>Agent Instruction 🧾</h3>
                 <p>System instruction used for the agent.</p>
               </div>
-              <textarea
+              <Textarea
                 id="agent-instruction"
                 rows={6}
                 value={agentInstruction}
-                onChange={(event) => setAgentInstruction(event.target.value)}
+                onChange={(_, data) => setAgentInstruction(data.value)}
                 disabled={isSending}
                 placeholder="System instruction for the agent"
               />
               <div className="file-picker-row">
                 <input
                   id="agent-instruction-file"
+                  ref={instructionFileInputRef}
                   className="file-input-hidden"
                   type="file"
                   accept=".md,.txt,.xml,.json,text/plain,text/markdown,application/json,application/xml,text/xml"
@@ -1500,12 +1566,19 @@ export default function Home() {
                   }}
                   disabled={isSending}
                 />
-                <label htmlFor="agent-instruction-file" className="file-picker-button">
-                  📂 Load File
-                </label>
-                <button
+                <Button
                   type="button"
-                  className="file-picker-button"
+                  appearance="secondary"
+                  size="small"
+                  onClick={() => instructionFileInputRef.current?.click()}
+                  disabled={isSending}
+                >
+                  📂 Load File
+                </Button>
+                <Button
+                  type="button"
+                  appearance="secondary"
+                  size="small"
                   onClick={() => {
                     setAgentInstruction("");
                     setLoadedInstructionFileName(null);
@@ -1514,14 +1587,16 @@ export default function Home() {
                   disabled={isSending || !canClearAgentInstruction}
                 >
                   🧹 Clear
-                </button>
+                </Button>
                 <span className="file-picker-name">
                   {loadedInstructionFileName ?? "No file loaded"}
                 </span>
               </div>
               <p className="field-hint">Supported: .md, .txt, .xml, .json (max 1MB)</p>
               {instructionFileError ? (
-                <p className="field-error">{instructionFileError}</p>
+                <MessageBar intent="error" className="setting-message-bar">
+                  <MessageBarBody>{instructionFileError}</MessageBarBody>
+                </MessageBar>
               ) : null}
             </section>
 
@@ -1530,7 +1605,7 @@ export default function Home() {
                 <h3>Reasoning Effort 🧠</h3>
                 <p>How much internal reasoning the model should use.</p>
               </div>
-              <select
+              <Select
                 id="reasoning-effort"
                 value={reasoningEffort}
                 onChange={(event) => setReasoningEffort(event.target.value as ReasoningEffort)}
@@ -1541,7 +1616,7 @@ export default function Home() {
                     {option}
                   </option>
                 ))}
-              </select>
+              </Select>
             </section>
 
             <section className="setting-group">
@@ -1549,13 +1624,12 @@ export default function Home() {
                 <h3>Context Window 🧵</h3>
                 <p>Number of recent messages to include as context.</p>
               </div>
-              <input
+              <Input
                 id="context-window-size"
-                type="text"
                 inputMode="numeric"
                 placeholder="10"
                 value={contextWindowInput}
-                onChange={(event) => setContextWindowInput(event.target.value)}
+                onChange={(_, data) => setContextWindowInput(data.value)}
                 disabled={isSending}
                 aria-invalid={!contextWindowValidation.isValid}
                 aria-describedby="context-window-size-error"
@@ -1586,14 +1660,13 @@ export default function Home() {
               <div className="setting-group-header">
                 <h3>Add MCP Server ➕</h3>
               </div>
-              <input
-                type="text"
+              <Input
                 placeholder="Server name (optional)"
                 value={mcpNameInput}
-                onChange={(event) => setMcpNameInput(event.target.value)}
+                onChange={(_, data) => setMcpNameInput(data.value)}
                 disabled={isSending}
               />
-              <select
+              <Select
                 value={mcpTransport}
                 onChange={(event) => {
                   setMcpTransport(event.target.value as McpTransport);
@@ -1604,83 +1677,75 @@ export default function Home() {
                 <option value="streamable_http">streamable_http</option>
                 <option value="sse">sse</option>
                 <option value="stdio">stdio</option>
-              </select>
+              </Select>
               {mcpTransport === "stdio" ? (
                 <>
-                  <input
-                    type="text"
+                  <Input
                     placeholder="Command (e.g. npx)"
                     value={mcpCommandInput}
-                    onChange={(event) => setMcpCommandInput(event.target.value)}
+                    onChange={(_, data) => setMcpCommandInput(data.value)}
                     disabled={isSending}
                   />
-                  <input
-                    type="text"
+                  <Input
                     placeholder='Args (space-separated or JSON array)'
                     value={mcpArgsInput}
-                    onChange={(event) => setMcpArgsInput(event.target.value)}
+                    onChange={(_, data) => setMcpArgsInput(data.value)}
                     disabled={isSending}
                   />
-                  <input
-                    type="text"
+                  <Input
                     placeholder="Working directory (optional)"
                     value={mcpCwdInput}
-                    onChange={(event) => setMcpCwdInput(event.target.value)}
+                    onChange={(_, data) => setMcpCwdInput(data.value)}
                     disabled={isSending}
                   />
-                  <textarea
+                  <Textarea
                     rows={3}
                     placeholder={"Environment variables (optional)\nKEY=value"}
                     value={mcpEnvInput}
-                    onChange={(event) => setMcpEnvInput(event.target.value)}
+                    onChange={(_, data) => setMcpEnvInput(data.value)}
                     disabled={isSending}
                   />
                 </>
               ) : (
                 <>
-                  <input
-                    type="text"
+                  <Input
                     placeholder="https://example.com/mcp"
                     value={mcpUrlInput}
-                    onChange={(event) => setMcpUrlInput(event.target.value)}
+                    onChange={(_, data) => setMcpUrlInput(data.value)}
                     disabled={isSending}
                   />
-                  <textarea
+                  <Textarea
                     rows={3}
                     placeholder={"Additional HTTP headers (optional)\nAuthorization=Bearer <token>\nX-Api-Key=<key>"}
                     value={mcpHeadersInput}
-                    onChange={(event) => setMcpHeadersInput(event.target.value)}
+                    onChange={(_, data) => setMcpHeadersInput(data.value)}
                     disabled={isSending}
                   />
-                  <label className="field-checkbox">
-                    <input
-                      type="checkbox"
-                      checked={mcpUseAzureAuthInput}
-                      onChange={(event) => {
-                        const checked = event.target.checked;
-                        setMcpUseAzureAuthInput(checked);
-                        if (checked && !mcpAzureAuthScopeInput.trim()) {
-                          setMcpAzureAuthScopeInput(DEFAULT_MCP_AZURE_AUTH_SCOPE);
-                        }
-                      }}
-                      disabled={isSending}
-                    />
-                    <span>Use Azure Bearer token from DefaultAzureCredential</span>
-                  </label>
+                  <Checkbox
+                    className="field-checkbox"
+                    checked={mcpUseAzureAuthInput}
+                    onChange={(_, data) => {
+                      const checked = data.checked === true;
+                      setMcpUseAzureAuthInput(checked);
+                      if (checked && !mcpAzureAuthScopeInput.trim()) {
+                        setMcpAzureAuthScopeInput(DEFAULT_MCP_AZURE_AUTH_SCOPE);
+                      }
+                    }}
+                    disabled={isSending}
+                    label="Use Azure Bearer token from DefaultAzureCredential"
+                  />
                   {mcpUseAzureAuthInput ? (
-                    <input
-                      type="text"
+                    <Input
                       placeholder={DEFAULT_MCP_AZURE_AUTH_SCOPE}
                       value={mcpAzureAuthScopeInput}
-                      onChange={(event) => setMcpAzureAuthScopeInput(event.target.value)}
+                      onChange={(_, data) => setMcpAzureAuthScopeInput(data.value)}
                       disabled={isSending}
                     />
                   ) : null}
-                  <input
-                    type="text"
+                  <Input
                     placeholder={String(DEFAULT_MCP_TIMEOUT_SECONDS)}
                     value={mcpTimeoutSecondsInput}
-                    onChange={(event) => setMcpTimeoutSecondsInput(event.target.value)}
+                    onChange={(_, data) => setMcpTimeoutSecondsInput(data.value)}
                     disabled={isSending}
                   />
                   <p className="field-hint">
@@ -1689,25 +1754,33 @@ export default function Home() {
                   <p className="field-hint">Content-Type: application/json is always included.</p>
                 </>
               )}
-              <button
+              <Button
                 type="button"
-                className="secondary-btn"
+                appearance="primary"
                 onClick={() => {
                   void handleAddMcpServer();
                 }}
                 disabled={isSending || isSavingMcpServer}
               >
                 ➕ Add Server
-              </button>
-              {mcpFormError ? <p className="field-error">{mcpFormError}</p> : null}
-              {mcpFormWarning ? <p className="field-warning">{mcpFormWarning}</p> : null}
+              </Button>
+              {mcpFormError ? (
+                <MessageBar intent="error" className="setting-message-bar">
+                  <MessageBarBody>{mcpFormError}</MessageBarBody>
+                </MessageBar>
+              ) : null}
+              {mcpFormWarning ? (
+                <MessageBar intent="warning" className="setting-message-bar">
+                  <MessageBarBody>{mcpFormWarning}</MessageBarBody>
+                </MessageBar>
+              ) : null}
             </section>
 
             <section className="setting-group">
               <div className="setting-group-header">
                 <h3>Saved Configs 💾</h3>
               </div>
-              <select
+              <Select
                 value={selectedSavedMcpServerId}
                 onChange={(event) => {
                   setSelectedSavedMcpServerId(event.target.value);
@@ -1723,11 +1796,11 @@ export default function Home() {
                     {formatMcpServerOption(server)}
                   </option>
                 ))}
-              </select>
+              </Select>
               <div className="mcp-action-row">
-                <button
+                <Button
                   type="button"
-                  className="secondary-btn"
+                  appearance="secondary"
                   onClick={handleLoadSavedMcpServerToForm}
                   disabled={
                     isSending ||
@@ -1737,19 +1810,23 @@ export default function Home() {
                   }
                 >
                   📥 Load Selected
-                </button>
-                <button
+                </Button>
+                <Button
                   type="button"
-                  className="secondary-btn"
+                  appearance="secondary"
                   onClick={() => {
                     void loadSavedMcpServers();
                   }}
                   disabled={isSending || isLoadingSavedMcpServers}
                 >
                   {isLoadingSavedMcpServers ? "🔄 Loading..." : "🔄 Reload"}
-                </button>
+                </Button>
               </div>
-              {savedMcpError ? <p className="field-error">{savedMcpError}</p> : null}
+              {savedMcpError ? (
+                <MessageBar intent="error" className="setting-message-bar">
+                  <MessageBarBody>{savedMcpError}</MessageBarBody>
+                </MessageBar>
+              ) : null}
             </section>
 
             <section className="setting-group">
@@ -1790,14 +1867,16 @@ export default function Home() {
                           </>
                         )}
                       </div>
-                      <button
+                      <Button
                         type="button"
+                        appearance="secondary"
+                        size="small"
                         className="mcp-remove-btn"
                         onClick={() => handleRemoveMcpServer(server.id)}
                         disabled={isSending}
                       >
                         🗑 Remove
-                      </button>
+                      </Button>
                     </article>
                   ))}
                 </div>
@@ -2056,8 +2135,10 @@ function renderTurnMcpLog(
     <details className="mcp-turn-log" open={isLive}>
       <summary>
         <span>🧩 MCP Operation Log ({entries.length})</span>
-        <button
+        <Button
           type="button"
+          appearance="subtle"
+          size="small"
           className="copy-symbol-btn mcp-log-copy-btn"
           aria-label="Copy MCP operation log"
           onClick={(event) => {
@@ -2071,7 +2152,7 @@ function renderTurnMcpLog(
           }}
         >
           ⎘
-        </button>
+        </Button>
       </summary>
       {entries.length === 0 ? (
         <p className="mcp-turn-log-empty">
@@ -2088,8 +2169,10 @@ function renderTurnMcpLog(
                 <span className={`mcp-history-state ${entry.isError ? "error" : "ok"}`}>
                   {entry.isError ? "error" : "ok"}
                 </span>
-                <button
+                <Button
                   type="button"
+                  appearance="subtle"
+                  size="small"
                   className="copy-symbol-btn mcp-history-copy-btn"
                   aria-label="Copy MCP operation entry"
                   onClick={(event) => {
@@ -2099,7 +2182,7 @@ function renderTurnMcpLog(
                   }}
                 >
                   ⎘
-                </button>
+                </Button>
               </summary>
               <div className="mcp-history-body">
                 <p className="mcp-history-time">
@@ -2109,8 +2192,10 @@ function renderTurnMcpLog(
                 </p>
                 <p className="mcp-history-label-row">
                   <span className="mcp-history-label">request</span>
-                  <button
+                  <Button
                     type="button"
+                    appearance="subtle"
+                    size="small"
                     className="copy-symbol-btn mcp-part-copy-btn"
                     aria-label="Copy MCP request payload"
                     onClick={() => {
@@ -2122,13 +2207,15 @@ function renderTurnMcpLog(
                     }}
                   >
                     ⎘
-                  </button>
+                  </Button>
                 </p>
                 {renderHighlightedJson(entry.request, "MCP request JSON", "compact")}
                 <p className="mcp-history-label-row">
                   <span className="mcp-history-label">response</span>
-                  <button
+                  <Button
                     type="button"
+                    appearance="subtle"
+                    size="small"
                     className="copy-symbol-btn mcp-part-copy-btn"
                     aria-label="Copy MCP response payload"
                     onClick={() => {
@@ -2140,7 +2227,7 @@ function renderTurnMcpLog(
                     }}
                   >
                     ⎘
-                  </button>
+                  </Button>
                 </p>
                 {renderHighlightedJson(entry.response, "MCP response JSON", "compact")}
               </div>

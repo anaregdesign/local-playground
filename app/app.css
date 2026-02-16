@@ -1,19 +1,19 @@
 @import "tailwindcss";
 
 :root {
-  --font-sans: "IBM Plex Sans JP", "Hiragino Sans", "Noto Sans JP", sans-serif;
-  --bg-soft-top: #f5efe2;
-  --bg-soft-bottom: #e8eef4;
-  --surface: #fffdf9;
-  --surface-border: #d7d8d2;
-  --text-main: #22303a;
-  --text-subtle: #5f707d;
-  --accent: #2c627b;
-  --accent-strong: #1f495e;
-  --bubble-user: #dbe8f1;
-  --bubble-assistant: #f2ece1;
-  --danger: #a83939;
-  --shadow-soft: 0 18px 40px rgba(40, 53, 61, 0.14);
+  --font-sans: "Segoe UI", "Yu Gothic UI", "Hiragino Kaku Gothic ProN", "Meiryo", sans-serif;
+  --bg-soft-top: #f3f2f1;
+  --bg-soft-bottom: #edf3fb;
+  --surface: #ffffff;
+  --surface-border: #e1dfdd;
+  --text-main: #323130;
+  --text-subtle: #605e5c;
+  --accent: #0f6cbd;
+  --accent-strong: #115ea3;
+  --bubble-user: #deecf9;
+  --bubble-assistant: #f3f2f1;
+  --danger: #a4262c;
+  --shadow-soft: 0 8px 24px rgba(0, 0, 0, 0.08);
 }
 
 * {
@@ -27,7 +27,7 @@ body {
   font-family: var(--font-sans);
   color: var(--text-main);
   background:
-    radial-gradient(circle at 16% 16%, rgba(255, 255, 255, 0.7), transparent 36%),
+    radial-gradient(circle at 12% 8%, rgba(255, 255, 255, 0.7), transparent 32%),
     linear-gradient(165deg, var(--bg-soft-top), var(--bg-soft-bottom));
 }
 
@@ -40,7 +40,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 0.75rem 2rem;
+  padding: 0.8rem 1.6rem;
 }
 
 .chat-layout {
@@ -60,72 +60,34 @@ body {
 .main-tabs {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.45rem;
-  padding: 0.35rem;
-  border-radius: 14px;
+  gap: 0.35rem;
+  padding: 0.32rem;
+  border-radius: 12px;
   border: 1px solid var(--surface-border);
-  background: rgba(255, 253, 249, 0.9);
+  background: rgba(255, 255, 255, 0.92);
   box-shadow: var(--shadow-soft);
 }
 
 .main-tab-btn {
-  border: 1px solid transparent;
-  border-radius: 10px;
-  padding: 0.42rem 0.75rem;
-  background: transparent;
-  color: var(--text-subtle);
-  font: inherit;
-  font-size: 0.84rem;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.main-tab-btn:hover {
-  background: rgba(238, 246, 251, 0.65);
-  color: var(--text-main);
-}
-
-.main-tab-btn.active {
-  border-color: var(--surface-border);
-  background: #ffffff;
-  color: var(--text-main);
-}
-
-.main-tab-btn:focus-visible {
-  outline: 2px solid rgba(44, 98, 123, 0.24);
-  outline-offset: 1px;
-}
-
-.main-tab-btn.disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.main-tab-btn.disabled:hover {
-  background: transparent;
-  color: var(--text-subtle);
+  font-size: 0.82rem;
 }
 
 .main-tab-btn.suggested-chat {
-  border-color: #d9bf76;
-  background: #fff8dc;
-  color: #6a4e0f;
+  border-color: #99c6ef;
+  background: #eff6fc;
+  color: #0c3b5f;
   animation: chat-tab-pulse 1.5s ease-in-out infinite;
 }
 
 .main-tab-btn.suggested-chat:hover {
-  background: #fff3c6;
-  color: #5b4108;
+  background: #e1f0fc;
+  color: #0c3b5f;
 }
 
-.tab-guidance {
+.tab-guidance-bar {
+  width: fit-content;
+  max-width: 100%;
   margin: 0;
-  font-size: 0.8rem;
-  color: #1f4e67;
-}
-
-.tab-guidance.success {
-  color: #2b6b3f;
 }
 
 @keyframes chat-tab-pulse {
@@ -148,7 +110,7 @@ body {
   height: 100%;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
-  border-radius: 24px;
+  border-radius: 14px;
   border: 1px solid var(--surface-border);
   background: var(--surface);
   box-shadow: var(--shadow-soft);
@@ -158,7 +120,7 @@ body {
 .chat-header {
   padding: 1.25rem 1.5rem;
   border-bottom: 1px solid var(--surface-border);
-  background: linear-gradient(180deg, rgba(248, 250, 252, 0.98), rgba(255, 253, 249, 0.9));
+  background: linear-gradient(180deg, #ffffff, #faf9f8);
 }
 
 .chat-header-row {
@@ -188,8 +150,6 @@ body {
 .chat-reset-btn {
   flex-shrink: 0;
   white-space: nowrap;
-  padding: 0.42rem 0.7rem;
-  font-size: 0.8rem;
 }
 
 .chat-log {
@@ -218,13 +178,13 @@ body {
 }
 
 .copy-symbol-btn {
-  border: 0;
-  background: transparent;
+  min-width: 1.7rem;
+  width: 1.7rem;
+  height: 1.7rem;
+  padding: 0;
   color: var(--text-subtle);
-  cursor: pointer;
   font-size: 0.9rem;
   line-height: 1;
-  padding: 0.12rem 0.18rem;
   opacity: 0.7;
 }
 
@@ -587,48 +547,24 @@ body {
   align-items: end;
 }
 
-.chat-form textarea {
+.chat-form .fui-Textarea {
   width: 100%;
+}
+
+.chat-form .fui-Textarea textarea {
   resize: none;
-  border-radius: 12px;
-  border: 1px solid var(--surface-border);
-  padding: 0.72rem 0.8rem;
-  font: inherit;
-  color: inherit;
-  background: #ffffff;
 }
 
-.chat-form textarea:focus {
-  outline: 2px solid rgba(44, 98, 123, 0.24);
-  outline-offset: 1px;
-}
-
-.chat-form button {
-  border: 0;
-  border-radius: 12px;
-  padding: 0.72rem 1.05rem;
-  background: var(--accent);
-  color: #fff;
-  font: inherit;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.chat-form button:hover:enabled {
-  background: var(--accent-strong);
-}
-
-.chat-form button:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
+.chat-form > .fui-Button {
+  white-space: nowrap;
 }
 
 .settings-shell,
 .mcp-shell {
   height: 100%;
-  border-radius: 24px;
+  border-radius: 14px;
   border: 1px solid var(--surface-border);
-  background: linear-gradient(180deg, rgba(255, 252, 247, 0.96), rgba(246, 250, 255, 0.88));
+  background: linear-gradient(180deg, #ffffff, #faf9f8);
   box-shadow: var(--shadow-soft);
   display: grid;
   grid-template-rows: auto 1fr;
@@ -639,7 +575,7 @@ body {
 .mcp-header {
   padding: 1.1rem 1rem;
   border-bottom: 1px solid var(--surface-border);
-  background: linear-gradient(180deg, rgba(248, 250, 252, 0.95), rgba(255, 253, 249, 0.9));
+  background: linear-gradient(180deg, #ffffff, #faf9f8);
 }
 
 .settings-header h2,
@@ -665,9 +601,9 @@ body {
 }
 
 .setting-group {
-  background: rgba(255, 255, 255, 0.9);
+  background: #ffffff;
   border: 1px solid var(--surface-border);
-  border-radius: 12px;
+  border-radius: 10px;
   padding: 0.75rem;
   display: flex;
   flex-direction: column;
@@ -720,15 +656,6 @@ body {
   font-weight: 600;
 }
 
-.loading-indicator {
-  width: 0.72rem;
-  height: 0.72rem;
-  border-radius: 999px;
-  border: 2px solid rgba(44, 98, 123, 0.28);
-  border-top-color: var(--accent);
-  animation: spin-loader 0.8s linear infinite;
-}
-
 .loading-pill {
   display: inline-flex;
   align-items: center;
@@ -744,31 +671,16 @@ body {
 }
 
 .icon-refresh-btn {
-  border: 1px solid var(--surface-border);
-  border-radius: 999px;
-  width: 1.7rem;
-  height: 1.7rem;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: #f9fbfc;
-  color: var(--text-main);
+  min-width: 1.75rem;
+  width: 1.75rem;
+  height: 1.75rem;
+  padding: 0;
   font-size: 0.95rem;
   line-height: 1;
-  cursor: pointer;
-}
-
-.icon-refresh-btn:hover:enabled {
-  background: #eef6fb;
 }
 
 .icon-refresh-btn.spinning {
   animation: spin-loader 0.8s linear infinite;
-}
-
-.icon-refresh-btn:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
 }
 
 @keyframes spin-loader {
@@ -786,29 +698,17 @@ body {
   gap: 0.45rem;
 }
 
-.azure-connection-actions .secondary-btn {
+.azure-connection-actions .fui-Button {
   width: 100%;
 }
 
-.setting-group select,
-.setting-group input[type="text"],
-.setting-group textarea {
-  border-radius: 10px;
-  border: 1px solid var(--surface-border);
-  padding: 0.58rem 0.65rem;
-  font: inherit;
-  color: inherit;
-  background: #fff;
+.setting-group .fui-Input,
+.setting-group .fui-Select,
+.setting-group .fui-Textarea {
+  width: 100%;
 }
 
-.setting-group select:focus,
-.setting-group input[type="text"]:focus,
-.setting-group textarea:focus {
-  outline: 2px solid rgba(44, 98, 123, 0.24);
-  outline-offset: 1px;
-}
-
-.setting-group textarea {
+.setting-group .fui-Textarea textarea {
   resize: vertical;
   min-height: 7.5rem;
   line-height: 1.4;
@@ -829,32 +729,13 @@ body {
 .file-picker-row {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 0.55rem;
   min-width: 0;
 }
 
-.file-picker-button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0.42rem 0.62rem;
-  border-radius: 8px;
-  border: 1px solid var(--surface-border);
-  background: #f9fbfc;
-  color: var(--text-main);
-  font-size: 0.82rem;
-  font-weight: 600;
-  cursor: pointer;
+.file-picker-row .fui-Button {
   flex-shrink: 0;
-}
-
-.file-picker-button:hover {
-  background: #f0f6fa;
-}
-
-.file-picker-button:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
 }
 
 .file-picker-name {
@@ -865,7 +746,8 @@ body {
   white-space: nowrap;
 }
 
-.setting-group input[aria-invalid="true"] {
+.setting-group .fui-Input[data-invalid="true"],
+.setting-group .fui-Textarea[data-invalid="true"] {
   border-color: var(--danger);
 }
 
@@ -901,44 +783,21 @@ body {
   color: #9a6a00;
 }
 
-.secondary-btn {
-  border: 1px solid var(--surface-border);
-  border-radius: 10px;
-  padding: 0.58rem 0.75rem;
-  background: #f9fbfc;
-  color: var(--text-main);
-  font: inherit;
+.setting-message-bar {
+  margin: 0;
+}
+
+.fui-Button.azure-login-btn {
   font-weight: 600;
-  cursor: pointer;
 }
 
-.secondary-btn:hover:enabled {
-  background: #eef6fb;
-}
-
-.secondary-btn:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.azure-login-btn {
-  border-color: #8bb6cf;
-  background: #eaf4fb;
-  color: #1f4e67;
-}
-
-.azure-login-btn:hover:enabled {
-  background: #dcecf7;
-}
-
-.azure-logout-btn {
+.fui-Button.azure-logout-btn {
+  color: #a4262c;
   border-color: rgba(168, 57, 57, 0.35);
-  background: #fff3f3;
-  color: #8f2e2e;
 }
 
-.azure-logout-btn:hover:enabled {
-  background: #ffe7e7;
+.fui-Button.azure-logout-btn:hover:enabled {
+  background-color: #fde7e9;
 }
 
 .mcp-list {
@@ -950,9 +809,10 @@ body {
 .mcp-action-row {
   display: flex;
   gap: 0.45rem;
+  flex-wrap: wrap;
 }
 
-.mcp-action-row .secondary-btn {
+.mcp-action-row .fui-Button {
   flex: 1;
 }
 
@@ -997,26 +857,15 @@ body {
   color: var(--text-subtle);
 }
 
-.mcp-remove-btn {
-  border: 1px solid rgba(168, 57, 57, 0.24);
-  border-radius: 8px;
-  padding: 0.38rem 0.52rem;
-  background: #fff7f7;
+.fui-Button.mcp-remove-btn {
   color: var(--danger);
-  font: inherit;
+  border-color: rgba(168, 57, 57, 0.24);
   font-size: 0.76rem;
-  font-weight: 600;
-  cursor: pointer;
   flex-shrink: 0;
 }
 
-.mcp-remove-btn:hover:enabled {
-  background: #ffefef;
-}
-
-.mcp-remove-btn:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
+.fui-Button.mcp-remove-btn:hover:enabled {
+  background-color: #fff7f7;
 }
 
 .sr-only {
