@@ -1,100 +1,60 @@
-# Simple Chat App (React Router)
+# Local Playground
 
-A minimal desktop-first chat UI with an Azure OpenAI-backed API endpoint.
+Local Playground is a desktop-first playground UI for Azure OpenAI using Agents SDK.
 
-[![Open in StackBlitz](https://developer.stackblitz.com/img/open_in_stackblitz.svg)](https://stackblitz.com/github/remix-run/react-router-templates/tree/main/default)
+## Naming
+
+- Application name: `Local Playground`
+- Package name: `local-playground`
+- Recommended repository name: `local-playground`
 
 ## Features
 
-- Clean desktop chat layout
-- `POST /api/chat` server endpoint
-- DefaultAzureCredential + Azure AD token provider auth
-- Azure v1 endpoint (`.../openai/v1/`) via `openai` TypeScript client
-- Azure env var placeholders (`.env.example`)
-- React Router + TypeScript
+- Tab-based UI: `Playground`, `Settings`, `MCP Servers`
+- Azure authentication with `DefaultAzureCredential`
+- Dynamic Azure project discovery and deployment reload per selected project
+- Agents SDK chat execution via `@openai/agents` and `@openai/agents-openai`
+- Azure OpenAI v1 endpoint (`.../openai/v1/`)
+- MCP server management (HTTP/SSE/stdio), with saved profiles in `~/.mcp/mcp-servers.json`
+- Markdown rendering and JSON syntax highlighting for assistant responses
 
 ## Getting Started
 
-### Installation
-
-Install the dependencies:
+### 1. Install
 
 ```bash
 npm install
 ```
 
-Create an env file:
+### 2. Sign in to Azure
+
+Use Azure CLI login in your environment:
 
 ```bash
-cp .env.example .env
+az login
 ```
 
-Then edit `.env` and set:
+The app uses `DefaultAzureCredential`. Azure project/deployment values are discovered dynamically from ARM and selected in `Settings`.
 
-- `AZURE_BASE_URL` (or `AZURE_OPENAI_BASE_URL`)
-- `AZURE_API_VERSION` (or `AZURE_OPENAI_API_VERSION`) with value `v1`
-- `AZURE_DEPLOYMENT_NAME` (or `AZURE_OPENAI_DEPLOYMENT_NAME`)
-
-Auth is done with `DefaultAzureCredential`, so use managed identity / Azure login in your environment.
-
-### Development
-
-Start the development server with HMR:
+### 3. Start Development Server
 
 ```bash
 npm run dev
 ```
 
-Your application will be available at `http://localhost:5173`.
+Open `http://localhost:5173`.
 
-## Building for Production
+## Scripts
 
-Create a production build:
+- `npm run dev` - start development server
+- `npm run build` - create production build
+- `npm run start` - run production server
+- `npm run typecheck` - run TypeScript checks
 
-```bash
-npm run build
-```
+## API Endpoints
 
-## Deployment
-
-### Docker Deployment
-
-To build and run using Docker:
-
-```bash
-docker build -t my-app .
-
-# Run the container
-docker run -p 3000:3000 my-app
-```
-
-The containerized application can be deployed to any platform that supports Docker, including:
-
-- AWS ECS
-- Google Cloud Run
-- Azure Container Apps
-- Digital Ocean App Platform
-- Fly.io
-- Railway
-
-### DIY Deployment
-
-If you're familiar with deploying Node applications, the built-in app server is production-ready.
-
-Make sure to deploy the output of `npm run build`
-
-```
-├── package.json
-├── package-lock.json (or pnpm-lock.yaml, or bun.lockb)
-├── build/
-│   ├── client/    # Static assets
-│   └── server/    # Server-side code
-```
-
-## Styling
-
-This template comes with [Tailwind CSS](https://tailwindcss.com/) already configured for a simple default starting experience. You can use whatever CSS framework you prefer.
-
----
-
-Built with ❤️ using React Router.
+- `POST /api/chat`
+- `GET /api/azure-connections`
+- `POST /api/azure-login`
+- `POST /api/azure-logout`
+- `GET/POST /api/mcp-servers`

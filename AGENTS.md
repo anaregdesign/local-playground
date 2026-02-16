@@ -14,18 +14,18 @@
 - Reload deployments when the selected project changes.
 - Show only Agents SDK-compatible deployments.
 - Use Azure OpenAI v1 endpoint format (`.../openai/v1/`).
-- If authentication is unavailable, lock Chat usage and guide users to Settings login.
+- If authentication is unavailable, lock Playground usage and guide users to Settings login.
 
-## Agents SDK / Chat
+## Agents SDK / Playground
 
 - Implement chat execution with Agents SDK (`@openai/agents` + `@openai/agents-openai`).
 - Keep API error messages concise and in English.
 - Preserve IME safety: pressing Enter during composition must not submit messages.
-- Keep Chat unavailable while logged out; after successful login, make Chat tab visually noticeable for guidance.
+- Keep Playground unavailable while logged out; after successful login, make the Playground tab visually noticeable for guidance.
 
 ## UI / Interaction
 
-- Use tab-based main navigation: `Chat`, `Settings`, and `MCP Servers`.
+- Use tab-based main navigation: `Playground`, `Settings`, and `MCP Servers`.
 - Keep labels and actions easy to scan; use emojis effectively but avoid overuse.
 - Keep login/logout actions visually distinct.
 - Prefer simple, desktop-first readability while preserving responsive layout.

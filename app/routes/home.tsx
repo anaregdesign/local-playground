@@ -92,7 +92,7 @@ const MIN_CONTEXT_WINDOW_SIZE = 1;
 const MAX_CONTEXT_WINDOW_SIZE = 200;
 const MIN_TEMPERATURE = 0;
 const MAX_TEMPERATURE = 2;
-const DEFAULT_AGENT_INSTRUCTION = "You are a concise assistant for a simple chat app.";
+const DEFAULT_AGENT_INSTRUCTION = "You are a concise assistant for a local playground app.";
 const MAX_INSTRUCTION_FILE_SIZE_BYTES = 1_000_000;
 const MAX_INSTRUCTION_FILE_SIZE_LABEL = "1MB";
 const ALLOWED_INSTRUCTION_EXTENSIONS = new Set(["md", "txt", "xml", "json"]);
@@ -100,8 +100,8 @@ const DEFAULT_MCP_TRANSPORT: McpTransport = "streamable_http";
 
 export function meta({}: Route.MetaArgs) {
   return [
-    { title: "Simple Chat" },
-    { name: "description", content: "Simple desktop chat app with OpenAI backend." },
+    { title: "Local Playground" },
+    { name: "description", content: "Local desktop playground with OpenAI backend." },
   ];
 }
 
@@ -442,7 +442,7 @@ export default function Home() {
 
     if (isChatLocked) {
       setActiveMainTab("settings");
-      setError("Chat is unavailable while logged out. Open ⚙️ Settings and sign in.");
+      setError("Playground is unavailable while logged out. Open ⚙️ Settings and sign in.");
       setShowAzureLoginButton(false);
       return;
     }
@@ -871,9 +871,11 @@ export default function Home() {
           ))}
         </nav>
         {isChatLocked ? (
-          <p className="tab-guidance">🔒 Chat is locked. Open Settings and sign in to Azure.</p>
+          <p className="tab-guidance">🔒 Playground is locked. Open Settings and sign in to Azure.</p>
         ) : isChatTabSuggested ? (
-          <p className="tab-guidance success">✅ Sign-in complete. Open the 💬 Chat tab to continue.</p>
+          <p className="tab-guidance success">
+            ✅ Sign-in complete. Open the 💬 Playground tab to continue.
+          </p>
         ) : null}
 
         <section
@@ -886,7 +888,7 @@ export default function Home() {
           <header className="chat-header">
             <div className="chat-header-row">
               <div className="chat-header-main">
-                <h1>Simple Chat 💬</h1>
+                <h1>Local Playground 💬</h1>
               </div>
               <button
                 type="button"
@@ -974,7 +976,7 @@ export default function Home() {
 
         <aside
           className="settings-shell main-panel"
-          aria-label="Chat settings"
+          aria-label="Playground settings"
           id="panel-settings"
           role="tabpanel"
           aria-labelledby="tab-settings"
@@ -1402,7 +1404,7 @@ function createMessage(role: ChatRole, content: string): ChatMessage {
 }
 
 const MAIN_VIEW_TAB_OPTIONS: Array<{ id: MainViewTab; label: string }> = [
-  { id: "chat", label: "💬 Chat" },
+  { id: "chat", label: "💬 Playground" },
   { id: "settings", label: "⚙️ Settings" },
   { id: "mcp", label: "🧩 MCP Servers" },
 ];

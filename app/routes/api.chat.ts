@@ -61,7 +61,7 @@ const MAX_MCP_STDIO_ENV_VARS = 64;
 const ENV_KEY_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 const AZURE_COGNITIVE_SERVICES_SCOPE = "https://cognitiveservices.azure.com/.default";
-const SYSTEM_PROMPT = "You are a concise assistant for a simple chat app.";
+const SYSTEM_PROMPT = "You are a concise assistant for a local playground app.";
 const MAX_AGENT_INSTRUCTION_LENGTH = 4000;
 const azureOpenAIClientsByBaseURL = new Map<string, OpenAI>();
 
@@ -153,7 +153,7 @@ export async function action({ request }: Route.ActionArgs) {
     );
 
     const agent = new Agent({
-      name: "SimpleChatAgent",
+      name: "LocalPlaygroundAgent",
       instructions: agentInstruction,
       model,
       modelSettings: {
