@@ -1,4 +1,11 @@
-import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
+import {
+  Fragment,
+  useEffect,
+  useRef,
+  useState,
+  type Dispatch,
+  type SetStateAction,
+} from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { Route } from "./+types/home";
@@ -39,6 +46,7 @@ type ChatMessage = {
   id: string;
   role: ChatRole;
   content: string;
+  turnId: string;
 };
 
 type JsonTokenType =
@@ -93,6 +101,7 @@ type McpRpcHistoryEntry = {
   request: unknown;
   response: unknown;
   isError: boolean;
+  turnId: string;
 };
 
 type AzureActionApiResponse = {
@@ -179,6 +188,7 @@ export default function Home() {
   );
   const [isSending, setIsSending] = useState(false);
   const [sendProgressMessages, setSendProgressMessages] = useState<string[]>([]);
+  const [activeTurnId, setActiveTurnId] = useState<string | null>(null);
   const [isComposing, setIsComposing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showAzureLoginButton, setShowAzureLoginButton] = useState(false);
@@ -202,6 +212,7 @@ export default function Home() {
     agentInstruction.length > 0 ||
     loadedInstructionFileName !== null ||
     instructionFileError !== null;
+  const mcpHistoryByTurnId = buildMcpHistoryByTurnId(mcpRpcHistory);
 
   useEffect(() => {
     endOfMessagesRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -622,7 +633,8 @@ export default function Home() {
       return;
     }
 
-    const userMessage: ChatMessage = createMessage("user", content);
+    const turnId = createId("turn");
+    const userMessage: ChatMessage = createMessage("user", content, turnId);
     const contextWindowSize = contextWindowValidation.value;
     if (contextWindowSize === null) {
       return;
@@ -641,6 +653,7 @@ export default function Home() {
     setShowAzureLoginButton(false);
     setAzureLoginError(null);
     setIsSending(true);
+    setActiveTurnId(turnId);
     setSendProgressMessages(["Preparing request..."]);
 
     try {
@@ -691,7 +704,12 @@ export default function Home() {
             appendProgressMessage(message, setSendProgressMessages);
           },
           onMcpRpcRecord: (entry) => {
-            setMcpRpcHistory((current) => upsertMcpRpcHistoryEntry(current, entry));
+            setMcpRpcHistory((current) =>
+              upsertMcpRpcHistoryEntry(current, {
+                ...entry,
+                turnId,
+              }),
+            );
           },
         });
       } else {
@@ -707,12 +725,13 @@ export default function Home() {
         throw new Error("The server returned an empty message.");
       }
 
-      setMessages((current) => [...current, createMessage("assistant", payload.message!)]);
+      setMessages((current) => [...current, createMessage("assistant", payload.message!, turnId)]);
       setShowAzureLoginButton(false);
     } catch (sendError) {
       setError(sendError instanceof Error ? sendError.message : "Could not reach the server.");
     } finally {
       setIsSending(false);
+      setActiveTurnId(null);
       setSendProgressMessages([]);
     }
   }
@@ -1006,8 +1025,10 @@ export default function Home() {
     }
 
     setMessages(INITIAL_MESSAGES);
+    setMcpRpcHistory([]);
     setDraft("");
     setError(null);
+    setActiveTurnId(null);
     setSendProgressMessages([]);
     setIsComposing(false);
   }
@@ -1075,14 +1096,25 @@ export default function Home() {
           </header>
 
           <div className="chat-log" aria-live="polite">
-            {messages.map((message) => (
-              <article
-                key={message.id}
-                className={`message-row ${message.role === "user" ? "user" : "assistant"}`}
-              >
-                {renderMessageContent(message)}
-              </article>
-            ))}
+            {messages.map((message) => {
+              const turnMcpHistory = mcpHistoryByTurnId.get(message.turnId) ?? [];
+              const shouldRenderTurnMcpLog = message.role === "assistant";
+
+              return (
+                <Fragment key={message.id}>
+                  <article
+                    className={`message-row ${message.role === "user" ? "user" : "assistant"}`}
+                  >
+                    {renderMessageContent(message)}
+                  </article>
+                  {shouldRenderTurnMcpLog ? (
+                    <article className="mcp-turn-log-row">
+                      {renderTurnMcpLog(turnMcpHistory, false)}
+                    </article>
+                  ) : null}
+                </Fragment>
+              );
+            })}
 
             {isSending ? (
               <article className="message-row assistant progress-row">
@@ -1104,61 +1136,16 @@ export default function Home() {
                 </div>
               </article>
             ) : null}
+            {isSending ? (
+              <article className="mcp-turn-log-row">
+                {renderTurnMcpLog(
+                  activeTurnId ? (mcpHistoryByTurnId.get(activeTurnId) ?? []) : [],
+                  true,
+                )}
+              </article>
+            ) : null}
             <div ref={endOfMessagesRef} />
           </div>
-
-          <section className="chat-mcp-log-shell">
-            <details className="chat-mcp-log">
-              <summary>
-                🧩 MCP Operation Log ({mcpRpcHistory.length})
-              </summary>
-              <div className="chat-mcp-log-body">
-                <div className="chat-mcp-log-actions">
-                  <button
-                    type="button"
-                    className="secondary-btn"
-                    onClick={() => setMcpRpcHistory([])}
-                    disabled={isSending || mcpRpcHistory.length === 0}
-                  >
-                    🧹 Clear MCP Log
-                  </button>
-                </div>
-                {mcpRpcHistory.length === 0 ? (
-                  <p className="field-hint">No MCP JSON-RPC operations yet.</p>
-                ) : (
-                  <div className="mcp-history-list">
-                    {mcpRpcHistory.map((entry) => (
-                      <details key={entry.id} className="mcp-history-item">
-                        <summary>
-                          <span className="mcp-history-seq">#{entry.sequence}</span>
-                          <span className="mcp-history-method">{entry.method}</span>
-                          <span className="mcp-history-server">{entry.serverName}</span>
-                          <span className={`mcp-history-state ${entry.isError ? "error" : "ok"}`}>
-                            {entry.isError ? "error" : "ok"}
-                          </span>
-                        </summary>
-                        <div className="mcp-history-body">
-                          <p className="mcp-history-time">
-                            {entry.startedAt}
-                            {" -> "}
-                            {entry.completedAt}
-                          </p>
-                          <p className="mcp-history-label">request</p>
-                          <pre className="json-message mcp-history-json">
-                            {formatJsonForDisplay(entry.request)}
-                          </pre>
-                          <p className="mcp-history-label">response</p>
-                          <pre className="json-message mcp-history-json">
-                            {formatJsonForDisplay(entry.response)}
-                          </pre>
-                        </div>
-                      </details>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </details>
-          </section>
 
           <footer className="chat-footer">
             {error ? (
@@ -1845,6 +1832,7 @@ export function readMcpRpcHistoryEntryFromUnknown(value: unknown): McpRpcHistory
     request: "request" in value ? value.request : null,
     response: "response" in value ? value.response : null,
     isError,
+    turnId: "",
   };
 }
 
@@ -1862,6 +1850,22 @@ export function upsertMcpRpcHistoryEntry(
     return left.sequence - right.sequence;
   });
   return next;
+}
+
+function buildMcpHistoryByTurnId(
+  entries: McpRpcHistoryEntry[],
+): Map<string, McpRpcHistoryEntry[]> {
+  const byTurnId = new Map<string, McpRpcHistoryEntry[]>();
+  for (const entry of entries) {
+    if (!entry.turnId) {
+      continue;
+    }
+
+    const current = byTurnId.get(entry.turnId) ?? [];
+    current.push(entry);
+    byTurnId.set(entry.turnId, current);
+  }
+  return byTurnId;
 }
 
 function appendProgressMessage(
@@ -1891,12 +1895,58 @@ function formatJsonForDisplay(value: unknown): string {
   }
 }
 
-function createMessage(role: ChatRole, content: string): ChatMessage {
+function renderTurnMcpLog(entries: McpRpcHistoryEntry[], isLive: boolean) {
+  return (
+    <details className="mcp-turn-log" open={isLive}>
+      <summary>
+        🧩 MCP Operation Log ({entries.length})
+      </summary>
+      {entries.length === 0 ? (
+        <p className="mcp-turn-log-empty">
+          {isLive ? "Waiting for MCP operations..." : "No MCP operations in this turn."}
+        </p>
+      ) : (
+        <div className="mcp-history-list">
+          {entries.map((entry) => (
+            <details key={entry.id} className="mcp-history-item">
+              <summary>
+                <span className="mcp-history-seq">#{entry.sequence}</span>
+                <span className="mcp-history-method">{entry.method}</span>
+                <span className="mcp-history-server">{entry.serverName}</span>
+                <span className={`mcp-history-state ${entry.isError ? "error" : "ok"}`}>
+                  {entry.isError ? "error" : "ok"}
+                </span>
+              </summary>
+              <div className="mcp-history-body">
+                <p className="mcp-history-time">
+                  {entry.startedAt}
+                  {" -> "}
+                  {entry.completedAt}
+                </p>
+                <p className="mcp-history-label">request</p>
+                <pre className="json-message mcp-history-json">
+                  {formatJsonForDisplay(entry.request)}
+                </pre>
+                <p className="mcp-history-label">response</p>
+                <pre className="json-message mcp-history-json">
+                  {formatJsonForDisplay(entry.response)}
+                </pre>
+              </div>
+            </details>
+          ))}
+        </div>
+      )}
+    </details>
+  );
+}
+
+function createMessage(role: ChatRole, content: string, turnId: string): ChatMessage {
   const randomPart = Math.random().toString(36).slice(2);
   return {
     id: `${role}-${Date.now()}-${randomPart}`,
     role,
     content,
+    turnId,
   };
 }
 

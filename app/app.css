@@ -147,7 +147,7 @@ body {
   width: 100%;
   height: 100%;
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto auto;
+  grid-template-rows: auto minmax(0, 1fr) auto;
   border-radius: 24px;
   border: 1px solid var(--surface-border);
   background: var(--surface);
@@ -376,47 +376,42 @@ body {
   font-weight: 600;
 }
 
-.chat-mcp-log-shell {
-  border-top: 1px solid var(--surface-border);
-  background: rgba(248, 252, 255, 0.72);
-  padding: 0.55rem 1.25rem 0.7rem;
+.mcp-turn-log-row {
+  align-self: stretch;
+  max-width: 100%;
+  padding: 0;
+  background: transparent;
 }
 
-.chat-mcp-log {
+.mcp-turn-log {
   border: 1px solid var(--surface-border);
   border-radius: 10px;
-  background: rgba(255, 255, 255, 0.95);
+  background: rgba(248, 252, 255, 0.9);
 }
 
-.chat-mcp-log > summary {
+.mcp-turn-log > summary {
   cursor: pointer;
-  padding: 0.5rem 0.65rem;
+  padding: 0.48rem 0.62rem;
   font-size: 0.82rem;
   font-weight: 700;
   color: var(--text-main);
 }
 
-.chat-mcp-log[open] > summary {
+.mcp-turn-log[open] > summary {
   border-bottom: 1px solid var(--surface-border);
 }
 
-.chat-mcp-log-body {
-  display: flex;
-  flex-direction: column;
-  gap: 0.45rem;
-  padding: 0.55rem;
+.mcp-turn-log .mcp-history-list {
+  padding: 0.52rem;
   max-height: 260px;
   overflow: auto;
 }
 
-.chat-mcp-log-actions {
-  display: flex;
-  justify-content: flex-end;
-}
-
-.chat-mcp-log-actions .secondary-btn {
-  padding: 0.34rem 0.58rem;
-  font-size: 0.76rem;
+.mcp-turn-log-empty {
+  margin: 0;
+  padding: 0.5rem 0.62rem 0.62rem;
+  font-size: 0.78rem;
+  color: var(--text-subtle);
 }
 
 .mcp-history-list {

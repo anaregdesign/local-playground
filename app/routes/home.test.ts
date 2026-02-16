@@ -145,6 +145,7 @@ describe("readMcpRpcHistoryEntryFromUnknown", () => {
     expect(entry).not.toBeNull();
     expect(entry?.sequence).toBe(2);
     expect(entry?.serverName).toBe("workiq");
+    expect(entry?.turnId).toBe("");
   });
 
   it("rejects invalid entries", () => {
@@ -164,6 +165,7 @@ describe("upsertMcpRpcHistoryEntry", () => {
       request: {},
       response: {},
       isError: false,
+      turnId: "turn-1",
     };
     const second = {
       id: "rpc-0",
@@ -175,6 +177,7 @@ describe("upsertMcpRpcHistoryEntry", () => {
       request: {},
       response: {},
       isError: false,
+      turnId: "turn-1",
     };
 
     const next = upsertMcpRpcHistoryEntry([], first);
