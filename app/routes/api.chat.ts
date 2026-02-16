@@ -60,13 +60,6 @@ const MAX_MCP_STDIO_ARGS = 64;
 const MAX_MCP_STDIO_ENV_VARS = 64;
 const ENV_KEY_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
-const AZURE_OPENAI_BASE_URL =
-  process.env.AZURE_BASE_URL ?? process.env.AZURE_OPENAI_BASE_URL ?? "";
-const AZURE_OPENAI_API_VERSION =
-  (process.env.AZURE_API_VERSION ?? process.env.AZURE_OPENAI_API_VERSION ?? "v1").trim();
-const AZURE_OPENAI_DEPLOYMENT_NAME = (
-  process.env.AZURE_DEPLOYMENT_NAME ?? process.env.AZURE_OPENAI_DEPLOYMENT_NAME ?? ""
-).trim();
 const AZURE_COGNITIVE_SERVICES_SCOPE = "https://cognitiveservices.azure.com/.default";
 const SYSTEM_PROMPT = "You are a concise assistant for a simple chat app.";
 const MAX_AGENT_INSTRUCTION_LENGTH = 4000;
@@ -116,16 +109,14 @@ export async function action({ request }: Route.ActionArgs) {
 
   if (!azureConfig.baseUrl) {
     return Response.json({
-      message:
-        "Azure OpenAI is not configured. Set AZURE_CONNECTION_PROFILES, or AZURE_BASE_URL/AZURE_OPENAI_BASE_URL, then restart the server.",
+      message: "Azure OpenAI base URL is missing.",
       placeholder: true,
     });
   }
   if (!azureConfig.deploymentName) {
     return Response.json(
       {
-        error:
-          "Azure deployment is not configured. Set it in AZURE_CONNECTION_PROFILES, or use AZURE_DEPLOYMENT_NAME (AZURE_OPENAI_DEPLOYMENT_NAME).",
+        error: "Azure deployment name is missing.",
       },
       { status: 400 },
     );
@@ -133,8 +124,7 @@ export async function action({ request }: Route.ActionArgs) {
   if (azureConfig.apiVersion && azureConfig.apiVersion !== "v1") {
     return Response.json(
       {
-        error:
-          "For Azure OpenAI v1 endpoint, set AZURE_API_VERSION (or AZURE_OPENAI_API_VERSION) to `v1`.",
+        error: "Azure OpenAI v1 endpoint requires `apiVersion` to be `v1`.",
       },
       { status: 400 },
     );
@@ -371,23 +361,15 @@ function readAgentInstruction(payload: unknown): string {
 }
 
 function readAzureConfig(payload: unknown): ParseResult<ResolvedAzureConfig> {
-  const defaultBaseUrl = AZURE_OPENAI_BASE_URL.trim();
-  const defaultApiVersion = (AZURE_OPENAI_API_VERSION || "v1").trim() || "v1";
-  const defaultDeploymentName = AZURE_OPENAI_DEPLOYMENT_NAME.trim();
-
-  if (!isRecord(payload) || payload.azureConfig === undefined || payload.azureConfig === null) {
-    return {
-      ok: true,
-      value: {
-        projectName: "",
-        baseUrl: defaultBaseUrl,
-        apiVersion: defaultApiVersion,
-        deploymentName: defaultDeploymentName,
-      },
-    };
+  if (!isRecord(payload)) {
+    return { ok: false, error: "`azureConfig` is required." };
   }
 
   const value = payload.azureConfig;
+  if (value === undefined || value === null) {
+    return { ok: false, error: "`azureConfig` is required." };
+  }
+
   if (!isRecord(value)) {
     return { ok: false, error: "`azureConfig` must be an object." };
   }
@@ -408,22 +390,28 @@ function readAzureConfig(payload: unknown): ParseResult<ResolvedAzureConfig> {
     return { ok: false, error: "`azureConfig.deploymentName` must be a string." };
   }
 
+  const baseUrl = typeof value.baseUrl === "string" ? normalizeAzureOpenAIBaseURL(value.baseUrl) : "";
+  const apiVersion =
+    typeof value.apiVersion === "string" && value.apiVersion.trim()
+      ? value.apiVersion.trim()
+      : "v1";
+  const deploymentName = typeof value.deploymentName === "string" ? value.deploymentName.trim() : "";
+
+  if (!baseUrl) {
+    return { ok: false, error: "`azureConfig.baseUrl` is required." };
+  }
+
+  if (!deploymentName) {
+    return { ok: false, error: "`azureConfig.deploymentName` is required." };
+  }
+
   return {
     ok: true,
     value: {
       projectName: typeof value.projectName === "string" ? value.projectName.trim() : "",
-      baseUrl:
-        typeof value.baseUrl === "string" && value.baseUrl.trim()
-          ? value.baseUrl.trim()
-          : defaultBaseUrl,
-      apiVersion:
-        typeof value.apiVersion === "string" && value.apiVersion.trim()
-          ? value.apiVersion.trim()
-          : defaultApiVersion,
-      deploymentName:
-        typeof value.deploymentName === "string" && value.deploymentName.trim()
-          ? value.deploymentName.trim()
-          : defaultDeploymentName,
+      baseUrl,
+      apiVersion,
+      deploymentName,
     },
   };
 }

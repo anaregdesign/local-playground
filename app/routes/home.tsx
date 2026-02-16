@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from "react";
-import { useLoaderData } from "react-router";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { Route } from "./+types/home";
@@ -31,7 +30,6 @@ type AzureConnectionOption = {
   projectName: string;
   baseUrl: string;
   apiVersion: string;
-  deployments: string[];
 };
 
 type ParseResult<T> = { ok: true; value: T } | { ok: false; error: string };
@@ -62,8 +60,14 @@ type ChatApiResponse = {
   errorCode?: "azure_login_required";
 };
 
-type AzureLoginApiResponse = {
+type AzureActionApiResponse = {
   message?: string;
+  error?: string;
+};
+type AzureConnectionsApiResponse = {
+  projects?: unknown;
+  deployments?: unknown;
+  authRequired?: boolean;
   error?: string;
 };
 
@@ -92,15 +96,6 @@ const MAX_INSTRUCTION_FILE_SIZE_BYTES = 1_000_000;
 const MAX_INSTRUCTION_FILE_SIZE_LABEL = "1MB";
 const ALLOWED_INSTRUCTION_EXTENSIONS = new Set(["md", "txt", "xml", "json"]);
 const DEFAULT_MCP_TRANSPORT: McpTransport = "streamable_http";
-const DEFAULT_AZURE_API_VERSION = "v1";
-const MAX_AZURE_CONNECTIONS = 32;
-const MAX_AZURE_DEPLOYMENTS_PER_CONNECTION = 64;
-
-export function loader({}: Route.LoaderArgs) {
-  return {
-    azureConnections: readAzureConnectionsFromEnvironment(),
-  };
-}
 
 export function meta({}: Route.MetaArgs) {
   return [
@@ -110,15 +105,17 @@ export function meta({}: Route.MetaArgs) {
 }
 
 export default function Home() {
-  const { azureConnections } = useLoaderData<typeof loader>();
+  const [azureConnections, setAzureConnections] = useState<AzureConnectionOption[]>([]);
+  const [azureDeployments, setAzureDeployments] = useState<string[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>(INITIAL_MESSAGES);
   const [draft, setDraft] = useState("");
-  const [selectedAzureConnectionId, setSelectedAzureConnectionId] = useState(
-    azureConnections[0]?.id ?? "",
-  );
-  const [selectedAzureDeploymentName, setSelectedAzureDeploymentName] = useState(
-    azureConnections[0]?.deployments[0] ?? "",
-  );
+  const [selectedAzureConnectionId, setSelectedAzureConnectionId] = useState("");
+  const [selectedAzureDeploymentName, setSelectedAzureDeploymentName] = useState("");
+  const [isLoadingAzureConnections, setIsLoadingAzureConnections] = useState(false);
+  const [isLoadingAzureDeployments, setIsLoadingAzureDeployments] = useState(false);
+  const [azureConnectionError, setAzureConnectionError] = useState<string | null>(null);
+  const [azureDeploymentError, setAzureDeploymentError] = useState<string | null>(null);
+  const [isAzureAuthRequired, setIsAzureAuthRequired] = useState(false);
   const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffort>("none");
   const [agentInstruction, setAgentInstruction] = useState(DEFAULT_AGENT_INSTRUCTION);
   const [loadedInstructionFileName, setLoadedInstructionFileName] = useState<string | null>(null);
@@ -147,8 +144,11 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [showAzureLoginButton, setShowAzureLoginButton] = useState(false);
   const [isStartingAzureLogin, setIsStartingAzureLogin] = useState(false);
+  const [isStartingAzureLogout, setIsStartingAzureLogout] = useState(false);
   const [azureLoginError, setAzureLoginError] = useState<string | null>(null);
+  const [azureLogoutError, setAzureLogoutError] = useState<string | null>(null);
   const endOfMessagesRef = useRef<HTMLDivElement | null>(null);
+  const azureDeploymentRequestSeqRef = useRef(0);
   const contextWindowValidation = validateContextWindowInput(contextWindowInput);
   const temperatureValidation = validateTemperatureInput(temperatureInput);
   const activeAzureConnection =
@@ -162,19 +162,49 @@ export default function Home() {
 
   useEffect(() => {
     void loadSavedMcpServers();
+    void loadAzureConnections();
   }, []);
 
   useEffect(() => {
-    if (!activeAzureConnection) {
-      setSelectedAzureDeploymentName("");
+    if (!isAzureAuthRequired) {
       return;
     }
 
-    setSelectedAzureDeploymentName((current) =>
-      activeAzureConnection.deployments.includes(current)
-        ? current
-        : activeAzureConnection.deployments[0] ?? "",
-    );
+    const refreshConnections = () => {
+      if (typeof document !== "undefined" && document.visibilityState !== "visible") {
+        return;
+      }
+
+      void (async () => {
+        const stillAuthRequired = await loadAzureConnections();
+        if (!stillAuthRequired) {
+          setShowAzureLoginButton(false);
+          setAzureLoginError(null);
+          setError(null);
+        }
+      })();
+    };
+
+    const intervalId = window.setInterval(refreshConnections, 4000);
+    window.addEventListener("focus", refreshConnections);
+    document.addEventListener("visibilitychange", refreshConnections);
+
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", refreshConnections);
+      document.removeEventListener("visibilitychange", refreshConnections);
+    };
+  }, [isAzureAuthRequired]);
+
+  useEffect(() => {
+    if (!activeAzureConnection) {
+      setAzureDeployments([]);
+      setSelectedAzureDeploymentName("");
+      setAzureDeploymentError(null);
+      return;
+    }
+
+    void loadAzureDeployments(activeAzureConnection.id);
   }, [activeAzureConnection]);
 
   async function loadSavedMcpServers() {
@@ -204,6 +234,123 @@ export default function Home() {
       );
     } finally {
       setIsLoadingSavedMcpServers(false);
+    }
+  }
+
+  async function loadAzureConnections(): Promise<boolean> {
+    setIsLoadingAzureConnections(true);
+
+    try {
+      const response = await fetch("/api/azure-connections", {
+        method: "GET",
+      });
+
+      const payload = (await response.json()) as AzureConnectionsApiResponse;
+      if (!response.ok) {
+        const authRequired = payload.authRequired === true || response.status === 401;
+        setIsAzureAuthRequired(authRequired);
+        setAzureConnections([]);
+        setAzureDeployments([]);
+        setSelectedAzureConnectionId("");
+        setSelectedAzureDeploymentName("");
+        setAzureConnectionError(authRequired ? null : payload.error || "Failed to load Azure projects.");
+        setAzureDeploymentError(null);
+        return authRequired;
+      }
+
+      const parsedProjects = readAzureProjectList(payload.projects);
+      setAzureConnections(parsedProjects);
+      setAzureDeployments([]);
+      setIsAzureAuthRequired(payload.authRequired === true ? true : false);
+      setAzureConnectionError(null);
+      setAzureDeploymentError(null);
+      setSelectedAzureConnectionId((current) =>
+        current && parsedProjects.some((connection) => connection.id === current)
+          ? current
+          : parsedProjects[0]?.id ?? "",
+      );
+      return payload.authRequired === true;
+    } catch (loadError) {
+      setIsAzureAuthRequired(false);
+      setAzureConnections([]);
+      setAzureDeployments([]);
+      setSelectedAzureConnectionId("");
+      setSelectedAzureDeploymentName("");
+      setAzureConnectionError(
+        loadError instanceof Error ? loadError.message : "Failed to load Azure projects.",
+      );
+      setAzureDeploymentError(null);
+      return false;
+    } finally {
+      setIsLoadingAzureConnections(false);
+    }
+  }
+
+  async function loadAzureDeployments(projectId: string): Promise<void> {
+    if (!projectId) {
+      setAzureDeployments([]);
+      setSelectedAzureDeploymentName("");
+      setAzureDeploymentError(null);
+      return;
+    }
+
+    const requestSeq = azureDeploymentRequestSeqRef.current + 1;
+    azureDeploymentRequestSeqRef.current = requestSeq;
+    setIsLoadingAzureDeployments(true);
+    setAzureDeploymentError(null);
+
+    try {
+      const response = await fetch(
+        `/api/azure-connections?projectId=${encodeURIComponent(projectId)}`,
+        {
+          method: "GET",
+        },
+      );
+
+      const payload = (await response.json()) as AzureConnectionsApiResponse;
+      if (requestSeq !== azureDeploymentRequestSeqRef.current) {
+        return;
+      }
+
+      if (!response.ok) {
+        const authRequired = payload.authRequired === true || response.status === 401;
+        setIsAzureAuthRequired(authRequired);
+        setAzureDeployments([]);
+        setSelectedAzureDeploymentName("");
+        setAzureDeploymentError(
+          authRequired ? null : payload.error || "Failed to load deployments for the selected project.",
+        );
+        return;
+      }
+
+      const parsedDeployments = readAzureDeploymentList(payload.deployments);
+      setIsAzureAuthRequired(false);
+      setAzureDeployments(parsedDeployments);
+      setSelectedAzureDeploymentName((current) =>
+        parsedDeployments.includes(current) ? current : parsedDeployments[0] ?? "",
+      );
+      setAzureDeploymentError(
+        parsedDeployments.length === 0
+          ? "No Agents SDK-compatible deployments found for this project."
+          : null,
+      );
+    } catch (loadError) {
+      if (requestSeq !== azureDeploymentRequestSeqRef.current) {
+        return;
+      }
+
+      setIsAzureAuthRequired(false);
+      setAzureDeployments([]);
+      setSelectedAzureDeploymentName("");
+      setAzureDeploymentError(
+        loadError instanceof Error
+          ? loadError.message
+          : "Failed to load deployments for the selected project.",
+      );
+    } finally {
+      if (requestSeq === azureDeploymentRequestSeqRef.current) {
+        setIsLoadingAzureDeployments(false);
+      }
     }
   }
 
@@ -257,13 +404,21 @@ export default function Home() {
 
     if (!activeAzureConnection) {
       setError(
-        "Azure connection is not configured. Set AZURE_CONNECTION_PROFILES, or AZURE_BASE_URL and AZURE_DEPLOYMENT_NAME.",
+        isAzureAuthRequired
+          ? "Azure login is required. Click Azure Login and sign in."
+          : "No Azure project is available. Check your Azure account permissions.",
       );
+      setShowAzureLoginButton(isAzureAuthRequired);
       return;
     }
 
     const deploymentName = selectedAzureDeploymentName.trim();
-    if (!deploymentName) {
+    if (isLoadingAzureDeployments) {
+      setError("Deployment list is loading. Please wait.");
+      return;
+    }
+
+    if (!deploymentName || !azureDeployments.includes(deploymentName)) {
       setError("Select an Azure deployment before sending.");
       return;
     }
@@ -353,22 +508,58 @@ export default function Home() {
     setAzureLoginError(null);
     setIsStartingAzureLogin(true);
     try {
+      const stillAuthRequired = await loadAzureConnections();
+      if (!stillAuthRequired) {
+        setShowAzureLoginButton(false);
+        return;
+      }
+
       const response = await fetch("/api/azure-login", {
         method: "POST",
       });
-      const payload = (await response.json()) as AzureLoginApiResponse;
+      const payload = (await response.json()) as AzureActionApiResponse;
       if (!response.ok) {
         throw new Error(payload.error || "Failed to start Azure login.");
       }
 
-      setError(payload.message || "Azure login started. Sign in and retry.");
+      setError(payload.message || "Azure login started. Sign in and reload Azure connections.");
       setShowAzureLoginButton(false);
+      setAzureConnectionError(null);
     } catch (loginError) {
       setAzureLoginError(
         loginError instanceof Error ? loginError.message : "Failed to start Azure login.",
       );
     } finally {
       setIsStartingAzureLogin(false);
+    }
+  }
+
+  async function handleAzureLogout() {
+    if (isStartingAzureLogout) {
+      return;
+    }
+
+    setAzureLogoutError(null);
+    setIsStartingAzureLogout(true);
+    try {
+      const response = await fetch("/api/azure-logout", {
+        method: "POST",
+      });
+      const payload = (await response.json()) as AzureActionApiResponse;
+      if (!response.ok) {
+        throw new Error(payload.error || "Failed to run Azure logout.");
+      }
+
+      setError(payload.message || "Azure logout completed.");
+      setShowAzureLoginButton(false);
+      setAzureDeploymentError(null);
+      await loadAzureConnections();
+    } catch (logoutError) {
+      setAzureLogoutError(
+        logoutError instanceof Error ? logoutError.message : "Failed to run Azure logout.",
+      );
+    } finally {
+      setIsStartingAzureLogout(false);
     }
   }
 
@@ -640,7 +831,7 @@ export default function Home() {
                 {showAzureLoginButton ? (
                   <button
                     type="button"
-                    className="secondary-btn chat-login-btn"
+                    className="secondary-btn azure-login-btn chat-login-btn"
                     onClick={() => {
                       void handleAzureLogin();
                     }}
@@ -672,6 +863,10 @@ export default function Home() {
                 type="submit"
                 disabled={
                   isSending ||
+                  isLoadingAzureConnections ||
+                  isLoadingAzureDeployments ||
+                  !activeAzureConnection ||
+                  !selectedAzureDeploymentName.trim() ||
                   draft.trim().length === 0 ||
                   !contextWindowValidation.isValid ||
                   !temperatureValidation.isValid
@@ -694,59 +889,107 @@ export default function Home() {
                 <h3>Azure Connection</h3>
                 <p>Select project and deployment for chat requests.</p>
               </div>
-              <label className="setting-label" htmlFor="azure-project">
-                Project
-              </label>
-              <select
-                id="azure-project"
-                value={activeAzureConnection?.id ?? ""}
-                onChange={(event) => {
-                  setSelectedAzureConnectionId(event.target.value);
-                  setError(null);
-                }}
-                disabled={isSending || azureConnections.length === 0}
-              >
-                {azureConnections.length === 0 ? (
-                  <option value="">No projects configured</option>
-                ) : null}
-                {azureConnections.map((connection) => (
-                  <option key={connection.id} value={connection.id}>
-                    {connection.projectName}
-                  </option>
-                ))}
-              </select>
-              <label className="setting-label" htmlFor="azure-deployment">
-                Deployment
-              </label>
-              <select
-                id="azure-deployment"
-                value={selectedAzureDeploymentName}
-                onChange={(event) => {
-                  setSelectedAzureDeploymentName(event.target.value);
-                  setError(null);
-                }}
-                disabled={isSending || !activeAzureConnection}
-              >
-                {activeAzureConnection ? (
-                  activeAzureConnection.deployments.map((deployment) => (
-                    <option key={deployment} value={deployment}>
-                      {deployment}
-                    </option>
-                  ))
-                ) : (
-                  <option value="">No deployments configured</option>
-                )}
-              </select>
-              {activeAzureConnection ? (
-                <>
-                  <p className="field-hint">Endpoint: {activeAzureConnection.baseUrl}</p>
-                  <p className="field-hint">API version: {activeAzureConnection.apiVersion}</p>
-                </>
+              {isAzureAuthRequired ? (
+                <button
+                  type="button"
+                  className="secondary-btn azure-login-btn"
+                  onClick={() => {
+                    void handleAzureLogin();
+                  }}
+                  disabled={isSending || isStartingAzureLogin}
+                >
+                  {isStartingAzureLogin ? "Starting Azure Login..." : "Azure Login"}
+                </button>
               ) : (
-                <p className="field-error">
-                  No Azure connection configured. Set AZURE_CONNECTION_PROFILES, or AZURE_BASE_URL
-                  and AZURE_DEPLOYMENT_NAME.
-                </p>
+                <>
+                  <label className="setting-label" htmlFor="azure-project">
+                    Project
+                  </label>
+                  <select
+                    id="azure-project"
+                    value={activeAzureConnection?.id ?? ""}
+                    onChange={(event) => {
+                      setSelectedAzureConnectionId(event.target.value);
+                      setSelectedAzureDeploymentName("");
+                      setAzureDeploymentError(null);
+                      setError(null);
+                    }}
+                    disabled={isSending || isLoadingAzureConnections || azureConnections.length === 0}
+                  >
+                    {azureConnections.length === 0 ? (
+                      <option value="">No projects found</option>
+                    ) : null}
+                    {azureConnections.map((connection) => (
+                      <option key={connection.id} value={connection.id}>
+                        {connection.projectName}
+                      </option>
+                    ))}
+                  </select>
+                  <label className="setting-label" htmlFor="azure-deployment">
+                    Deployment
+                  </label>
+                  <select
+                    id="azure-deployment"
+                    value={selectedAzureDeploymentName}
+                    onChange={(event) => {
+                      setSelectedAzureDeploymentName(event.target.value);
+                      setError(null);
+                    }}
+                    disabled={
+                      isSending ||
+                      isLoadingAzureConnections ||
+                      isLoadingAzureDeployments ||
+                      !activeAzureConnection
+                    }
+                  >
+                    {activeAzureConnection ? (
+                      azureDeployments.length > 0 ? (
+                        azureDeployments.map((deployment) => (
+                          <option key={deployment} value={deployment}>
+                            {deployment}
+                          </option>
+                        ))
+                      ) : (
+                        <option value="">
+                          {isLoadingAzureDeployments ? "Loading deployments..." : "No deployments found"}
+                        </option>
+                      )
+                    ) : (
+                      <option value="">No deployments found</option>
+                    )}
+                  </select>
+                  <div className="azure-connection-actions">
+                    <button
+                      type="button"
+                      className="secondary-btn"
+                      onClick={() => {
+                        void loadAzureConnections();
+                      }}
+                      disabled={isSending || isLoadingAzureConnections || isStartingAzureLogout}
+                    >
+                      {isLoadingAzureConnections ? "Loading..." : "Reload Projects"}
+                    </button>
+                    <button
+                      type="button"
+                      className="secondary-btn azure-logout-btn"
+                      onClick={() => {
+                        void handleAzureLogout();
+                      }}
+                      disabled={isSending || isLoadingAzureConnections || isStartingAzureLogout}
+                    >
+                      {isStartingAzureLogout ? "Logging Out..." : "Logout"}
+                    </button>
+                  </div>
+                  {activeAzureConnection ? (
+                    <>
+                      <p className="field-hint">Endpoint: {activeAzureConnection.baseUrl}</p>
+                      <p className="field-hint">API version: {activeAzureConnection.apiVersion}</p>
+                    </>
+                  ) : null}
+                  {azureDeploymentError ? <p className="field-error">{azureDeploymentError}</p> : null}
+                  {azureLogoutError ? <p className="field-error">{azureLogoutError}</p> : null}
+                  {azureConnectionError ? <p className="field-error">{azureConnectionError}</p> : null}
+                </>
               )}
             </section>
 
@@ -1128,118 +1371,57 @@ function validateTemperatureInput(input: string): {
   };
 }
 
-function readAzureConnectionsFromEnvironment(): AzureConnectionOption[] {
-  const fromProfiles = parseAzureConnectionProfiles(process.env.AZURE_CONNECTION_PROFILES);
-  if (fromProfiles.length > 0) {
-    return fromProfiles;
+function readAzureProjectList(value: unknown): AzureConnectionOption[] {
+  if (!Array.isArray(value)) {
+    return [];
   }
 
-  const baseUrl = normalizeAzureOpenAIBaseURL(
-    process.env.AZURE_BASE_URL ?? process.env.AZURE_OPENAI_BASE_URL ?? "",
+  const projects: AzureConnectionOption[] = [];
+  for (const entry of value) {
+    const project = readAzureProjectFromUnknown(entry);
+    if (!project) {
+      continue;
+    }
+
+    projects.push(project);
+  }
+
+  return projects;
+}
+
+function readAzureProjectFromUnknown(value: unknown): AzureConnectionOption | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const id = typeof value.id === "string" ? value.id.trim() : "";
+  const projectName = typeof value.projectName === "string" ? value.projectName.trim() : "";
+  const baseUrl = typeof value.baseUrl === "string" ? value.baseUrl.trim() : "";
+  const apiVersion = typeof value.apiVersion === "string" ? value.apiVersion.trim() : "";
+
+  if (!id || !projectName || !baseUrl || !apiVersion) {
+    return null;
+  }
+
+  return {
+    id,
+    projectName,
+    baseUrl,
+    apiVersion,
+  };
+}
+
+function readAzureDeploymentList(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return uniqueStringsCaseInsensitive(
+    value
+      .filter((entry): entry is string => typeof entry === "string")
+      .map((entry) => entry.trim())
+      .filter(Boolean),
   );
-  const deploymentName = (
-    process.env.AZURE_DEPLOYMENT_NAME ?? process.env.AZURE_OPENAI_DEPLOYMENT_NAME ?? ""
-  ).trim();
-  if (!baseUrl || !deploymentName) {
-    return [];
-  }
-
-  const apiVersion = (
-    process.env.AZURE_API_VERSION ??
-    process.env.AZURE_OPENAI_API_VERSION ??
-    DEFAULT_AZURE_API_VERSION
-  ).trim() || DEFAULT_AZURE_API_VERSION;
-
-  const configuredProjectName = (
-    process.env.AZURE_PROJECT_NAME ?? process.env.AZURE_OPENAI_PROJECT_NAME ?? ""
-  ).trim();
-  const projectName = configuredProjectName || deriveProjectNameFromBaseURL(baseUrl);
-
-  return [
-    {
-      id: "default-project",
-      projectName,
-      baseUrl,
-      apiVersion,
-      deployments: [deploymentName],
-    },
-  ];
-}
-
-function parseAzureConnectionProfiles(rawValue: string | undefined): AzureConnectionOption[] {
-  const trimmed = rawValue?.trim() ?? "";
-  if (!trimmed) {
-    return [];
-  }
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(trimmed);
-  } catch {
-    return [];
-  }
-
-  if (!Array.isArray(parsed)) {
-    return [];
-  }
-
-  const profiles: AzureConnectionOption[] = [];
-  const usedIds = new Set<string>();
-
-  for (const [index, entry] of parsed.entries()) {
-    if (!isRecord(entry)) {
-      continue;
-    }
-
-    const baseUrl = normalizeAzureOpenAIBaseURL(
-      typeof entry.baseUrl === "string" ? entry.baseUrl : "",
-    );
-    if (!baseUrl) {
-      continue;
-    }
-
-    const rawProjectName = typeof entry.projectName === "string" ? entry.projectName.trim() : "";
-    const projectName = rawProjectName || deriveProjectNameFromBaseURL(baseUrl);
-    const apiVersion =
-      typeof entry.apiVersion === "string" && entry.apiVersion.trim()
-        ? entry.apiVersion.trim()
-        : DEFAULT_AZURE_API_VERSION;
-    const deployments = uniqueStringsCaseInsensitive(
-      [
-        ...readDeploymentsFromProfile(entry),
-        ...(typeof entry.deploymentName === "string" ? [entry.deploymentName.trim()] : []),
-      ].filter(Boolean),
-    ).slice(0, MAX_AZURE_DEPLOYMENTS_PER_CONNECTION);
-
-    if (deployments.length === 0) {
-      continue;
-    }
-
-    profiles.push({
-      id: createUniqueAzureConnectionId(projectName, index, usedIds),
-      projectName,
-      baseUrl,
-      apiVersion,
-      deployments,
-    });
-
-    if (profiles.length >= MAX_AZURE_CONNECTIONS) {
-      break;
-    }
-  }
-
-  return profiles;
-}
-
-function readDeploymentsFromProfile(profile: Record<string, unknown>): string[] {
-  if (!Array.isArray(profile.deployments)) {
-    return [];
-  }
-
-  return profile.deployments
-    .filter((deployment): deployment is string => typeof deployment === "string")
-    .map((deployment) => deployment.trim())
-    .filter(Boolean);
 }
 
 function uniqueStringsCaseInsensitive(values: string[]): string[] {
@@ -1256,56 +1438,6 @@ function uniqueStringsCaseInsensitive(values: string[]): string[] {
   }
 
   return unique;
-}
-
-function createUniqueAzureConnectionId(
-  projectName: string,
-  index: number,
-  usedIds: Set<string>,
-): string {
-  const normalizedBaseId = (
-    projectName
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-+|-+$/g, "") || `project-${index + 1}`
-  ).slice(0, 48);
-
-  let candidate = normalizedBaseId;
-  let suffix = 2;
-  while (usedIds.has(candidate)) {
-    candidate = `${normalizedBaseId}-${suffix}`;
-    suffix += 1;
-  }
-
-  usedIds.add(candidate);
-  return candidate;
-}
-
-function deriveProjectNameFromBaseURL(baseUrl: string): string {
-  try {
-    const hostname = new URL(baseUrl).hostname.trim();
-    if (!hostname) {
-      return "default-project";
-    }
-
-    const firstSegment = hostname.split(".")[0];
-    return firstSegment || "default-project";
-  } catch {
-    return "default-project";
-  }
-}
-
-function normalizeAzureOpenAIBaseURL(rawValue: string): string {
-  const trimmed = rawValue.trim().replace(/\/+$/, "");
-  if (!trimmed) {
-    return "";
-  }
-
-  if (/\/openai\/v1$/i.test(trimmed)) {
-    return `${trimmed}/`;
-  }
-
-  return `${trimmed}/openai/v1/`;
 }
 
 function buildMcpServerKey(server: McpServerConfig): string {

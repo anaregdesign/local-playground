@@ -395,6 +395,16 @@ body {
   font-weight: 600;
 }
 
+.azure-connection-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.azure-connection-actions .secondary-btn {
+  width: 100%;
+}
+
 .setting-group select,
 .setting-group input[type="text"],
 .setting-group textarea {
@@ -506,6 +516,26 @@ body {
 .secondary-btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+.azure-login-btn {
+  border-color: #8bb6cf;
+  background: #eaf4fb;
+  color: #1f4e67;
+}
+
+.azure-login-btn:hover:enabled {
+  background: #dcecf7;
+}
+
+.azure-logout-btn {
+  border-color: rgba(168, 57, 57, 0.35);
+  background: #fff3f3;
+  color: #8f2e2e;
+}
+
+.azure-logout-btn:hover:enabled {
+  background: #ffe7e7;
 }
 
 .mcp-list {
