@@ -1,26 +1,74 @@
 # Local Playground
 
-Local Playground is a desktop-first playground UI for Azure OpenAI using Agents SDK.
+`Local Playground` is a desktop-first local playground app built with Azure OpenAI and the Agents SDK.  
+It is designed as a practical testing workbench, not just a basic chat UI, so you can validate Azure connectivity, agent behavior, and MCP integrations in one place.
 
-## Naming
+## What This Application Is
 
-- Application name: `Local Playground`
-- Package name: `local-playground`
-- Recommended repository name: `local-playground`
+This application is a development and validation workbench for:
 
-## Features
+- Azure OpenAI connectivity using `DefaultAzureCredential`
+- Dynamic discovery of Azure projects and deployments
+- Conversation execution through the Agents SDK
+- Runtime tuning (`reasoning effort`, `temperature`, `context window`)
+- Agent Instruction editing and file-based loading
+- MCP server integration (`streamable_http`, `sse`, `stdio`) with reusable profiles
 
-- Tab-based UI: `Playground`, `Settings`, `MCP Servers`
-- Azure authentication with `DefaultAzureCredential`
-- Dynamic Azure project discovery and deployment reload per selected project
-- Agents SDK chat execution via `@openai/agents` and `@openai/agents-openai`
-- Azure OpenAI v1 endpoint (`.../openai/v1/`)
-- MCP server management (HTTP/SSE/stdio), with saved profiles in `~/.mcp/mcp-servers.json`
-- Markdown rendering and JSON syntax highlighting for assistant responses
+## Screenshot
 
-## Getting Started
+![Local Playground desktop UI](docs/images/local-playground-desktop.png)
 
-### 1. Install
+_Desktop UI: switch between Playground, Settings, and MCP Servers tabs to manage connection settings and conversations._
+
+## Screen Layout
+
+### 1. Playground
+
+- View conversation history, type, and send messages
+- Markdown rendering for assistant responses
+- JSON syntax highlighting when responses are JSON
+- Thread reset
+
+### 2. Settings
+
+- Azure Connection (project / deployment selection)
+- Azure Login / Logout actions
+- Agent Instruction editing + file loading (`.md/.txt/.xml/.json`, up to 1MB)
+- Reasoning Effort / Temperature / Context Window controls
+
+### 3. MCP Servers
+
+- Add MCP servers
+- Re-add servers from Saved Configs
+- Review and remove Added Servers
+- Persistent config path: `~/.mcp/mcp-servers.json`
+
+## Core Specifications
+
+- App name: `Local Playground`
+- npm package name: `local-playground`
+- Azure auth: `DefaultAzureCredential`
+- Azure endpoint format: v1 (`.../openai/v1/`)
+- Runtime stack: React Router + TypeScript
+- Agent runtime: `@openai/agents` + `@openai/agents-openai`
+
+## Connection Flow
+
+1. Authenticate to Azure using `DefaultAzureCredential`
+2. Discover accessible Azure OpenAI projects from ARM
+3. Reload deployments for the selected project
+4. Execute conversation with Agents SDK using the selected deployment
+5. Optionally connect MCP servers to extend tool capabilities
+
+## Login-State Behavior
+
+- Playground is locked while logged out
+- Run Azure Login in Settings to unlock usage
+- Right after sign-in, the Playground tab is visually highlighted for easier navigation
+
+## Setup
+
+### 1. Install Dependencies
 
 ```bash
 npm install
@@ -28,28 +76,24 @@ npm install
 
 ### 2. Sign in to Azure
 
-Use Azure CLI login in your environment:
-
 ```bash
 az login
 ```
 
-The app uses `DefaultAzureCredential`. Azure project/deployment values are discovered dynamically from ARM and selected in `Settings`.
-
-### 3. Start Development Server
+### 3. Start the Development Server
 
 ```bash
 npm run dev
 ```
 
-Open `http://localhost:5173`.
+The app is typically available at `http://localhost:5173`.
 
 ## Scripts
 
-- `npm run dev` - start development server
-- `npm run build` - create production build
-- `npm run start` - run production server
-- `npm run typecheck` - run TypeScript checks
+- `npm run dev`: start dev server
+- `npm run build`: build for production
+- `npm run start`: start production server
+- `npm run typecheck`: run TypeScript checks
 
 ## API Endpoints
 
