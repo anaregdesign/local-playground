@@ -90,13 +90,7 @@ type McpServersApiResponse = {
   error?: string;
 };
 
-const INITIAL_MESSAGES: ChatMessage[] = [
-  {
-    id: "welcome",
-    role: "assistant",
-    content: "Hello. Ask me anything.",
-  },
-];
+const INITIAL_MESSAGES: ChatMessage[] = [];
 const DEFAULT_CONTEXT_WINDOW_SIZE = 10;
 const MIN_CONTEXT_WINDOW_SIZE = 1;
 const MAX_CONTEXT_WINDOW_SIZE = 200;
