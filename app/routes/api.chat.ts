@@ -280,36 +280,86 @@ async function executeChat(
         isMcp: true,
       });
 
-      const server = await createMcpServer(serverConfig, {
-        getAzureAuthorizationToken: (scope) => {
-          const normalizedScope = scope.trim();
-          const current = azureMcpAuthorizationTokenPromiseByScope.get(normalizedScope);
-          if (current) {
-            return current;
-          }
+      const connectSequence = (() => {
+        mcpRpcSequence += 1;
+        return mcpRpcSequence;
+      })();
+      const connectRequestId = buildMcpRpcRequestId(serverConfig.name, connectSequence);
+      const connectStartedAt = new Date().toISOString();
+      const connectRequest: JsonRpcRequestPayload = {
+        jsonrpc: "2.0",
+        id: connectRequestId,
+        method: "server/connect",
+        params: buildMcpConnectParams(serverConfig),
+      };
 
-          const created = getAzureMcpAuthorizationToken(normalizedScope);
-          azureMcpAuthorizationTokenPromiseByScope.set(normalizedScope, created);
-          return created;
-        },
-      });
-      const instrumentedServer = instrumentMcpServer(server, {
-        nextSequence: () => {
-          mcpRpcSequence += 1;
-          return mcpRpcSequence;
-        },
-        onRecord: emitMcpRpcRecord,
-      });
-
+      let instrumentedServer: MCPServer;
       try {
+        const server = await createMcpServer(serverConfig, {
+          getAzureAuthorizationToken: (scope) => {
+            const normalizedScope = scope.trim();
+            const current = azureMcpAuthorizationTokenPromiseByScope.get(normalizedScope);
+            if (current) {
+              return current;
+            }
+
+            const created = getAzureMcpAuthorizationToken(normalizedScope);
+            azureMcpAuthorizationTokenPromiseByScope.set(normalizedScope, created);
+            return created;
+          },
+        });
+        instrumentedServer = instrumentMcpServer(server, {
+          nextSequence: () => {
+            mcpRpcSequence += 1;
+            return mcpRpcSequence;
+          },
+          onRecord: emitMcpRpcRecord,
+        });
+
         await instrumentedServer.connect();
       } catch (error) {
+        const connectResponse: JsonRpcResponsePayload = {
+          jsonrpc: "2.0",
+          id: connectRequestId,
+          error: {
+            message: readErrorMessage(error),
+          },
+        };
+        emitMcpRpcRecord({
+          id: connectRequestId,
+          sequence: connectSequence,
+          serverName: serverConfig.name,
+          method: "server/connect",
+          startedAt: connectStartedAt,
+          completedAt: new Date().toISOString(),
+          request: connectRequest,
+          response: connectResponse,
+          isError: true,
+        });
         throw new Error(
           `Failed to connect MCP server "${serverConfig.name}" (${describeMcpServer(serverConfig)}): ${readErrorMessage(error)}`,
         );
       }
 
       connectedMcpServers.push(instrumentedServer);
+      const connectResponse: JsonRpcResponsePayload = {
+        jsonrpc: "2.0",
+        id: connectRequestId,
+        result: {
+          status: "connected",
+        },
+      };
+      emitMcpRpcRecord({
+        id: connectRequestId,
+        sequence: connectSequence,
+        serverName: serverConfig.name,
+        method: "server/connect",
+        startedAt: connectStartedAt,
+        completedAt: new Date().toISOString(),
+        request: connectRequest,
+        response: connectResponse,
+        isError: false,
+      });
       emitProgress({
         message: `Connected MCP server: ${serverConfig.name}`,
         isMcp: true,
@@ -850,6 +900,7 @@ async function createMcpServer(
       url: config.url,
       clientSessionTimeoutSeconds: config.timeoutSeconds,
       timeout: config.timeoutSeconds * 1000,
+      fetch: fetchWithMcpMetaNormalization,
       requestInit: {
         headers,
       },
@@ -861,10 +912,231 @@ async function createMcpServer(
     url: config.url,
     clientSessionTimeoutSeconds: config.timeoutSeconds,
     timeout: config.timeoutSeconds * 1000,
+    fetch: fetchWithMcpMetaNormalization,
     requestInit: {
       headers,
     },
   });
+}
+
+async function fetchWithMcpMetaNormalization(
+  input: string | URL | Request,
+  init?: RequestInit,
+): Promise<Response> {
+  const response = await fetch(input, init);
+  const contentType = (response.headers.get("content-type") ?? "").toLowerCase();
+  if (!contentType.includes("application/json")) {
+    return response;
+  }
+
+  let parsedBody: unknown;
+  try {
+    parsedBody = await response.clone().json();
+  } catch {
+    return response;
+  }
+
+  const normalizedMetaBody = normalizeMcpMetaNulls(parsedBody);
+  const normalizedInitializeBody = normalizeMcpInitializeNullOptionals(normalizedMetaBody.value);
+  const normalizedToolsBody = normalizeMcpListToolsNullOptionals(normalizedInitializeBody.value);
+  if (!normalizedMetaBody.changed && !normalizedInitializeBody.changed && !normalizedToolsBody.changed) {
+    return response;
+  }
+
+  const headers = new Headers(response.headers);
+  headers.delete("content-length");
+  return new Response(JSON.stringify(normalizedToolsBody.value), {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
+
+function normalizeMcpMetaNulls(value: unknown): {
+  value: unknown;
+  changed: boolean;
+} {
+  if (Array.isArray(value)) {
+    let changed = false;
+    const normalizedArray = value.map((entry) => {
+      const normalized = normalizeMcpMetaNulls(entry);
+      if (normalized.changed) {
+        changed = true;
+      }
+      return normalized.value;
+    });
+
+    return changed ? { value: normalizedArray, changed: true } : { value, changed: false };
+  }
+
+  if (!isRecord(value)) {
+    return { value, changed: false };
+  }
+
+  let changed = false;
+  const normalizedObject: Record<string, unknown> = {};
+  for (const [key, rawEntryValue] of Object.entries(value)) {
+    if (key === "_meta" && rawEntryValue === null) {
+      normalizedObject[key] = {};
+      changed = true;
+      continue;
+    }
+
+    const normalizedEntry = normalizeMcpMetaNulls(rawEntryValue);
+    normalizedObject[key] = normalizedEntry.value;
+    if (normalizedEntry.changed) {
+      changed = true;
+    }
+  }
+
+  return changed ? { value: normalizedObject, changed: true } : { value, changed: false };
+}
+
+function normalizeMcpInitializeNullOptionals(value: unknown): {
+  value: unknown;
+  changed: boolean;
+} {
+  if (Array.isArray(value)) {
+    let changed = false;
+    const normalizedArray = value.map((entry) => {
+      const normalized = normalizeMcpInitializeNullOptionals(entry);
+      if (normalized.changed) {
+        changed = true;
+      }
+      return normalized.value;
+    });
+
+    return changed ? { value: normalizedArray, changed: true } : { value, changed: false };
+  }
+
+  if (!isRecord(value)) {
+    return { value, changed: false };
+  }
+
+  const resultValue = value.result;
+  if (!isRecord(resultValue) || !looksLikeInitializeResult(resultValue)) {
+    return { value, changed: false };
+  }
+
+  const normalizedResult = stripNullFieldsRecursively(resultValue);
+  if (!normalizedResult.changed) {
+    return { value, changed: false };
+  }
+
+  return {
+    value: {
+      ...value,
+      result: normalizedResult.value,
+    },
+    changed: true,
+  };
+}
+
+function normalizeMcpListToolsNullOptionals(value: unknown): {
+  value: unknown;
+  changed: boolean;
+} {
+  if (Array.isArray(value)) {
+    let changed = false;
+    const normalizedArray = value.map((entry) => {
+      const normalized = normalizeMcpListToolsNullOptionals(entry);
+      if (normalized.changed) {
+        changed = true;
+      }
+      return normalized.value;
+    });
+
+    return changed ? { value: normalizedArray, changed: true } : { value, changed: false };
+  }
+
+  if (!isRecord(value)) {
+    return { value, changed: false };
+  }
+
+  const resultValue = value.result;
+  if (!isRecord(resultValue) || !Array.isArray(resultValue.tools)) {
+    return { value, changed: false };
+  }
+
+  let changed = false;
+  const normalizedTools = resultValue.tools.map((tool) => {
+    if (!isRecord(tool)) {
+      return tool;
+    }
+
+    const normalizedTool = stripNullFieldsRecursively(tool);
+    if (normalizedTool.changed) {
+      changed = true;
+    }
+    return normalizedTool.value;
+  });
+
+  if (!changed) {
+    return { value, changed: false };
+  }
+
+  return {
+    value: {
+      ...value,
+      result: {
+        ...resultValue,
+        tools: normalizedTools,
+      },
+    },
+    changed: true,
+  };
+}
+
+function looksLikeInitializeResult(value: Record<string, unknown>): boolean {
+  const hasProtocolVersion = typeof value.protocolVersion === "string";
+  const hasCapabilities = "capabilities" in value;
+  const hasServerInfo = "serverInfo" in value;
+  return hasProtocolVersion || (hasCapabilities && hasServerInfo);
+}
+
+function stripNullFieldsRecursively(value: unknown): {
+  value: unknown;
+  changed: boolean;
+} {
+  if (Array.isArray(value)) {
+    let changed = false;
+    const normalizedArray: unknown[] = [];
+    for (const entry of value) {
+      if (entry === null) {
+        changed = true;
+        continue;
+      }
+
+      const normalizedEntry = stripNullFieldsRecursively(entry);
+      if (normalizedEntry.changed) {
+        changed = true;
+      }
+      normalizedArray.push(normalizedEntry.value);
+    }
+
+    return changed ? { value: normalizedArray, changed: true } : { value, changed: false };
+  }
+
+  if (!isRecord(value)) {
+    return { value, changed: false };
+  }
+
+  let changed = false;
+  const normalizedObject: Record<string, unknown> = {};
+  for (const [key, entryValue] of Object.entries(value)) {
+    if (entryValue === null) {
+      changed = true;
+      continue;
+    }
+
+    const normalizedEntry = stripNullFieldsRecursively(entryValue);
+    if (normalizedEntry.changed) {
+      changed = true;
+    }
+    normalizedObject[key] = normalizedEntry.value;
+  }
+
+  return changed ? { value: normalizedObject, changed: true } : { value, changed: false };
 }
 
 function instrumentMcpServer(
@@ -1003,6 +1275,27 @@ function instrumentMcpServer(
 function buildMcpRpcRequestId(serverName: string, sequence: number): string {
   const normalizedName = serverName.trim().toLowerCase().replace(/[^a-z0-9_-]+/g, "-") || "mcp";
   return `${normalizedName}-${Date.now()}-${sequence}`;
+}
+
+function buildMcpConnectParams(serverConfig: ClientMcpServerConfig): Record<string, unknown> {
+  if (serverConfig.transport === "stdio") {
+    return {
+      transport: "stdio",
+      command: serverConfig.command,
+      args: serverConfig.args,
+      cwd: serverConfig.cwd ?? "",
+      envKeys: Object.keys(serverConfig.env).sort((left, right) => left.localeCompare(right)),
+    };
+  }
+
+  return {
+    transport: serverConfig.transport,
+    url: serverConfig.url,
+    headerKeys: Object.keys(serverConfig.headers).sort((left, right) => left.localeCompare(right)),
+    useAzureAuth: serverConfig.useAzureAuth,
+    azureAuthScope: serverConfig.azureAuthScope,
+    timeoutSeconds: serverConfig.timeoutSeconds,
+  };
 }
 
 function toSerializableValue(value: unknown): unknown {

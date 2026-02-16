@@ -210,6 +210,7 @@ export default function Home() {
   const [isSending, setIsSending] = useState(false);
   const [sendProgressMessages, setSendProgressMessages] = useState<string[]>([]);
   const [activeTurnId, setActiveTurnId] = useState<string | null>(null);
+  const [lastErrorTurnId, setLastErrorTurnId] = useState<string | null>(null);
   const [isComposing, setIsComposing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showAzureLoginButton, setShowAzureLoginButton] = useState(false);
@@ -234,6 +235,7 @@ export default function Home() {
     loadedInstructionFileName !== null ||
     instructionFileError !== null;
   const mcpHistoryByTurnId = buildMcpHistoryByTurnId(mcpRpcHistory);
+  const errorTurnMcpHistory = lastErrorTurnId ? (mcpHistoryByTurnId.get(lastErrorTurnId) ?? []) : [];
 
   useEffect(() => {
     endOfMessagesRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -673,6 +675,7 @@ export default function Home() {
     setError(null);
     setShowAzureLoginButton(false);
     setAzureLoginError(null);
+    setLastErrorTurnId(null);
     setIsSending(true);
     setActiveTurnId(turnId);
     setSendProgressMessages(["Preparing request..."]);
@@ -752,7 +755,9 @@ export default function Home() {
 
       setMessages((current) => [...current, createMessage("assistant", payload.message!, turnId)]);
       setShowAzureLoginButton(false);
+      setLastErrorTurnId(null);
     } catch (sendError) {
+      setLastErrorTurnId(turnId);
       setError(sendError instanceof Error ? sendError.message : "Could not reach the server.");
     } finally {
       setIsSending(false);
@@ -1099,6 +1104,7 @@ export default function Home() {
     setDraft("");
     setError(null);
     setActiveTurnId(null);
+    setLastErrorTurnId(null);
     setSendProgressMessages([]);
     setIsComposing(false);
   }
@@ -1212,6 +1218,11 @@ export default function Home() {
                   activeTurnId ? (mcpHistoryByTurnId.get(activeTurnId) ?? []) : [],
                   true,
                 )}
+              </article>
+            ) : null}
+            {!isSending && errorTurnMcpHistory.length > 0 ? (
+              <article className="mcp-turn-log-row">
+                {renderTurnMcpLog(errorTurnMcpHistory, false)}
               </article>
             ) : null}
             <div ref={endOfMessagesRef} />
