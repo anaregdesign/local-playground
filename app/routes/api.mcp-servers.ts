@@ -33,7 +33,7 @@ const MAX_MCP_SERVER_NAME_LENGTH = 80;
 const MAX_MCP_STDIO_ARGS = 64;
 const MAX_MCP_STDIO_ENV_VARS = 64;
 const ENV_KEY_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
-const MCP_CONFIG_DIRECTORY = path.join(homedir(), ".mcp");
+const MCP_CONFIG_DIRECTORY = path.join(homedir(), ".foundry_local_playground");
 const MCP_CONFIG_FILE_PATH = path.join(MCP_CONFIG_DIRECTORY, "mcp-servers.json");
 
 export async function loader({ request }: Route.LoaderArgs) {

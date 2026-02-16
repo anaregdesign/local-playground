@@ -40,7 +40,7 @@
 ## MCP Server Management
 
 - Support transports: `streamable_http`, `sse`, `stdio`.
-- Persist saved MCP profiles in `~/.mcp/mcp-servers.json`.
+- Persist saved MCP profiles in `~/.foundry_local_playground/mcp-servers.json`.
 - Allow re-adding saved servers by selection.
 - Detect duplicate configurations when saving; reuse existing config and return a warning (including rename behavior when name differs).
 

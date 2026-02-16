@@ -41,7 +41,7 @@ _Desktop UI: switch between Playground, Settings, and MCP Servers tabs to manage
 - Add MCP servers
 - Re-add servers from Saved Configs
 - Review and remove Added Servers
-- Persistent config path: `~/.mcp/mcp-servers.json`
+- Persistent config path: `~/.foundry_local_playground/mcp-servers.json`
 
 ## Core Specifications
 
