@@ -265,6 +265,7 @@ export default function Home() {
     loadedInstructionFileName !== null ||
     instructionFileError !== null;
   const mcpHistoryByTurnId = buildMcpHistoryByTurnId(mcpRpcHistory);
+  const activeTurnMcpHistory = activeTurnId ? (mcpHistoryByTurnId.get(activeTurnId) ?? []) : [];
   const errorTurnMcpHistory = lastErrorTurnId ? (mcpHistoryByTurnId.get(lastErrorTurnId) ?? []) : [];
 
   useEffect(() => {
@@ -1214,7 +1215,8 @@ export default function Home() {
           <div className="chat-log" aria-live="polite">
             {messages.map((message) => {
               const turnMcpHistory = mcpHistoryByTurnId.get(message.turnId) ?? [];
-              const shouldRenderTurnMcpLog = message.role === "assistant";
+              const shouldRenderTurnMcpLog =
+                message.role === "assistant" && turnMcpHistory.length > 0;
 
               return (
                 <Fragment key={message.id}>
@@ -1272,10 +1274,10 @@ export default function Home() {
                 </div>
               </article>
             ) : null}
-            {isSending ? (
+            {isSending && activeTurnMcpHistory.length > 0 ? (
               <article className="mcp-turn-log-row">
                 {renderTurnMcpLog(
-                  activeTurnId ? (mcpHistoryByTurnId.get(activeTurnId) ?? []) : [],
+                  activeTurnMcpHistory,
                   true,
                   (text) => {
                     void copyTextToClipboard(text).catch(() => {
@@ -1672,7 +1674,7 @@ export default function Home() {
               <div className="setting-group-header">
                 <h3>Saved Configs 💾</h3>
               </div>
-              <Field label="Saved config">
+              <Field label="💾 Saved config">
                 <Select
                   id="mcp-saved-config"
                   value={selectedSavedMcpServerId}
@@ -1728,7 +1730,7 @@ export default function Home() {
               <div className="setting-group-header">
                 <h3>Add MCP Server ➕</h3>
               </div>
-              <Field label="Server name (optional)">
+              <Field label="🏷️ Server name (optional)">
                 <Input
                   id="mcp-server-name"
                   placeholder="Server name (optional)"
@@ -1737,7 +1739,7 @@ export default function Home() {
                   disabled={isSending}
                 />
               </Field>
-              <Field label="Transport">
+              <Field label="🚚 Transport">
                 <Select
                   id="mcp-transport"
                   value={mcpTransport}
@@ -1754,7 +1756,7 @@ export default function Home() {
               </Field>
               {mcpTransport === "stdio" ? (
                 <>
-                  <Field label="Command">
+                  <Field label="⚙️ Command">
                     <Input
                       id="mcp-command"
                       placeholder="Command (e.g. npx)"
@@ -1763,7 +1765,7 @@ export default function Home() {
                       disabled={isSending}
                     />
                   </Field>
-                  <Field label="Arguments">
+                  <Field label="🧩 Arguments">
                     <Input
                       id="mcp-args"
                       placeholder='Args (space-separated or JSON array)'
@@ -1772,7 +1774,7 @@ export default function Home() {
                       disabled={isSending}
                     />
                   </Field>
-                  <Field label="Working directory (optional)">
+                  <Field label="📂 Working directory (optional)">
                     <Input
                       id="mcp-cwd"
                       placeholder="Working directory (optional)"
@@ -1781,7 +1783,7 @@ export default function Home() {
                       disabled={isSending}
                     />
                   </Field>
-                  <Field label="Environment variables (optional)">
+                  <Field label="🌿 Environment variables (optional)">
                     <Textarea
                       id="mcp-env"
                       rows={3}
@@ -1794,7 +1796,7 @@ export default function Home() {
                 </>
               ) : (
                 <>
-                  <Field label="Endpoint URL">
+                  <Field label="🔗 Endpoint URL">
                     <Input
                       id="mcp-url"
                       placeholder="https://example.com/mcp"
@@ -1803,7 +1805,7 @@ export default function Home() {
                       disabled={isSending}
                     />
                   </Field>
-                  <Field label="Additional HTTP headers (optional)">
+                  <Field label="🧾 Additional HTTP headers (optional)">
                     <Textarea
                       id="mcp-headers"
                       rows={3}
@@ -1813,7 +1815,7 @@ export default function Home() {
                       disabled={isSending}
                     />
                   </Field>
-                  <Field label="Azure authentication">
+                  <Field label="🔐 Azure authentication">
                     <div className="field-with-info">
                       <Checkbox
                         className="field-checkbox"
@@ -1873,7 +1875,7 @@ export default function Home() {
                     </div>
                   </Field>
                   {mcpUseAzureAuthInput ? (
-                    <Field label="Token scope">
+                    <Field label="🎯 Token scope">
                       <Input
                         id="mcp-azure-auth-scope"
                         placeholder={DEFAULT_MCP_AZURE_AUTH_SCOPE}
@@ -1883,7 +1885,7 @@ export default function Home() {
                       />
                     </Field>
                   ) : null}
-                  <Field label="Timeout (seconds)">
+                  <Field label="⏱️ Timeout (seconds)">
                     <Input
                       id="mcp-timeout-seconds"
                       placeholder={String(DEFAULT_MCP_TIMEOUT_SECONDS)}
@@ -2223,7 +2225,7 @@ function renderTurnMcpLog(
   onCopyText: (text: string) => void,
 ) {
   return (
-    <details className="mcp-turn-log" open={isLive}>
+    <details className="mcp-turn-log">
       <summary>
         <span>🧩 MCP Operation Log ({entries.length})</span>
         <Button
