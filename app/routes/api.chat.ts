@@ -48,6 +48,78 @@ type UpstreamErrorPayload = {
   error: string;
   errorCode?: "azure_login_required";
 };
+type ChatExecutionOptions = {
+  message: string;
+  history: ClientMessage[];
+  reasoningEffort: ReasoningEffort;
+  temperature: number | null;
+  agentInstruction: string;
+  azureConfig: ResolvedAzureConfig;
+  mcpServers: ClientMcpServerConfig[];
+};
+type JsonRpcRequestPayload = {
+  jsonrpc: "2.0";
+  id: string;
+  method: string;
+  params: Record<string, unknown>;
+};
+type JsonRpcResponsePayload =
+  | {
+      jsonrpc: "2.0";
+      id: string;
+      result: unknown;
+    }
+  | {
+      jsonrpc: "2.0";
+      id: string;
+      error: {
+        message: string;
+      };
+    };
+type McpRpcRecord = {
+  id: string;
+  sequence: number;
+  serverName: string;
+  method: string;
+  startedAt: string;
+  completedAt: string;
+  request: JsonRpcRequestPayload;
+  response: JsonRpcResponsePayload;
+  isError: boolean;
+};
+type ChatExecutionEvent =
+  | {
+      type: "progress";
+      message: string;
+      isMcp?: boolean;
+    }
+  | {
+      type: "mcp_rpc";
+      record: McpRpcRecord;
+    };
+type ChatProgressEvent = {
+  message: string;
+  isMcp?: boolean;
+};
+type ChatStreamPayload =
+  | {
+      type: "progress";
+      message: string;
+      isMcp?: boolean;
+    }
+  | {
+      type: "mcp_rpc";
+      record: McpRpcRecord;
+    }
+  | {
+      type: "final";
+      message: string;
+    }
+  | {
+      type: "error";
+      error: string;
+      errorCode?: "azure_login_required";
+    };
 
 const DEFAULT_CONTEXT_WINDOW_SIZE = 10;
 const MIN_CONTEXT_WINDOW_SIZE = 1;
@@ -130,58 +202,22 @@ export async function action({ request }: Route.ActionArgs) {
     );
   }
 
-  const connectedMcpServers: MCPServer[] = [];
+  const executionOptions: ChatExecutionOptions = {
+    message,
+    history,
+    reasoningEffort,
+    temperature: temperatureResult.value,
+    agentInstruction,
+    azureConfig,
+    mcpServers: mcpServersResult.value,
+  };
+
+  if (wantsEventStream(request)) {
+    return streamChatResponse(executionOptions);
+  }
 
   try {
-    for (const serverConfig of mcpServersResult.value) {
-      const server = createMcpServer(serverConfig);
-
-      try {
-        await server.connect();
-      } catch (error) {
-        throw new Error(
-          `Failed to connect MCP server "${serverConfig.name}" (${describeMcpServer(serverConfig)}): ${readErrorMessage(error)}`,
-        );
-      }
-
-      connectedMcpServers.push(server);
-    }
-
-    const model = new OpenAIChatCompletionsModel(
-      getAzureOpenAIClient(azureConfig.baseUrl),
-      azureConfig.deploymentName,
-    );
-
-    const agent = new Agent({
-      name: "LocalPlaygroundAgent",
-      instructions: agentInstruction,
-      model,
-      modelSettings: {
-        ...(temperatureResult.value !== null
-          ? { temperature: temperatureResult.value }
-          : {}),
-        reasoning: {
-          effort: reasoningEffort,
-        },
-      },
-      mcpServers: connectedMcpServers,
-    });
-
-    const result = await run(agent, [
-      ...history.map((entry) =>
-        entry.role === "user" ? user(entry.content) : assistant(entry.content),
-      ),
-      user(message),
-    ]);
-
-    const assistantMessage = extractAgentFinalOutput(result.finalOutput);
-    if (!assistantMessage) {
-      return Response.json(
-        { error: "Azure OpenAI returned an empty message." },
-        { status: 502 },
-      );
-    }
-
+    const assistantMessage = await executeChat(executionOptions);
     return Response.json({ message: assistantMessage });
   } catch (error) {
     const upstreamError = buildUpstreamErrorPayload(error, azureConfig.deploymentName);
@@ -189,9 +225,204 @@ export async function action({ request }: Route.ActionArgs) {
       upstreamError.payload,
       { status: upstreamError.status },
     );
+  }
+}
+
+async function executeChat(
+  options: ChatExecutionOptions,
+  onEvent?: (event: ChatExecutionEvent) => void,
+): Promise<string> {
+  const connectedMcpServers: MCPServer[] = [];
+  const toolNameByCallId = new Map<string, string>();
+  let mcpRpcSequence = 0;
+  const hasMcpServers = options.mcpServers.length > 0;
+
+  const emitProgress = (event: ChatProgressEvent) => {
+    onEvent?.({
+      type: "progress",
+      message: event.message,
+      ...(event.isMcp ? { isMcp: true } : {}),
+    });
+  };
+  const emitMcpRpcRecord = (record: McpRpcRecord) => {
+    onEvent?.({
+      type: "mcp_rpc",
+      record,
+    });
+  };
+
+  try {
+    if (hasMcpServers) {
+      emitProgress({
+        message: `Preparing MCP server connections (${options.mcpServers.length})...`,
+        isMcp: true,
+      });
+    }
+
+    for (const serverConfig of options.mcpServers) {
+      emitProgress({
+        message: `Connecting MCP server: ${serverConfig.name}`,
+        isMcp: true,
+      });
+
+      const server = createMcpServer(serverConfig);
+      const instrumentedServer = instrumentMcpServer(server, {
+        nextSequence: () => {
+          mcpRpcSequence += 1;
+          return mcpRpcSequence;
+        },
+        onRecord: emitMcpRpcRecord,
+      });
+
+      try {
+        await instrumentedServer.connect();
+      } catch (error) {
+        throw new Error(
+          `Failed to connect MCP server "${serverConfig.name}" (${describeMcpServer(serverConfig)}): ${readErrorMessage(error)}`,
+        );
+      }
+
+      connectedMcpServers.push(instrumentedServer);
+      emitProgress({
+        message: `Connected MCP server: ${serverConfig.name}`,
+        isMcp: true,
+      });
+    }
+
+    emitProgress({ message: "Initializing model and agent..." });
+
+    const model = new OpenAIChatCompletionsModel(
+      getAzureOpenAIClient(options.azureConfig.baseUrl),
+      options.azureConfig.deploymentName,
+    );
+
+    const agent = new Agent({
+      name: "LocalPlaygroundAgent",
+      instructions: options.agentInstruction,
+      model,
+      modelSettings: {
+        ...(options.temperature !== null ? { temperature: options.temperature } : {}),
+        reasoning: {
+          effort: options.reasoningEffort,
+        },
+      },
+      mcpServers: connectedMcpServers,
+    });
+
+    const runInput = [
+      ...options.history.map((entry) =>
+        entry.role === "user" ? user(entry.content) : assistant(entry.content),
+      ),
+      user(options.message),
+    ];
+
+    emitProgress({ message: "Sending request to Azure OpenAI..." });
+
+    if (onEvent) {
+      const streamedResult = await run(agent, runInput, { stream: true });
+      for await (const event of streamedResult) {
+        const progress = readProgressEventFromRunStreamEvent(
+          event,
+          hasMcpServers,
+          toolNameByCallId,
+        );
+        if (progress) {
+          emitProgress(progress);
+        }
+      }
+
+      await streamedResult.completed;
+
+      const assistantMessage = extractAgentFinalOutput(streamedResult.finalOutput);
+      if (!assistantMessage) {
+        throw new Error("Azure OpenAI returned an empty message.");
+      }
+
+      emitProgress({ message: "Finalizing response..." });
+      return assistantMessage;
+    }
+
+    const result = await run(agent, runInput);
+    const assistantMessage = extractAgentFinalOutput(result.finalOutput);
+    if (!assistantMessage) {
+      throw new Error("Azure OpenAI returned an empty message.");
+    }
+
+    return assistantMessage;
   } finally {
     await Promise.allSettled(connectedMcpServers.map((server) => server.close()));
   }
+}
+
+function streamChatResponse(options: ChatExecutionOptions): Response {
+  const encoder = new TextEncoder();
+
+  const stream = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      const send = (payload: ChatStreamPayload) => {
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify(payload)}\n\n`));
+      };
+
+      try {
+        send({
+          type: "progress",
+          message: "Preparing request...",
+        });
+
+        const message = await executeChat(options, (event) => {
+          if (event.type === "progress") {
+            send({
+              type: "progress",
+              message: event.message,
+              ...(event.isMcp ? { isMcp: true } : {}),
+            });
+            return;
+          }
+
+          send({
+            type: "mcp_rpc",
+            record: event.record,
+          });
+        });
+
+        send({
+          type: "final",
+          message,
+        });
+      } catch (error) {
+        const upstreamError = buildUpstreamErrorPayload(
+          error,
+          options.azureConfig.deploymentName,
+        );
+        send({
+          type: "error",
+          error: upstreamError.payload.error,
+          ...(upstreamError.payload.errorCode
+            ? { errorCode: upstreamError.payload.errorCode }
+            : {}),
+        });
+      } finally {
+        controller.close();
+      }
+    },
+  });
+
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "text/event-stream; charset=utf-8",
+      "Cache-Control": "no-cache, no-transform",
+      Connection: "keep-alive",
+      "X-Accel-Buffering": "no",
+    },
+  });
+}
+
+function wantsEventStream(request: Request): boolean {
+  const acceptHeader = request.headers.get("accept");
+  return (
+    typeof acceptHeader === "string" &&
+    acceptHeader.toLowerCase().includes("text/event-stream")
+  );
 }
 
 function extractAgentFinalOutput(finalOutput: unknown): string {
@@ -563,6 +794,152 @@ function createMcpServer(config: ClientMcpServerConfig): MCPServer {
   });
 }
 
+function instrumentMcpServer(
+  server: MCPServer,
+  handlers: {
+    nextSequence: () => number;
+    onRecord: (record: McpRpcRecord) => void;
+  },
+): MCPServer {
+  const originalListTools = server.listTools.bind(server);
+  const originalCallTool = server.callTool.bind(server);
+
+  server.listTools = async () => {
+    const sequence = handlers.nextSequence();
+    const requestId = buildMcpRpcRequestId(server.name, sequence);
+    const startedAt = new Date().toISOString();
+    const requestPayload: JsonRpcRequestPayload = {
+      jsonrpc: "2.0",
+      id: requestId,
+      method: "tools/list",
+      params: {},
+    };
+
+    try {
+      const result = await originalListTools();
+      const responsePayload: JsonRpcResponsePayload = {
+        jsonrpc: "2.0",
+        id: requestId,
+        result: {
+          tools: toSerializableValue(result),
+        },
+      };
+
+      handlers.onRecord({
+        id: requestId,
+        sequence,
+        serverName: server.name,
+        method: "tools/list",
+        startedAt,
+        completedAt: new Date().toISOString(),
+        request: requestPayload,
+        response: responsePayload,
+        isError: false,
+      });
+
+      return result;
+    } catch (error) {
+      const responsePayload: JsonRpcResponsePayload = {
+        jsonrpc: "2.0",
+        id: requestId,
+        error: {
+          message: readErrorMessage(error),
+        },
+      };
+
+      handlers.onRecord({
+        id: requestId,
+        sequence,
+        serverName: server.name,
+        method: "tools/list",
+        startedAt,
+        completedAt: new Date().toISOString(),
+        request: requestPayload,
+        response: responsePayload,
+        isError: true,
+      });
+
+      throw error;
+    }
+  };
+
+  server.callTool = async (toolName, args, meta) => {
+    const sequence = handlers.nextSequence();
+    const requestId = buildMcpRpcRequestId(server.name, sequence);
+    const startedAt = new Date().toISOString();
+    const requestPayload: JsonRpcRequestPayload = {
+      jsonrpc: "2.0",
+      id: requestId,
+      method: "tools/call",
+      params: {
+        name: toolName,
+        arguments: toSerializableValue(args ?? {}),
+        ...(meta ? { _meta: toSerializableValue(meta) } : {}),
+      },
+    };
+
+    try {
+      const result = await originalCallTool(toolName, args, meta);
+      const responsePayload: JsonRpcResponsePayload = {
+        jsonrpc: "2.0",
+        id: requestId,
+        result: toSerializableValue(result),
+      };
+
+      handlers.onRecord({
+        id: requestId,
+        sequence,
+        serverName: server.name,
+        method: "tools/call",
+        startedAt,
+        completedAt: new Date().toISOString(),
+        request: requestPayload,
+        response: responsePayload,
+        isError: false,
+      });
+
+      return result;
+    } catch (error) {
+      const responsePayload: JsonRpcResponsePayload = {
+        jsonrpc: "2.0",
+        id: requestId,
+        error: {
+          message: readErrorMessage(error),
+        },
+      };
+
+      handlers.onRecord({
+        id: requestId,
+        sequence,
+        serverName: server.name,
+        method: "tools/call",
+        startedAt,
+        completedAt: new Date().toISOString(),
+        request: requestPayload,
+        response: responsePayload,
+        isError: true,
+      });
+
+      throw error;
+    }
+  };
+
+  return server;
+}
+
+function buildMcpRpcRequestId(serverName: string, sequence: number): string {
+  const normalizedName = serverName.trim().toLowerCase().replace(/[^a-z0-9_-]+/g, "-") || "mcp";
+  return `${normalizedName}-${Date.now()}-${sequence}`;
+}
+
+function toSerializableValue(value: unknown): unknown {
+  try {
+    return JSON.parse(JSON.stringify(value));
+  } catch {
+    return String(value);
+  }
+}
+
 function parseStdioArgs(argsValue: unknown, index: number): ParseResult<string[]> {
   if (argsValue === undefined || argsValue === null) {
     return { ok: true, value: [] };
@@ -640,6 +1017,104 @@ function describeMcpServer(config: ClientMcpServerConfig): string {
   }
 
   return config.url;
+}
+
+function readProgressEventFromRunStreamEvent(
+  event: unknown,
+  hasMcpServers: boolean,
+  toolNameByCallId: Map<string, string>,
+): ChatProgressEvent | null {
+  if (!isRecord(event) || event.type !== "run_item_stream_event") {
+    return null;
+  }
+
+  const eventName = event.name;
+  if (typeof eventName !== "string") {
+    return null;
+  }
+
+  const item = event.item;
+
+  if (eventName === "tool_called") {
+    const toolName = readToolNameFromRunItem(item);
+    const callId = readToolCallIdFromRunItem(item);
+    if (callId && toolName) {
+      toolNameByCallId.set(callId, toolName);
+    }
+
+    const toolLabel = toolName || shortenToolCallId(callId);
+    return {
+      message: hasMcpServers
+        ? `Running MCP command: ${toolLabel}`
+        : `Running tool: ${toolLabel}`,
+      isMcp: hasMcpServers,
+    };
+  }
+
+  if (eventName === "tool_output") {
+    const callId = readToolCallIdFromRunItem(item);
+    const knownToolName = callId ? toolNameByCallId.get(callId) : "";
+    if (callId) {
+      toolNameByCallId.delete(callId);
+    }
+
+    const toolName = knownToolName || readToolNameFromRunItem(item) || shortenToolCallId(callId);
+    return {
+      message: hasMcpServers
+        ? `MCP command finished: ${toolName}`
+        : `Tool finished: ${toolName}`,
+      isMcp: hasMcpServers,
+    };
+  }
+
+  if (eventName === "reasoning_item_created") {
+    return {
+      message: "Reasoning on your request...",
+    };
+  }
+
+  if (eventName === "message_output_created") {
+    return {
+      message: "Generating response...",
+    };
+  }
+
+  return null;
+}
+
+function readToolNameFromRunItem(item: unknown): string {
+  if (!isRecord(item)) {
+    return "";
+  }
+
+  if (typeof item.toolName === "string" && item.toolName.trim()) {
+    return item.toolName.trim();
+  }
+
+  if (!isRecord(item.rawItem)) {
+    return "";
+  }
+
+  const rawToolName = item.rawItem.name;
+  return typeof rawToolName === "string" ? rawToolName.trim() : "";
+}
+
+function readToolCallIdFromRunItem(item: unknown): string {
+  if (!isRecord(item) || !isRecord(item.rawItem)) {
+    return "";
+  }
+
+  const rawCallId = item.rawItem.callId;
+  return typeof rawCallId === "string" ? rawCallId.trim() : "";
+}
+
+function shortenToolCallId(callId: string): string {
+  const trimmed = callId.trim();
+  if (!trimmed) {
+    return "unknown";
+  }
+
+  return trimmed.length <= 12 ? trimmed : `${trimmed.slice(0, 12)}...`;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
