@@ -1,6 +1,5 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { homedir } from "node:os";
-import path from "node:path";
+import { mkdir, writeFile } from "node:fs/promises";
+import { getFoundryConfigFilePaths, readFoundryConfigTextFile } from "~/lib/foundry-config";
 import type { Route } from "./+types/api.azure-selection";
 
 type AzureSelectionPreference = {
@@ -14,8 +13,7 @@ type StoredAzureSelectionFile = {
   tenants: Record<string, AzureSelectionPreference>;
 };
 
-const CONFIG_DIRECTORY = path.join(homedir(), ".foundry_local_playground");
-const AZURE_SELECTION_FILE_PATH = path.join(CONFIG_DIRECTORY, "azure-selection.json");
+const AZURE_SELECTION_FILE_PATHS = getFoundryConfigFilePaths("azure-selection.json");
 
 export async function loader({ request }: Route.LoaderArgs) {
   if (request.method !== "GET") {
@@ -98,14 +96,9 @@ export function parseAzureSelectionPreference(value: unknown): AzureSelectionPre
 }
 
 async function readStoredSelectionFile(): Promise<StoredAzureSelectionFile> {
-  let content: string;
-  try {
-    content = await readFile(AZURE_SELECTION_FILE_PATH, "utf8");
-  } catch (error) {
-    if (isNodeError(error) && error.code === "ENOENT") {
-      return { tenants: {} };
-    }
-    throw error;
+  const content = await readFoundryConfigTextFile(AZURE_SELECTION_FILE_PATHS);
+  if (content === null) {
+    return { tenants: {} };
   }
 
   let parsed: unknown;
@@ -137,16 +130,16 @@ async function readStoredSelectionFile(): Promise<StoredAzureSelectionFile> {
 }
 
 async function writeStoredSelectionFile(file: StoredAzureSelectionFile): Promise<void> {
-  await mkdir(CONFIG_DIRECTORY, { recursive: true });
-  await writeFile(AZURE_SELECTION_FILE_PATH, JSON.stringify(file, null, 2) + "\n", "utf8");
+  await mkdir(AZURE_SELECTION_FILE_PATHS.primaryDirectoryPath, { recursive: true });
+  await writeFile(
+    AZURE_SELECTION_FILE_PATHS.primaryFilePath,
+    JSON.stringify(file, null, 2) + "\n",
+    "utf8",
+  );
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object";
-}
-
-function isNodeError(error: unknown): error is NodeJS.ErrnoException {
-  return error instanceof Error;
 }
 
 function readErrorMessage(error: unknown): string {

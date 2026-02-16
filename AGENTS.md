@@ -14,7 +14,7 @@
 - Reload deployments when the selected project changes.
 - Show only Agents SDK-compatible deployments.
 - Use Azure OpenAI v1 endpoint format (`.../openai/v1/`).
-- Persist the last-used Azure project/deployment per `tenantId` in `~/.foundry_local_playground/azure-selection.json`.
+- Persist the last-used Azure project/deployment per `tenantId` in `~/.foundry_local_playground/azure-selection.json` (Windows: `%APPDATA%\\FoundryLocalPlayground\\azure-selection.json`, with legacy read fallback from `%USERPROFILE%\\.foundry_local_playground\\`).
 - If authentication is unavailable, lock Playground usage and guide users to Settings login.
 
 ## Agents SDK / Playground
@@ -41,7 +41,7 @@
 ## MCP Server Management
 
 - Support transports: `streamable_http`, `sse`, `stdio`.
-- Persist saved MCP profiles in `~/.foundry_local_playground/mcp-servers.json`.
+- Persist saved MCP profiles in `~/.foundry_local_playground/mcp-servers.json` (Windows: `%APPDATA%\\FoundryLocalPlayground\\mcp-servers.json`, with legacy read fallback from `%USERPROFILE%\\.foundry_local_playground\\`).
 - Allow re-adding saved servers by selection.
 - Detect duplicate configurations when saving; reuse existing config and return a warning (including rename behavior when name differs).
 

@@ -61,8 +61,14 @@ This application is a development and validation workbench for:
 - Add MCP servers
 - Re-add servers from Saved Configs
 - Review and remove Added Servers
-- Persistent config path: `~/.foundry_local_playground/mcp-servers.json`
-- Last-used Azure project/deployment per tenant: `~/.foundry_local_playground/azure-selection.json`
+- MCP config file path:
+  - macOS/Linux: `~/.foundry_local_playground/mcp-servers.json`
+  - Windows: `%APPDATA%\FoundryLocalPlayground\mcp-servers.json`
+- Azure selection file path:
+  - macOS/Linux: `~/.foundry_local_playground/azure-selection.json`
+  - Windows: `%APPDATA%\FoundryLocalPlayground\azure-selection.json`
+- Windows compatibility fallback:
+  - Legacy files under `%USERPROFILE%\.foundry_local_playground\` are still read automatically.
 
 ## Core Specifications
 

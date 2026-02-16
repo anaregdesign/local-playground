@@ -1,7 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { homedir } from "node:os";
-import path from "node:path";
+import { mkdir, writeFile } from "node:fs/promises";
+import { getFoundryConfigFilePaths, readFoundryConfigTextFile } from "~/lib/foundry-config";
 import type { Route } from "./+types/api.mcp-servers";
 
 type McpTransport = "streamable_http" | "sse" | "stdio";
@@ -33,8 +32,7 @@ const MAX_MCP_SERVER_NAME_LENGTH = 80;
 const MAX_MCP_STDIO_ARGS = 64;
 const MAX_MCP_STDIO_ENV_VARS = 64;
 const ENV_KEY_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
-const MCP_CONFIG_DIRECTORY = path.join(homedir(), ".foundry_local_playground");
-const MCP_CONFIG_FILE_PATH = path.join(MCP_CONFIG_DIRECTORY, "mcp-servers.json");
+const MCP_CONFIG_FILE_PATHS = getFoundryConfigFilePaths("mcp-servers.json");
 
 export async function loader({ request }: Route.LoaderArgs) {
   if (request.method !== "GET") {
@@ -91,14 +89,9 @@ export async function action({ request }: Route.ActionArgs) {
 }
 
 async function readSavedMcpServers(): Promise<SavedMcpServerConfig[]> {
-  let content: string;
-  try {
-    content = await readFile(MCP_CONFIG_FILE_PATH, "utf8");
-  } catch (error) {
-    if (isNodeError(error) && error.code === "ENOENT") {
-      return [];
-    }
-    throw error;
+  const content = await readFoundryConfigTextFile(MCP_CONFIG_FILE_PATHS);
+  if (content === null) {
+    return [];
   }
 
   let parsed: unknown;
@@ -134,8 +127,8 @@ async function readSavedMcpServers(): Promise<SavedMcpServerConfig[]> {
 }
 
 async function writeSavedMcpServers(profiles: SavedMcpServerConfig[]): Promise<void> {
-  await mkdir(MCP_CONFIG_DIRECTORY, { recursive: true });
-  await writeFile(MCP_CONFIG_FILE_PATH, JSON.stringify(profiles, null, 2) + "\n", "utf8");
+  await mkdir(MCP_CONFIG_FILE_PATHS.primaryDirectoryPath, { recursive: true });
+  await writeFile(MCP_CONFIG_FILE_PATHS.primaryFilePath, JSON.stringify(profiles, null, 2) + "\n", "utf8");
 }
 
 function parseIncomingMcpServer(payload: unknown): ParseResult<IncomingMcpServerConfig> {
@@ -429,10 +422,6 @@ function buildProfileKey(profile: SavedMcpServerConfig): string {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object";
-}
-
-function isNodeError(error: unknown): error is NodeJS.ErrnoException {
-  return error instanceof Error;
 }
 
 function readErrorMessage(error: unknown): string {
