@@ -6,6 +6,7 @@ import type { Route } from "./+types/home";
 type ChatRole = "user" | "assistant";
 type ReasoningEffort = "none" | "low" | "medium" | "high";
 type McpTransport = "streamable_http" | "sse" | "stdio";
+type MainViewTab = "chat" | "settings" | "mcp";
 
 type McpHttpServerConfig = {
   id: string;
@@ -109,6 +110,7 @@ export default function Home() {
   const [azureDeployments, setAzureDeployments] = useState<string[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>(INITIAL_MESSAGES);
   const [draft, setDraft] = useState("");
+  const [activeMainTab, setActiveMainTab] = useState<MainViewTab>("chat");
   const [selectedAzureConnectionId, setSelectedAzureConnectionId] = useState("");
   const [selectedAzureDeploymentName, setSelectedAzureDeploymentName] = useState("");
   const [isLoadingAzureConnections, setIsLoadingAzureConnections] = useState(false);
@@ -788,8 +790,31 @@ export default function Home() {
 
   return (
     <main className="chat-page">
-      <div className="chat-layout">
-        <section className="chat-shell">
+      <div className="chat-layout tabbed-layout">
+        <nav className="main-tabs" role="tablist" aria-label="Main panels">
+          {MAIN_VIEW_TAB_OPTIONS.map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              role="tab"
+              id={`tab-${tab.id}`}
+              aria-controls={`panel-${tab.id}`}
+              aria-selected={activeMainTab === tab.id}
+              className={`main-tab-btn ${activeMainTab === tab.id ? "active" : ""}`}
+              onClick={() => setActiveMainTab(tab.id)}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </nav>
+
+        <section
+          className="chat-shell main-panel"
+          id="panel-chat"
+          role="tabpanel"
+          aria-labelledby="tab-chat"
+          hidden={activeMainTab !== "chat"}
+        >
           <header className="chat-header">
             <div className="chat-header-row">
               <div className="chat-header-main">
@@ -878,7 +903,14 @@ export default function Home() {
           </footer>
         </section>
 
-        <aside className="settings-shell" aria-label="Chat settings">
+        <aside
+          className="settings-shell main-panel"
+          aria-label="Chat settings"
+          id="panel-settings"
+          role="tabpanel"
+          aria-labelledby="tab-settings"
+          hidden={activeMainTab !== "settings"}
+        >
           <header className="settings-header">
             <h2>Settings</h2>
             <p>Model behavior options</p>
@@ -1103,7 +1135,14 @@ export default function Home() {
           </div>
         </aside>
 
-        <aside className="mcp-shell" aria-label="MCP server settings">
+        <aside
+          className="mcp-shell main-panel"
+          aria-label="MCP server settings"
+          id="panel-mcp"
+          role="tabpanel"
+          aria-labelledby="tab-mcp"
+          hidden={activeMainTab !== "mcp"}
+        >
           <header className="mcp-header">
             <h2>MCP Servers</h2>
           </header>
@@ -1292,6 +1331,12 @@ function createMessage(role: ChatRole, content: string): ChatMessage {
     content,
   };
 }
+
+const MAIN_VIEW_TAB_OPTIONS: Array<{ id: MainViewTab; label: string }> = [
+  { id: "chat", label: "Chat" },
+  { id: "settings", label: "Settings" },
+  { id: "mcp", label: "MCP Servers" },
+];
 
 const REASONING_EFFORT_OPTIONS: ReasoningEffort[] = ["none", "low", "medium", "high"];
 const ENV_KEY_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
