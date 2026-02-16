@@ -480,8 +480,8 @@ export default function Home() {
     if (existingServerIndex >= 0) {
       const fallbackLocalWarning =
         existingServerName && existingServerName !== savedProfileName
-          ? `同一設定のMCPサーバーが既に存在したため、名前を「${existingServerName}」から「${savedProfileName}」に上書きしました。`
-          : "同一設定のMCPサーバーが既に存在したため、既存エントリを再利用しました。";
+          ? `An MCP server with the same configuration already exists. Renamed it from "${existingServerName}" to "${savedProfileName}".`
+          : "An MCP server with the same configuration already exists. Reused the existing entry.";
       setMcpFormWarning(saveWarning ?? fallbackLocalWarning);
     } else {
       setMcpFormWarning(saveWarning);

@@ -597,17 +597,18 @@ function buildUpstreamErrorPayload(error: unknown): {
   payload: UpstreamErrorPayload;
   status: number;
 } {
-  const message = buildUpstreamErrorMessage(error);
   if (isAzureCredentialError(error)) {
     return {
       payload: {
-        error: `${message} Azure CLIでログイン後に再試行してください。`,
+        error:
+          "Azure authentication failed. Click \"Azure Login\", complete sign-in, and try again.",
         errorCode: "azure_login_required",
       },
       status: 401,
     };
   }
 
+  const message = buildUpstreamErrorMessage(error);
   return {
     payload: { error: message },
     status: 502,

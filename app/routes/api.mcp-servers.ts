@@ -288,8 +288,8 @@ function upsertSavedMcpServer(
   if (keyIndex >= 0 && previousProfile) {
     warning =
       previousProfile.name === incoming.name
-        ? "同一設定のMCPサーバーが既に存在したため、既存設定を再利用しました。"
-        : `同一設定のMCPサーバーが既に存在したため、名前を「${previousProfile.name}」から「${incoming.name}」に上書きしました。`;
+        ? "An MCP server with the same configuration already exists. Reused the existing saved profile."
+        : `An MCP server with the same configuration already exists. Renamed it from "${previousProfile.name}" to "${incoming.name}".`;
   }
 
   return { profile, profiles, warning };
