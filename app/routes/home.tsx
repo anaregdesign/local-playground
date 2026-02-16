@@ -29,6 +29,9 @@ const {
   MessageBar,
   MessageBarBody,
   MessageBarTitle,
+  Popover,
+  PopoverSurface,
+  PopoverTrigger,
   Select,
   Spinner,
   Tab,
@@ -1755,19 +1758,63 @@ export default function Home() {
                     />
                   </Field>
                   <Field label="Azure authentication">
-                    <Checkbox
-                      className="field-checkbox"
-                      checked={mcpUseAzureAuthInput}
-                      onChange={(_, data) => {
-                        const checked = data.checked === true;
-                        setMcpUseAzureAuthInput(checked);
-                        if (checked && !mcpAzureAuthScopeInput.trim()) {
-                          setMcpAzureAuthScopeInput(DEFAULT_MCP_AZURE_AUTH_SCOPE);
-                        }
-                      }}
-                      disabled={isSending}
-                      label="Use Azure Bearer token from DefaultAzureCredential"
-                    />
+                    <div className="field-with-info">
+                      <Checkbox
+                        className="field-checkbox"
+                        checked={mcpUseAzureAuthInput}
+                        onChange={(_, data) => {
+                          const checked = data.checked === true;
+                          setMcpUseAzureAuthInput(checked);
+                          if (checked && !mcpAzureAuthScopeInput.trim()) {
+                            setMcpAzureAuthScopeInput(DEFAULT_MCP_AZURE_AUTH_SCOPE);
+                          }
+                        }}
+                        disabled={isSending}
+                        label="Use Azure Bearer token from DefaultAzureCredential"
+                      />
+                      <Popover withArrow positioning="below-end">
+                        <PopoverTrigger disableButtonEnhancement>
+                          <Button
+                            type="button"
+                            appearance="subtle"
+                            size="small"
+                            className="field-info-btn"
+                            aria-label="Show Azure authentication behavior details"
+                            title="Show technical details"
+                          >
+                            ⓘ
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverSurface className="field-info-popover">
+                          <p className="field-info-title">Azure auth behavior</p>
+                          <ul className="field-info-list">
+                            <li>
+                              Applies to HTTP MCP transports (<code>streamable_http</code> and{" "}
+                              <code>sse</code>).
+                            </li>
+                            <li>
+                              <code>Content-Type: application/json</code> is always included.
+                            </li>
+                            <li>
+                              At connect time, the app calls{" "}
+                              <code>DefaultAzureCredential.getToken(scope)</code>.
+                            </li>
+                            <li>
+                              The resulting <code>Authorization: Bearer &lt;token&gt;</code> header
+                              is added after custom headers and takes precedence.
+                            </li>
+                            <li>
+                              Only <code>useAzureAuth</code> and <code>scope</code> are stored in
+                              config; token values are never persisted.
+                            </li>
+                            <li>
+                              If token acquisition fails, server connection fails and the error appears
+                              in MCP Operation Log.
+                            </li>
+                          </ul>
+                        </PopoverSurface>
+                      </Popover>
+                    </div>
                   </Field>
                   {mcpUseAzureAuthInput ? (
                     <Field label="Token scope">

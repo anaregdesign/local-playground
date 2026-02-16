@@ -774,6 +774,47 @@ body {
   margin: 0;
 }
 
+.field-with-info {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.45rem;
+}
+
+.field-with-info .field-checkbox {
+  flex: 1;
+  min-width: 0;
+}
+
+.field-info-btn {
+  min-width: 1.75rem;
+  width: 1.75rem;
+  height: 1.75rem;
+  padding: 0;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+.field-info-popover {
+  max-width: min(520px, calc(100vw - 2.2rem));
+}
+
+.field-info-title {
+  margin: 0 0 0.35rem;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.field-info-list {
+  margin: 0;
+  padding-left: 1.05rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.76rem;
+  color: var(--text-subtle);
+}
+
 .field-error {
   margin: 0;
   font-size: 0.78rem;
