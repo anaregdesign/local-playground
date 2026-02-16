@@ -1120,22 +1120,37 @@ export default function Home() {
                 </button>
               ) : (
                 <>
+                  {isLoadingAzureConnections || isLoadingAzureDeployments ? (
+                    <p className="azure-loading-notice" role="status" aria-live="polite">
+                      <span className="loading-indicator" aria-hidden="true" />
+                      {isLoadingAzureConnections
+                        ? "Loading projects from Azure..."
+                        : "Loading deployments for the selected project..."}
+                    </p>
+                  ) : null}
                   <div className="setting-label-row">
                     <label className="setting-label" htmlFor="azure-project">
                       Project 🗂️
                     </label>
-                    <button
-                      type="button"
-                      className="icon-refresh-btn"
-                      aria-label="Reload projects"
-                      title="Reload projects"
-                      onClick={() => {
-                        void loadAzureConnections();
-                      }}
-                      disabled={isSending || isLoadingAzureConnections || isStartingAzureLogout}
-                    >
-                      🔄
-                    </button>
+                    <div className="setting-label-actions">
+                      {isLoadingAzureConnections ? (
+                        <span className="loading-pill" role="status" aria-live="polite">
+                          Loading...
+                        </span>
+                      ) : null}
+                      <button
+                        type="button"
+                        className={`icon-refresh-btn ${isLoadingAzureConnections ? "spinning" : ""}`}
+                        aria-label="Reload projects"
+                        title="Reload projects"
+                        onClick={() => {
+                          void loadAzureConnections();
+                        }}
+                        disabled={isSending || isLoadingAzureConnections || isStartingAzureLogout}
+                      >
+                        🔄
+                      </button>
+                    </div>
                   </div>
                   <select
                     id="azure-project"
@@ -1149,7 +1164,9 @@ export default function Home() {
                     disabled={isSending || isLoadingAzureConnections || azureConnections.length === 0}
                   >
                     {azureConnections.length === 0 ? (
-                      <option value="">No projects found</option>
+                      <option value="">
+                        {isLoadingAzureConnections ? "Loading projects..." : "No projects found"}
+                      </option>
                     ) : null}
                     {azureConnections.map((connection) => (
                       <option key={connection.id} value={connection.id}>
@@ -1157,9 +1174,16 @@ export default function Home() {
                       </option>
                     ))}
                   </select>
-                  <label className="setting-label" htmlFor="azure-deployment">
-                    Deployment 🚀
-                  </label>
+                  <div className="setting-label-row">
+                    <label className="setting-label" htmlFor="azure-deployment">
+                      Deployment 🚀
+                    </label>
+                    {isLoadingAzureDeployments ? (
+                      <span className="loading-pill" role="status" aria-live="polite">
+                        Loading...
+                      </span>
+                    ) : null}
+                  </div>
                   <select
                     id="azure-deployment"
                     value={selectedAzureDeploymentName}
