@@ -395,6 +395,37 @@ body {
   font-weight: 600;
 }
 
+.setting-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.45rem;
+}
+
+.icon-refresh-btn {
+  border: 1px solid var(--surface-border);
+  border-radius: 999px;
+  width: 1.7rem;
+  height: 1.7rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #f9fbfc;
+  color: var(--text-main);
+  font-size: 0.95rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.icon-refresh-btn:hover:enabled {
+  background: #eef6fb;
+}
+
+.icon-refresh-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 .azure-connection-actions {
   display: flex;
   flex-direction: column;

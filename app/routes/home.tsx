@@ -902,9 +902,23 @@ export default function Home() {
                 </button>
               ) : (
                 <>
-                  <label className="setting-label" htmlFor="azure-project">
-                    Project
-                  </label>
+                  <div className="setting-label-row">
+                    <label className="setting-label" htmlFor="azure-project">
+                      Project
+                    </label>
+                    <button
+                      type="button"
+                      className="icon-refresh-btn"
+                      aria-label="Reload projects"
+                      title="Reload projects"
+                      onClick={() => {
+                        void loadAzureConnections();
+                      }}
+                      disabled={isSending || isLoadingAzureConnections || isStartingAzureLogout}
+                    >
+                      🔄
+                    </button>
+                  </div>
                   <select
                     id="azure-project"
                     value={activeAzureConnection?.id ?? ""}
@@ -959,16 +973,6 @@ export default function Home() {
                     )}
                   </select>
                   <div className="azure-connection-actions">
-                    <button
-                      type="button"
-                      className="secondary-btn"
-                      onClick={() => {
-                        void loadAzureConnections();
-                      }}
-                      disabled={isSending || isLoadingAzureConnections || isStartingAzureLogout}
-                    >
-                      {isLoadingAzureConnections ? "Loading..." : "Reload Projects"}
-                    </button>
                     <button
                       type="button"
                       className="secondary-btn azure-logout-btn"
