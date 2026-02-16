@@ -1410,9 +1410,9 @@ export default function Home() {
                       ) : null}
                       <Button
                         type="button"
-                        appearance="subtle"
+                        appearance="secondary"
                         size="small"
-                        className={`icon-refresh-btn ${isLoadingAzureConnections ? "spinning" : ""}`}
+                        className="project-reload-btn"
                         aria-label="Reload projects"
                         title="Reload projects"
                         onClick={() => {
@@ -1420,7 +1420,15 @@ export default function Home() {
                         }}
                         disabled={isSending || isLoadingAzureConnections || isStartingAzureLogout}
                       >
-                        🔄
+                        <span
+                          className={`project-reload-icon ${
+                            isLoadingAzureConnections ? "spinning" : ""
+                          }`}
+                          aria-hidden="true"
+                        >
+                          ↻
+                        </span>
+                        {isLoadingAzureConnections ? "Reloading..." : "Reload"}
                       </Button>
                     </div>
                   </div>

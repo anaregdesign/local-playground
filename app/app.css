@@ -670,16 +670,19 @@ body {
   font-weight: 700;
 }
 
-.icon-refresh-btn {
-  min-width: 1.75rem;
-  width: 1.75rem;
-  height: 1.75rem;
-  padding: 0;
-  font-size: 0.95rem;
+.project-reload-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.project-reload-icon {
+  display: inline-block;
+  font-size: 0.9rem;
   line-height: 1;
 }
 
-.icon-refresh-btn.spinning {
+.project-reload-icon.spinning {
   animation: spin-loader 0.8s linear infinite;
 }
 
