@@ -104,6 +104,8 @@ type McpRpcHistoryEntry = {
   turnId: string;
 };
 
+type JsonHighlightStyle = "default" | "compact";
+
 type AzureActionApiResponse = {
   message?: string;
   error?: string;
@@ -1887,14 +1889,6 @@ function appendProgressMessage(
   });
 }
 
-function formatJsonForDisplay(value: unknown): string {
-  try {
-    return JSON.stringify(value, null, 2);
-  } catch {
-    return String(value);
-  }
-}
-
 function renderTurnMcpLog(entries: McpRpcHistoryEntry[], isLive: boolean) {
   return (
     <details className="mcp-turn-log" open={isLive}>
@@ -1924,13 +1918,9 @@ function renderTurnMcpLog(entries: McpRpcHistoryEntry[], isLive: boolean) {
                   {entry.completedAt}
                 </p>
                 <p className="mcp-history-label">request</p>
-                <pre className="json-message mcp-history-json">
-                  {formatJsonForDisplay(entry.request)}
-                </pre>
+                {renderHighlightedJson(entry.request, "MCP request JSON", "compact")}
                 <p className="mcp-history-label">response</p>
-                <pre className="json-message mcp-history-json">
-                  {formatJsonForDisplay(entry.response)}
-                </pre>
+                {renderHighlightedJson(entry.response, "MCP response JSON", "compact")}
               </div>
             </details>
           ))}
@@ -1938,6 +1928,42 @@ function renderTurnMcpLog(entries: McpRpcHistoryEntry[], isLive: boolean) {
       )}
     </details>
   );
+}
+
+function renderHighlightedJson(
+  value: unknown,
+  ariaLabel: string,
+  style: JsonHighlightStyle,
+) {
+  const formatted = formatJsonForDisplay(value);
+  const tokens = tokenizeJson(formatted);
+  return renderJsonTokens(tokens, ariaLabel, style);
+}
+
+function formatJsonForDisplay(value: unknown): string {
+  const normalizedValue = normalizeJsonStringValue(value);
+  try {
+    return JSON.stringify(normalizedValue, null, 2);
+  } catch {
+    return String(normalizedValue);
+  }
+}
+
+function normalizeJsonStringValue(value: unknown): unknown {
+  if (typeof value !== "string") {
+    return value;
+  }
+
+  const trimmed = value.trim();
+  if (!(trimmed.startsWith("{") || trimmed.startsWith("["))) {
+    return value;
+  }
+
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    return value;
+  }
 }
 
 function createMessage(role: ChatRole, content: string, turnId: string): ChatMessage {
@@ -2344,6 +2370,31 @@ function renderMessageContent(message: ChatMessage) {
           remarkPlugins={[remarkGfm]}
           components={{
             a: ({ ...props }) => <a {...props} target="_blank" rel="noreferrer" />,
+            code: ({ className, children, ...props }) => {
+              const isJsonCode = isJsonCodeClassName(className);
+              if (!isJsonCode) {
+                return (
+                  <code className={className} {...props}>
+                    {children}
+                  </code>
+                );
+              }
+
+              const rawText = String(children).replace(/\n$/, "");
+              const tokens = parseJsonMessageTokens(rawText) ?? tokenizeJson(rawText);
+              return (
+                <code className={className} {...props}>
+                  {tokens.map((token, index) => (
+                    <span
+                      key={`${token.type}-${index}`}
+                      className={token.type === "plain" ? undefined : `json-token ${token.type}`}
+                    >
+                      {token.value}
+                    </span>
+                  ))}
+                </code>
+              );
+            },
           }}
         >
           {message.content}
@@ -2352,18 +2403,7 @@ function renderMessageContent(message: ChatMessage) {
     );
   }
 
-  return (
-    <pre className="json-message" aria-label="JSON response">
-      {jsonTokens.map((token, index) => (
-        <span
-          key={`${token.type}-${index}`}
-          className={token.type === "plain" ? undefined : `json-token ${token.type}`}
-        >
-          {token.value}
-        </span>
-      ))}
-    </pre>
-  );
+  return renderJsonTokens(jsonTokens, "JSON response", "default");
 }
 
 function parseJsonMessageTokens(content: string): JsonToken[] | null {
@@ -2381,6 +2421,34 @@ function parseJsonMessageTokens(content: string): JsonToken[] | null {
 
   const formatted = JSON.stringify(parsed, null, 2);
   return tokenizeJson(formatted);
+}
+
+function renderJsonTokens(
+  tokens: JsonToken[],
+  ariaLabel: string,
+  style: JsonHighlightStyle,
+) {
+  const className = style === "compact" ? "json-message mcp-history-json" : "json-message";
+  return (
+    <pre className={className} aria-label={ariaLabel}>
+      {tokens.map((token, index) => (
+        <span
+          key={`${token.type}-${index}`}
+          className={token.type === "plain" ? undefined : `json-token ${token.type}`}
+        >
+          {token.value}
+        </span>
+      ))}
+    </pre>
+  );
+}
+
+function isJsonCodeClassName(className: string | undefined): boolean {
+  if (!className) {
+    return false;
+  }
+
+  return /\blanguage-json\b/i.test(className) || /\blanguage-jsonc\b/i.test(className);
 }
 
 function tokenizeJson(input: string): JsonToken[] {
