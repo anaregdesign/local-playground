@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import type { Route } from "./+types/home";
 
 type ChatRole = "user" | "assistant";
@@ -51,6 +53,14 @@ type ChatApiResponse = {
   error?: string;
 };
 
+type SaveMcpServerRequest = Omit<McpHttpServerConfig, "id"> | Omit<McpStdioServerConfig, "id">;
+type McpServersApiResponse = {
+  profile?: unknown;
+  profiles?: unknown;
+  warning?: string;
+  error?: string;
+};
+
 const INITIAL_MESSAGES: ChatMessage[] = [
   {
     id: "welcome",
@@ -84,6 +94,8 @@ export default function Home() {
   const [loadedInstructionFileName, setLoadedInstructionFileName] = useState<string | null>(null);
   const [instructionFileError, setInstructionFileError] = useState<string | null>(null);
   const [mcpServers, setMcpServers] = useState<McpServerConfig[]>([]);
+  const [savedMcpServers, setSavedMcpServers] = useState<McpServerConfig[]>([]);
+  const [selectedSavedMcpServerId, setSelectedSavedMcpServerId] = useState("");
   const [mcpNameInput, setMcpNameInput] = useState("");
   const [mcpUrlInput, setMcpUrlInput] = useState("");
   const [mcpCommandInput, setMcpCommandInput] = useState("");
@@ -92,6 +104,10 @@ export default function Home() {
   const [mcpEnvInput, setMcpEnvInput] = useState("");
   const [mcpTransport, setMcpTransport] = useState<McpTransport>(DEFAULT_MCP_TRANSPORT);
   const [mcpFormError, setMcpFormError] = useState<string | null>(null);
+  const [mcpFormWarning, setMcpFormWarning] = useState<string | null>(null);
+  const [savedMcpError, setSavedMcpError] = useState<string | null>(null);
+  const [isLoadingSavedMcpServers, setIsLoadingSavedMcpServers] = useState(false);
+  const [isSavingMcpServer, setIsSavingMcpServer] = useState(false);
   const [contextWindowInput, setContextWindowInput] = useState(
     String(DEFAULT_CONTEXT_WINDOW_SIZE),
   );
@@ -106,6 +122,77 @@ export default function Home() {
   useEffect(() => {
     endOfMessagesRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isSending]);
+
+  useEffect(() => {
+    void loadSavedMcpServers();
+  }, []);
+
+  async function loadSavedMcpServers() {
+    setIsLoadingSavedMcpServers(true);
+
+    try {
+      const response = await fetch("/api/mcp-servers", {
+        method: "GET",
+      });
+
+      const payload = (await response.json()) as McpServersApiResponse;
+      if (!response.ok) {
+        throw new Error(payload.error || "Failed to load saved MCP servers.");
+      }
+
+      const parsedServers = readMcpServerList(payload.profiles);
+      setSavedMcpServers(parsedServers);
+      setSelectedSavedMcpServerId((current) =>
+        current && parsedServers.some((server) => server.id === current)
+          ? current
+          : parsedServers[0]?.id ?? "",
+      );
+      setSavedMcpError(null);
+    } catch (loadError) {
+      setSavedMcpError(
+        loadError instanceof Error ? loadError.message : "Failed to load saved MCP servers.",
+      );
+    } finally {
+      setIsLoadingSavedMcpServers(false);
+    }
+  }
+
+  async function saveMcpServerToConfig(server: McpServerConfig): Promise<{
+    profile: McpServerConfig;
+    warning: string | null;
+  }> {
+    const response = await fetch("/api/mcp-servers", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(serializeMcpServerForSave(server)),
+    });
+
+    const payload = (await response.json()) as McpServersApiResponse;
+    if (!response.ok) {
+      throw new Error(payload.error || "Failed to save MCP server.");
+    }
+
+    const profile = readMcpServerFromUnknown(payload.profile);
+    if (!profile) {
+      throw new Error("Saved MCP server response is invalid.");
+    }
+
+    const profiles = readMcpServerList(payload.profiles);
+    if (profiles.length > 0) {
+      setSavedMcpServers(profiles);
+      setSelectedSavedMcpServerId(profile.id);
+    } else {
+      setSavedMcpServers((current) => upsertMcpServer(current, profile));
+      setSelectedSavedMcpServerId(profile.id);
+    }
+
+    return {
+      profile,
+      warning: typeof payload.warning === "string" ? payload.warning : null,
+    };
+  }
 
   async function sendMessage() {
     const content = draft.trim();
@@ -238,8 +325,13 @@ export default function Home() {
     }
   }
 
-  function handleAddMcpServer() {
+  async function handleAddMcpServer() {
     const rawName = mcpNameInput.trim();
+    setMcpFormError(null);
+    setMcpFormWarning(null);
+
+    let serverToAdd: McpServerConfig;
+
     if (mcpTransport === "stdio") {
       const command = mcpCommandInput.trim();
       if (!command) {
@@ -266,105 +358,141 @@ export default function Home() {
 
       const cwd = mcpCwdInput.trim();
       const name = rawName || command;
-      const duplicated = mcpServers.some((server) =>
-        server.transport !== "stdio"
-          ? false
-          : buildMcpServerKey(server) ===
-            buildMcpServerKey({
-              id: "new",
-              name,
-              transport: "stdio",
-              command,
-              args: argsResult.value,
-              cwd: cwd || undefined,
-              env: envResult.value,
-            }),
-      );
-      if (duplicated) {
-        setMcpFormError("This MCP stdio server is already added.");
+
+      serverToAdd = {
+        name,
+        transport: "stdio",
+        command,
+        args: argsResult.value,
+        cwd: cwd || undefined,
+        env: envResult.value,
+        id: createId("mcp"),
+      };
+    } else {
+      const rawUrl = mcpUrlInput.trim();
+      if (!rawUrl) {
+        setMcpFormError("MCP server URL is required.");
         return;
       }
 
-      setMcpServers((current) => [
-        ...current,
-        {
-          id: createId("mcp"),
-          name,
-          transport: "stdio",
-          command,
-          args: argsResult.value,
-          cwd: cwd || undefined,
-          env: envResult.value,
-        },
-      ]);
-      setMcpFormError(null);
-      setMcpNameInput("");
-      setMcpCommandInput("");
-      setMcpArgsInput("");
-      setMcpCwdInput("");
-      setMcpEnvInput("");
-      return;
-    }
+      let parsed: URL;
+      try {
+        parsed = new URL(rawUrl);
+      } catch {
+        setMcpFormError("MCP server URL is invalid.");
+        return;
+      }
 
-    const rawUrl = mcpUrlInput.trim();
-    if (!rawUrl) {
-      setMcpFormError("MCP server URL is required.");
-      return;
-    }
+      if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+        setMcpFormError("MCP server URL must start with http:// or https://.");
+        return;
+      }
 
-    let parsed: URL;
-    try {
-      parsed = new URL(rawUrl);
-    } catch {
-      setMcpFormError("MCP server URL is invalid.");
-      return;
-    }
+      const name = rawName || parsed.hostname;
+      if (!name) {
+        setMcpFormError("MCP server name is required.");
+        return;
+      }
 
-    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-      setMcpFormError("MCP server URL must start with http:// or https://.");
-      return;
-    }
+      const normalizedUrl = parsed.toString();
 
-    const name = rawName || parsed.hostname;
-    if (!name) {
-      setMcpFormError("MCP server name is required.");
-      return;
-    }
-
-    const normalizedUrl = parsed.toString();
-    const duplicated = mcpServers.some(
-      (server) =>
-        server.transport !== "stdio" &&
-        buildMcpServerKey(server) ===
-          buildMcpServerKey({
-            id: "new",
-            name,
-            transport: mcpTransport,
-            url: normalizedUrl,
-          }),
-    );
-    if (duplicated) {
-      setMcpFormError("This MCP server is already added.");
-      return;
-    }
-
-    setMcpServers((current) => [
-      ...current,
-      {
+      serverToAdd = {
         id: createId("mcp"),
         name,
         url: normalizedUrl,
         transport: mcpTransport,
-      },
-    ]);
+      };
+    }
+
+    const existingServerIndex = mcpServers.findIndex(
+      (server) => buildMcpServerKey(server) === buildMcpServerKey(serverToAdd),
+    );
+    const existingServerName =
+      existingServerIndex >= 0 ? (mcpServers[existingServerIndex]?.name ?? "") : "";
+
+    setIsSavingMcpServer(true);
+    let saveWarning: string | null = null;
+    let savedProfileName = serverToAdd.name;
+    try {
+      const saveResult = await saveMcpServerToConfig(serverToAdd);
+      saveWarning = saveResult.warning;
+      savedProfileName = saveResult.profile.name;
+
+      if (existingServerIndex >= 0) {
+        setMcpServers((current) =>
+          current.map((server, index) =>
+            index === existingServerIndex ? { ...server, name: savedProfileName } : server,
+          ),
+        );
+      } else {
+        setMcpServers((current) => [...current, { ...serverToAdd, name: savedProfileName }]);
+      }
+
+      setSavedMcpError(null);
+    } catch (saveError) {
+      setMcpFormError(saveError instanceof Error ? saveError.message : "Failed to save MCP server.");
+      return;
+    } finally {
+      setIsSavingMcpServer(false);
+    }
+
     setMcpFormError(null);
+    if (existingServerIndex >= 0) {
+      const fallbackLocalWarning =
+        existingServerName && existingServerName !== savedProfileName
+          ? `同一設定のMCPサーバーが既に存在したため、名前を「${existingServerName}」から「${savedProfileName}」に上書きしました。`
+          : "同一設定のMCPサーバーが既に存在したため、既存エントリを再利用しました。";
+      setMcpFormWarning(saveWarning ?? fallbackLocalWarning);
+    } else {
+      setMcpFormWarning(saveWarning);
+    }
     setMcpNameInput("");
     setMcpUrlInput("");
+    setMcpCommandInput("");
+    setMcpArgsInput("");
+    setMcpCwdInput("");
+    setMcpEnvInput("");
     setMcpTransport(DEFAULT_MCP_TRANSPORT);
+  }
+
+  function handleAddSavedMcpServer() {
+    if (!selectedSavedMcpServerId) {
+      setSavedMcpError("Select a saved MCP server first.");
+      return;
+    }
+
+    const selected = savedMcpServers.find((server) => server.id === selectedSavedMcpServerId);
+    if (!selected) {
+      setSavedMcpError("Selected MCP server is not available.");
+      return;
+    }
+
+    const nextServer = cloneMcpServerWithNewId(selected);
+    const duplicated = mcpServers.some(
+      (server) => buildMcpServerKey(server) === buildMcpServerKey(nextServer),
+    );
+    if (duplicated) {
+      setSavedMcpError("This MCP server is already added.");
+      return;
+    }
+
+    setMcpServers((current) => [...current, nextServer]);
+    setSavedMcpError(null);
   }
 
   function handleRemoveMcpServer(id: string) {
     setMcpServers((current) => current.filter((server) => server.id !== id));
+  }
+
+  function handleResetThread() {
+    if (isSending) {
+      return;
+    }
+
+    setMessages(INITIAL_MESSAGES);
+    setDraft("");
+    setError(null);
+    setIsComposing(false);
   }
 
   return (
@@ -372,8 +500,20 @@ export default function Home() {
       <div className="chat-layout">
         <section className="chat-shell">
           <header className="chat-header">
-            <h1>Simple Chat</h1>
-            <p>Set AZURE_BASE_URL, AZURE_API_VERSION=v1, and AZURE_DEPLOYMENT_NAME.</p>
+            <div className="chat-header-row">
+              <div className="chat-header-main">
+                <h1>Simple Chat</h1>
+                <p>Set AZURE_BASE_URL, AZURE_API_VERSION=v1, and AZURE_DEPLOYMENT_NAME.</p>
+              </div>
+              <button
+                type="button"
+                className="secondary-btn chat-reset-btn"
+                onClick={handleResetThread}
+                disabled={isSending}
+              >
+                Reset Thread
+              </button>
+            </div>
           </header>
 
           <div className="chat-log" aria-live="polite">
@@ -607,10 +747,67 @@ export default function Home() {
                   disabled={isSending}
                 />
               )}
-              <button type="button" className="secondary-btn" onClick={handleAddMcpServer} disabled={isSending}>
+              <button
+                type="button"
+                className="secondary-btn"
+                onClick={() => {
+                  void handleAddMcpServer();
+                }}
+                disabled={isSending || isSavingMcpServer}
+              >
                 Add Server
               </button>
               {mcpFormError ? <p className="field-error">{mcpFormError}</p> : null}
+              {mcpFormWarning ? <p className="field-warning">{mcpFormWarning}</p> : null}
+            </section>
+
+            <section className="setting-group">
+              <div className="setting-group-header">
+                <h3>Saved Configs</h3>
+              </div>
+              <select
+                value={selectedSavedMcpServerId}
+                onChange={(event) => {
+                  setSelectedSavedMcpServerId(event.target.value);
+                  setSavedMcpError(null);
+                }}
+                disabled={isSending || isLoadingSavedMcpServers || savedMcpServers.length === 0}
+              >
+                {savedMcpServers.length === 0 ? (
+                  <option value="">No saved MCP servers</option>
+                ) : null}
+                {savedMcpServers.map((server) => (
+                  <option key={server.id} value={server.id}>
+                    {formatMcpServerOption(server)}
+                  </option>
+                ))}
+              </select>
+              <div className="mcp-action-row">
+                <button
+                  type="button"
+                  className="secondary-btn"
+                  onClick={handleAddSavedMcpServer}
+                  disabled={
+                    isSending ||
+                    isLoadingSavedMcpServers ||
+                    savedMcpServers.length === 0 ||
+                    !selectedSavedMcpServerId
+                  }
+                >
+                  Add Selected
+                </button>
+                <button
+                  type="button"
+                  className="secondary-btn"
+                  onClick={() => {
+                    void loadSavedMcpServers();
+                  }}
+                  disabled={isSending || isLoadingSavedMcpServers}
+                >
+                  {isLoadingSavedMcpServers ? "Loading..." : "Reload"}
+                </button>
+              </div>
+              {savedMcpError ? <p className="field-error">{savedMcpError}</p> : null}
             </section>
 
             <section className="setting-group">
@@ -840,6 +1037,142 @@ function parseStdioEnvInput(input: string): ParseResult<Record<string, string>> 
   return { ok: true, value: env };
 }
 
+function readMcpServerList(value: unknown): McpServerConfig[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const servers: McpServerConfig[] = [];
+  for (const entry of value) {
+    const server = readMcpServerFromUnknown(entry);
+    if (!server) {
+      continue;
+    }
+    servers.push(server);
+  }
+
+  return servers;
+}
+
+function readMcpServerFromUnknown(value: unknown): McpServerConfig | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const id = typeof value.id === "string" ? value.id.trim() : "";
+  if (!id) {
+    return null;
+  }
+
+  const name = typeof value.name === "string" ? value.name.trim() : "";
+  if (!name) {
+    return null;
+  }
+
+  const transport = value.transport;
+  if (transport === "stdio") {
+    const command = typeof value.command === "string" ? value.command.trim() : "";
+    if (!command) {
+      return null;
+    }
+
+    if (!Array.isArray(value.args) || !value.args.every((arg) => typeof arg === "string")) {
+      return null;
+    }
+
+    const envValue = value.env;
+    if (!isRecord(envValue) || !Object.values(envValue).every((entry) => typeof entry === "string")) {
+      return null;
+    }
+
+    return {
+      id,
+      name,
+      transport,
+      command,
+      args: value.args.map((arg) => arg.trim()).filter(Boolean),
+      cwd: typeof value.cwd === "string" && value.cwd.trim() ? value.cwd.trim() : undefined,
+      env: Object.fromEntries(
+        Object.entries(envValue)
+          .filter(([key, entry]) => ENV_KEY_PATTERN.test(key) && typeof entry === "string")
+          .map(([key, entry]) => [key, entry as string]),
+      ),
+    };
+  }
+
+  if (transport !== "streamable_http" && transport !== "sse") {
+    return null;
+  }
+
+  const url = typeof value.url === "string" ? value.url.trim() : "";
+  if (!url) {
+    return null;
+  }
+
+  return {
+    id,
+    name,
+    transport,
+    url,
+  };
+}
+
+function serializeMcpServerForSave(server: McpServerConfig): SaveMcpServerRequest {
+  if (server.transport === "stdio") {
+    return {
+      name: server.name,
+      transport: server.transport,
+      command: server.command,
+      args: server.args,
+      cwd: server.cwd,
+      env: server.env,
+    };
+  }
+
+  return {
+    name: server.name,
+    transport: server.transport,
+    url: server.url,
+  };
+}
+
+function cloneMcpServerWithNewId(server: McpServerConfig): McpServerConfig {
+  if (server.transport === "stdio") {
+    return {
+      ...server,
+      args: [...server.args],
+      env: { ...server.env },
+      id: createId("mcp"),
+    };
+  }
+
+  return {
+    ...server,
+    id: createId("mcp"),
+  };
+}
+
+function upsertMcpServer(current: McpServerConfig[], profile: McpServerConfig): McpServerConfig[] {
+  const existingIndex = current.findIndex((entry) => entry.id === profile.id);
+  if (existingIndex < 0) {
+    return [...current, profile];
+  }
+
+  return current.map((entry, index) => (index === existingIndex ? profile : entry));
+}
+
+function formatMcpServerOption(server: McpServerConfig): string {
+  if (server.transport === "stdio") {
+    return `${server.name} (stdio: ${server.command})`;
+  }
+
+  return `${server.name} (${server.transport})`;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object";
+}
+
 function getFileExtension(fileName: string): string {
   const parts = fileName.toLowerCase().split(".");
   return parts.length > 1 ? parts[parts.length - 1] : "";
@@ -851,9 +1184,24 @@ function createId(prefix: string): string {
 }
 
 function renderMessageContent(message: ChatMessage) {
-  const jsonTokens = message.role === "assistant" ? parseJsonMessageTokens(message.content) : null;
-  if (!jsonTokens) {
+  if (message.role !== "assistant") {
     return <p>{message.content}</p>;
+  }
+
+  const jsonTokens = parseJsonMessageTokens(message.content);
+  if (!jsonTokens) {
+    return (
+      <div className="markdown-message">
+        <ReactMarkdown
+          remarkPlugins={[remarkGfm]}
+          components={{
+            a: ({ ...props }) => <a {...props} target="_blank" rel="noreferrer" />,
+          }}
+        >
+          {message.content}
+        </ReactMarkdown>
+      </div>
+    );
   }
 
   return (

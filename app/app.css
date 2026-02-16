@@ -69,6 +69,17 @@ body {
   background: linear-gradient(180deg, rgba(248, 250, 252, 0.98), rgba(255, 253, 249, 0.9));
 }
 
+.chat-header-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.chat-header-main {
+  min-width: 0;
+}
+
 .chat-header h1 {
   margin: 0;
   font-size: 1.2rem;
@@ -80,6 +91,13 @@ body {
   margin: 0.3rem 0 0;
   font-size: 0.9rem;
   color: var(--text-subtle);
+}
+
+.chat-reset-btn {
+  flex-shrink: 0;
+  white-space: nowrap;
+  padding: 0.42rem 0.7rem;
+  font-size: 0.8rem;
 }
 
 .chat-log {
@@ -134,6 +152,91 @@ body {
 
 .json-token.punctuation {
   color: #2f3d49;
+}
+
+.markdown-message {
+  margin: 0;
+  white-space: normal;
+  font-size: 0.92rem;
+}
+
+.markdown-message > :first-child {
+  margin-top: 0;
+}
+
+.markdown-message > :last-child {
+  margin-bottom: 0;
+}
+
+.markdown-message p,
+.markdown-message ul,
+.markdown-message ol,
+.markdown-message pre,
+.markdown-message blockquote {
+  margin: 0.45rem 0;
+}
+
+.markdown-message ul,
+.markdown-message ol {
+  padding-left: 1.2rem;
+}
+
+.markdown-message li + li {
+  margin-top: 0.2rem;
+}
+
+.markdown-message code {
+  font-family: "IBM Plex Mono", "SFMono-Regular", Menlo, monospace;
+  font-size: 0.82em;
+  background: rgba(34, 48, 58, 0.08);
+  border-radius: 4px;
+  padding: 0.12rem 0.3rem;
+}
+
+.markdown-message pre {
+  overflow-x: auto;
+  border-radius: 10px;
+  border: 1px solid rgba(34, 48, 58, 0.18);
+  background: rgba(255, 255, 255, 0.82);
+  padding: 0.55rem 0.62rem;
+}
+
+.markdown-message pre code {
+  padding: 0;
+  background: transparent;
+  border-radius: 0;
+}
+
+.markdown-message blockquote {
+  margin-left: 0;
+  margin-right: 0;
+  padding: 0.35rem 0.6rem;
+  border-left: 3px solid rgba(44, 98, 123, 0.45);
+  background: rgba(255, 255, 255, 0.55);
+}
+
+.markdown-message a {
+  color: #245f82;
+  text-decoration: underline;
+}
+
+.markdown-message table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 0.5rem 0;
+  font-size: 0.82rem;
+}
+
+.markdown-message th,
+.markdown-message td {
+  border: 1px solid rgba(34, 48, 58, 0.2);
+  padding: 0.32rem 0.42rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+.markdown-message th {
+  background: rgba(34, 48, 58, 0.08);
 }
 
 .message-row.assistant {
@@ -357,6 +460,12 @@ body {
   color: var(--danger);
 }
 
+.field-warning {
+  margin: 0;
+  font-size: 0.78rem;
+  color: #9a6a00;
+}
+
 .secondary-btn {
   border: 1px solid var(--surface-border);
   border-radius: 10px;
@@ -381,6 +490,15 @@ body {
   display: flex;
   flex-direction: column;
   gap: 0.55rem;
+}
+
+.mcp-action-row {
+  display: flex;
+  gap: 0.45rem;
+}
+
+.mcp-action-row .secondary-btn {
+  flex: 1;
 }
 
 .mcp-item {
