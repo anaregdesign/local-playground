@@ -10,7 +10,7 @@ This application is a development and validation workbench for:
 - Azure OpenAI connectivity using `DefaultAzureCredential`
 - Dynamic discovery of Azure projects and deployments
 - Conversation execution through the Agents SDK
-- Runtime tuning (`reasoning effort`, `temperature`, `context window`)
+- Runtime tuning (`reasoning effort`, `context window`)
 - Agent Instruction editing and file-based loading
 - MCP server integration (`streamable_http`, `sse`, `stdio`) with reusable profiles
 
@@ -34,7 +34,7 @@ _Desktop UI: switch between Playground, Settings, and MCP Servers tabs to manage
 - Azure Connection (project / deployment selection)
 - Azure Login / Logout actions
 - Agent Instruction editing + file loading (`.md/.txt/.xml/.json`, up to 1MB)
-- Reasoning Effort / Temperature / Context Window controls
+- Reasoning Effort / Context Window controls (temperature is always omitted)
 
 ### 3. MCP Servers
 

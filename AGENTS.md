@@ -33,7 +33,7 @@
 ## Settings Validation
 
 - `Context Window`: integer input with UI validation (`1` to `200`).
-- `Temperature`: optional number input (`0` to `2`), empty means `None`.
+- `Temperature`: do not expose in Settings; always omit from requests.
 - `Reasoning Effort`: support `none`, `low`, `medium`, `high`.
 - Agent instruction file loading: allow `.md`, `.txt`, `.xml`, `.json` up to `1MB`.
 

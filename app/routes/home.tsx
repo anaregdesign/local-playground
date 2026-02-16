@@ -90,8 +90,6 @@ const INITIAL_MESSAGES: ChatMessage[] = [
 const DEFAULT_CONTEXT_WINDOW_SIZE = 10;
 const MIN_CONTEXT_WINDOW_SIZE = 1;
 const MAX_CONTEXT_WINDOW_SIZE = 200;
-const MIN_TEMPERATURE = 0;
-const MAX_TEMPERATURE = 2;
 const DEFAULT_AGENT_INSTRUCTION = "You are a concise assistant for a local playground app.";
 const MAX_INSTRUCTION_FILE_SIZE_BYTES = 1_000_000;
 const MAX_INSTRUCTION_FILE_SIZE_LABEL = "1MB";
@@ -141,7 +139,6 @@ export default function Home() {
   const [contextWindowInput, setContextWindowInput] = useState(
     String(DEFAULT_CONTEXT_WINDOW_SIZE),
   );
-  const [temperatureInput, setTemperatureInput] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [isComposing, setIsComposing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -153,7 +150,6 @@ export default function Home() {
   const endOfMessagesRef = useRef<HTMLDivElement | null>(null);
   const azureDeploymentRequestSeqRef = useRef(0);
   const contextWindowValidation = validateContextWindowInput(contextWindowInput);
-  const temperatureValidation = validateTemperatureInput(temperatureInput);
   const isChatLocked = isAzureAuthRequired;
   const previousChatLockedRef = useRef(isChatLocked);
   const activeAzureConnection =
@@ -434,8 +430,7 @@ export default function Home() {
     if (
       !content ||
       isSending ||
-      !contextWindowValidation.isValid ||
-      !temperatureValidation.isValid
+      !contextWindowValidation.isValid
     ) {
       return;
     }
@@ -473,7 +468,6 @@ export default function Home() {
     if (contextWindowSize === null) {
       return;
     }
-    const temperature = temperatureValidation.value;
 
     const history = messages
       .slice(-contextWindowSize)
@@ -506,7 +500,6 @@ export default function Home() {
           },
           reasoningEffort,
           contextWindowSize,
-          ...(temperature !== null ? { temperature } : {}),
           agentInstruction,
           mcpServers: mcpServers.map((server) =>
             server.transport === "stdio"
@@ -964,8 +957,7 @@ export default function Home() {
                   !activeAzureConnection ||
                   !selectedAzureDeploymentName.trim() ||
                   draft.trim().length === 0 ||
-                  !contextWindowValidation.isValid ||
-                  !temperatureValidation.isValid
+                  !contextWindowValidation.isValid
                 }
               >
                 ✉️ Send
@@ -1154,30 +1146,6 @@ export default function Home() {
                   </option>
                 ))}
               </select>
-            </section>
-
-            <section className="setting-group">
-              <div className="setting-group-header">
-                <h3>Temperature 🌡️</h3>
-                <p>Controls response randomness. Leave empty for None.</p>
-              </div>
-              <input
-                id="temperature"
-                type="text"
-                inputMode="decimal"
-                placeholder="None"
-                value={temperatureInput}
-                onChange={(event) => setTemperatureInput(event.target.value)}
-                disabled={isSending}
-                aria-invalid={!temperatureValidation.isValid}
-                aria-describedby="temperature-error"
-              />
-              <p className="field-hint">None or number from 0 to 2.</p>
-              {temperatureValidation.message ? (
-                <p id="temperature-error" className="field-error">
-                  {temperatureValidation.message}
-                </p>
-              ) : null}
             </section>
 
             <section className="setting-group">
@@ -1443,44 +1411,6 @@ function validateContextWindowInput(input: string): {
       isValid: false,
       value: null,
       message: `Context window must be between ${MIN_CONTEXT_WINDOW_SIZE} and ${MAX_CONTEXT_WINDOW_SIZE}.`,
-    };
-  }
-
-  return {
-    isValid: true,
-    value: parsed,
-    message: null,
-  };
-}
-
-function validateTemperatureInput(input: string): {
-  isValid: boolean;
-  value: number | null;
-  message: string | null;
-} {
-  const trimmed = input.trim();
-  if (!trimmed) {
-    return {
-      isValid: true,
-      value: null,
-      message: null,
-    };
-  }
-
-  if (!/^-?(?:\d+|\d*\.\d+)$/.test(trimmed)) {
-    return {
-      isValid: false,
-      value: null,
-      message: "Temperature must be a number.",
-    };
-  }
-
-  const parsed = Number(trimmed);
-  if (!Number.isFinite(parsed) || parsed < MIN_TEMPERATURE || parsed > MAX_TEMPERATURE) {
-    return {
-      isValid: false,
-      value: null,
-      message: `Temperature must be between ${MIN_TEMPERATURE} and ${MAX_TEMPERATURE}.`,
     };
   }
 
