@@ -27,6 +27,9 @@ type ClientMcpHttpServerConfig = {
   transport: "streamable_http" | "sse";
   url: string;
   headers: Record<string, string>;
+  useAzureAuth: boolean;
+  azureAuthScope: string;
+  timeoutSeconds: number;
 };
 type ClientMcpStdioServerConfig = {
   name: string;
@@ -132,6 +135,9 @@ const MAX_MCP_SERVER_NAME_LENGTH = 80;
 const MAX_MCP_STDIO_ARGS = 64;
 const MAX_MCP_STDIO_ENV_VARS = 64;
 const MAX_MCP_HTTP_HEADERS = 64;
+const MAX_MCP_AZURE_AUTH_SCOPE_LENGTH = 512;
+const MIN_MCP_TIMEOUT_SECONDS = 1;
+const MAX_MCP_TIMEOUT_SECONDS = 600;
 const ENV_KEY_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const HTTP_HEADER_NAME_PATTERN = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/;
 const DEFAULT_MCP_HTTP_HEADERS: Record<string, string> = {
@@ -139,6 +145,8 @@ const DEFAULT_MCP_HTTP_HEADERS: Record<string, string> = {
 };
 
 const AZURE_COGNITIVE_SERVICES_SCOPE = "https://cognitiveservices.azure.com/.default";
+const DEFAULT_MCP_AZURE_AUTH_SCOPE = AZURE_COGNITIVE_SERVICES_SCOPE;
+const DEFAULT_MCP_TIMEOUT_SECONDS = 30;
 const SYSTEM_PROMPT = "You are a concise assistant for a local playground app.";
 const MAX_AGENT_INSTRUCTION_LENGTH = 4000;
 const azureOpenAIClientsByBaseURL = new Map<string, OpenAI>();
@@ -242,6 +250,7 @@ async function executeChat(
   const toolNameByCallId = new Map<string, string>();
   let mcpRpcSequence = 0;
   const hasMcpServers = options.mcpServers.length > 0;
+  const azureMcpAuthorizationTokenPromiseByScope = new Map<string, Promise<string>>();
 
   const emitProgress = (event: ChatProgressEvent) => {
     onEvent?.({
@@ -271,7 +280,19 @@ async function executeChat(
         isMcp: true,
       });
 
-      const server = createMcpServer(serverConfig);
+      const server = await createMcpServer(serverConfig, {
+        getAzureAuthorizationToken: (scope) => {
+          const normalizedScope = scope.trim();
+          const current = azureMcpAuthorizationTokenPromiseByScope.get(normalizedScope);
+          if (current) {
+            return current;
+          }
+
+          const created = getAzureMcpAuthorizationToken(normalizedScope);
+          azureMcpAuthorizationTokenPromiseByScope.set(normalizedScope, created);
+          return created;
+        },
+      });
       const instrumentedServer = instrumentMcpServer(server, {
         nextSequence: () => {
           mcpRpcSequence += 1;
@@ -767,22 +788,46 @@ function readMcpServers(payload: unknown): ParseResult<ClientMcpServerConfig[]> 
     if (!headersResult.ok) {
       return headersResult;
     }
+    const useAzureAuth = entry.useAzureAuth === true;
+    const scopeResult = parseAzureAuthScope(entry.azureAuthScope, index, useAzureAuth);
+    if (!scopeResult.ok) {
+      return scopeResult;
+    }
+    const timeoutResult = parseTimeoutSeconds(entry.timeoutSeconds, index);
+    if (!timeoutResult.ok) {
+      return timeoutResult;
+    }
 
     const url = parsedUrl.toString();
     const headersKey = buildHttpHeadersDedupeKey(headersResult.value);
-    const dedupeKey = `${transport}:${url.toLowerCase()}:${headersKey}`;
+    const authKey = useAzureAuth ? "azure-auth:on" : "azure-auth:off";
+    const scopeKey = useAzureAuth ? scopeResult.value.toLowerCase() : "";
+    const dedupeKey = `${transport}:${url.toLowerCase()}:${headersKey}:${authKey}:${scopeKey}:${timeoutResult.value}`;
     if (dedupeKeys.has(dedupeKey)) {
       continue;
     }
 
     dedupeKeys.add(dedupeKey);
-    result.push({ name, url, transport, headers: headersResult.value });
+    result.push({
+      name,
+      url,
+      transport,
+      headers: headersResult.value,
+      useAzureAuth,
+      azureAuthScope: scopeResult.value,
+      timeoutSeconds: timeoutResult.value,
+    });
   }
 
   return { ok: true, value: result };
 }
 
-function createMcpServer(config: ClientMcpServerConfig): MCPServer {
+async function createMcpServer(
+  config: ClientMcpServerConfig,
+  helpers: {
+    getAzureAuthorizationToken: (scope: string) => Promise<string>;
+  },
+): Promise<MCPServer> {
   if (config.transport === "stdio") {
     return new MCPServerStdio({
       name: config.name,
@@ -793,12 +838,20 @@ function createMcpServer(config: ClientMcpServerConfig): MCPServer {
     });
   }
 
+  const headers = buildMcpHttpRequestHeaders(config.headers);
+  if (config.useAzureAuth) {
+    const token = await helpers.getAzureAuthorizationToken(config.azureAuthScope);
+    headers.Authorization = `Bearer ${token}`;
+  }
+
   if (config.transport === "sse") {
     return new MCPServerSSE({
       name: config.name,
       url: config.url,
+      clientSessionTimeoutSeconds: config.timeoutSeconds,
+      timeout: config.timeoutSeconds * 1000,
       requestInit: {
-        headers: buildMcpHttpRequestHeaders(config.headers),
+        headers,
       },
     });
   }
@@ -806,8 +859,10 @@ function createMcpServer(config: ClientMcpServerConfig): MCPServer {
   return new MCPServerStreamableHttp({
     name: config.name,
     url: config.url,
+    clientSessionTimeoutSeconds: config.timeoutSeconds,
+    timeout: config.timeoutSeconds * 1000,
     requestInit: {
-      headers: buildMcpHttpRequestHeaders(config.headers),
+      headers,
     },
   });
 }
@@ -1071,6 +1126,63 @@ function parseHttpHeaders(
   return { ok: true, value: headers };
 }
 
+function parseAzureAuthScope(
+  rawScope: unknown,
+  index: number,
+  useAzureAuth: boolean,
+): ParseResult<string> {
+  if (rawScope === undefined || rawScope === null) {
+    return { ok: true, value: DEFAULT_MCP_AZURE_AUTH_SCOPE };
+  }
+
+  if (typeof rawScope !== "string") {
+    return { ok: false, error: `mcpServers[${index}].azureAuthScope must be a string.` };
+  }
+
+  const scope = rawScope.trim() || DEFAULT_MCP_AZURE_AUTH_SCOPE;
+  if (scope.length > MAX_MCP_AZURE_AUTH_SCOPE_LENGTH) {
+    return {
+      ok: false,
+      error: `mcpServers[${index}].azureAuthScope must be ${MAX_MCP_AZURE_AUTH_SCOPE_LENGTH} characters or fewer.`,
+    };
+  }
+
+  if (/\s/.test(scope)) {
+    return { ok: false, error: `mcpServers[${index}].azureAuthScope must not include spaces.` };
+  }
+
+  if (useAzureAuth && !scope) {
+    return {
+      ok: false,
+      error: `mcpServers[${index}].azureAuthScope is required when useAzureAuth is true.`,
+    };
+  }
+
+  return { ok: true, value: scope };
+}
+
+function parseTimeoutSeconds(
+  rawTimeout: unknown,
+  index: number,
+): ParseResult<number> {
+  if (rawTimeout === undefined || rawTimeout === null) {
+    return { ok: true, value: DEFAULT_MCP_TIMEOUT_SECONDS };
+  }
+
+  if (typeof rawTimeout !== "number" || !Number.isSafeInteger(rawTimeout)) {
+    return { ok: false, error: `mcpServers[${index}].timeoutSeconds must be an integer.` };
+  }
+
+  if (rawTimeout < MIN_MCP_TIMEOUT_SECONDS || rawTimeout > MAX_MCP_TIMEOUT_SECONDS) {
+    return {
+      ok: false,
+      error: `mcpServers[${index}].timeoutSeconds must be between ${MIN_MCP_TIMEOUT_SECONDS} and ${MAX_MCP_TIMEOUT_SECONDS}.`,
+    };
+  }
+
+  return { ok: true, value: rawTimeout };
+}
+
 function buildMcpHttpRequestHeaders(headers: Record<string, string>): Record<string, string> {
   const mergedHeaders: Record<string, string> = { ...DEFAULT_MCP_HTTP_HEADERS };
   for (const [key, value] of Object.entries(headers)) {
@@ -1081,6 +1193,17 @@ function buildMcpHttpRequestHeaders(headers: Record<string, string>): Record<str
   }
 
   return mergedHeaders;
+}
+
+async function getAzureMcpAuthorizationToken(scope: string): Promise<string> {
+  const credential = new DefaultAzureCredential();
+  const token = await credential.getToken(scope);
+  if (!token?.token) {
+    throw new Error(
+      `DefaultAzureCredential failed to acquire Azure token for MCP Authorization header (scope: ${scope}). Run Azure Login and try again.`,
+    );
+  }
+  return token.token;
 }
 
 function buildHttpHeadersDedupeKey(headers: Record<string, string>): string {
@@ -1097,7 +1220,9 @@ function describeMcpServer(config: ClientMcpServerConfig): string {
     return `stdio:${config.command}${argsPart}`;
   }
 
-  return config.url;
+  return config.useAzureAuth
+    ? `${config.url} (azure auth: ${config.azureAuthScope}, timeout: ${config.timeoutSeconds}s)`
+    : `${config.url} (timeout: ${config.timeoutSeconds}s)`;
 }
 
 function readProgressEventFromRunStreamEvent(

@@ -21,6 +21,9 @@ type McpHttpServerConfig = {
   transport: "streamable_http" | "sse";
   url: string;
   headers: Record<string, string>;
+  useAzureAuth: boolean;
+  azureAuthScope: string;
+  timeoutSeconds: number;
 };
 
 type McpStdioServerConfig = {
@@ -145,8 +148,13 @@ const MAX_INSTRUCTION_FILE_SIZE_BYTES = 1_000_000;
 const MAX_INSTRUCTION_FILE_SIZE_LABEL = "1MB";
 const ALLOWED_INSTRUCTION_EXTENSIONS = new Set(["md", "txt", "xml", "json"]);
 const DEFAULT_MCP_TRANSPORT: McpTransport = "streamable_http";
+const DEFAULT_MCP_AZURE_AUTH_SCOPE = "https://cognitiveservices.azure.com/.default";
+const DEFAULT_MCP_TIMEOUT_SECONDS = 30;
+const MIN_MCP_TIMEOUT_SECONDS = 1;
+const MAX_MCP_TIMEOUT_SECONDS = 600;
 const MAX_MCP_HTTP_HEADERS = 64;
 const HTTP_HEADER_NAME_PATTERN = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/;
+const MAX_MCP_AZURE_AUTH_SCOPE_LENGTH = 512;
 
 export function meta({}: Route.MetaArgs) {
   return [
@@ -183,6 +191,13 @@ export default function Home() {
   const [mcpCwdInput, setMcpCwdInput] = useState("");
   const [mcpEnvInput, setMcpEnvInput] = useState("");
   const [mcpHeadersInput, setMcpHeadersInput] = useState("");
+  const [mcpUseAzureAuthInput, setMcpUseAzureAuthInput] = useState(false);
+  const [mcpAzureAuthScopeInput, setMcpAzureAuthScopeInput] = useState(
+    DEFAULT_MCP_AZURE_AUTH_SCOPE,
+  );
+  const [mcpTimeoutSecondsInput, setMcpTimeoutSecondsInput] = useState(
+    String(DEFAULT_MCP_TIMEOUT_SECONDS),
+  );
   const [mcpTransport, setMcpTransport] = useState<McpTransport>(DEFAULT_MCP_TRANSPORT);
   const [mcpFormError, setMcpFormError] = useState<string | null>(null);
   const [mcpFormWarning, setMcpFormWarning] = useState<string | null>(null);
@@ -696,6 +711,9 @@ export default function Home() {
                   transport: server.transport,
                   url: server.url,
                   headers: server.headers,
+                  useAzureAuth: server.useAzureAuth,
+                  azureAuthScope: server.azureAuthScope,
+                  timeoutSeconds: server.timeoutSeconds,
                 },
           ),
         }),
@@ -943,12 +961,30 @@ export default function Home() {
         return;
       }
 
+      let azureAuthScope = DEFAULT_MCP_AZURE_AUTH_SCOPE;
+      if (mcpUseAzureAuthInput) {
+        const scopeResult = parseAzureAuthScopeInput(mcpAzureAuthScopeInput);
+        if (!scopeResult.ok) {
+          setMcpFormError(scopeResult.error);
+          return;
+        }
+        azureAuthScope = scopeResult.value;
+      }
+      const timeoutResult = parseMcpTimeoutSecondsInput(mcpTimeoutSecondsInput);
+      if (!timeoutResult.ok) {
+        setMcpFormError(timeoutResult.error);
+        return;
+      }
+
       serverToAdd = {
         id: createId("mcp"),
         name,
         url: normalizedUrl,
         transport: mcpTransport,
         headers: headersResult.value,
+        useAzureAuth: mcpUseAzureAuthInput,
+        azureAuthScope,
+        timeoutSeconds: timeoutResult.value,
       };
     }
 
@@ -1001,10 +1037,13 @@ export default function Home() {
     setMcpCwdInput("");
     setMcpEnvInput("");
     setMcpHeadersInput("");
+    setMcpUseAzureAuthInput(false);
+    setMcpAzureAuthScopeInput(DEFAULT_MCP_AZURE_AUTH_SCOPE);
+    setMcpTimeoutSecondsInput(String(DEFAULT_MCP_TIMEOUT_SECONDS));
     setMcpTransport(DEFAULT_MCP_TRANSPORT);
   }
 
-  function handleAddSavedMcpServer() {
+  function handleLoadSavedMcpServerToForm() {
     if (!selectedSavedMcpServerId) {
       setSavedMcpError("Select a saved MCP server first.");
       return;
@@ -1016,16 +1055,33 @@ export default function Home() {
       return;
     }
 
-    const nextServer = cloneMcpServerWithNewId(selected);
-    const duplicated = mcpServers.some(
-      (server) => buildMcpServerKey(server) === buildMcpServerKey(nextServer),
-    );
-    if (duplicated) {
-      setSavedMcpError("This MCP server is already added.");
-      return;
+    setMcpNameInput(selected.name);
+    setMcpTransport(selected.transport);
+    setMcpFormError(null);
+    setMcpFormWarning(null);
+
+    if (selected.transport === "stdio") {
+      setMcpCommandInput(selected.command);
+      setMcpArgsInput(formatStdioArgsInput(selected.args));
+      setMcpCwdInput(selected.cwd ?? "");
+      setMcpEnvInput(formatKeyValueLines(selected.env));
+      setMcpUrlInput("");
+      setMcpHeadersInput("");
+      setMcpUseAzureAuthInput(false);
+      setMcpAzureAuthScopeInput(DEFAULT_MCP_AZURE_AUTH_SCOPE);
+      setMcpTimeoutSecondsInput(String(DEFAULT_MCP_TIMEOUT_SECONDS));
+    } else {
+      setMcpUrlInput(selected.url);
+      setMcpHeadersInput(formatKeyValueLines(selected.headers));
+      setMcpUseAzureAuthInput(selected.useAzureAuth);
+      setMcpAzureAuthScopeInput(selected.azureAuthScope);
+      setMcpTimeoutSecondsInput(String(selected.timeoutSeconds));
+      setMcpCommandInput("");
+      setMcpArgsInput("");
+      setMcpCwdInput("");
+      setMcpEnvInput("");
     }
 
-    setMcpServers((current) => [...current, nextServer]);
     setSavedMcpError(null);
   }
 
@@ -1558,6 +1614,40 @@ export default function Home() {
                     onChange={(event) => setMcpHeadersInput(event.target.value)}
                     disabled={isSending}
                   />
+                  <label className="field-checkbox">
+                    <input
+                      type="checkbox"
+                      checked={mcpUseAzureAuthInput}
+                      onChange={(event) => {
+                        const checked = event.target.checked;
+                        setMcpUseAzureAuthInput(checked);
+                        if (checked && !mcpAzureAuthScopeInput.trim()) {
+                          setMcpAzureAuthScopeInput(DEFAULT_MCP_AZURE_AUTH_SCOPE);
+                        }
+                      }}
+                      disabled={isSending}
+                    />
+                    <span>Use Azure Bearer token from DefaultAzureCredential</span>
+                  </label>
+                  {mcpUseAzureAuthInput ? (
+                    <input
+                      type="text"
+                      placeholder={DEFAULT_MCP_AZURE_AUTH_SCOPE}
+                      value={mcpAzureAuthScopeInput}
+                      onChange={(event) => setMcpAzureAuthScopeInput(event.target.value)}
+                      disabled={isSending}
+                    />
+                  ) : null}
+                  <input
+                    type="text"
+                    placeholder={String(DEFAULT_MCP_TIMEOUT_SECONDS)}
+                    value={mcpTimeoutSecondsInput}
+                    onChange={(event) => setMcpTimeoutSecondsInput(event.target.value)}
+                    disabled={isSending}
+                  />
+                  <p className="field-hint">
+                    Timeout (seconds): integer from {MIN_MCP_TIMEOUT_SECONDS} to {MAX_MCP_TIMEOUT_SECONDS}.
+                  </p>
                   <p className="field-hint">Content-Type: application/json is always included.</p>
                 </>
               )}
@@ -1600,7 +1690,7 @@ export default function Home() {
                 <button
                   type="button"
                   className="secondary-btn"
-                  onClick={handleAddSavedMcpServer}
+                  onClick={handleLoadSavedMcpServerToForm}
                   disabled={
                     isSending ||
                     isLoadingSavedMcpServers ||
@@ -1608,7 +1698,7 @@ export default function Home() {
                     !selectedSavedMcpServerId
                   }
                 >
-                  ➕ Add Selected
+                  📥 Load Selected
                 </button>
                 <button
                   type="button"
@@ -1653,6 +1743,12 @@ export default function Home() {
                             <p className="mcp-item-meta">
                               {server.transport} ({Object.keys(server.headers).length} custom headers)
                             </p>
+                            <p className="mcp-item-meta">timeout: {server.timeoutSeconds}s</p>
+                            {server.useAzureAuth ? (
+                              <p className="mcp-item-meta">
+                                Azure Authorization: enabled ({server.azureAuthScope})
+                              </p>
+                            ) : null}
                           </>
                         )}
                       </div>
@@ -2161,7 +2257,9 @@ function buildMcpServerKey(server: McpServerConfig): string {
   }
 
   const headersKey = buildHttpHeadersKey(server.headers);
-  return `${server.transport}:${server.url.toLowerCase()}:${headersKey}`;
+  const authKey = server.useAzureAuth ? "azure-auth:on" : "azure-auth:off";
+  const scopeKey = server.useAzureAuth ? server.azureAuthScope.toLowerCase() : "";
+  return `${server.transport}:${server.url.toLowerCase()}:${headersKey}:${authKey}:${scopeKey}:${server.timeoutSeconds}`;
 }
 
 function parseStdioArgsInput(input: string): ParseResult<string[]> {
@@ -2289,6 +2387,64 @@ export function parseHttpHeadersInput(input: string): ParseResult<Record<string,
   return { ok: true, value: headers };
 }
 
+export function parseAzureAuthScopeInput(input: string): ParseResult<string> {
+  const trimmed = input.trim();
+  const scope = trimmed || DEFAULT_MCP_AZURE_AUTH_SCOPE;
+  if (scope.length > MAX_MCP_AZURE_AUTH_SCOPE_LENGTH) {
+    return {
+      ok: false,
+      error: `Azure auth scope must be ${MAX_MCP_AZURE_AUTH_SCOPE_LENGTH} characters or fewer.`,
+    };
+  }
+
+  if (/\s/.test(scope)) {
+    return {
+      ok: false,
+      error: "Azure auth scope must not include spaces.",
+    };
+  }
+
+  return { ok: true, value: scope };
+}
+
+export function parseMcpTimeoutSecondsInput(input: string): ParseResult<number> {
+  const trimmed = input.trim();
+  if (!trimmed) {
+    return { ok: true, value: DEFAULT_MCP_TIMEOUT_SECONDS };
+  }
+
+  const parsed = Number(trimmed);
+  if (!Number.isSafeInteger(parsed)) {
+    return {
+      ok: false,
+      error: "MCP timeout must be an integer number of seconds.",
+    };
+  }
+
+  if (parsed < MIN_MCP_TIMEOUT_SECONDS || parsed > MAX_MCP_TIMEOUT_SECONDS) {
+    return {
+      ok: false,
+      error: `MCP timeout must be between ${MIN_MCP_TIMEOUT_SECONDS} and ${MAX_MCP_TIMEOUT_SECONDS} seconds.`,
+    };
+  }
+
+  return { ok: true, value: parsed };
+}
+
+function formatStdioArgsInput(args: string[]): string {
+  if (args.length === 0) {
+    return "";
+  }
+  return JSON.stringify(args);
+}
+
+function formatKeyValueLines(entries: Record<string, string>): string {
+  return Object.entries(entries)
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([key, value]) => `${key}=${value}`)
+    .join("\n");
+}
+
 function readMcpServerList(value: unknown): McpServerConfig[] {
   if (!Array.isArray(value)) {
     return [];
@@ -2372,6 +2528,9 @@ function readMcpServerFromUnknown(value: unknown): McpServerConfig | null {
     transport,
     url,
     headers,
+    useAzureAuth: value.useAzureAuth === true,
+    azureAuthScope: readAzureAuthScopeFromUnknown(value.azureAuthScope),
+    timeoutSeconds: readMcpTimeoutSecondsFromUnknown(value.timeoutSeconds),
   };
 }
 
@@ -2392,23 +2551,9 @@ function serializeMcpServerForSave(server: McpServerConfig): SaveMcpServerReques
     transport: server.transport,
     url: server.url,
     headers: server.headers,
-  };
-}
-
-function cloneMcpServerWithNewId(server: McpServerConfig): McpServerConfig {
-  if (server.transport === "stdio") {
-    return {
-      ...server,
-      args: [...server.args],
-      env: { ...server.env },
-      id: createId("mcp"),
-    };
-  }
-
-  return {
-    ...server,
-    headers: { ...server.headers },
-    id: createId("mcp"),
+    useAzureAuth: server.useAzureAuth,
+    azureAuthScope: server.azureAuthScope,
+    timeoutSeconds: server.timeoutSeconds,
   };
 }
 
@@ -2427,10 +2572,12 @@ function formatMcpServerOption(server: McpServerConfig): string {
   }
 
   const headerCount = Object.keys(server.headers).length;
+  const azureAuthLabel = server.useAzureAuth ? `, Azure auth (${server.azureAuthScope})` : "";
+  const timeoutLabel = `, timeout ${server.timeoutSeconds}s`;
   if (headerCount > 0) {
-    return `${server.name} (${server.transport}, +${headerCount} headers)`;
+    return `${server.name} (${server.transport}, +${headerCount} headers${azureAuthLabel}${timeoutLabel})`;
   }
-  return `${server.name} (${server.transport})`;
+  return `${server.name} (${server.transport}${azureAuthLabel}${timeoutLabel})`;
 }
 
 function buildHttpHeadersKey(headers: Record<string, string>): string {
@@ -2471,6 +2618,35 @@ function readHttpHeadersFromUnknown(value: unknown): Record<string, string> | nu
   }
 
   return headers;
+}
+
+function readAzureAuthScopeFromUnknown(value: unknown): string {
+  if (typeof value !== "string") {
+    return DEFAULT_MCP_AZURE_AUTH_SCOPE;
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed || /\s/.test(trimmed)) {
+    return DEFAULT_MCP_AZURE_AUTH_SCOPE;
+  }
+
+  if (trimmed.length > MAX_MCP_AZURE_AUTH_SCOPE_LENGTH) {
+    return DEFAULT_MCP_AZURE_AUTH_SCOPE;
+  }
+
+  return trimmed;
+}
+
+function readMcpTimeoutSecondsFromUnknown(value: unknown): number {
+  if (typeof value !== "number" || !Number.isSafeInteger(value)) {
+    return DEFAULT_MCP_TIMEOUT_SECONDS;
+  }
+
+  if (value < MIN_MCP_TIMEOUT_SECONDS || value > MAX_MCP_TIMEOUT_SECONDS) {
+    return DEFAULT_MCP_TIMEOUT_SECONDS;
+  }
+
+  return value;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

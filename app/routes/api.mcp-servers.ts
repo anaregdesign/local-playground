@@ -11,6 +11,9 @@ type SavedMcpHttpServerConfig = {
   transport: "streamable_http" | "sse";
   url: string;
   headers: Record<string, string>;
+  useAzureAuth: boolean;
+  azureAuthScope: string;
+  timeoutSeconds: number;
 };
 
 type SavedMcpStdioServerConfig = {
@@ -33,8 +36,13 @@ const MAX_MCP_SERVER_NAME_LENGTH = 80;
 const MAX_MCP_STDIO_ARGS = 64;
 const MAX_MCP_STDIO_ENV_VARS = 64;
 const MAX_MCP_HTTP_HEADERS = 64;
+const MAX_MCP_AZURE_AUTH_SCOPE_LENGTH = 512;
+const MIN_MCP_TIMEOUT_SECONDS = 1;
+const MAX_MCP_TIMEOUT_SECONDS = 600;
 const ENV_KEY_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const HTTP_HEADER_NAME_PATTERN = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/;
+const DEFAULT_MCP_AZURE_AUTH_SCOPE = "https://cognitiveservices.azure.com/.default";
+const DEFAULT_MCP_TIMEOUT_SECONDS = 30;
 const MCP_CONFIG_FILE_PATHS = getFoundryConfigFilePaths("mcp-servers.json");
 
 export async function loader({ request }: Route.LoaderArgs) {
@@ -183,6 +191,15 @@ function parseIncomingHttpMcpServer(
   if (!headersResult.ok) {
     return headersResult;
   }
+  const useAzureAuth = payload.useAzureAuth === true;
+  const azureAuthScopeResult = parseAzureAuthScope(payload.azureAuthScope, useAzureAuth);
+  if (!azureAuthScopeResult.ok) {
+    return azureAuthScopeResult;
+  }
+  const timeoutResult = parseTimeoutSeconds(payload.timeoutSeconds);
+  if (!timeoutResult.ok) {
+    return timeoutResult;
+  }
 
   const id = normalizeOptionalId(payload.id);
   return {
@@ -193,6 +210,9 @@ function parseIncomingHttpMcpServer(
       transport,
       url: parsedUrl.toString(),
       headers: headersResult.value,
+      useAzureAuth,
+      azureAuthScope: azureAuthScopeResult.value,
+      timeoutSeconds: timeoutResult.value,
     },
   };
 }
@@ -280,6 +300,9 @@ function upsertSavedMcpServer(
           transport: incoming.transport,
           url: incoming.url,
           headers: incoming.headers,
+          useAzureAuth: incoming.useAzureAuth,
+          azureAuthScope: incoming.azureAuthScope,
+          timeoutSeconds: incoming.timeoutSeconds,
         };
 
   const profiles =
@@ -325,6 +348,9 @@ function normalizeStoredMcpServer(entry: unknown): SavedMcpServerConfig | null {
         transport: parsed.value.transport,
         url: parsed.value.url,
         headers: parsed.value.headers,
+        useAzureAuth: parsed.value.useAzureAuth,
+        azureAuthScope: parsed.value.azureAuthScope,
+        timeoutSeconds: parsed.value.timeoutSeconds,
       };
 }
 
@@ -434,6 +460,58 @@ function parseHttpHeaders(
   return { ok: true, value: headers };
 }
 
+function parseAzureAuthScope(
+  rawScope: unknown,
+  useAzureAuth: boolean,
+): ParseResult<string> {
+  if (rawScope === undefined || rawScope === null) {
+    return { ok: true, value: DEFAULT_MCP_AZURE_AUTH_SCOPE };
+  }
+
+  if (typeof rawScope !== "string") {
+    return { ok: false, error: "`azureAuthScope` must be a string." };
+  }
+
+  const trimmed = rawScope.trim() || DEFAULT_MCP_AZURE_AUTH_SCOPE;
+  if (trimmed.length > MAX_MCP_AZURE_AUTH_SCOPE_LENGTH) {
+    return {
+      ok: false,
+      error: `\`azureAuthScope\` must be ${MAX_MCP_AZURE_AUTH_SCOPE_LENGTH} characters or fewer.`,
+    };
+  }
+
+  if (/\s/.test(trimmed)) {
+    return { ok: false, error: "`azureAuthScope` must not include spaces." };
+  }
+
+  if (useAzureAuth && !trimmed) {
+    return { ok: false, error: "`azureAuthScope` is required when `useAzureAuth` is true." };
+  }
+
+  return { ok: true, value: trimmed };
+}
+
+function parseTimeoutSeconds(
+  rawTimeout: unknown,
+): ParseResult<number> {
+  if (rawTimeout === undefined || rawTimeout === null) {
+    return { ok: true, value: DEFAULT_MCP_TIMEOUT_SECONDS };
+  }
+
+  if (typeof rawTimeout !== "number" || !Number.isSafeInteger(rawTimeout)) {
+    return { ok: false, error: "`timeoutSeconds` must be an integer." };
+  }
+
+  if (rawTimeout < MIN_MCP_TIMEOUT_SECONDS || rawTimeout > MAX_MCP_TIMEOUT_SECONDS) {
+    return {
+      ok: false,
+      error: `\`timeoutSeconds\` must be between ${MIN_MCP_TIMEOUT_SECONDS} and ${MAX_MCP_TIMEOUT_SECONDS}.`,
+    };
+  }
+
+  return { ok: true, value: rawTimeout };
+}
+
 function readTransport(value: unknown): McpTransport | null {
   if (value === "streamable_http" || value === "sse" || value === "stdio") {
     return value;
@@ -471,7 +549,9 @@ function buildIncomingProfileKey(profile: IncomingMcpServerConfig): string {
     .sort(([left], [right]) => left.localeCompare(right))
     .map(([key, value]) => `${key}=${value}`)
     .join("\u0000");
-  return `${profile.transport}:${profile.url.toLowerCase()}:${headersKey}`;
+  const authKey = profile.useAzureAuth ? "azure-auth:on" : "azure-auth:off";
+  const scopeKey = profile.useAzureAuth ? profile.azureAuthScope.toLowerCase() : "";
+  return `${profile.transport}:${profile.url.toLowerCase()}:${headersKey}:${authKey}:${scopeKey}:${profile.timeoutSeconds}`;
 }
 
 function buildProfileKey(profile: SavedMcpServerConfig): string {
