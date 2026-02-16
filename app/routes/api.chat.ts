@@ -26,6 +26,7 @@ type ClientMcpHttpServerConfig = {
   name: string;
   transport: "streamable_http" | "sse";
   url: string;
+  headers: Record<string, string>;
 };
 type ClientMcpStdioServerConfig = {
   name: string;
@@ -130,7 +131,12 @@ const MAX_MCP_SERVERS = 8;
 const MAX_MCP_SERVER_NAME_LENGTH = 80;
 const MAX_MCP_STDIO_ARGS = 64;
 const MAX_MCP_STDIO_ENV_VARS = 64;
+const MAX_MCP_HTTP_HEADERS = 64;
 const ENV_KEY_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
+const HTTP_HEADER_NAME_PATTERN = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/;
+const DEFAULT_MCP_HTTP_HEADERS: Record<string, string> = {
+  "Content-Type": "application/json",
+};
 
 const AZURE_COGNITIVE_SERVICES_SCOPE = "https://cognitiveservices.azure.com/.default";
 const SYSTEM_PROMPT = "You are a concise assistant for a local playground app.";
@@ -757,14 +763,20 @@ function readMcpServers(payload: unknown): ParseResult<ClientMcpServerConfig[]> 
       return { ok: false, error: `mcpServers[${index}].name is required.` };
     }
 
+    const headersResult = parseHttpHeaders(entry.headers, index);
+    if (!headersResult.ok) {
+      return headersResult;
+    }
+
     const url = parsedUrl.toString();
-    const dedupeKey = `${transport}:${url.toLowerCase()}`;
+    const headersKey = buildHttpHeadersDedupeKey(headersResult.value);
+    const dedupeKey = `${transport}:${url.toLowerCase()}:${headersKey}`;
     if (dedupeKeys.has(dedupeKey)) {
       continue;
     }
 
     dedupeKeys.add(dedupeKey);
-    result.push({ name, url, transport });
+    result.push({ name, url, transport, headers: headersResult.value });
   }
 
   return { ok: true, value: result };
@@ -785,12 +797,18 @@ function createMcpServer(config: ClientMcpServerConfig): MCPServer {
     return new MCPServerSSE({
       name: config.name,
       url: config.url,
+      requestInit: {
+        headers: buildMcpHttpRequestHeaders(config.headers),
+      },
     });
   }
 
   return new MCPServerStreamableHttp({
     name: config.name,
     url: config.url,
+    requestInit: {
+      headers: buildMcpHttpRequestHeaders(config.headers),
+    },
   });
 }
 
@@ -1008,6 +1026,69 @@ function parseStdioEnv(
   }
 
   return { ok: true, value: env };
+}
+
+function parseHttpHeaders(
+  headersValue: unknown,
+  index: number,
+): ParseResult<Record<string, string>> {
+  if (headersValue === undefined || headersValue === null) {
+    return { ok: true, value: {} };
+  }
+
+  if (!isRecord(headersValue)) {
+    return { ok: false, error: `mcpServers[${index}].headers must be an object.` };
+  }
+
+  const entries = Object.entries(headersValue);
+  if (entries.length > MAX_MCP_HTTP_HEADERS) {
+    return {
+      ok: false,
+      error: `mcpServers[${index}].headers can include up to ${MAX_MCP_HTTP_HEADERS} entries.`,
+    };
+  }
+
+  const headers: Record<string, string> = {};
+  for (const [key, value] of entries) {
+    if (!HTTP_HEADER_NAME_PATTERN.test(key)) {
+      return { ok: false, error: `mcpServers[${index}].headers key "${key}" is invalid.` };
+    }
+
+    if (key.toLowerCase() === "content-type") {
+      return {
+        ok: false,
+        error: `mcpServers[${index}].headers cannot include "Content-Type". It is fixed to "application/json".`,
+      };
+    }
+
+    if (typeof value !== "string") {
+      return { ok: false, error: `mcpServers[${index}].headers["${key}"] must be a string.` };
+    }
+
+    headers[key] = value;
+  }
+
+  return { ok: true, value: headers };
+}
+
+function buildMcpHttpRequestHeaders(headers: Record<string, string>): Record<string, string> {
+  const mergedHeaders: Record<string, string> = { ...DEFAULT_MCP_HTTP_HEADERS };
+  for (const [key, value] of Object.entries(headers)) {
+    if (key.toLowerCase() === "content-type") {
+      continue;
+    }
+    mergedHeaders[key] = value;
+  }
+
+  return mergedHeaders;
+}
+
+function buildHttpHeadersDedupeKey(headers: Record<string, string>): string {
+  return Object.entries(headers)
+    .map(([key, value]) => [key.toLowerCase(), value] as const)
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([key, value]) => `${key}=${value}`)
+    .join("\u0000");
 }
 
 function describeMcpServer(config: ClientMcpServerConfig): string {

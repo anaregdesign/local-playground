@@ -10,6 +10,7 @@ type SavedMcpHttpServerConfig = {
   name: string;
   transport: "streamable_http" | "sse";
   url: string;
+  headers: Record<string, string>;
 };
 
 type SavedMcpStdioServerConfig = {
@@ -31,7 +32,9 @@ type ParseResult<T> = { ok: true; value: T } | { ok: false; error: string };
 const MAX_MCP_SERVER_NAME_LENGTH = 80;
 const MAX_MCP_STDIO_ARGS = 64;
 const MAX_MCP_STDIO_ENV_VARS = 64;
+const MAX_MCP_HTTP_HEADERS = 64;
 const ENV_KEY_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
+const HTTP_HEADER_NAME_PATTERN = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/;
 const MCP_CONFIG_FILE_PATHS = getFoundryConfigFilePaths("mcp-servers.json");
 
 export async function loader({ request }: Route.LoaderArgs) {
@@ -176,6 +179,11 @@ function parseIncomingHttpMcpServer(
     return { ok: false, error: "`name` is required." };
   }
 
+  const headersResult = parseHttpHeaders(payload.headers);
+  if (!headersResult.ok) {
+    return headersResult;
+  }
+
   const id = normalizeOptionalId(payload.id);
   return {
     ok: true,
@@ -184,6 +192,7 @@ function parseIncomingHttpMcpServer(
       name,
       transport,
       url: parsedUrl.toString(),
+      headers: headersResult.value,
     },
   };
 }
@@ -270,6 +279,7 @@ function upsertSavedMcpServer(
           name: incoming.name,
           transport: incoming.transport,
           url: incoming.url,
+          headers: incoming.headers,
         };
 
   const profiles =
@@ -314,6 +324,7 @@ function normalizeStoredMcpServer(entry: unknown): SavedMcpServerConfig | null {
         name: parsed.value.name,
         transport: parsed.value.transport,
         url: parsed.value.url,
+        headers: parsed.value.headers,
       };
 }
 
@@ -381,6 +392,48 @@ function parseEnv(envValue: unknown): ParseResult<Record<string, string>> {
   return { ok: true, value: env };
 }
 
+function parseHttpHeaders(
+  headersValue: unknown,
+): ParseResult<Record<string, string>> {
+  if (headersValue === undefined || headersValue === null) {
+    return { ok: true, value: {} };
+  }
+
+  if (!isRecord(headersValue)) {
+    return { ok: false, error: "`headers` must be an object." };
+  }
+
+  const entries = Object.entries(headersValue);
+  if (entries.length > MAX_MCP_HTTP_HEADERS) {
+    return {
+      ok: false,
+      error: `\`headers\` can include up to ${MAX_MCP_HTTP_HEADERS} entries.`,
+    };
+  }
+
+  const headers: Record<string, string> = {};
+  for (const [key, value] of entries) {
+    if (!HTTP_HEADER_NAME_PATTERN.test(key)) {
+      return { ok: false, error: `Invalid header key: ${key}` };
+    }
+
+    if (key.toLowerCase() === "content-type") {
+      return {
+        ok: false,
+        error: '`headers` must not include "Content-Type". It is fixed to "application/json".',
+      };
+    }
+
+    if (typeof value !== "string") {
+      return { ok: false, error: `headers[${key}] must be a string.` };
+    }
+
+    headers[key] = value;
+  }
+
+  return { ok: true, value: headers };
+}
+
 function readTransport(value: unknown): McpTransport | null {
   if (value === "streamable_http" || value === "sse" || value === "stdio") {
     return value;
@@ -413,7 +466,12 @@ function buildIncomingProfileKey(profile: IncomingMcpServerConfig): string {
     return `${profile.transport}:${profile.command.toLowerCase()}:${argsKey}:${cwdKey}:${envKey}`;
   }
 
-  return `${profile.transport}:${profile.url.toLowerCase()}`;
+  const headersKey = Object.entries(profile.headers)
+    .map(([key, value]) => [key.toLowerCase(), value] as const)
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([key, value]) => `${key}=${value}`)
+    .join("\u0000");
+  return `${profile.transport}:${profile.url.toLowerCase()}:${headersKey}`;
 }
 
 function buildProfileKey(profile: SavedMcpServerConfig): string {

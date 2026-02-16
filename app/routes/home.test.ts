@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  parseHttpHeadersInput,
   parseSseDataBlock,
   readChatStreamEvent,
   readMcpRpcHistoryEntryFromUnknown,
@@ -101,6 +102,27 @@ describe("parseSseDataBlock", () => {
 
   it("returns null when no data line exists", () => {
     expect(parseSseDataBlock("event: ping\nid: 1")).toBeNull();
+  });
+});
+
+describe("parseHttpHeadersInput", () => {
+  it("parses valid KEY=value lines", () => {
+    expect(
+      parseHttpHeadersInput("Authorization=Bearer abc\nX-Trace-Id=trace-1"),
+    ).toEqual({
+      ok: true,
+      value: {
+        Authorization: "Bearer abc",
+        "X-Trace-Id": "trace-1",
+      },
+    });
+  });
+
+  it("rejects overriding Content-Type", () => {
+    expect(parseHttpHeadersInput("Content-Type=text/plain")).toEqual({
+      ok: false,
+      error: 'Header line cannot override "Content-Type". It is fixed to "application/json".',
+    });
   });
 });
 

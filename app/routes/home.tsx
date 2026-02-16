@@ -20,6 +20,7 @@ type McpHttpServerConfig = {
   name: string;
   transport: "streamable_http" | "sse";
   url: string;
+  headers: Record<string, string>;
 };
 
 type McpStdioServerConfig = {
@@ -144,6 +145,8 @@ const MAX_INSTRUCTION_FILE_SIZE_BYTES = 1_000_000;
 const MAX_INSTRUCTION_FILE_SIZE_LABEL = "1MB";
 const ALLOWED_INSTRUCTION_EXTENSIONS = new Set(["md", "txt", "xml", "json"]);
 const DEFAULT_MCP_TRANSPORT: McpTransport = "streamable_http";
+const MAX_MCP_HTTP_HEADERS = 64;
+const HTTP_HEADER_NAME_PATTERN = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/;
 
 export function meta({}: Route.MetaArgs) {
   return [
@@ -179,6 +182,7 @@ export default function Home() {
   const [mcpArgsInput, setMcpArgsInput] = useState("");
   const [mcpCwdInput, setMcpCwdInput] = useState("");
   const [mcpEnvInput, setMcpEnvInput] = useState("");
+  const [mcpHeadersInput, setMcpHeadersInput] = useState("");
   const [mcpTransport, setMcpTransport] = useState<McpTransport>(DEFAULT_MCP_TRANSPORT);
   const [mcpFormError, setMcpFormError] = useState<string | null>(null);
   const [mcpFormWarning, setMcpFormWarning] = useState<string | null>(null);
@@ -691,6 +695,7 @@ export default function Home() {
                   name: server.name,
                   transport: server.transport,
                   url: server.url,
+                  headers: server.headers,
                 },
           ),
         }),
@@ -932,12 +937,18 @@ export default function Home() {
       }
 
       const normalizedUrl = parsed.toString();
+      const headersResult = parseHttpHeadersInput(mcpHeadersInput);
+      if (!headersResult.ok) {
+        setMcpFormError(headersResult.error);
+        return;
+      }
 
       serverToAdd = {
         id: createId("mcp"),
         name,
         url: normalizedUrl,
         transport: mcpTransport,
+        headers: headersResult.value,
       };
     }
 
@@ -989,6 +1000,7 @@ export default function Home() {
     setMcpArgsInput("");
     setMcpCwdInput("");
     setMcpEnvInput("");
+    setMcpHeadersInput("");
     setMcpTransport(DEFAULT_MCP_TRANSPORT);
   }
 
@@ -1531,13 +1543,23 @@ export default function Home() {
                   />
                 </>
               ) : (
-                <input
-                  type="text"
-                  placeholder="https://example.com/mcp"
-                  value={mcpUrlInput}
-                  onChange={(event) => setMcpUrlInput(event.target.value)}
-                  disabled={isSending}
-                />
+                <>
+                  <input
+                    type="text"
+                    placeholder="https://example.com/mcp"
+                    value={mcpUrlInput}
+                    onChange={(event) => setMcpUrlInput(event.target.value)}
+                    disabled={isSending}
+                  />
+                  <textarea
+                    rows={3}
+                    placeholder={"Additional HTTP headers (optional)\nAuthorization=Bearer <token>\nX-Api-Key=<key>"}
+                    value={mcpHeadersInput}
+                    onChange={(event) => setMcpHeadersInput(event.target.value)}
+                    disabled={isSending}
+                  />
+                  <p className="field-hint">Content-Type: application/json is always included.</p>
+                </>
               )}
               <button
                 type="button"
@@ -1628,7 +1650,9 @@ export default function Home() {
                         ) : (
                           <>
                             <p className="mcp-item-url">{server.url}</p>
-                            <p className="mcp-item-meta">{server.transport}</p>
+                            <p className="mcp-item-meta">
+                              {server.transport} ({Object.keys(server.headers).length} custom headers)
+                            </p>
                           </>
                         )}
                       </div>
@@ -2136,7 +2160,8 @@ function buildMcpServerKey(server: McpServerConfig): string {
     return `stdio:${server.command.toLowerCase()}:${argsKey}:${cwdKey}:${envKey}`;
   }
 
-  return `${server.transport}:${server.url.toLowerCase()}`;
+  const headersKey = buildHttpHeadersKey(server.headers);
+  return `${server.transport}:${server.url.toLowerCase()}:${headersKey}`;
 }
 
 function parseStdioArgsInput(input: string): ParseResult<string[]> {
@@ -2211,6 +2236,59 @@ function parseStdioEnvInput(input: string): ParseResult<Record<string, string>> 
   return { ok: true, value: env };
 }
 
+export function parseHttpHeadersInput(input: string): ParseResult<Record<string, string>> {
+  const trimmed = input.trim();
+  if (!trimmed) {
+    return { ok: true, value: {} };
+  }
+
+  const headers: Record<string, string> = {};
+  const lines = input.split(/\r?\n/);
+  let count = 0;
+
+  for (const [index, line] of lines.entries()) {
+    const lineTrimmed = line.trim();
+    if (!lineTrimmed) {
+      continue;
+    }
+
+    const separatorIndex = lineTrimmed.indexOf("=");
+    if (separatorIndex <= 0) {
+      return {
+        ok: false,
+        error: `Header line ${index + 1} must use KEY=value format.`,
+      };
+    }
+
+    const key = lineTrimmed.slice(0, separatorIndex).trim();
+    const value = lineTrimmed.slice(separatorIndex + 1).trim();
+    if (!HTTP_HEADER_NAME_PATTERN.test(key)) {
+      return {
+        ok: false,
+        error: `Header line ${index + 1} has invalid key.`,
+      };
+    }
+
+    if (key.toLowerCase() === "content-type") {
+      return {
+        ok: false,
+        error: 'Header line cannot override "Content-Type". It is fixed to "application/json".',
+      };
+    }
+
+    headers[key] = value;
+    count += 1;
+    if (count > MAX_MCP_HTTP_HEADERS) {
+      return {
+        ok: false,
+        error: `Headers can include up to ${MAX_MCP_HTTP_HEADERS} entries.`,
+      };
+    }
+  }
+
+  return { ok: true, value: headers };
+}
+
 function readMcpServerList(value: unknown): McpServerConfig[] {
   if (!Array.isArray(value)) {
     return [];
@@ -2283,11 +2361,17 @@ function readMcpServerFromUnknown(value: unknown): McpServerConfig | null {
     return null;
   }
 
+  const headers = readHttpHeadersFromUnknown(value.headers);
+  if (headers === null) {
+    return null;
+  }
+
   return {
     id,
     name,
     transport,
     url,
+    headers,
   };
 }
 
@@ -2307,6 +2391,7 @@ function serializeMcpServerForSave(server: McpServerConfig): SaveMcpServerReques
     name: server.name,
     transport: server.transport,
     url: server.url,
+    headers: server.headers,
   };
 }
 
@@ -2322,6 +2407,7 @@ function cloneMcpServerWithNewId(server: McpServerConfig): McpServerConfig {
 
   return {
     ...server,
+    headers: { ...server.headers },
     id: createId("mcp"),
   };
 }
@@ -2340,7 +2426,51 @@ function formatMcpServerOption(server: McpServerConfig): string {
     return `${server.name} (stdio: ${server.command})`;
   }
 
+  const headerCount = Object.keys(server.headers).length;
+  if (headerCount > 0) {
+    return `${server.name} (${server.transport}, +${headerCount} headers)`;
+  }
   return `${server.name} (${server.transport})`;
+}
+
+function buildHttpHeadersKey(headers: Record<string, string>): string {
+  return Object.entries(headers)
+    .map(([key, value]) => [key.toLowerCase(), value] as const)
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([key, value]) => `${key}=${value}`)
+    .join("\u0000");
+}
+
+function readHttpHeadersFromUnknown(value: unknown): Record<string, string> | null {
+  if (value === undefined || value === null) {
+    return {};
+  }
+
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const headers: Record<string, string> = {};
+  let count = 0;
+  for (const [key, rawValue] of Object.entries(value)) {
+    if (!HTTP_HEADER_NAME_PATTERN.test(key)) {
+      return null;
+    }
+    if (key.toLowerCase() === "content-type") {
+      continue;
+    }
+    if (typeof rawValue !== "string") {
+      return null;
+    }
+
+    headers[key] = rawValue;
+    count += 1;
+    if (count > MAX_MCP_HTTP_HEADERS) {
+      return null;
+    }
+  }
+
+  return headers;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
