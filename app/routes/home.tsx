@@ -153,6 +153,7 @@ export default function Home() {
   const azureDeploymentRequestSeqRef = useRef(0);
   const contextWindowValidation = validateContextWindowInput(contextWindowInput);
   const temperatureValidation = validateTemperatureInput(temperatureInput);
+  const isChatLocked = isAzureAuthRequired;
   const activeAzureConnection =
     azureConnections.find((connection) => connection.id === selectedAzureConnectionId) ??
     azureConnections[0] ??
@@ -208,6 +209,12 @@ export default function Home() {
 
     void loadAzureDeployments(activeAzureConnection.id);
   }, [activeAzureConnection]);
+
+  useEffect(() => {
+    if (isChatLocked && activeMainTab === "chat") {
+      setActiveMainTab("settings");
+    }
+  }, [activeMainTab, isChatLocked]);
 
   async function loadSavedMcpServers() {
     setIsLoadingSavedMcpServers(true);
@@ -404,6 +411,13 @@ export default function Home() {
       return;
     }
 
+    if (isChatLocked) {
+      setActiveMainTab("settings");
+      setError("Chat is unavailable while logged out. Open Settings and sign in.");
+      setShowAzureLoginButton(false);
+      return;
+    }
+
     if (!activeAzureConnection) {
       setError(
         isAzureAuthRequired
@@ -567,6 +581,10 @@ export default function Home() {
 
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (isChatLocked) {
+      setActiveMainTab("settings");
+      return;
+    }
     void sendMessage();
   }
 
@@ -577,6 +595,10 @@ export default function Home() {
 
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
+      if (isChatLocked) {
+        setActiveMainTab("settings");
+        return;
+      }
       void sendMessage();
     }
   }
@@ -800,20 +822,32 @@ export default function Home() {
               id={`tab-${tab.id}`}
               aria-controls={`panel-${tab.id}`}
               aria-selected={activeMainTab === tab.id}
-              className={`main-tab-btn ${activeMainTab === tab.id ? "active" : ""}`}
-              onClick={() => setActiveMainTab(tab.id)}
+              aria-disabled={tab.id === "chat" && isChatLocked}
+              className={`main-tab-btn ${activeMainTab === tab.id ? "active" : ""} ${
+                tab.id === "chat" && isChatLocked ? "disabled" : ""
+              }`}
+              onClick={() => {
+                if (tab.id === "chat" && isChatLocked) {
+                  setActiveMainTab("settings");
+                  return;
+                }
+                setActiveMainTab(tab.id);
+              }}
             >
               {tab.label}
             </button>
           ))}
         </nav>
+        {isChatLocked ? (
+          <p className="tab-guidance">Chat is locked. Open Settings and sign in to Azure.</p>
+        ) : null}
 
         <section
           className="chat-shell main-panel"
           id="panel-chat"
           role="tabpanel"
           aria-labelledby="tab-chat"
-          hidden={activeMainTab !== "chat"}
+          hidden={activeMainTab !== "chat" || isChatLocked}
         >
           <header className="chat-header">
             <div className="chat-header-row">
@@ -882,12 +916,13 @@ export default function Home() {
                 onKeyDown={handleInputKeyDown}
                 onCompositionStart={() => setIsComposing(true)}
                 onCompositionEnd={() => setIsComposing(false)}
-                disabled={isSending}
+                disabled={isSending || isChatLocked}
               />
               <button
                 type="submit"
                 disabled={
                   isSending ||
+                  isChatLocked ||
                   isLoadingAzureConnections ||
                   isLoadingAzureDeployments ||
                   !activeAzureConnection ||

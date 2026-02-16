@@ -96,6 +96,22 @@ body {
   outline-offset: 1px;
 }
 
+.main-tab-btn.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.main-tab-btn.disabled:hover {
+  background: transparent;
+  color: var(--text-subtle);
+}
+
+.tab-guidance {
+  margin: 0;
+  font-size: 0.8rem;
+  color: #1f4e67;
+}
+
 .main-panel {
   flex: 1;
   min-height: 0;
