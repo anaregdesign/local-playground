@@ -3,6 +3,18 @@
 `Local Playground` is a desktop-first local playground app built with Azure OpenAI and the Agents SDK.  
 It is designed as a practical testing workbench, not just a basic chat UI, so you can validate Azure connectivity, agent behavior, and MCP integrations in one place.
 
+## Quick Start (Copy & Paste)
+
+```bash
+git clone https://github.com/anaregdesign/local-playground.git
+cd local-playground
+npm install
+az login
+npm run dev
+```
+
+Open `http://localhost:5173`.
+
 ## What This Application Is
 
 This application is a development and validation workbench for:
@@ -55,7 +67,7 @@ This application is a development and validation workbench for:
 ## Core Specifications
 
 - App name: `Local Playground`
-- npm package name: `local-playground`
+- Repository/package identifier: `local-playground`
 - Azure auth: `DefaultAzureCredential`
 - Azure endpoint format: v1 (`.../openai/v1/`)
 - Runtime stack: React Router + TypeScript
@@ -75,11 +87,13 @@ This application is a development and validation workbench for:
 - Run Azure Login in Settings to unlock usage
 - Right after sign-in, the Playground tab is visually highlighted for easier navigation
 
-## Setup
+## Run from Source (Step-by-step)
 
-### 1. Install Dependencies
+### 1. Clone and install dependencies
 
 ```bash
+git clone https://github.com/anaregdesign/local-playground.git
+cd local-playground
 npm install
 ```
 
