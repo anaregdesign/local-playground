@@ -43,7 +43,7 @@ jobs:
 
           npm pkg set "name=@${OWNER}/${BASE_NAME}"
           npm pkg set "version=${VERSION}"
-          npm pkg set "private=false"
+          npm pkg delete private
           npm pkg set "publishConfig.registry=https://npm.pkg.github.com"
 
       - name: Publish package
