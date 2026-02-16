@@ -38,6 +38,12 @@ type ClientMcpStdioServerConfig = {
 type ClientMcpServerConfig = ClientMcpHttpServerConfig | ClientMcpStdioServerConfig;
 
 type ParseResult<T> = { ok: true; value: T } | { ok: false; error: string };
+type ResolvedAzureConfig = {
+  projectName: string;
+  baseUrl: string;
+  apiVersion: string;
+  deploymentName: string;
+};
 type UpstreamErrorPayload = {
   error: string;
   errorCode?: "azure_login_required";
@@ -64,7 +70,7 @@ const AZURE_OPENAI_DEPLOYMENT_NAME = (
 const AZURE_COGNITIVE_SERVICES_SCOPE = "https://cognitiveservices.azure.com/.default";
 const SYSTEM_PROMPT = "You are a concise assistant for a simple chat app.";
 const MAX_AGENT_INSTRUCTION_LENGTH = 4000;
-let azureOpenAIClient: OpenAI | null = null;
+const azureOpenAIClientsByBaseURL = new Map<string, OpenAI>();
 
 export function loader({}: Route.LoaderArgs) {
   return Response.json(
@@ -98,28 +104,33 @@ export async function action({ request }: Route.ActionArgs) {
     return Response.json({ error: temperatureResult.error }, { status: 400 });
   }
   const agentInstruction = readAgentInstruction(payload);
+  const azureConfigResult = readAzureConfig(payload);
+  if (!azureConfigResult.ok) {
+    return Response.json({ error: azureConfigResult.error }, { status: 400 });
+  }
+  const azureConfig = azureConfigResult.value;
   const mcpServersResult = readMcpServers(payload);
   if (!mcpServersResult.ok) {
     return Response.json({ error: mcpServersResult.error }, { status: 400 });
   }
 
-  if (!AZURE_OPENAI_BASE_URL) {
+  if (!azureConfig.baseUrl) {
     return Response.json({
       message:
-        "Azure OpenAI is not configured. Set AZURE_BASE_URL/AZURE_OPENAI_BASE_URL, then restart the server.",
+        "Azure OpenAI is not configured. Set AZURE_CONNECTION_PROFILES, or AZURE_BASE_URL/AZURE_OPENAI_BASE_URL, then restart the server.",
       placeholder: true,
     });
   }
-  if (!AZURE_OPENAI_DEPLOYMENT_NAME) {
+  if (!azureConfig.deploymentName) {
     return Response.json(
       {
         error:
-          "Azure deployment is not configured. Set AZURE_DEPLOYMENT_NAME (or AZURE_OPENAI_DEPLOYMENT_NAME).",
+          "Azure deployment is not configured. Set it in AZURE_CONNECTION_PROFILES, or use AZURE_DEPLOYMENT_NAME (AZURE_OPENAI_DEPLOYMENT_NAME).",
       },
       { status: 400 },
     );
   }
-  if (AZURE_OPENAI_API_VERSION && AZURE_OPENAI_API_VERSION !== "v1") {
+  if (azureConfig.apiVersion && azureConfig.apiVersion !== "v1") {
     return Response.json(
       {
         error:
@@ -147,8 +158,8 @@ export async function action({ request }: Route.ActionArgs) {
     }
 
     const model = new OpenAIChatCompletionsModel(
-      getAzureOpenAIClient(),
-      AZURE_OPENAI_DEPLOYMENT_NAME,
+      getAzureOpenAIClient(azureConfig.baseUrl),
+      azureConfig.deploymentName,
     );
 
     const agent = new Agent({
@@ -183,7 +194,7 @@ export async function action({ request }: Route.ActionArgs) {
 
     return Response.json({ message: assistantMessage });
   } catch (error) {
-    const upstreamError = buildUpstreamErrorPayload(error);
+    const upstreamError = buildUpstreamErrorPayload(error, azureConfig.deploymentName);
     return Response.json(
       upstreamError.payload,
       { status: upstreamError.status },
@@ -210,9 +221,15 @@ function extractAgentFinalOutput(finalOutput: unknown): string {
   return "";
 }
 
-function getAzureOpenAIClient(): OpenAI {
-  if (azureOpenAIClient) {
-    return azureOpenAIClient;
+function getAzureOpenAIClient(baseUrl: string): OpenAI {
+  const normalizedBaseURL = normalizeAzureOpenAIBaseURL(baseUrl);
+  if (!normalizedBaseURL) {
+    throw new Error("Azure base URL is missing.");
+  }
+
+  const existingClient = azureOpenAIClientsByBaseURL.get(normalizedBaseURL);
+  if (existingClient) {
+    return existingClient;
   }
 
   const credential = new DefaultAzureCredential();
@@ -221,12 +238,12 @@ function getAzureOpenAIClient(): OpenAI {
     AZURE_COGNITIVE_SERVICES_SCOPE,
   );
 
-  azureOpenAIClient = new OpenAI({
-    baseURL: normalizeAzureOpenAIBaseURL(AZURE_OPENAI_BASE_URL),
+  const client = new OpenAI({
+    baseURL: normalizedBaseURL,
     apiKey: azureADTokenProvider,
   });
-
-  return azureOpenAIClient;
+  azureOpenAIClientsByBaseURL.set(normalizedBaseURL, client);
+  return client;
 }
 
 function normalizeAzureOpenAIBaseURL(rawValue: string): string {
@@ -351,6 +368,64 @@ function readAgentInstruction(payload: unknown): string {
   }
 
   return trimmed.slice(0, MAX_AGENT_INSTRUCTION_LENGTH);
+}
+
+function readAzureConfig(payload: unknown): ParseResult<ResolvedAzureConfig> {
+  const defaultBaseUrl = AZURE_OPENAI_BASE_URL.trim();
+  const defaultApiVersion = (AZURE_OPENAI_API_VERSION || "v1").trim() || "v1";
+  const defaultDeploymentName = AZURE_OPENAI_DEPLOYMENT_NAME.trim();
+
+  if (!isRecord(payload) || payload.azureConfig === undefined || payload.azureConfig === null) {
+    return {
+      ok: true,
+      value: {
+        projectName: "",
+        baseUrl: defaultBaseUrl,
+        apiVersion: defaultApiVersion,
+        deploymentName: defaultDeploymentName,
+      },
+    };
+  }
+
+  const value = payload.azureConfig;
+  if (!isRecord(value)) {
+    return { ok: false, error: "`azureConfig` must be an object." };
+  }
+
+  if (value.projectName !== undefined && typeof value.projectName !== "string") {
+    return { ok: false, error: "`azureConfig.projectName` must be a string." };
+  }
+
+  if (value.baseUrl !== undefined && typeof value.baseUrl !== "string") {
+    return { ok: false, error: "`azureConfig.baseUrl` must be a string." };
+  }
+
+  if (value.apiVersion !== undefined && typeof value.apiVersion !== "string") {
+    return { ok: false, error: "`azureConfig.apiVersion` must be a string." };
+  }
+
+  if (value.deploymentName !== undefined && typeof value.deploymentName !== "string") {
+    return { ok: false, error: "`azureConfig.deploymentName` must be a string." };
+  }
+
+  return {
+    ok: true,
+    value: {
+      projectName: typeof value.projectName === "string" ? value.projectName.trim() : "",
+      baseUrl:
+        typeof value.baseUrl === "string" && value.baseUrl.trim()
+          ? value.baseUrl.trim()
+          : defaultBaseUrl,
+      apiVersion:
+        typeof value.apiVersion === "string" && value.apiVersion.trim()
+          ? value.apiVersion.trim()
+          : defaultApiVersion,
+      deploymentName:
+        typeof value.deploymentName === "string" && value.deploymentName.trim()
+          ? value.deploymentName.trim()
+          : defaultDeploymentName,
+    },
+  };
 }
 
 function readMcpServers(payload: unknown): ParseResult<ClientMcpServerConfig[]> {
@@ -593,7 +668,7 @@ function clamp(value: number, min: number, max: number): number {
   return value;
 }
 
-function buildUpstreamErrorPayload(error: unknown): {
+function buildUpstreamErrorPayload(error: unknown, deploymentName: string): {
   payload: UpstreamErrorPayload;
   status: number;
 } {
@@ -608,23 +683,23 @@ function buildUpstreamErrorPayload(error: unknown): {
     };
   }
 
-  const message = buildUpstreamErrorMessage(error);
+  const message = buildUpstreamErrorMessage(error, deploymentName);
   return {
     payload: { error: message },
     status: 502,
   };
 }
 
-function buildUpstreamErrorMessage(error: unknown): string {
+function buildUpstreamErrorMessage(error: unknown, deploymentName: string): string {
   if (!(error instanceof Error)) {
     return "Could not connect to Azure OpenAI.";
   }
 
   if (error.message.includes("Resource not found")) {
-    return `${error.message} Check AZURE_BASE_URL and deployment name (${AZURE_OPENAI_DEPLOYMENT_NAME}).`;
+    return `${error.message} Check Azure base URL and deployment name (${deploymentName}).`;
   }
   if (error.message.includes("Unavailable model")) {
-    return `${error.message} Check AZURE_DEPLOYMENT_NAME (or AZURE_OPENAI_DEPLOYMENT_NAME).`;
+    return `${error.message} Check the selected deployment name (${deploymentName}).`;
   }
   if (error.message.includes("Model behavior error")) {
     return `${error.message} Verify your model/deployment supports the selected reasoning effort.`;

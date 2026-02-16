@@ -388,6 +388,13 @@ body {
   color: var(--text-subtle);
 }
 
+.setting-label {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--text-subtle);
+  font-weight: 600;
+}
+
 .setting-group select,
 .setting-group input[type="text"],
 .setting-group textarea {

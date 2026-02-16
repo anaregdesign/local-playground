@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useLoaderData } from "react-router";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { Route } from "./+types/home";
@@ -25,6 +26,13 @@ type McpStdioServerConfig = {
 };
 
 type McpServerConfig = McpHttpServerConfig | McpStdioServerConfig;
+type AzureConnectionOption = {
+  id: string;
+  projectName: string;
+  baseUrl: string;
+  apiVersion: string;
+  deployments: string[];
+};
 
 type ParseResult<T> = { ok: true; value: T } | { ok: false; error: string };
 
@@ -84,6 +92,15 @@ const MAX_INSTRUCTION_FILE_SIZE_BYTES = 1_000_000;
 const MAX_INSTRUCTION_FILE_SIZE_LABEL = "1MB";
 const ALLOWED_INSTRUCTION_EXTENSIONS = new Set(["md", "txt", "xml", "json"]);
 const DEFAULT_MCP_TRANSPORT: McpTransport = "streamable_http";
+const DEFAULT_AZURE_API_VERSION = "v1";
+const MAX_AZURE_CONNECTIONS = 32;
+const MAX_AZURE_DEPLOYMENTS_PER_CONNECTION = 64;
+
+export function loader({}: Route.LoaderArgs) {
+  return {
+    azureConnections: readAzureConnectionsFromEnvironment(),
+  };
+}
 
 export function meta({}: Route.MetaArgs) {
   return [
@@ -93,8 +110,15 @@ export function meta({}: Route.MetaArgs) {
 }
 
 export default function Home() {
+  const { azureConnections } = useLoaderData<typeof loader>();
   const [messages, setMessages] = useState<ChatMessage[]>(INITIAL_MESSAGES);
   const [draft, setDraft] = useState("");
+  const [selectedAzureConnectionId, setSelectedAzureConnectionId] = useState(
+    azureConnections[0]?.id ?? "",
+  );
+  const [selectedAzureDeploymentName, setSelectedAzureDeploymentName] = useState(
+    azureConnections[0]?.deployments[0] ?? "",
+  );
   const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffort>("none");
   const [agentInstruction, setAgentInstruction] = useState(DEFAULT_AGENT_INSTRUCTION);
   const [loadedInstructionFileName, setLoadedInstructionFileName] = useState<string | null>(null);
@@ -127,6 +151,10 @@ export default function Home() {
   const endOfMessagesRef = useRef<HTMLDivElement | null>(null);
   const contextWindowValidation = validateContextWindowInput(contextWindowInput);
   const temperatureValidation = validateTemperatureInput(temperatureInput);
+  const activeAzureConnection =
+    azureConnections.find((connection) => connection.id === selectedAzureConnectionId) ??
+    azureConnections[0] ??
+    null;
 
   useEffect(() => {
     endOfMessagesRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -135,6 +163,19 @@ export default function Home() {
   useEffect(() => {
     void loadSavedMcpServers();
   }, []);
+
+  useEffect(() => {
+    if (!activeAzureConnection) {
+      setSelectedAzureDeploymentName("");
+      return;
+    }
+
+    setSelectedAzureDeploymentName((current) =>
+      activeAzureConnection.deployments.includes(current)
+        ? current
+        : activeAzureConnection.deployments[0] ?? "",
+    );
+  }, [activeAzureConnection]);
 
   async function loadSavedMcpServers() {
     setIsLoadingSavedMcpServers(true);
@@ -214,6 +255,19 @@ export default function Home() {
       return;
     }
 
+    if (!activeAzureConnection) {
+      setError(
+        "Azure connection is not configured. Set AZURE_CONNECTION_PROFILES, or AZURE_BASE_URL and AZURE_DEPLOYMENT_NAME.",
+      );
+      return;
+    }
+
+    const deploymentName = selectedAzureDeploymentName.trim();
+    if (!deploymentName) {
+      setError("Select an Azure deployment before sending.");
+      return;
+    }
+
     const userMessage: ChatMessage = createMessage("user", content);
     const contextWindowSize = contextWindowValidation.value;
     if (contextWindowSize === null) {
@@ -244,6 +298,12 @@ export default function Home() {
         body: JSON.stringify({
           message: content,
           history,
+          azureConfig: {
+            projectName: activeAzureConnection.projectName,
+            baseUrl: activeAzureConnection.baseUrl,
+            apiVersion: activeAzureConnection.apiVersion,
+            deploymentName,
+          },
           reasoningEffort,
           contextWindowSize,
           ...(temperature !== null ? { temperature } : {}),
@@ -631,6 +691,67 @@ export default function Home() {
           <div className="settings-content">
             <section className="setting-group">
               <div className="setting-group-header">
+                <h3>Azure Connection</h3>
+                <p>Select project and deployment for chat requests.</p>
+              </div>
+              <label className="setting-label" htmlFor="azure-project">
+                Project
+              </label>
+              <select
+                id="azure-project"
+                value={activeAzureConnection?.id ?? ""}
+                onChange={(event) => {
+                  setSelectedAzureConnectionId(event.target.value);
+                  setError(null);
+                }}
+                disabled={isSending || azureConnections.length === 0}
+              >
+                {azureConnections.length === 0 ? (
+                  <option value="">No projects configured</option>
+                ) : null}
+                {azureConnections.map((connection) => (
+                  <option key={connection.id} value={connection.id}>
+                    {connection.projectName}
+                  </option>
+                ))}
+              </select>
+              <label className="setting-label" htmlFor="azure-deployment">
+                Deployment
+              </label>
+              <select
+                id="azure-deployment"
+                value={selectedAzureDeploymentName}
+                onChange={(event) => {
+                  setSelectedAzureDeploymentName(event.target.value);
+                  setError(null);
+                }}
+                disabled={isSending || !activeAzureConnection}
+              >
+                {activeAzureConnection ? (
+                  activeAzureConnection.deployments.map((deployment) => (
+                    <option key={deployment} value={deployment}>
+                      {deployment}
+                    </option>
+                  ))
+                ) : (
+                  <option value="">No deployments configured</option>
+                )}
+              </select>
+              {activeAzureConnection ? (
+                <>
+                  <p className="field-hint">Endpoint: {activeAzureConnection.baseUrl}</p>
+                  <p className="field-hint">API version: {activeAzureConnection.apiVersion}</p>
+                </>
+              ) : (
+                <p className="field-error">
+                  No Azure connection configured. Set AZURE_CONNECTION_PROFILES, or AZURE_BASE_URL
+                  and AZURE_DEPLOYMENT_NAME.
+                </p>
+              )}
+            </section>
+
+            <section className="setting-group">
+              <div className="setting-group-header">
                 <h3>Agent Instruction</h3>
                 <p>System instruction used for the agent.</p>
               </div>
@@ -1005,6 +1126,186 @@ function validateTemperatureInput(input: string): {
     value: parsed,
     message: null,
   };
+}
+
+function readAzureConnectionsFromEnvironment(): AzureConnectionOption[] {
+  const fromProfiles = parseAzureConnectionProfiles(process.env.AZURE_CONNECTION_PROFILES);
+  if (fromProfiles.length > 0) {
+    return fromProfiles;
+  }
+
+  const baseUrl = normalizeAzureOpenAIBaseURL(
+    process.env.AZURE_BASE_URL ?? process.env.AZURE_OPENAI_BASE_URL ?? "",
+  );
+  const deploymentName = (
+    process.env.AZURE_DEPLOYMENT_NAME ?? process.env.AZURE_OPENAI_DEPLOYMENT_NAME ?? ""
+  ).trim();
+  if (!baseUrl || !deploymentName) {
+    return [];
+  }
+
+  const apiVersion = (
+    process.env.AZURE_API_VERSION ??
+    process.env.AZURE_OPENAI_API_VERSION ??
+    DEFAULT_AZURE_API_VERSION
+  ).trim() || DEFAULT_AZURE_API_VERSION;
+
+  const configuredProjectName = (
+    process.env.AZURE_PROJECT_NAME ?? process.env.AZURE_OPENAI_PROJECT_NAME ?? ""
+  ).trim();
+  const projectName = configuredProjectName || deriveProjectNameFromBaseURL(baseUrl);
+
+  return [
+    {
+      id: "default-project",
+      projectName,
+      baseUrl,
+      apiVersion,
+      deployments: [deploymentName],
+    },
+  ];
+}
+
+function parseAzureConnectionProfiles(rawValue: string | undefined): AzureConnectionOption[] {
+  const trimmed = rawValue?.trim() ?? "";
+  if (!trimmed) {
+    return [];
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(trimmed);
+  } catch {
+    return [];
+  }
+
+  if (!Array.isArray(parsed)) {
+    return [];
+  }
+
+  const profiles: AzureConnectionOption[] = [];
+  const usedIds = new Set<string>();
+
+  for (const [index, entry] of parsed.entries()) {
+    if (!isRecord(entry)) {
+      continue;
+    }
+
+    const baseUrl = normalizeAzureOpenAIBaseURL(
+      typeof entry.baseUrl === "string" ? entry.baseUrl : "",
+    );
+    if (!baseUrl) {
+      continue;
+    }
+
+    const rawProjectName = typeof entry.projectName === "string" ? entry.projectName.trim() : "";
+    const projectName = rawProjectName || deriveProjectNameFromBaseURL(baseUrl);
+    const apiVersion =
+      typeof entry.apiVersion === "string" && entry.apiVersion.trim()
+        ? entry.apiVersion.trim()
+        : DEFAULT_AZURE_API_VERSION;
+    const deployments = uniqueStringsCaseInsensitive(
+      [
+        ...readDeploymentsFromProfile(entry),
+        ...(typeof entry.deploymentName === "string" ? [entry.deploymentName.trim()] : []),
+      ].filter(Boolean),
+    ).slice(0, MAX_AZURE_DEPLOYMENTS_PER_CONNECTION);
+
+    if (deployments.length === 0) {
+      continue;
+    }
+
+    profiles.push({
+      id: createUniqueAzureConnectionId(projectName, index, usedIds),
+      projectName,
+      baseUrl,
+      apiVersion,
+      deployments,
+    });
+
+    if (profiles.length >= MAX_AZURE_CONNECTIONS) {
+      break;
+    }
+  }
+
+  return profiles;
+}
+
+function readDeploymentsFromProfile(profile: Record<string, unknown>): string[] {
+  if (!Array.isArray(profile.deployments)) {
+    return [];
+  }
+
+  return profile.deployments
+    .filter((deployment): deployment is string => typeof deployment === "string")
+    .map((deployment) => deployment.trim())
+    .filter(Boolean);
+}
+
+function uniqueStringsCaseInsensitive(values: string[]): string[] {
+  const seen = new Set<string>();
+  const unique: string[] = [];
+
+  for (const value of values) {
+    const key = value.toLowerCase();
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    unique.push(value);
+  }
+
+  return unique;
+}
+
+function createUniqueAzureConnectionId(
+  projectName: string,
+  index: number,
+  usedIds: Set<string>,
+): string {
+  const normalizedBaseId = (
+    projectName
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "") || `project-${index + 1}`
+  ).slice(0, 48);
+
+  let candidate = normalizedBaseId;
+  let suffix = 2;
+  while (usedIds.has(candidate)) {
+    candidate = `${normalizedBaseId}-${suffix}`;
+    suffix += 1;
+  }
+
+  usedIds.add(candidate);
+  return candidate;
+}
+
+function deriveProjectNameFromBaseURL(baseUrl: string): string {
+  try {
+    const hostname = new URL(baseUrl).hostname.trim();
+    if (!hostname) {
+      return "default-project";
+    }
+
+    const firstSegment = hostname.split(".")[0];
+    return firstSegment || "default-project";
+  } catch {
+    return "default-project";
+  }
+}
+
+function normalizeAzureOpenAIBaseURL(rawValue: string): string {
+  const trimmed = rawValue.trim().replace(/\/+$/, "");
+  if (!trimmed) {
+    return "";
+  }
+
+  if (/\/openai\/v1$/i.test(trimmed)) {
+    return `${trimmed}/`;
+  }
+
+  return `${trimmed}/openai/v1/`;
 }
 
 function buildMcpServerKey(server: McpServerConfig): string {
