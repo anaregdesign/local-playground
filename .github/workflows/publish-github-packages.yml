@@ -92,6 +92,9 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Download installers
         uses: actions/download-artifact@v4
         with:
@@ -129,13 +132,13 @@ jobs:
           EOF
 
           for asset in "${ASSETS[@]}"; do
-            printf -- "- `%s`\n" "$(basename "${asset}")" >> release-notes.md
+            printf -- '- `%s`\n' "$(basename "${asset}")" >> release-notes.md
           done
 
-          if gh release view "${TAG_NAME}" >/dev/null 2>&1; then
-            gh release edit "${TAG_NAME}" --title "${TAG_NAME}" --notes-file release-notes.md
+          if gh release view "${TAG_NAME}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
+            gh release edit "${TAG_NAME}" --repo "${GITHUB_REPOSITORY}" --title "${TAG_NAME}" --notes-file release-notes.md
           else
-            gh release create "${TAG_NAME}" --title "${TAG_NAME}" --notes-file release-notes.md
+            gh release create "${TAG_NAME}" --repo "${GITHUB_REPOSITORY}" --title "${TAG_NAME}" --notes-file release-notes.md
           fi
 
-          gh release upload "${TAG_NAME}" "${ASSETS[@]}" --clobber
+          gh release upload "${TAG_NAME}" --repo "${GITHUB_REPOSITORY}" "${ASSETS[@]}" --clobber
