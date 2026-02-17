@@ -1,7 +1,37 @@
 # Local Playground
 
-`Local Playground` is a desktop-first local playground app built with Azure OpenAI and the Agents SDK.  
-It is designed as a practical testing workbench, not just a basic chat UI, so you can validate Azure connectivity, agent behavior, and MCP integrations in one place.
+`Local Playground` is a desktop-first Azure OpenAI + Agents SDK workbench.
+It focuses on real-world local debugging workflows, especially for MCP server integration.
+
+## What It Provides
+
+- Two-pane desktop UI:
+  - Left: always-visible Playground chat
+  - Right: `Settings` / `MCP Servers` tabs
+- Resizable layout:
+  - Drag left/right pane splitter
+  - Drag right-pane top/bottom splitter
+- Azure connection flow with `DefaultAzureCredential`:
+  - Dynamic Azure project discovery
+  - Deployment reload on project change
+  - v1 endpoint usage (`.../openai/v1/`)
+- Agents SDK chat runtime:
+  - `@openai/agents` + `@openai/agents-openai`
+  - IME-safe Enter handling
+  - concise English error messages
+- Instruction workflow:
+  - edit / load / clear / save
+  - enhance instruction with selected Azure deployment
+  - GitHub-style diff review and adopt/original choice
+- MCP workflow:
+  - transports: `streamable_http`, `sse`, `stdio`
+  - saved config load/edit/re-add
+  - additional HTTP headers
+  - per-server Azure Bearer auth scope + timeout
+  - inline MCP Operation Log with JSON-RPC request/response and copy actions
+- Message rendering:
+  - Markdown rendering
+  - JSON syntax highlighting
 
 ## Quick Start (Copy & Paste)
 
@@ -17,146 +47,78 @@ Open `http://localhost:5173`.
 
 ## Desktop App (macOS / Windows / Linux)
 
-This repository includes an Electron desktop shell that opens the same UI as the web app.
+The repository also ships an Electron desktop shell.
 
-Tagged releases (`v*.*.*`) automatically attach OS-specific installer artifacts to the GitHub Release:
-- macOS: `.dmg`, `.zip`
-- Windows: `.exe` (NSIS)
-- Linux: `.AppImage`, `.deb`
-
-Run desktop development mode:
+- Dev shell:
 
 ```bash
 npm run desktop:dev
 ```
 
-Run desktop production mode:
+- Production-like local shell:
 
 ```bash
 npm run desktop:start
 ```
 
-Notes:
+- Build installers locally:
 
-- `desktop:dev` runs the web dev server and Electron.
-- `desktop:start` builds the web app and launches Electron in production mode.
-- Backend URL defaults:
-  - dev: `http://localhost:5173`
-  - prod: `http://localhost:5180`
+```bash
+npm run desktop:package
+```
 
-## What This Application Is
+Per-OS packaging commands:
 
-This application is a development and validation workbench for:
+- `npm run desktop:package:mac`
+- `npm run desktop:package:win`
+- `npm run desktop:package:linux`
 
-- Azure OpenAI connectivity using `DefaultAzureCredential`
-- Dynamic discovery of Azure projects and deployments
-- Conversation execution through the Agents SDK
-- Runtime tuning (`reasoning effort`, `context window`)
-- Agent Instruction editing and file-based loading
-- MCP server integration (`streamable_http`, `sse`, `stdio`) with reusable profiles
+## Release Artifacts
 
-## Screenshots
+When a `v*.*.*` tag is pushed, GitHub Actions builds and publishes OS installers to GitHub Releases:
 
-### Playground (Sample Chat Log)
+- macOS: `.dmg`, `.zip`
+- Windows: `.exe` (NSIS)
+- Linux: `.AppImage`, `.deb`
 
-![Local Playground playground tab with sample chat log](docs/images/local-playground-chat-log.png)
+## Screenshots (Latest UI)
+
+### Playground
+
+![Local Playground playground view](docs/images/local-playground-chat-log.png)
 
 ### Settings
 
-![Local Playground settings tab](docs/images/local-playground-settings.png)
+![Local Playground settings view](docs/images/local-playground-settings.png)
 
 ### MCP Servers
 
-![Local Playground MCP Servers tab](docs/images/local-playground-mcp-servers.png)
+![Local Playground MCP servers view](docs/images/local-playground-mcp-servers.png)
 
-## Screen Layout
+## Persistence Paths
 
-### 1. Playground
+Configuration is stored under:
 
-- View conversation history, type, and send messages
-- Markdown rendering for assistant responses
-- JSON syntax highlighting when responses are JSON
-- Thread reset
+- macOS/Linux: `~/.foundry_local_playground/`
+- Windows: `%APPDATA%\FoundryLocalPlayground\`
 
-### 2. Settings
+Files:
 
-- Azure Connection (project / deployment selection)
-- Azure Login / Logout actions
-- Agent Instruction editing + file loading (`.md/.txt/.xml/.json`, up to 1MB)
-- Reasoning Effort / Context Window controls (temperature is always omitted)
+- Azure selection: `azure-selection.json`
+- MCP profiles: `mcp-servers.json`
+- Saved prompts: `prompts/`
 
-### 3. MCP Servers
+Legacy Windows fallback is still read from:
 
-- Add MCP servers
-- Re-add servers from Saved Configs
-- Review and remove Added Servers
-- MCP config file path:
-  - macOS/Linux: `~/.foundry_local_playground/mcp-servers.json`
-  - Windows: `%APPDATA%\FoundryLocalPlayground\mcp-servers.json`
-- Azure selection file path:
-  - macOS/Linux: `~/.foundry_local_playground/azure-selection.json`
-  - Windows: `%APPDATA%\FoundryLocalPlayground\azure-selection.json`
-- Windows compatibility fallback:
-  - Legacy files under `%USERPROFILE%\.foundry_local_playground\` are still read automatically.
-
-## Core Specifications
-
-- App name: `Local Playground`
-- Repository/package identifier: `local-playground`
-- Azure auth: `DefaultAzureCredential`
-- Azure endpoint format: v1 (`.../openai/v1/`)
-- Runtime stack: React Router + TypeScript
-- Agent runtime: `@openai/agents` + `@openai/agents-openai`
-
-## Connection Flow
-
-1. Authenticate to Azure using `DefaultAzureCredential`
-2. Discover accessible Azure OpenAI projects from ARM
-3. Reload deployments for the selected project
-4. Execute conversation with Agents SDK using the selected deployment
-5. Optionally connect MCP servers to extend tool capabilities
-
-## Login-State Behavior
-
-- Playground is locked while logged out
-- Run Azure Login in Settings to unlock usage
-- Right after sign-in, the Playground tab is visually highlighted for easier navigation
-
-## Run from Source (Step-by-step)
-
-### 1. Clone and install dependencies
-
-```bash
-git clone https://github.com/anaregdesign/local-playground.git
-cd local-playground
-npm install
-```
-
-### 2. Sign in to Azure
-
-```bash
-az login
-```
-
-### 3. Start the Development Server
-
-```bash
-npm run dev
-```
-
-The app is typically available at `http://localhost:5173`.
+- `%USERPROFILE%\.foundry_local_playground\`
 
 ## Scripts
 
-- `npm run dev`: start dev server
-- `npm run build`: build for production
-- `npm run start`: start production server
-- `npm run typecheck`: run TypeScript checks
-
-## API Endpoints
-
-- `POST /api/chat`
-- `GET /api/azure-connections`
-- `POST /api/azure-login`
-- `POST /api/azure-logout`
-- `GET/POST /api/mcp-servers`
+- `npm run dev`: start web dev server
+- `npm run build`: build web app
+- `npm run start`: run built web app
+- `npm run desktop:dev`: run web dev + Electron shell
+- `npm run desktop:start`: run built app in Electron shell
+- `npm run desktop:package`: build desktop installer(s)
+- `npm run typecheck`: TypeScript validation
+- `npm run test`: unit tests
