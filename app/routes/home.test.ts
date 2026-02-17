@@ -15,6 +15,7 @@ import {
   readAzureSelectionFromUnknown,
   readTenantIdFromUnknown,
   upsertMcpRpcHistoryEntry,
+  validateEnhancedInstructionCompleteness,
   validateEnhancedInstructionFormat,
   validateInstructionLanguagePreserved,
   validateContextWindowInput,
@@ -78,6 +79,12 @@ describe("instruction enhance helpers", () => {
       extension: "md",
       language: "english",
     });
+    expect(message).toContain(
+      "Preserve as much original information as possible; avoid deleting details unless necessary.",
+    );
+    expect(message).toContain(
+      "Do not add placeholder comments/markers such as '省略', 'omitted', 'same as original', or equivalent.",
+    );
     expect(message).toContain("Preserve the original language (English).");
     expect(message).toContain("Preserve the original file format style for .md.");
     expect(message).toContain("<instruction>");
@@ -117,6 +124,23 @@ describe("instruction enhance helpers", () => {
     expect(validateInstructionLanguagePreserved("Answer in English.", "こんにちは")).toEqual({
       ok: false,
       error: "Enhanced instruction changed language unexpectedly. Please retry.",
+    });
+  });
+
+  it("rejects omission-marker placeholders in enhanced content", () => {
+    expect(
+      validateEnhancedInstructionCompleteness(
+        "<!-- 以降のExamplesは原文どおり（長大のため省略せずに保持する想定） -->",
+      ),
+    ).toEqual({
+      ok: false,
+      error:
+        "Enhanced instruction appears to omit original content with placeholders/comments. Please retry.",
+    });
+
+    expect(validateEnhancedInstructionCompleteness("All original examples are fully included.")).toEqual({
+      ok: true,
+      value: true,
     });
   });
 

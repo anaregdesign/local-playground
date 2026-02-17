@@ -202,6 +202,10 @@ const ENHANCE_INSTRUCTION_SYSTEM_PROMPT = [
   "You are an expert editor for agent system instructions.",
   "Rewrite the provided instruction to remove contradictions and ambiguity.",
   "Keep the original intent, constraints, and safety boundaries.",
+  "Preserve as much of the original information as possible and avoid removing details unless necessary.",
+  "Do not omit, summarize, truncate, or replace any part with placeholders.",
+  "Do not insert comments like 'omitted', '省略', 'same as original', or similar markers.",
+  "Even if the instruction is long, return the complete revised text.",
   "Preserve the language and file-format style requested by the user.",
   "Return only the revised instruction text with no explanations.",
 ].join(" ");
@@ -1137,6 +1141,13 @@ export default function Home() {
         throw new Error(languageValidation.error);
       }
 
+      const completenessValidation = validateEnhancedInstructionCompleteness(
+        normalizedEnhancedInstruction,
+      );
+      if (!completenessValidation.ok) {
+        throw new Error(completenessValidation.error);
+      }
+
       if (normalizedEnhancedInstruction === currentInstruction) {
         setInstructionEnhanceSuccess("No changes were suggested.");
         return;
@@ -1827,114 +1838,6 @@ export default function Home() {
                 <h3>Agent Instruction 🧾</h3>
                 <p>System instruction used for the agent.</p>
               </div>
-              <Textarea
-                id="agent-instruction"
-                rows={6}
-                value={agentInstruction}
-                onChange={(_, data) => {
-                  setAgentInstruction(data.value);
-                  setInstructionSaveError(null);
-                  setInstructionSaveSuccess(null);
-                  setInstructionEnhanceError(null);
-                  setInstructionEnhanceSuccess(null);
-                  setInstructionEnhanceComparison(null);
-                }}
-                disabled={isSending}
-                placeholder="System instruction for the agent"
-              />
-              <Field label="📝 Save file name (optional)">
-                <Input
-                  id="agent-instruction-save-file-name"
-                  placeholder="instruction.md"
-                  value={instructionSaveFileNameInput}
-                  onChange={(_, data) => {
-                    setInstructionSaveFileNameInput(data.value);
-                    setInstructionSaveError(null);
-                    setInstructionSaveSuccess(null);
-                    setInstructionEnhanceError(null);
-                    setInstructionEnhanceSuccess(null);
-                  }}
-                  disabled={isSending || isSavingInstructionPrompt || isEnhancingInstruction}
-                />
-              </Field>
-              <div className="file-picker-row">
-                <input
-                  id="agent-instruction-file"
-                  ref={instructionFileInputRef}
-                  className="file-input-hidden"
-                  type="file"
-                  accept=".md,.txt,.xml,.json,text/plain,text/markdown,application/json,application/xml,text/xml"
-                  onChange={(event) => {
-                    void handleInstructionFileChange(event);
-                  }}
-                  disabled={isSending}
-                />
-                <Button
-                  type="button"
-                  appearance="secondary"
-                  size="small"
-                  onClick={() => instructionFileInputRef.current?.click()}
-                  disabled={isSending}
-                >
-                  📂 Load File
-                </Button>
-                <Button
-                  type="button"
-                  appearance="secondary"
-                  size="small"
-                  onClick={() => {
-                    void handleSaveInstructionPrompt();
-                  }}
-                  disabled={
-                    isSending ||
-                    isSavingInstructionPrompt ||
-                    isEnhancingInstruction ||
-                    !canSaveAgentInstructionPrompt
-                  }
-                >
-                  {isSavingInstructionPrompt ? "💾 Saving..." : "💾 Save"}
-                </Button>
-                <Button
-                  type="button"
-                  appearance="primary"
-                  size="small"
-                  onClick={() => {
-                    void handleEnhanceInstruction();
-                  }}
-                  disabled={isSending || isEnhancingInstruction || !canEnhanceAgentInstruction}
-                >
-                  {isEnhancingInstruction ? "✨ Enhancing..." : "✨ Enhance"}
-                </Button>
-                <Button
-                  type="button"
-                  appearance="secondary"
-                  size="small"
-                  onClick={() => {
-                    setAgentInstruction("");
-                    setInstructionSaveFileNameInput("");
-                    setLoadedInstructionFileName(null);
-                    setInstructionFileError(null);
-                    setInstructionSaveError(null);
-                    setInstructionSaveSuccess(null);
-                    setInstructionEnhanceError(null);
-                    setInstructionEnhanceSuccess(null);
-                    setInstructionEnhanceComparison(null);
-                  }}
-                  disabled={isSending || !canClearAgentInstruction}
-                >
-                  🧹 Clear
-                </Button>
-                <span className="file-picker-name">
-                  {loadedInstructionFileName ?? "No file loaded"}
-                </span>
-              </div>
-              <p className="field-hint">Supported: .md, .txt, .xml, .json (max 1MB)</p>
-              <p className="field-hint">
-                Enhance uses the currently selected Azure project + deployment in Azure Connection.
-              </p>
-              <p className="field-hint">
-                Save destination: `~/.foundry_local_playground/prompts` (leave file name empty to auto-generate).
-              </p>
               {instructionEnhanceComparison ? (
                 <section className="instruction-diff-panel" aria-label="Instruction diff review">
                   <div className="instruction-diff-header">
@@ -1987,7 +1890,129 @@ export default function Home() {
                     ))}
                   </div>
                 </section>
-              ) : null}
+              ) : (
+                <>
+                  <Textarea
+                    id="agent-instruction"
+                    rows={6}
+                    value={agentInstruction}
+                    onChange={(_, data) => {
+                      setAgentInstruction(data.value);
+                      setInstructionSaveError(null);
+                      setInstructionSaveSuccess(null);
+                      setInstructionEnhanceError(null);
+                      setInstructionEnhanceSuccess(null);
+                      setInstructionEnhanceComparison(null);
+                    }}
+                    disabled={isSending || isEnhancingInstruction}
+                    placeholder="System instruction for the agent"
+                  />
+                  {isEnhancingInstruction ? (
+                    <div className="instruction-enhancing-state" role="status" aria-live="polite">
+                      <div className="instruction-enhancing-head">
+                        <Spinner size="tiny" />
+                        <span>Enhancing instruction with the selected Azure model...</span>
+                      </div>
+                      <div className="instruction-enhancing-track" aria-hidden="true">
+                        <span className="instruction-enhancing-bar" />
+                      </div>
+                    </div>
+                  ) : null}
+                  <Field label="📝 Save file name (optional)">
+                    <Input
+                      id="agent-instruction-save-file-name"
+                      placeholder="instruction.md"
+                      value={instructionSaveFileNameInput}
+                      onChange={(_, data) => {
+                        setInstructionSaveFileNameInput(data.value);
+                        setInstructionSaveError(null);
+                        setInstructionSaveSuccess(null);
+                        setInstructionEnhanceError(null);
+                        setInstructionEnhanceSuccess(null);
+                      }}
+                      disabled={isSending || isSavingInstructionPrompt || isEnhancingInstruction}
+                    />
+                  </Field>
+                  <div className="file-picker-row">
+                    <input
+                      id="agent-instruction-file"
+                      ref={instructionFileInputRef}
+                      className="file-input-hidden"
+                      type="file"
+                      accept=".md,.txt,.xml,.json,text/plain,text/markdown,application/json,application/xml,text/xml"
+                      onChange={(event) => {
+                        void handleInstructionFileChange(event);
+                      }}
+                      disabled={isSending || isEnhancingInstruction}
+                    />
+                    <Button
+                      type="button"
+                      appearance="secondary"
+                      size="small"
+                      onClick={() => instructionFileInputRef.current?.click()}
+                      disabled={isSending || isEnhancingInstruction}
+                    >
+                      📂 Load File
+                    </Button>
+                    <Button
+                      type="button"
+                      appearance="secondary"
+                      size="small"
+                      onClick={() => {
+                        void handleSaveInstructionPrompt();
+                      }}
+                      disabled={
+                        isSending ||
+                        isSavingInstructionPrompt ||
+                        isEnhancingInstruction ||
+                        !canSaveAgentInstructionPrompt
+                      }
+                    >
+                      {isSavingInstructionPrompt ? "💾 Saving..." : "💾 Save"}
+                    </Button>
+                    <Button
+                      type="button"
+                      appearance="primary"
+                      size="small"
+                      onClick={() => {
+                        void handleEnhanceInstruction();
+                      }}
+                      disabled={isSending || isEnhancingInstruction || !canEnhanceAgentInstruction}
+                    >
+                      {isEnhancingInstruction ? "✨ Enhancing..." : "✨ Enhance"}
+                    </Button>
+                    <Button
+                      type="button"
+                      appearance="secondary"
+                      size="small"
+                      onClick={() => {
+                        setAgentInstruction("");
+                        setInstructionSaveFileNameInput("");
+                        setLoadedInstructionFileName(null);
+                        setInstructionFileError(null);
+                        setInstructionSaveError(null);
+                        setInstructionSaveSuccess(null);
+                        setInstructionEnhanceError(null);
+                        setInstructionEnhanceSuccess(null);
+                        setInstructionEnhanceComparison(null);
+                      }}
+                      disabled={isSending || isEnhancingInstruction || !canClearAgentInstruction}
+                    >
+                      🧹 Clear
+                    </Button>
+                    <span className="file-picker-name">
+                      {loadedInstructionFileName ?? "No file loaded"}
+                    </span>
+                  </div>
+                  <p className="field-hint">Supported: .md, .txt, .xml, .json (max 1MB)</p>
+                  <p className="field-hint">
+                    Enhance uses the currently selected Azure project + deployment in Azure Connection.
+                  </p>
+                  <p className="field-hint">
+                    Save destination: `~/.foundry_local_playground/prompts` (leave file name empty to auto-generate).
+                  </p>
+                </>
+              )}
               {instructionFileError ? (
                 <MessageBar intent="error" className="setting-message-bar">
                   <MessageBarBody>{instructionFileError}</MessageBarBody>
@@ -3403,6 +3428,9 @@ export function buildInstructionEnhanceMessage(options: {
     "Requirements:",
     "- Remove contradictions and ambiguity.",
     "- Keep original intent, guardrails, and constraints.",
+    "- Preserve as much original information as possible; avoid deleting details unless necessary.",
+    "- Do not omit, summarize, or truncate sections. Keep all important details and examples.",
+    "- Do not add placeholder comments/markers such as '省略', 'omitted', 'same as original', or equivalent.",
     "- Normalize and improve formatting for readability.",
     `- Preserve the original language (${languageLabel}).`,
     `- Preserve the original file format style for .${options.extension}.`,
@@ -3466,6 +3494,31 @@ export function validateInstructionLanguagePreserved(
       ok: false,
       error: "Enhanced instruction changed language unexpectedly. Please retry.",
     };
+  }
+
+  return { ok: true, value: true };
+}
+
+export function validateEnhancedInstructionCompleteness(
+  enhancedInstruction: string,
+): ParseResult<true> {
+  const omissionMarkerPatterns: RegExp[] = [
+    /<!--[\s\S]{0,240}(省略|omitted|omit|same as original|for brevity|truncated|原文どおり)[\s\S]*?-->/i,
+    /\[[^\]]{0,180}(省略|omitted|same as original|for brevity|truncated|原文どおり)[^\]]{0,180}\]/i,
+    /\([^)]{0,180}(省略|omitted|same as original|for brevity|truncated|原文どおり)[^)]{0,180}\)/i,
+    /(?:以下|以降).{0,40}(?:省略|同様)/i,
+    /same as (?:original|above)/i,
+    /for brevity/i,
+  ];
+
+  for (const pattern of omissionMarkerPatterns) {
+    if (pattern.test(enhancedInstruction)) {
+      return {
+        ok: false,
+        error:
+          "Enhanced instruction appears to omit original content with placeholders/comments. Please retry.",
+      };
+    }
   }
 
   return { ok: true, value: true };

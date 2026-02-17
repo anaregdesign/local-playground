@@ -776,6 +776,53 @@ body {
   white-space: nowrap;
 }
 
+.instruction-enhancing-state {
+  border: 1px solid var(--surface-border);
+  border-radius: 10px;
+  background: #f7fbff;
+  padding: 0.55rem 0.65rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.instruction-enhancing-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.8rem;
+  color: var(--text-main);
+  font-weight: 600;
+}
+
+.instruction-enhancing-track {
+  position: relative;
+  height: 6px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: linear-gradient(90deg, #e8f1fb 0%, #d6e7f8 100%);
+}
+
+.instruction-enhancing-bar {
+  position: absolute;
+  top: 0;
+  left: -35%;
+  height: 100%;
+  width: 35%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #5b8db8 0%, #7fa6c3 100%);
+  animation: instruction-enhancing-slide 1s ease-in-out infinite;
+}
+
+@keyframes instruction-enhancing-slide {
+  0% {
+    left: -35%;
+  }
+  100% {
+    left: 100%;
+  }
+}
+
 .instruction-diff-panel {
   border: 1px solid var(--surface-border);
   border-radius: 10px;
