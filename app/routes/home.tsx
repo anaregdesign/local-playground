@@ -42,7 +42,7 @@ const {
 type ChatRole = "user" | "assistant";
 type ReasoningEffort = "none" | "low" | "medium" | "high";
 type McpTransport = "streamable_http" | "sse" | "stdio";
-type MainViewTab = "chat" | "settings" | "mcp";
+type MainViewTab = "settings" | "mcp";
 
 type McpHttpServerConfig = {
   id: string;
@@ -230,8 +230,7 @@ export default function Home() {
   const [azureDeployments, setAzureDeployments] = useState<string[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>(INITIAL_MESSAGES);
   const [draft, setDraft] = useState("");
-  const [activeMainTab, setActiveMainTab] = useState<MainViewTab>("chat");
-  const [isChatTabSuggested, setIsChatTabSuggested] = useState(false);
+  const [activeMainTab, setActiveMainTab] = useState<MainViewTab>("settings");
   const [selectedAzureConnectionId, setSelectedAzureConnectionId] = useState("");
   const [selectedAzureDeploymentName, setSelectedAzureDeploymentName] = useState("");
   const [isLoadingAzureConnections, setIsLoadingAzureConnections] = useState(false);
@@ -297,7 +296,6 @@ export default function Home() {
   const preferredAzureSelectionRef = useRef<AzureSelectionPreference | null>(null);
   const contextWindowValidation = validateContextWindowInput(contextWindowInput);
   const isChatLocked = isAzureAuthRequired;
-  const previousChatLockedRef = useRef(isChatLocked);
   const activeAzureConnection =
     azureConnections.find((connection) => connection.id === selectedAzureConnectionId) ??
     azureConnections[0] ??
@@ -404,37 +402,10 @@ export default function Home() {
   ]);
 
   useEffect(() => {
-    if (isChatLocked && activeMainTab === "chat") {
+    if (isChatLocked && activeMainTab !== "settings") {
       setActiveMainTab("settings");
     }
   }, [activeMainTab, isChatLocked]);
-
-  useEffect(() => {
-    const wasChatLocked = previousChatLockedRef.current;
-    if (wasChatLocked && !isChatLocked && activeMainTab !== "chat") {
-      setIsChatTabSuggested(true);
-    }
-
-    if (isChatLocked || activeMainTab === "chat") {
-      setIsChatTabSuggested(false);
-    }
-
-    previousChatLockedRef.current = isChatLocked;
-  }, [activeMainTab, isChatLocked]);
-
-  useEffect(() => {
-    if (!isChatTabSuggested) {
-      return;
-    }
-
-    const timeoutId = window.setTimeout(() => {
-      setIsChatTabSuggested(false);
-    }, 12000);
-
-    return () => {
-      window.clearTimeout(timeoutId);
-    };
-  }, [isChatTabSuggested]);
 
   async function loadSavedMcpServers() {
     setIsLoadingSavedMcpServers(true);
@@ -1420,58 +1391,8 @@ export default function Home() {
 
   return (
     <main className="chat-page">
-      <div className="chat-layout tabbed-layout">
-        <TabList
-          className="main-tabs"
-          aria-label="Main panels"
-          appearance="subtle"
-          size="small"
-          selectedValue={activeMainTab}
-          onTabSelect={(_, data) => {
-            const nextTab = String(data.value) as MainViewTab;
-            if (nextTab === "chat" && isChatLocked) {
-              setActiveMainTab("settings");
-              return;
-            }
-
-            setActiveMainTab(nextTab);
-            if (nextTab === "chat") {
-              setIsChatTabSuggested(false);
-            }
-          }}
-        >
-          {MAIN_VIEW_TAB_OPTIONS.map((tab) => (
-            <Tab
-              key={tab.id}
-              value={tab.id}
-              id={`tab-${tab.id}`}
-              aria-controls={`panel-${tab.id}`}
-              disabled={tab.id === "chat" && isChatLocked}
-              className={`main-tab-btn ${
-                tab.id === "chat" && isChatTabSuggested ? "suggested-chat" : ""
-              }`}
-            >
-              {tab.label}
-            </Tab>
-          ))}
-        </TabList>
-        {isChatLocked ? (
-          <MessageBar intent="warning" className="tab-guidance-bar">
-            <MessageBarBody>🔒 Playground is locked. Open Settings and sign in to Azure.</MessageBarBody>
-          </MessageBar>
-        ) : isChatTabSuggested ? (
-          <MessageBar intent="success" className="tab-guidance-bar">
-            <MessageBarBody>✅ Sign-in complete. Open the 💬 Playground tab to continue.</MessageBarBody>
-          </MessageBar>
-        ) : null}
-
-        <section
-          className="chat-shell main-panel"
-          id="panel-chat"
-          role="tabpanel"
-          aria-labelledby="tab-chat"
-          hidden={activeMainTab !== "chat" || isChatLocked}
-        >
+      <div className="chat-layout workspace-layout">
+        <section className="chat-shell main-panel" aria-label="Playground">
           <header className="chat-header">
             <div className="chat-header-row">
               <div className="chat-header-main">
@@ -1642,14 +1563,50 @@ export default function Home() {
           </footer>
         </section>
 
-        <aside
-          className="settings-shell main-panel"
-          aria-label="Playground settings"
-          id="panel-settings"
-          role="tabpanel"
-          aria-labelledby="tab-settings"
-          hidden={activeMainTab !== "settings"}
-        >
+        <aside className="side-shell main-panel" aria-label="Configuration panels">
+          <div className="side-shell-header">
+            <TabList
+              className="main-tabs"
+              aria-label="Side panels"
+              appearance="subtle"
+              size="small"
+              selectedValue={activeMainTab}
+              onTabSelect={(_, data) => {
+                const nextTab = String(data.value);
+                if (nextTab === "settings" || nextTab === "mcp") {
+                  setActiveMainTab(nextTab);
+                }
+              }}
+            >
+              {MAIN_VIEW_TAB_OPTIONS.map((tab) => (
+                <Tab
+                  key={tab.id}
+                  value={tab.id}
+                  id={`tab-${tab.id}`}
+                  aria-controls={`panel-${tab.id}`}
+                  className="main-tab-btn"
+                >
+                  {tab.label}
+                </Tab>
+              ))}
+            </TabList>
+            {isChatLocked ? (
+              <MessageBar intent="warning" className="tab-guidance-bar">
+                <MessageBarBody>
+                  🔒 Playground is locked. Open Settings and sign in to Azure.
+                </MessageBarBody>
+              </MessageBar>
+            ) : null}
+          </div>
+          <div className="side-shell-body">
+            <section
+              className="settings-shell"
+              aria-label="Playground settings"
+              id="panel-settings"
+              role="tabpanel"
+              aria-labelledby="tab-settings"
+              hidden={activeMainTab !== "settings"}
+            >
           <header className="settings-header">
             <h2>Settings ⚙️</h2>
             <p>Model behavior options</p>
@@ -2082,16 +2039,16 @@ export default function Home() {
               ) : null}
             </section>
           </div>
-        </aside>
+            </section>
 
-        <aside
-          className="mcp-shell main-panel"
-          aria-label="MCP server settings"
-          id="panel-mcp"
-          role="tabpanel"
-          aria-labelledby="tab-mcp"
-          hidden={activeMainTab !== "mcp"}
-        >
+            <section
+              className="mcp-shell"
+              aria-label="MCP server settings"
+              id="panel-mcp"
+              role="tabpanel"
+              aria-labelledby="tab-mcp"
+              hidden={activeMainTab !== "mcp"}
+            >
           <header className="mcp-header">
             <h2>MCP Servers 🧩</h2>
           </header>
@@ -2400,6 +2357,8 @@ export default function Home() {
                   ))}
                 </div>
               )}
+            </section>
+          </div>
             </section>
           </div>
         </aside>
@@ -2805,7 +2764,6 @@ function createMessage(role: ChatRole, content: string, turnId: string): ChatMes
 }
 
 const MAIN_VIEW_TAB_OPTIONS: Array<{ id: MainViewTab; label: string }> = [
-  { id: "chat", label: "💬 Playground" },
   { id: "settings", label: "⚙️ Settings" },
   { id: "mcp", label: "🧩 MCP Servers" },
 ];
