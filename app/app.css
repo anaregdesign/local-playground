@@ -72,6 +72,11 @@ body {
   font-size: 0.82rem;
 }
 
+/* Fluent UI Tab uses a reserved ghost label for width calculation. Hide it explicitly. */
+.main-tabs .fui-Tab__content--reserved-space {
+  display: none;
+}
+
 .main-tab-btn.suggested-chat {
   border-color: #99c6ef;
   background: #eff6fc;

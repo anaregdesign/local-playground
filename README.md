@@ -15,6 +15,30 @@ npm run dev
 
 Open `http://localhost:5173`.
 
+## Desktop App (macOS / Windows / Linux)
+
+This repository includes an Electron desktop shell that opens the same UI as the web app.
+
+Run desktop development mode:
+
+```bash
+npm run desktop:dev
+```
+
+Run desktop production mode:
+
+```bash
+npm run desktop:start
+```
+
+Notes:
+
+- `desktop:dev` runs the web dev server and Electron.
+- `desktop:start` builds the web app and launches Electron in production mode.
+- Backend URL defaults:
+  - dev: `http://localhost:5173`
+  - prod: `http://localhost:5180`
+
 ## What This Application Is
 
 This application is a development and validation workbench for:
