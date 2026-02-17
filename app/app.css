@@ -38,15 +38,20 @@ body {
 .chat-page {
   min-height: 100vh;
   height: 100vh;
-  padding: 0.5rem;
+  padding: 0.35rem;
 }
 
 .chat-layout {
+  --right-pane-width: 420px;
+  --side-top-pane-height: 420px;
+  --splitter-size: 10px;
+  --splitter-track: rgba(15, 108, 189, 0.22);
+  --splitter-track-active: rgba(15, 108, 189, 0.55);
   width: 100%;
   height: 100%;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(360px, 440px);
-  gap: 0.55rem;
+  grid-template-columns: minmax(0, 1fr) var(--splitter-size) minmax(320px, var(--right-pane-width));
+  gap: 0.3rem;
 }
 
 .chat-layout.workspace-layout {
@@ -56,15 +61,39 @@ body {
 .main-tabs {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.35rem;
-  padding: 0.28rem;
-  border-radius: 12px;
-  border: 1px solid var(--surface-border);
-  background: #ffffff;
+  gap: 0.28rem;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
 }
 
 .main-tab-btn {
-  font-size: 0.82rem;
+  font-size: 0.84rem;
+  min-height: 30px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background: transparent;
+  box-shadow: none;
+}
+
+.main-tab-btn::after {
+  display: none !important;
+}
+
+.main-tab-btn[aria-selected="true"] {
+  border-color: #cbd7e4;
+  background: #f6f9fc;
+  color: #1f4e67;
+}
+
+.main-tab-btn:hover {
+  background: #f8fafc;
+}
+
+.main-tab-btn:focus-visible {
+  outline: 2px solid rgba(15, 108, 189, 0.45);
+  outline-offset: 1px;
 }
 
 /* Fluent UI Tab uses a reserved ghost label for width calculation. Hide it explicitly. */
@@ -94,15 +123,127 @@ body {
 .side-shell-header {
   display: flex;
   flex-direction: column;
-  gap: 0.55rem;
-  padding: 0.75rem;
+  gap: 0.4rem;
+  padding: 0.62rem;
   border-bottom: 1px solid var(--surface-border);
   background: linear-gradient(180deg, #ffffff, #faf9f8);
 }
 
 .side-shell-body {
+  --side-splitter-size: 14px;
+  display: grid;
+  grid-template-rows:
+    minmax(220px, var(--side-top-pane-height))
+    var(--side-splitter-size)
+    minmax(180px, 1fr);
   min-height: 0;
   overflow: hidden;
+}
+
+.side-top-panel,
+.side-bottom-panel {
+  min-height: 0;
+}
+
+.side-top-panel {
+  overflow: hidden;
+}
+
+.side-bottom-panel {
+  overflow: auto;
+  padding: 0.5rem 0.55rem;
+  border-top: 0;
+  background: linear-gradient(180deg, #ffffff, #f7f9fc);
+}
+
+.side-bottom-panel .mcp-added-section {
+  min-height: 100%;
+  border: 0;
+  box-shadow: none;
+  background: transparent;
+  padding: 0;
+  gap: 0.45rem;
+}
+
+.layout-splitter {
+  position: relative;
+  border-radius: 999px;
+  touch-action: none;
+  background: transparent;
+  transition: background-color 0.15s ease;
+}
+
+.layout-splitter::before {
+  content: "";
+  position: absolute;
+  inset: auto;
+  border-radius: inherit;
+  transition:
+    background-color 0.15s ease,
+    transform 0.15s ease;
+}
+
+.main-splitter {
+  cursor: col-resize;
+}
+
+.main-splitter::before {
+  width: 3px;
+  height: 56px;
+  left: calc(50% - 1.5px);
+  top: calc(50% - 28px);
+  background: var(--splitter-track);
+}
+
+.main-splitter:hover,
+.main-splitter.resizing {
+  background: rgba(15, 108, 189, 0.06);
+}
+
+.main-splitter:hover::before,
+.main-splitter.resizing::before {
+  background: var(--splitter-track-active);
+  transform: scaleY(1.06);
+}
+
+.side-splitter {
+  cursor: row-resize;
+  border-top: 1px solid rgba(15, 108, 189, 0.2);
+  border-bottom: 1px solid rgba(15, 108, 189, 0.2);
+  background: linear-gradient(180deg, rgba(15, 108, 189, 0.08), rgba(15, 108, 189, 0.03));
+}
+
+.side-splitter::before {
+  height: 4px;
+  width: 118px;
+  top: calc(50% - 2px);
+  left: calc(50% - 59px);
+  background: var(--splitter-track);
+}
+
+.side-splitter::after {
+  content: "";
+  position: absolute;
+  width: 34px;
+  height: 6px;
+  top: calc(50% - 3px);
+  left: calc(50% - 17px);
+  border-radius: 999px;
+  background:
+    radial-gradient(circle, rgba(255, 255, 255, 0.95) 1.2px, transparent 1.4px)
+    center / 8px 6px repeat-x;
+  pointer-events: none;
+}
+
+.side-splitter:hover,
+.side-splitter.resizing {
+  background: linear-gradient(180deg, rgba(15, 108, 189, 0.13), rgba(15, 108, 189, 0.07));
+}
+
+.side-splitter:hover::before,
+.side-splitter.resizing::before {
+  background: var(--splitter-track-active);
+  transform: scaleX(1.06);
 }
 
 .chat-shell {
@@ -167,25 +308,49 @@ body {
   line-height: 1.45;
   word-break: break-word;
   white-space: pre-wrap;
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: flex-start;
-  gap: 0.35rem;
+  column-gap: 0.24rem;
 }
 
 .message-content {
-  flex: 1;
+  width: 100%;
   min-width: 0;
 }
 
 .copy-symbol-btn {
-  min-width: 1.7rem;
-  width: 1.7rem;
-  height: 1.7rem;
+  min-width: 1.2rem;
+  width: 1.2rem;
+  height: 1.2rem;
+  min-height: 1.2rem;
   padding: 0;
   color: var(--text-subtle);
-  font-size: 0.9rem;
+  font-size: 0.86rem;
   line-height: 1;
   opacity: 0.7;
+}
+
+.copy-symbol-btn.fui-Button {
+  min-width: 1.2rem !important;
+  width: 1.2rem !important;
+  height: 1.2rem !important;
+  min-height: 1.2rem !important;
+  padding: 0 !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  border-radius: 4px;
+  background: transparent !important;
+}
+
+.copy-symbol-btn .fui-Button__icon {
+  margin-inline: 0;
+}
+
+.copy-symbol-btn .fui-Button__content {
+  margin: 0;
+  font-size: 0.86rem;
+  line-height: 1;
 }
 
 .copy-symbol-btn:hover {
@@ -199,8 +364,20 @@ body {
 }
 
 .message-copy-btn {
-  flex-shrink: 0;
-  margin-top: 0.05rem;
+  position: static;
+  justify-self: end;
+  align-self: start;
+  margin-top: 0;
+  opacity: 0.65;
+}
+
+.message-copy-btn:hover {
+  opacity: 1;
+}
+
+.progress-row {
+  grid-template-columns: minmax(0, 1fr);
+  column-gap: 0;
 }
 
 .message-row p {
@@ -592,10 +769,10 @@ body {
 
 .settings-content,
 .mcp-content {
-  padding: 0.9rem;
+  padding: 0.7rem;
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
+  gap: 0.6rem;
   overflow-y: auto;
 }
 
@@ -617,11 +794,11 @@ body {
 .setting-group {
   background: #ffffff;
   border: 1px solid var(--surface-border);
-  border-radius: 10px;
-  padding: 0.75rem;
+  border-radius: 9px;
+  padding: 0.62rem;
   display: flex;
   flex-direction: column;
-  gap: 0.55rem;
+  gap: 0.45rem;
 }
 
 .setting-group-header h3 {
@@ -631,9 +808,13 @@ body {
 }
 
 .setting-group-header p {
-  margin: 0.2rem 0 0;
+  margin: 0.12rem 0 0;
   font-size: 0.78rem;
   color: var(--text-subtle);
+}
+
+.setting-group .fui-Field {
+  margin: 0;
 }
 
 .setting-label {
@@ -747,7 +928,7 @@ body {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 0.55rem;
+  gap: 0.45rem;
   min-width: 0;
 }
 
@@ -951,7 +1132,7 @@ body {
 
 .field-with-info {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 0.45rem;
 }
@@ -1022,7 +1203,7 @@ body {
 .mcp-list {
   display: flex;
   flex-direction: column;
-  gap: 0.55rem;
+  gap: 0.45rem;
 }
 
 .mcp-action-row {
@@ -1037,20 +1218,20 @@ body {
 
 .mcp-item {
   border: 1px solid var(--surface-border);
-  border-radius: 10px;
+  border-radius: 9px;
   background: #ffffff;
-  padding: 0.58rem;
+  padding: 0.5rem;
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 0.5rem;
+  gap: 0.45rem;
 }
 
 .mcp-item-body {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 0.2rem;
+  gap: 0.14rem;
 }
 
 .mcp-item-name,
@@ -1101,7 +1282,7 @@ body {
 
 @media (max-width: 1240px) {
   .chat-layout {
-    grid-template-columns: minmax(0, 1fr) 380px;
+    grid-template-columns: minmax(0, 1fr) var(--splitter-size) minmax(320px, 380px);
   }
 }
 
@@ -1116,12 +1297,20 @@ body {
     gap: 0.45rem;
   }
 
+  .main-splitter {
+    display: none;
+  }
+
   .chat-shell {
     height: auto;
   }
 
   .side-shell {
     min-height: 0;
+  }
+
+  .side-shell-body {
+    grid-template-rows: minmax(220px, 1fr) var(--side-splitter-size) minmax(180px, 1fr);
   }
 
   .message-row {
@@ -1136,6 +1325,10 @@ body {
 
   .chat-layout {
     gap: 0.35rem;
+  }
+
+  .side-shell-body {
+    grid-template-rows: minmax(180px, 1fr) var(--side-splitter-size) minmax(160px, 1fr);
   }
 
   .chat-header {

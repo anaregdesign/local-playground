@@ -19,6 +19,11 @@ Open `http://localhost:5173`.
 
 This repository includes an Electron desktop shell that opens the same UI as the web app.
 
+Tagged releases (`v*.*.*`) automatically attach OS-specific installer artifacts to the GitHub Release:
+- macOS: `.dmg`, `.zip`
+- Windows: `.exe` (NSIS)
+- Linux: `.AppImage`, `.deb`
+
 Run desktop development mode:
 
 ```bash

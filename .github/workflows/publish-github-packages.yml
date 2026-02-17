@@ -1,4 +1,4 @@
-name: Publish to GitHub Packages
+name: Release Desktop Installers
 
 on:
   push:
@@ -7,10 +7,10 @@ on:
 
 permissions:
   contents: write
-  packages: write
 
 jobs:
-  publish:
+  validate:
+    name: Validate
     runs-on: ubuntu-latest
 
     steps:
@@ -21,7 +21,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "22"
-          registry-url: "https://npm.pkg.github.com"
+          cache: "npm"
 
       - name: Install dependencies
         run: npm ci
@@ -32,36 +32,103 @@ jobs:
           npm run test
           npm run build
 
-      - name: Prepare package metadata for GitHub Packages
+  package-installers:
+    name: Package (${{ matrix.platform }})
+    needs: validate
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            platform: macOS
+            package_command: npm run desktop:package:mac
+          - os: windows-latest
+            platform: Windows
+            package_command: npm run desktop:package:win
+          - os: ubuntu-latest
+            platform: Linux
+            package_command: npm run desktop:package:linux
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build installer
         env:
-          TAG_NAME: ${{ github.ref_name }}
-          REPOSITORY_OWNER: ${{ github.repository_owner }}
-        run: |
-          OWNER="$(echo "${REPOSITORY_OWNER}" | tr '[:upper:]' '[:lower:]')"
-          BASE_NAME="$(node -e "const name=require('./package.json').name; process.stdout.write(name.includes('/') ? name.split('/').pop() : name)")"
-          VERSION="${TAG_NAME#v}"
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        run: ${{ matrix.package_command }}
 
-          npm pkg set "name=@${OWNER}/${BASE_NAME}"
-          npm pkg set "version=${VERSION}"
-          npm pkg delete private
-          npm pkg set "publishConfig.registry=https://npm.pkg.github.com"
+      - name: Upload macOS installers
+        if: matrix.os == 'macos-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: installers-macos
+          path: |
+            dist/installers/*.dmg
+            dist/installers/*.zip
+          if-no-files-found: error
 
-      - name: Publish package
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npm publish
+      - name: Upload Windows installers
+        if: matrix.os == 'windows-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: installers-windows
+          path: |
+            dist/installers/*.exe
+            dist/installers/*.msi
+            dist/installers/*.zip
+          if-no-files-found: error
 
-      - name: Create GitHub Release Notes
+      - name: Upload Linux installers
+        if: matrix.os == 'ubuntu-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: installers-linux
+          path: |
+            dist/installers/*.AppImage
+            dist/installers/*.deb
+            dist/installers/*.rpm
+            dist/installers/*.tar.gz
+          if-no-files-found: error
+
+  release:
+    name: Publish Release Assets
+    needs: package-installers
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download installers
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+
+      - name: Publish release notes and assets
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG_NAME: ${{ github.ref_name }}
         run: |
+          mapfile -t ASSETS < <(find release-assets -type f | sort)
+          if [ "${#ASSETS[@]}" -eq 0 ]; then
+            echo "No installer assets were found."
+            exit 1
+          fi
+
           cat > release-notes.md <<'EOF'
-          ## Local Playground (Application Release)
+          ## Local Playground
 
-          Local Playground is an application. Use the repository directly.
+          Desktop installers for macOS / Windows / Linux are attached to this release.
 
-          ### Quick Start (Copy & Paste)
+          ### Run from Source (Copy & Paste)
 
           ```bash
           git clone https://github.com/anaregdesign/local-playground.git
@@ -72,10 +139,18 @@ jobs:
           ```
 
           Open: `http://localhost:5173`
+
+          ### Installer Assets
           EOF
+
+          for asset in "${ASSETS[@]}"; do
+            printf -- "- `%s`\n" "$(basename "${asset}")" >> release-notes.md
+          done
 
           if gh release view "${TAG_NAME}" >/dev/null 2>&1; then
             gh release edit "${TAG_NAME}" --title "${TAG_NAME}" --notes-file release-notes.md
           else
             gh release create "${TAG_NAME}" --title "${TAG_NAME}" --notes-file release-notes.md
           fi
+
+          gh release upload "${TAG_NAME}" "${ASSETS[@]}" --clobber

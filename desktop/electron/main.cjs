@@ -84,18 +84,20 @@ function resolveAppUrl() {
 }
 
 async function startProductionBackend() {
+  const appRootPath = app.getAppPath();
   const serveCliPath = require.resolve('@react-router/serve/bin.js');
-  const serverBuildPath = path.resolve(process.cwd(), 'build', 'server', 'index.js');
+  const serverBuildPath = path.resolve(appRootPath, 'build', 'server', 'index.js');
   if (!existsSync(serverBuildPath)) {
     throw new Error('Server build is missing. Run `npm run build` first.');
   }
 
   backendProcess = spawn(process.execPath, [serveCliPath, serverBuildPath], {
-    cwd: process.cwd(),
+    cwd: appRootPath,
     env: {
       ...process.env,
       PORT: String(BACKEND_PORT),
       NODE_ENV: 'production',
+      ELECTRON_RUN_AS_NODE: '1',
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   });

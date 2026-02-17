@@ -3,7 +3,9 @@ import {
   useEffect,
   useRef,
   useState,
+  type CSSProperties,
   type Dispatch,
+  type PointerEvent as ReactPointerEvent,
   type SetStateAction,
 } from "react";
 import * as FluentUIComponents from "@fluentui/react-components";
@@ -289,8 +291,13 @@ export default function Home() {
   const [azureLoginError, setAzureLoginError] = useState<string | null>(null);
   const [azureLogoutError, setAzureLogoutError] = useState<string | null>(null);
   const [mcpRpcHistory, setMcpRpcHistory] = useState<McpRpcHistoryEntry[]>([]);
+  const [rightPaneWidth, setRightPaneWidth] = useState(420);
+  const [sideTopPaneHeight, setSideTopPaneHeight] = useState(420);
+  const [activeResizeHandle, setActiveResizeHandle] = useState<"main" | "side" | null>(null);
   const endOfMessagesRef = useRef<HTMLDivElement | null>(null);
   const instructionFileInputRef = useRef<HTMLInputElement | null>(null);
+  const layoutRef = useRef<HTMLDivElement | null>(null);
+  const sideBodyRef = useRef<HTMLDivElement | null>(null);
   const azureDeploymentRequestSeqRef = useRef(0);
   const activeAzureTenantIdRef = useRef("");
   const preferredAzureSelectionRef = useRef<AzureSelectionPreference | null>(null);
@@ -406,6 +413,55 @@ export default function Home() {
       setActiveMainTab("settings");
     }
   }, [activeMainTab, isChatLocked]);
+
+  useEffect(() => {
+    const body = document.body;
+    const previousCursor = body.style.cursor;
+    const previousUserSelect = body.style.userSelect;
+
+    if (activeResizeHandle === "main") {
+      body.style.cursor = "col-resize";
+      body.style.userSelect = "none";
+    } else if (activeResizeHandle === "side") {
+      body.style.cursor = "row-resize";
+      body.style.userSelect = "none";
+    }
+
+    return () => {
+      body.style.cursor = previousCursor;
+      body.style.userSelect = previousUserSelect;
+    };
+  }, [activeResizeHandle]);
+
+  useEffect(() => {
+    const handleResize = () => {
+      const layoutElement = layoutRef.current;
+      if (layoutElement) {
+        const rect = layoutElement.getBoundingClientRect();
+        const minRightWidth = 320;
+        const minLeftWidth = 560;
+        const maxRightWidth = Math.max(minRightWidth, rect.width - minLeftWidth);
+        setRightPaneWidth((current) => clampNumber(current, minRightWidth, maxRightWidth));
+      }
+
+      const sideBodyElement = sideBodyRef.current;
+      if (sideBodyElement) {
+        const rect = sideBodyElement.getBoundingClientRect();
+        const minTopHeight = 220;
+        const minBottomHeight = 180;
+        const maxTopHeight = Math.max(minTopHeight, rect.height - minBottomHeight);
+        setSideTopPaneHeight((current) =>
+          clampNumber(current, minTopHeight, maxTopHeight),
+        );
+      }
+    };
+
+    handleResize();
+    window.addEventListener("resize", handleResize);
+    return () => {
+      window.removeEventListener("resize", handleResize);
+    };
+  }, []);
 
   async function loadSavedMcpServers() {
     setIsLoadingSavedMcpServers(true);
@@ -1389,9 +1445,135 @@ export default function Home() {
     setIsComposing(false);
   }
 
+  function handleMainSplitterPointerDown(event: ReactPointerEvent<HTMLDivElement>) {
+    event.preventDefault();
+    const layoutElement = layoutRef.current;
+    if (!layoutElement) {
+      return;
+    }
+
+    const rect = layoutElement.getBoundingClientRect();
+    const minRightWidth = 320;
+    const minLeftWidth = 560;
+    const maxRightWidth = Math.max(minRightWidth, rect.width - minLeftWidth);
+    setActiveResizeHandle("main");
+
+    const handlePointerMove = (moveEvent: PointerEvent) => {
+      const nextRightWidth = rect.right - moveEvent.clientX;
+      setRightPaneWidth(clampNumber(nextRightWidth, minRightWidth, maxRightWidth));
+    };
+
+    const stopResizing = () => {
+      setActiveResizeHandle(null);
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", stopResizing);
+      window.removeEventListener("pointercancel", stopResizing);
+    };
+
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerup", stopResizing);
+    window.addEventListener("pointercancel", stopResizing);
+  }
+
+  function handleSideSplitterPointerDown(event: ReactPointerEvent<HTMLDivElement>) {
+    event.preventDefault();
+    const sideBodyElement = sideBodyRef.current;
+    if (!sideBodyElement) {
+      return;
+    }
+
+    const rect = sideBodyElement.getBoundingClientRect();
+    const minTopHeight = 220;
+    const minBottomHeight = 180;
+    const maxTopHeight = Math.max(minTopHeight, rect.height - minBottomHeight);
+    setActiveResizeHandle("side");
+
+    const handlePointerMove = (moveEvent: PointerEvent) => {
+      const nextTopHeight = moveEvent.clientY - rect.top;
+      setSideTopPaneHeight(clampNumber(nextTopHeight, minTopHeight, maxTopHeight));
+    };
+
+    const stopResizing = () => {
+      setActiveResizeHandle(null);
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", stopResizing);
+      window.removeEventListener("pointercancel", stopResizing);
+    };
+
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerup", stopResizing);
+    window.addEventListener("pointercancel", stopResizing);
+  }
+
+  function renderAddedMcpServersPanel() {
+    return (
+      <section className="setting-group mcp-added-section">
+        <div className="setting-group-header">
+          <h3>Added MCP Servers 📡</h3>
+        </div>
+        {mcpServers.length === 0 ? (
+          <p className="field-hint">No MCP servers added.</p>
+        ) : (
+          <div className="mcp-list">
+            {mcpServers.map((server) => (
+              <article key={server.id} className="mcp-item">
+                <div className="mcp-item-body">
+                  <p className="mcp-item-name">{server.name}</p>
+                  {server.transport === "stdio" ? (
+                    <>
+                      <p className="mcp-item-url">
+                        {server.command}
+                        {server.args.length > 0 ? ` ${server.args.join(" ")}` : ""}
+                      </p>
+                      {server.cwd ? <p className="mcp-item-meta">cwd: {server.cwd}</p> : null}
+                      <p className="mcp-item-meta">
+                        {server.transport} ({Object.keys(server.env).length} env)
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="mcp-item-url">{server.url}</p>
+                      <p className="mcp-item-meta">
+                        {server.transport} ({Object.keys(server.headers).length} custom headers)
+                      </p>
+                      <p className="mcp-item-meta">timeout: {server.timeoutSeconds}s</p>
+                      {server.useAzureAuth ? (
+                        <p className="mcp-item-meta">
+                          Azure Authorization: enabled ({server.azureAuthScope})
+                        </p>
+                      ) : null}
+                    </>
+                  )}
+                </div>
+                <Button
+                  type="button"
+                  appearance="secondary"
+                  size="small"
+                  className="mcp-remove-btn"
+                  onClick={() => handleRemoveMcpServer(server.id)}
+                  disabled={isSending}
+                >
+                  🗑 Remove
+                </Button>
+              </article>
+            ))}
+          </div>
+        )}
+      </section>
+    );
+  }
+
   return (
     <main className="chat-page">
-      <div className="chat-layout workspace-layout">
+      <div
+        className="chat-layout workspace-layout"
+        ref={layoutRef}
+        style={
+          {
+            "--right-pane-width": `${rightPaneWidth}px`,
+          } as CSSProperties
+        }
+      >
         <section className="chat-shell main-panel" aria-label="Playground">
           <header className="chat-header">
             <div className="chat-header-row">
@@ -1427,7 +1609,7 @@ export default function Home() {
                     </div>
                     <Button
                       type="button"
-                      appearance="subtle"
+                      appearance="transparent"
                       size="small"
                       className="copy-symbol-btn message-copy-btn"
                       aria-label="Copy message"
@@ -1563,6 +1745,16 @@ export default function Home() {
           </footer>
         </section>
 
+        <div
+          className={`layout-splitter main-splitter ${
+            activeResizeHandle === "main" ? "resizing" : ""
+          }`}
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize panels"
+          onPointerDown={handleMainSplitterPointerDown}
+        />
+
         <aside className="side-shell main-panel" aria-label="Configuration panels">
           <div className="side-shell-header">
             <TabList
@@ -1598,7 +1790,16 @@ export default function Home() {
               </MessageBar>
             ) : null}
           </div>
-          <div className="side-shell-body">
+          <div
+            className="side-shell-body"
+            ref={sideBodyRef}
+            style={
+              {
+                "--side-top-pane-height": `${sideTopPaneHeight}px`,
+              } as CSSProperties
+            }
+          >
+            <div className="side-top-panel">
             <section
               className="settings-shell"
               aria-label="Playground settings"
@@ -2305,66 +2506,41 @@ export default function Home() {
               ) : null}
             </section>
 
-            <section className="setting-group mcp-added-section">
-              <div className="setting-group-header">
-                <h3>Added MCP Servers 📡</h3>
-              </div>
-              {mcpServers.length === 0 ? (
-                <p className="field-hint">No MCP servers added.</p>
-              ) : (
-                <div className="mcp-list">
-                  {mcpServers.map((server) => (
-                    <article key={server.id} className="mcp-item">
-                      <div className="mcp-item-body">
-                        <p className="mcp-item-name">{server.name}</p>
-                        {server.transport === "stdio" ? (
-                          <>
-                            <p className="mcp-item-url">
-                              {server.command}
-                              {server.args.length > 0 ? ` ${server.args.join(" ")}` : ""}
-                            </p>
-                            {server.cwd ? <p className="mcp-item-meta">cwd: {server.cwd}</p> : null}
-                            <p className="mcp-item-meta">
-                              {server.transport} ({Object.keys(server.env).length} env)
-                            </p>
-                          </>
-                        ) : (
-                          <>
-                            <p className="mcp-item-url">{server.url}</p>
-                            <p className="mcp-item-meta">
-                              {server.transport} ({Object.keys(server.headers).length} custom headers)
-                            </p>
-                            <p className="mcp-item-meta">timeout: {server.timeoutSeconds}s</p>
-                            {server.useAzureAuth ? (
-                              <p className="mcp-item-meta">
-                                Azure Authorization: enabled ({server.azureAuthScope})
-                              </p>
-                            ) : null}
-                          </>
-                        )}
-                      </div>
-                      <Button
-                        type="button"
-                        appearance="secondary"
-                        size="small"
-                        className="mcp-remove-btn"
-                        onClick={() => handleRemoveMcpServer(server.id)}
-                        disabled={isSending}
-                      >
-                        🗑 Remove
-                      </Button>
-                    </article>
-                  ))}
-                </div>
-              )}
-            </section>
           </div>
             </section>
+            </div>
+
+            <div
+              className={`layout-splitter side-splitter ${
+                activeResizeHandle === "side" ? "resizing" : ""
+              }`}
+              role="separator"
+              aria-orientation="horizontal"
+              aria-label="Resize side panels"
+              onPointerDown={handleSideSplitterPointerDown}
+            />
+
+            <div className="side-bottom-panel">
+              {renderAddedMcpServersPanel()}
+            </div>
           </div>
         </aside>
       </div>
     </main>
   );
+}
+
+function clampNumber(value: number, min: number, max: number): number {
+  if (Number.isNaN(value)) {
+    return min;
+  }
+  if (value < min) {
+    return min;
+  }
+  if (value > max) {
+    return max;
+  }
+  return value;
 }
 
 async function readChatEventStreamPayload(

@@ -1,0 +1,40 @@
+appId: com.anaregdesign.localplayground
+productName: Local Playground
+
+directories:
+  output: dist/installers
+
+files:
+  - package.json
+  - build/**
+  - desktop/electron/**
+
+asar: false
+npmRebuild: false
+
+artifactName: "${productName}-${version}-${os}-${arch}.${ext}"
+
+extraMetadata:
+  main: desktop/electron/main.cjs
+
+mac:
+  target:
+    - target: dmg
+    - target: zip
+  category: public.app-category.developer-tools
+
+win:
+  target:
+    - target: nsis
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowElevation: true
+  allowToChangeInstallationDirectory: true
+
+linux:
+  target:
+    - target: AppImage
+    - target: deb
+  category: Development

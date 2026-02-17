@@ -14,6 +14,10 @@
     "desktop:dev": "concurrently -k -n web,electron \"react-router dev --port 5173 --strictPort\" \"wait-on http://localhost:5173 && npm run desktop:electron:dev\"",
     "desktop:build": "npm run build",
     "desktop:start": "npm run desktop:build && npm run desktop:electron:prod",
+    "desktop:package": "npm run build && electron-builder --config electron-builder.yml --publish never",
+    "desktop:package:mac": "npm run build && electron-builder --config electron-builder.yml --mac dmg zip --publish never",
+    "desktop:package:win": "npm run build && electron-builder --config electron-builder.yml --win nsis --publish never",
+    "desktop:package:linux": "npm run build && electron-builder --config electron-builder.yml --linux AppImage deb --publish never",
     "typecheck": "react-router typegen && tsc",
     "test": "vitest run",
     "test:watch": "vitest"
@@ -42,6 +46,7 @@
     "concurrently": "^9.2.1",
     "cross-env": "^7.0.3",
     "electron": "^38.1.2",
+    "electron-builder": "^25.1.8",
     "react-native": "^0.84.0",
     "tailwindcss": "^4.1.13",
     "typescript": "^5.9.2",
