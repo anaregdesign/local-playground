@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="
+        default-src 'self';
+        base-uri 'self';
+        object-src 'none';
+        form-action 'self';
+        script-src 'self';
+        style-src 'self' 'unsafe-inline';
+        img-src 'self' data: blob:;
+        font-src 'self' data:;
+        connect-src 'self' http://127.0.0.1:5173 http://127.0.0.1:5174 http://localhost:5173 http://localhost:5174 ws://127.0.0.1:5174 ws://localhost:5174;
+        frame-src 'self' http://127.0.0.1:5173 http://127.0.0.1:5180 http://localhost:5173 http://localhost:5180;
+      "
+    />
+    <title>Local Playground Desktop</title>
+    <script type="module" crossorigin src="./assets/index-D7-i-4QW.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-DQUNUf6C.css">
+  </head>
+  <body>
+    <div id="root"></div>
+  </body>
+</html>
