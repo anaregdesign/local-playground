@@ -95,7 +95,6 @@
 - GitHub Actions should build OS installers and attach them to GitHub Release assets:
   - macOS (`.dmg`, `.zip`)
   - Windows (`.exe` via NSIS)
-  - Linux (`.AppImage`, `.deb`)
 - Keep local packaging scripts aligned with workflow (`desktop:package*`).
 
 ## Documentation

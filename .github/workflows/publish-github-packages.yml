@@ -46,9 +46,6 @@ jobs:
           - os: windows-latest
             platform: Windows
             package_command: npm run desktop:package:win
-          - os: ubuntu-latest
-            platform: Linux
-            package_command: npm run desktop:package:linux
 
     steps:
       - name: Checkout
@@ -89,18 +86,6 @@ jobs:
             dist/installers/*.zip
           if-no-files-found: error
 
-      - name: Upload Linux installers
-        if: matrix.os == 'ubuntu-latest'
-        uses: actions/upload-artifact@v4
-        with:
-          name: installers-linux
-          path: |
-            dist/installers/*.AppImage
-            dist/installers/*.deb
-            dist/installers/*.rpm
-            dist/installers/*.tar.gz
-          if-no-files-found: error
-
   release:
     name: Publish Release Assets
     needs: package-installers
@@ -126,7 +111,7 @@ jobs:
           cat > release-notes.md <<'EOF'
           ## Local Playground
 
-          Desktop installers for macOS / Windows / Linux are attached to this release.
+          Desktop installers for macOS / Windows are attached to this release.
 
           ### Run from Source (Copy & Paste)
 

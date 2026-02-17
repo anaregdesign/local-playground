@@ -32,9 +32,3 @@ nsis:
   perMachine: false
   allowElevation: true
   allowToChangeInstallationDirectory: true
-
-linux:
-  target:
-    - target: AppImage
-    - target: deb
-  category: Development
