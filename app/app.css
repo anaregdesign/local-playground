@@ -1038,24 +1038,12 @@ body {
   overflow: hidden;
 }
 
-.settings-header,
-.mcp-header {
-  padding: 1.1rem 1rem;
-  border-bottom: 0;
-  background: #ffffff;
+.settings-shell {
+  grid-template-rows: minmax(0, 1fr);
 }
 
-.settings-header h2,
-.mcp-header h2 {
-  margin: 0;
-  font-size: 1rem;
-  font-weight: 700;
-}
-
-.settings-header p {
-  margin: 0.3rem 0 0;
-  color: var(--text-subtle);
-  font-size: 0.82rem;
+.mcp-shell {
+  grid-template-rows: minmax(0, 1fr);
 }
 
 .settings-content,
@@ -1091,6 +1079,16 @@ body {
   display: flex;
   flex-direction: column;
   gap: 0.45rem;
+}
+
+.setting-group-agent-instruction {
+  order: 1;
+  border-top: 0 !important;
+}
+
+.setting-group-azure-connection {
+  order: 2;
+  border-top: 1px solid rgba(225, 223, 221, 0.82);
 }
 
 .setting-group + .setting-group {
@@ -1159,31 +1157,6 @@ body {
   color: #1f4e67;
   font-size: 0.72rem;
   font-weight: 700;
-}
-
-.project-reload-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-}
-
-.project-reload-icon {
-  display: inline-block;
-  font-size: 0.9rem;
-  line-height: 1;
-}
-
-.project-reload-icon.spinning {
-  animation: spin-loader 0.8s linear infinite;
-}
-
-@keyframes spin-loader {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
 }
 
 .azure-connection-actions {

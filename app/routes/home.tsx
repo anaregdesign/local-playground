@@ -1551,6 +1551,7 @@ export default function Home() {
     target: "project" | "deployment",
     label: string,
     text: string,
+    title: string,
   ) {
     const elementId =
       target === "project" ? "chat-azure-project-action" : "chat-azure-deployment-action";
@@ -1572,6 +1573,7 @@ export default function Home() {
           handleChatAzureSelectorActionKeyDown(event, target);
         }}
         disabled={isSending || isStartingAzureLogin || isStartingAzureLogout}
+        title={title}
       >
         <option value="">{text}</option>
       </Select>
@@ -1661,6 +1663,7 @@ export default function Home() {
                 className="chat-reset-btn"
                 onClick={handleResetThread}
                 disabled={isSending}
+                title="Clear all messages in the current thread."
               >
                 🧹 Reset Thread
               </Button>
@@ -1687,6 +1690,7 @@ export default function Home() {
                       size="small"
                       className="copy-symbol-btn message-copy-btn"
                       aria-label="Copy message"
+                      title="Copy this message."
                       onClick={() => {
                         void copyTextToClipboard(message.content).catch(() => {
                           setError("Failed to copy message to clipboard.");
@@ -1783,6 +1787,7 @@ export default function Home() {
                   ref={chatInputRef}
                   className="chat-composer-input"
                   placeholder="Type a message..."
+                  title="Message input. Enter sends, Shift+Enter inserts a new line."
                   value={draft}
                   onChange={(event, data) => {
                     setDraft(data.value);
@@ -1821,11 +1826,15 @@ export default function Home() {
                             "project",
                             "Project",
                             isAzureAuthRequired ? "Project" : "Reload projects",
+                            isAzureAuthRequired
+                              ? "Click to sign in with Azure and load projects."
+                              : "Click to reload Azure projects.",
                           )
                         ) : (
                           <Select
                             id="chat-azure-project"
                             aria-label="Project"
+                            title="Azure project used for this chat."
                             value={activeAzureConnection?.id ?? ""}
                             onChange={(event) => {
                               setSelectedAzureConnectionId(event.target.value);
@@ -1872,11 +1881,15 @@ export default function Home() {
                             "deployment",
                             "Deployment",
                             isAzureAuthRequired ? "Deployment" : "Reload deployments",
+                            isAzureAuthRequired
+                              ? "Click to sign in with Azure and load deployments."
+                              : "Click to reload deployments for the selected project.",
                           )
                         ) : (
                           <Select
                             id="chat-azure-deployment"
                             aria-label="Deployment"
+                            title="Azure deployment used to run the model."
                             value={selectedAzureDeploymentName}
                             onChange={(event) => {
                               const nextDeploymentName = event.target.value.trim();
@@ -1919,6 +1932,7 @@ export default function Home() {
                         <Select
                           id="chat-reasoning-effort"
                           aria-label="Reasoning Effort"
+                          title="Reasoning effort level for the model."
                           value={reasoningEffort}
                           onChange={(event) => setReasoningEffort(event.target.value as ReasoningEffort)}
                           disabled={isSending}
@@ -1940,6 +1954,7 @@ export default function Home() {
                         <SpinButton
                           id="chat-context-window-size"
                           aria-label="Context Window"
+                          title="Number of recent messages included in the request."
                           min={MIN_CONTEXT_WINDOW_SIZE}
                           max={MAX_CONTEXT_WINDOW_SIZE}
                           step={1}
@@ -1970,6 +1985,7 @@ export default function Home() {
                       appearance="subtle"
                       className="chat-send-btn"
                       aria-label="Send message"
+                      title="Send current message."
                       disabled={
                         isSending ||
                         isChatLocked ||
@@ -1999,6 +2015,7 @@ export default function Home() {
           role="separator"
           aria-orientation="vertical"
           aria-label="Resize panels"
+          title="Drag to resize Playground and side panels."
           onPointerDown={handleMainSplitterPointerDown}
         />
 
@@ -2009,6 +2026,7 @@ export default function Home() {
               aria-label="Side panels"
               appearance="subtle"
               size="small"
+              title="Switch side panel content."
               selectedValue={activeMainTab}
               onTabSelect={(_, data) => {
                 const nextTab = String(data.value);
@@ -2024,6 +2042,7 @@ export default function Home() {
                   id={`tab-${tab.id}`}
                   aria-controls={`panel-${tab.id}`}
                   className="main-tab-btn"
+                  title={tab.id === "settings" ? "Open Settings panel." : "Open MCP Servers panel."}
                 >
                   {tab.label}
                 </Tab>
@@ -2047,12 +2066,8 @@ export default function Home() {
               aria-labelledby="tab-settings"
               hidden={activeMainTab !== "settings"}
             >
-          <header className="settings-header">
-            <h2>Settings ⚙️</h2>
-            <p>Authentication and agent instruction options</p>
-          </header>
           <div className="settings-content">
-            <section className="setting-group">
+            <section className="setting-group setting-group-azure-connection">
               <div className="setting-group-header">
                 <h3>Azure Connection 🔐</h3>
                 <p>Sign in/out for Playground access. Chat controls handle project and model settings.</p>
@@ -2062,6 +2077,7 @@ export default function Home() {
                   type="button"
                   appearance="primary"
                   className="azure-login-btn"
+                  title="Start Azure login in your browser."
                   onClick={() => {
                     void handleAzureLogin();
                   }}
@@ -2079,41 +2095,6 @@ export default function Home() {
                         : "Loading deployments for the selected project..."}
                     </p>
                   ) : null}
-                  <div className="azure-connection-actions">
-                    {renderUnifiedTooltip(
-                      "Reload Projects",
-                      ["Refresh project and deployment names from Azure."],
-                      <Button
-                        type="button"
-                        appearance="secondary"
-                        className="project-reload-btn"
-                        aria-label="Reload projects"
-                        onClick={() => {
-                          void loadAzureConnections();
-                        }}
-                        disabled={isSending || isLoadingAzureConnections || isStartingAzureLogout}
-                      >
-                        <span
-                          className={`project-reload-icon ${isLoadingAzureConnections ? "spinning" : ""}`}
-                          aria-hidden="true"
-                        >
-                          ↻
-                        </span>
-                        {isLoadingAzureConnections ? "Reloading Projects..." : "Reload Projects"}
-                      </Button>,
-                    )}
-                    <Button
-                      type="button"
-                      appearance="outline"
-                      className="azure-logout-btn"
-                      onClick={() => {
-                        void handleAzureLogout();
-                      }}
-                      disabled={isSending || isLoadingAzureConnections || isStartingAzureLogout}
-                    >
-                      {isStartingAzureLogout ? "🚪 Logging Out..." : "🚪 Logout"}
-                    </Button>
-                  </div>
                   {activeAzureConnection ? (
                     <>
                       <p className="field-hint">Active project: {activeAzureConnection.projectName}</p>
@@ -2124,6 +2105,20 @@ export default function Home() {
                       <p className="field-hint">API version: {activeAzureConnection.apiVersion}</p>
                     </>
                   ) : null}
+                  <div className="azure-connection-actions">
+                    <Button
+                      type="button"
+                      appearance="outline"
+                      className="azure-logout-btn"
+                      title="Sign out from Azure for this app."
+                      onClick={() => {
+                        void handleAzureLogout();
+                      }}
+                      disabled={isSending || isLoadingAzureConnections || isStartingAzureLogout}
+                    >
+                      {isStartingAzureLogout ? "🚪 Logging Out..." : "🚪 Logout"}
+                    </Button>
+                  </div>
                   {azureDeploymentError ? (
                     <MessageBar intent="error" className="setting-message-bar">
                       <MessageBarBody>{azureDeploymentError}</MessageBarBody>
@@ -2143,7 +2138,7 @@ export default function Home() {
               )}
             </section>
 
-            <section className="setting-group">
+            <section className="setting-group setting-group-agent-instruction">
               <div className="setting-group-header">
                 <h3>Agent Instruction 🧾</h3>
                 <p>System instruction used for the agent.</p>
@@ -2157,6 +2152,7 @@ export default function Home() {
                         type="button"
                         appearance="primary"
                         size="small"
+                        title="Use the enhanced instruction text."
                         onClick={handleAdoptEnhancedInstruction}
                         disabled={isSending || isEnhancingInstruction}
                       >
@@ -2166,6 +2162,7 @@ export default function Home() {
                         type="button"
                         appearance="secondary"
                         size="small"
+                        title="Keep the original instruction text."
                         onClick={handleAdoptOriginalInstruction}
                         disabled={isSending || isEnhancingInstruction}
                       >
@@ -2205,6 +2202,7 @@ export default function Home() {
                   <Textarea
                     id="agent-instruction"
                     rows={6}
+                    title="System instruction text sent to the agent."
                     value={agentInstruction}
                     onChange={(_, data) => {
                       setAgentInstruction(data.value);
@@ -2232,6 +2230,7 @@ export default function Home() {
                     <Input
                       id="agent-instruction-save-file-name"
                       placeholder="instruction.md"
+                      title="Optional file name used when saving the instruction."
                       value={instructionSaveFileNameInput}
                       onChange={(_, data) => {
                         setInstructionSaveFileNameInput(data.value);
@@ -2259,6 +2258,7 @@ export default function Home() {
                       type="button"
                       appearance="secondary"
                       size="small"
+                      title="Load instruction content from a local file."
                       onClick={() => instructionFileInputRef.current?.click()}
                       disabled={isSending || isEnhancingInstruction}
                     >
@@ -2268,6 +2268,7 @@ export default function Home() {
                       type="button"
                       appearance="secondary"
                       size="small"
+                      title="Save current instruction to the prompt directory."
                       onClick={() => {
                         void handleSaveInstructionPrompt();
                       }}
@@ -2284,6 +2285,7 @@ export default function Home() {
                       type="button"
                       appearance="primary"
                       size="small"
+                      title="Enhance the instruction using the selected Azure model."
                       onClick={() => {
                         void handleEnhanceInstruction();
                       }}
@@ -2295,6 +2297,7 @@ export default function Home() {
                       type="button"
                       appearance="secondary"
                       size="small"
+                      title="Clear instruction text and related form values."
                       onClick={() => {
                         setAgentInstruction("");
                         setInstructionSaveFileNameInput("");
@@ -2360,9 +2363,6 @@ export default function Home() {
               aria-labelledby="tab-mcp"
               hidden={activeMainTab !== "mcp"}
             >
-          <header className="mcp-header">
-            <h2>MCP Servers 🧩</h2>
-          </header>
           <div className="mcp-content">
             <section className="setting-group">
               <div className="setting-group-header">
@@ -2371,6 +2371,7 @@ export default function Home() {
               <Field label="💾 Saved config">
                 <Select
                   id="mcp-saved-config"
+                  title="Choose a saved MCP server configuration."
                   value={selectedSavedMcpServerId}
                   onChange={(event) => {
                     setSelectedSavedMcpServerId(event.target.value);
@@ -2392,6 +2393,7 @@ export default function Home() {
                 <Button
                   type="button"
                   appearance="secondary"
+                  title="Load the selected saved MCP config into the form."
                   onClick={handleLoadSavedMcpServerToForm}
                   disabled={
                     isSending ||
@@ -2405,6 +2407,7 @@ export default function Home() {
                 <Button
                   type="button"
                   appearance="secondary"
+                  title="Reload saved MCP configs from disk."
                   onClick={() => {
                     void loadSavedMcpServers();
                   }}
@@ -2428,6 +2431,7 @@ export default function Home() {
                 <Input
                   id="mcp-server-name"
                   placeholder="Server name (optional)"
+                  title="Optional display name for this MCP server."
                   value={mcpNameInput}
                   onChange={(_, data) => setMcpNameInput(data.value)}
                   disabled={isSending}
@@ -2436,6 +2440,7 @@ export default function Home() {
               <Field label="🚚 Transport">
                 <Select
                   id="mcp-transport"
+                  title="Select MCP transport type."
                   value={mcpTransport}
                   onChange={(event) => {
                     setMcpTransport(event.target.value as McpTransport);
@@ -2454,6 +2459,7 @@ export default function Home() {
                     <Input
                       id="mcp-command"
                       placeholder="Command (e.g. npx)"
+                      title="Command used to start the stdio MCP server."
                       value={mcpCommandInput}
                       onChange={(_, data) => setMcpCommandInput(data.value)}
                       disabled={isSending}
@@ -2463,6 +2469,7 @@ export default function Home() {
                     <Input
                       id="mcp-args"
                       placeholder='Args (space-separated or JSON array)'
+                      title="Arguments passed to the MCP command."
                       value={mcpArgsInput}
                       onChange={(_, data) => setMcpArgsInput(data.value)}
                       disabled={isSending}
@@ -2472,6 +2479,7 @@ export default function Home() {
                     <Input
                       id="mcp-cwd"
                       placeholder="Working directory (optional)"
+                      title="Optional working directory for the command."
                       value={mcpCwdInput}
                       onChange={(_, data) => setMcpCwdInput(data.value)}
                       disabled={isSending}
@@ -2482,6 +2490,7 @@ export default function Home() {
                       id="mcp-env"
                       rows={3}
                       placeholder={"Environment variables (optional)\nKEY=value"}
+                      title="Environment variables for stdio MCP (KEY=value)."
                       value={mcpEnvInput}
                       onChange={(_, data) => setMcpEnvInput(data.value)}
                       disabled={isSending}
@@ -2494,6 +2503,7 @@ export default function Home() {
                     <Input
                       id="mcp-url"
                       placeholder="https://example.com/mcp"
+                      title="HTTP/SSE endpoint URL for the MCP server."
                       value={mcpUrlInput}
                       onChange={(_, data) => setMcpUrlInput(data.value)}
                       disabled={isSending}
@@ -2504,6 +2514,7 @@ export default function Home() {
                       id="mcp-headers"
                       rows={3}
                       placeholder={"Additional HTTP headers (optional)\nAuthorization=Bearer <token>\nX-Api-Key=<key>"}
+                      title="Additional HTTP headers (one per line: Name=Value)."
                       value={mcpHeadersInput}
                       onChange={(_, data) => setMcpHeadersInput(data.value)}
                       disabled={isSending}
@@ -2513,6 +2524,7 @@ export default function Home() {
                     <div className="field-with-info">
                       <Checkbox
                         className="field-checkbox"
+                        title="Attach Azure Bearer token from DefaultAzureCredential."
                         checked={mcpUseAzureAuthInput}
                         onChange={(_, data) => {
                           const checked = data.checked === true;
@@ -2532,6 +2544,7 @@ export default function Home() {
                             size="small"
                             className="field-info-btn"
                             aria-label="Show Azure authentication behavior details"
+                            title="Show Azure authentication behavior details."
                           >
                             ⓘ
                           </Button>
@@ -2572,6 +2585,7 @@ export default function Home() {
                       <Input
                         id="mcp-azure-auth-scope"
                         placeholder={DEFAULT_MCP_AZURE_AUTH_SCOPE}
+                        title="Azure token scope used to acquire Bearer token."
                         value={mcpAzureAuthScopeInput}
                         onChange={(_, data) => setMcpAzureAuthScopeInput(data.value)}
                         disabled={isSending}
@@ -2582,6 +2596,7 @@ export default function Home() {
                     <Input
                       id="mcp-timeout-seconds"
                       placeholder={String(DEFAULT_MCP_TIMEOUT_SECONDS)}
+                      title="Request timeout in seconds (1-600)."
                       value={mcpTimeoutSecondsInput}
                       onChange={(_, data) => setMcpTimeoutSecondsInput(data.value)}
                       disabled={isSending}
@@ -2596,6 +2611,7 @@ export default function Home() {
               <Button
                 type="button"
                 appearance="primary"
+                title="Add this MCP server to the active chat session."
                 onClick={() => {
                   void handleAddMcpServer();
                 }}
@@ -2891,6 +2907,7 @@ function renderTurnMcpLog(
           size="small"
           className="copy-symbol-btn mcp-log-copy-btn"
           aria-label="Copy MCP operation log"
+          title="Copy all MCP operation logs in this turn."
           onClick={(event) => {
             event.preventDefault();
             event.stopPropagation();
@@ -2925,6 +2942,7 @@ function renderTurnMcpLog(
                   size="small"
                   className="copy-symbol-btn mcp-history-copy-btn"
                   aria-label="Copy MCP operation entry"
+                  title="Copy this MCP operation entry."
                   onClick={(event) => {
                     event.preventDefault();
                     event.stopPropagation();
@@ -2948,6 +2966,7 @@ function renderTurnMcpLog(
                     size="small"
                     className="copy-symbol-btn mcp-part-copy-btn"
                     aria-label="Copy MCP request payload"
+                    title="Copy MCP request payload."
                     onClick={() => {
                       onCopyText(
                         formatJsonForDisplay({
@@ -2968,6 +2987,7 @@ function renderTurnMcpLog(
                     size="small"
                     className="copy-symbol-btn mcp-part-copy-btn"
                     aria-label="Copy MCP response payload"
+                    title="Copy MCP response payload."
                     onClick={() => {
                       onCopyText(
                         formatJsonForDisplay({
