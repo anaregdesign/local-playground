@@ -1746,155 +1746,195 @@ export default function Home() {
                 <div className="chat-composer-actions">
                   <div className="chat-quick-controls">
                     {isAzureAuthRequired || showAzureLoginButton ? (
-                      <Tooltip content="Sign in to configure Project and Deployment.">
-                        <Button
-                          type="button"
-                          appearance="primary"
-                          size="small"
-                          className="chat-login-inline-btn"
-                          onClick={() => {
-                            void handleAzureLogin();
-                          }}
-                          disabled={isSending || isStartingAzureLogin}
+                      <Tooltip
+                        relationship="description"
+                        content="Sign in to configure Project and Deployment."
+                        showDelay={120}
+                      >
+                        <span
+                          className="chat-tooltip-target"
+                          title="Sign in to configure Project and Deployment."
                         >
-                          {isStartingAzureLogin ? "🔐 Starting Login..." : "🔐 Login"}
-                        </Button>
+                          <Button
+                            type="button"
+                            appearance="primary"
+                            size="small"
+                            className="chat-login-inline-btn"
+                            onClick={() => {
+                              void handleAzureLogin();
+                            }}
+                            disabled={isSending || isStartingAzureLogin}
+                          >
+                            {isStartingAzureLogin ? "🔐 Starting Login..." : "🔐 Login"}
+                          </Button>
+                        </span>
                       </Tooltip>
                     ) : (
                       <>
                         <div className="chat-quick-control">
-                          <Tooltip content="Project used for this chat.">
-                            <Select
-                              id="chat-azure-project"
-                              aria-label="Project"
-                              value={activeAzureConnection?.id ?? ""}
-                              onChange={(event) => {
-                                setSelectedAzureConnectionId(event.target.value);
-                                setSelectedAzureDeploymentName("");
-                                setAzureDeploymentError(null);
-                                setError(null);
-                              }}
-                              disabled={
-                                isSending || isLoadingAzureConnections || azureConnections.length === 0
-                              }
-                            >
-                              {azureConnections.length === 0 ? (
-                                <option value="">
-                                  {isLoadingAzureConnections ? "Loading projects..." : "No projects found"}
-                                </option>
-                              ) : (
-                                <optgroup label="Project name">
-                                  {azureConnections.map((connection) => (
-                                    <option key={connection.id} value={connection.id}>
-                                      {connection.projectName}
-                                    </option>
-                                  ))}
-                                </optgroup>
-                              )}
-                            </Select>
-                          </Tooltip>
-                        </div>
-                        <div className="chat-quick-control">
-                          <Tooltip content="Deployment used to run the model.">
-                            <Select
-                              id="chat-azure-deployment"
-                              aria-label="Deployment"
-                              value={selectedAzureDeploymentName}
-                              onChange={(event) => {
-                                const nextDeploymentName = event.target.value.trim();
-                                setSelectedAzureDeploymentName(nextDeploymentName);
-                                setError(null);
-
-                                const tenantId = activeAzureTenantIdRef.current.trim();
-                                const projectId = (activeAzureConnection?.id ?? "").trim();
-                                if (!tenantId || !projectId || !nextDeploymentName) {
-                                  return;
+                          <Tooltip
+                            relationship="description"
+                            content="Project used for this chat."
+                            showDelay={120}
+                          >
+                            <span className="chat-tooltip-target" title="Project used for this chat.">
+                              <Select
+                                id="chat-azure-project"
+                                aria-label="Project"
+                                title="Project used for this chat."
+                                value={activeAzureConnection?.id ?? ""}
+                                onChange={(event) => {
+                                  setSelectedAzureConnectionId(event.target.value);
+                                  setSelectedAzureDeploymentName("");
+                                  setAzureDeploymentError(null);
+                                  setError(null);
+                                }}
+                                disabled={
+                                  isSending || isLoadingAzureConnections || azureConnections.length === 0
                                 }
-
-                                if (!azureDeployments.includes(nextDeploymentName)) {
-                                  return;
-                                }
-
-                                void saveAzureSelectionPreference({
-                                  tenantId,
-                                  projectId,
-                                  deploymentName: nextDeploymentName,
-                                });
-                              }}
-                              disabled={
-                                isSending ||
-                                isLoadingAzureConnections ||
-                                isLoadingAzureDeployments ||
-                                !activeAzureConnection
-                              }
-                            >
-                              {activeAzureConnection ? (
-                                azureDeployments.length > 0 ? (
-                                  <optgroup label="Deployment name">
-                                    {azureDeployments.map((deployment) => (
-                                      <option key={deployment} value={deployment}>
-                                        {deployment}
+                              >
+                                {azureConnections.length === 0 ? (
+                                  <option value="">
+                                    {isLoadingAzureConnections ? "Loading projects..." : "No projects found"}
+                                  </option>
+                                ) : (
+                                  <optgroup label="Project name">
+                                    {azureConnections.map((connection) => (
+                                      <option key={connection.id} value={connection.id}>
+                                        {connection.projectName}
                                       </option>
                                     ))}
                                   </optgroup>
+                                )}
+                              </Select>
+                            </span>
+                          </Tooltip>
+                        </div>
+                        <div className="chat-quick-control">
+                          <Tooltip
+                            relationship="description"
+                            content="Deployment used to run the model."
+                            showDelay={120}
+                          >
+                            <span className="chat-tooltip-target" title="Deployment used to run the model.">
+                              <Select
+                                id="chat-azure-deployment"
+                                aria-label="Deployment"
+                                title="Deployment used to run the model."
+                                value={selectedAzureDeploymentName}
+                                onChange={(event) => {
+                                  const nextDeploymentName = event.target.value.trim();
+                                  setSelectedAzureDeploymentName(nextDeploymentName);
+                                  setError(null);
+
+                                  const tenantId = activeAzureTenantIdRef.current.trim();
+                                  const projectId = (activeAzureConnection?.id ?? "").trim();
+                                  if (!tenantId || !projectId || !nextDeploymentName) {
+                                    return;
+                                  }
+
+                                  if (!azureDeployments.includes(nextDeploymentName)) {
+                                    return;
+                                  }
+
+                                  void saveAzureSelectionPreference({
+                                    tenantId,
+                                    projectId,
+                                    deploymentName: nextDeploymentName,
+                                  });
+                                }}
+                                disabled={
+                                  isSending ||
+                                  isLoadingAzureConnections ||
+                                  isLoadingAzureDeployments ||
+                                  !activeAzureConnection
+                                }
+                              >
+                                {activeAzureConnection ? (
+                                  azureDeployments.length > 0 ? (
+                                    <optgroup label="Deployment name">
+                                      {azureDeployments.map((deployment) => (
+                                        <option key={deployment} value={deployment}>
+                                          {deployment}
+                                        </option>
+                                      ))}
+                                    </optgroup>
+                                  ) : (
+                                    <option value="">
+                                      {isLoadingAzureDeployments
+                                        ? "Loading deployments..."
+                                        : "No deployments found"}
+                                    </option>
+                                  )
                                 ) : (
-                                  <option value="">
-                                    {isLoadingAzureDeployments
-                                      ? "Loading deployments..."
-                                      : "No deployments found"}
-                                  </option>
-                                )
-                              ) : (
-                                <option value="">No deployments found</option>
-                              )}
-                            </Select>
+                                  <option value="">No deployments found</option>
+                                )}
+                              </Select>
+                            </span>
                           </Tooltip>
                         </div>
                       </>
                     )}
                     <div className="chat-quick-control">
-                      <Tooltip content="Reasoning Effort for the model response.">
-                        <Select
-                          id="chat-reasoning-effort"
-                          aria-label="Reasoning Effort"
-                          value={reasoningEffort}
-                          onChange={(event) => setReasoningEffort(event.target.value as ReasoningEffort)}
-                          disabled={isSending}
-                        >
-                          <optgroup label="Reasoning effort">
-                            {REASONING_EFFORT_OPTIONS.map((option) => (
-                              <option key={option} value={option}>
-                                {option}
-                              </option>
-                            ))}
-                          </optgroup>
-                        </Select>
+                      <Tooltip
+                        relationship="description"
+                        content="Reasoning Effort for the model response."
+                        showDelay={120}
+                      >
+                        <span className="chat-tooltip-target" title="Reasoning Effort for the model response.">
+                          <Select
+                            id="chat-reasoning-effort"
+                            aria-label="Reasoning Effort"
+                            title="Reasoning Effort for the model response."
+                            value={reasoningEffort}
+                            onChange={(event) => setReasoningEffort(event.target.value as ReasoningEffort)}
+                            disabled={isSending}
+                          >
+                            <optgroup label="Reasoning effort">
+                              {REASONING_EFFORT_OPTIONS.map((option) => (
+                                <option key={option} value={option}>
+                                  {option}
+                                </option>
+                              ))}
+                            </optgroup>
+                          </Select>
+                        </span>
                       </Tooltip>
                     </div>
                     <div className="chat-quick-control chat-quick-control-context">
-                      <Tooltip content="Context Window: number of recent messages to include.">
-                        <SpinButton
-                          id="chat-context-window-size"
-                          aria-label="Context Window"
-                          min={MIN_CONTEXT_WINDOW_SIZE}
-                          max={MAX_CONTEXT_WINDOW_SIZE}
-                          step={1}
-                          value={contextWindowValidation.value}
-                          displayValue={contextWindowInput}
-                          onChange={(_, data) => {
-                            if (typeof data.displayValue === "string") {
-                              setContextWindowInput(data.displayValue);
-                              return;
-                            }
-                            if (typeof data.value === "number" && Number.isFinite(data.value)) {
-                              setContextWindowInput(String(Math.trunc(data.value)));
-                              return;
-                            }
-                            setContextWindowInput("");
-                          }}
-                          disabled={isSending}
-                          aria-invalid={!contextWindowValidation.isValid}
-                        />
+                      <Tooltip
+                        relationship="description"
+                        content="Context Window: number of recent messages to include."
+                        showDelay={120}
+                      >
+                        <span
+                          className="chat-tooltip-target"
+                          title="Context Window: number of recent messages to include."
+                        >
+                          <SpinButton
+                            id="chat-context-window-size"
+                            aria-label="Context Window"
+                            title="Context Window: number of recent messages to include."
+                            min={MIN_CONTEXT_WINDOW_SIZE}
+                            max={MAX_CONTEXT_WINDOW_SIZE}
+                            step={1}
+                            value={contextWindowValidation.value}
+                            displayValue={contextWindowInput}
+                            onChange={(_, data) => {
+                              if (typeof data.displayValue === "string") {
+                                setContextWindowInput(data.displayValue);
+                                return;
+                              }
+                              if (typeof data.value === "number" && Number.isFinite(data.value)) {
+                                setContextWindowInput(String(Math.trunc(data.value)));
+                                return;
+                              }
+                              setContextWindowInput("");
+                            }}
+                            disabled={isSending}
+                            aria-invalid={!contextWindowValidation.isValid}
+                          />
+                        </span>
                       </Tooltip>
                     </div>
                   </div>

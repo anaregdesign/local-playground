@@ -686,8 +686,8 @@ body {
 
 .chat-footer {
   padding: 1rem 1.25rem 1.25rem;
-  border-top: 1px solid var(--surface-border);
-  background: rgba(255, 253, 249, 0.98);
+  border-top: 0;
+  background: var(--surface);
 }
 
 .chat-error {
@@ -718,15 +718,14 @@ body {
 .chat-composer {
   display: grid;
   grid-template-rows: auto auto;
-  gap: 0.25rem;
-  padding: 0.36rem 0.38rem 0.34rem 0.58rem;
-  border: 1px solid var(--surface-border);
+  gap: 0.36rem;
+  padding: 0.36rem 0.4rem 0.34rem 0.52rem;
+  border: 0;
   border-radius: 16px;
-  background: #ffffff;
+  background: #f5f7fa;
 }
 
 .chat-composer:focus-within {
-  border-color: var(--surface-border);
   box-shadow: none;
 }
 
@@ -738,6 +737,8 @@ body {
   border: 0 !important;
   box-shadow: none !important;
   outline: none;
+  padding: 0;
+  border-radius: 0;
   background: transparent !important;
 }
 
@@ -756,7 +757,7 @@ body {
   outline: none;
   box-shadow: none !important;
   background: transparent;
-  padding: 0.36rem 0;
+  padding: 0.42rem 0.26rem;
   line-height: 1.45;
 }
 
@@ -791,6 +792,12 @@ body {
   min-width: 0;
 }
 
+.chat-tooltip-target {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+}
+
 .chat-quick-control-context {
   gap: 0.3rem;
 }
@@ -800,6 +807,74 @@ body {
 .chat-quick-control .fui-SpinButton input:hover,
 .chat-quick-control .fui-SpinButton input:focus {
   cursor: pointer;
+}
+
+.chat-quick-control .fui-Select,
+.chat-quick-control .fui-Select:hover,
+.chat-quick-control .fui-Select:focus-within {
+  border: 0 !important;
+  box-shadow: none !important;
+  background: transparent !important;
+}
+
+.chat-quick-control .fui-Select::before,
+.chat-quick-control .fui-Select::after {
+  border: 0 !important;
+  box-shadow: none !important;
+}
+
+.chat-quick-control .fui-Select select {
+  border: 0 !important;
+  outline: none;
+  box-shadow: none !important;
+  border-radius: 10px;
+  background: #f5f7fa;
+  transition: background-color 0.14s ease;
+}
+
+.chat-quick-control .fui-Select select:hover,
+.chat-quick-control .fui-Select select:focus {
+  background: #ffffff;
+}
+
+.chat-quick-control .fui-SpinButton,
+.chat-quick-control .fui-SpinButton:hover,
+.chat-quick-control .fui-SpinButton:focus-within {
+  border: 0 !important;
+  outline: none;
+  box-shadow: none !important;
+  border-radius: 10px;
+  background: #f5f7fa !important;
+  transition: background-color 0.14s ease;
+}
+
+.chat-quick-control .fui-SpinButton:hover,
+.chat-quick-control .fui-SpinButton:focus-within {
+  background: #ffffff !important;
+}
+
+.chat-quick-control .fui-SpinButton::before,
+.chat-quick-control .fui-SpinButton::after {
+  border: 0 !important;
+  box-shadow: none !important;
+}
+
+.chat-quick-control .fui-SpinButton input,
+.chat-quick-control .fui-SpinButton input:hover,
+.chat-quick-control .fui-SpinButton input:focus {
+  border: 0 !important;
+  outline: none;
+  box-shadow: none !important;
+  background: transparent !important;
+}
+
+.chat-quick-control .fui-SpinButton button,
+.chat-quick-control .fui-SpinButton button:hover,
+.chat-quick-control .fui-SpinButton button:focus {
+  border: 0 !important;
+  outline: none;
+  box-shadow: none !important;
+  background: transparent !important;
 }
 
 #chat-azure-project {
