@@ -978,11 +978,13 @@ body {
   background: transparent !important;
 }
 
-#chat-azure-project {
+#chat-azure-project,
+#chat-azure-project-action {
   min-width: 170px;
 }
 
-#chat-azure-deployment {
+#chat-azure-deployment,
+#chat-azure-deployment-action {
   min-width: 150px;
 }
 
@@ -992,10 +994,6 @@ body {
 
 .chat-quick-control .fui-SpinButton input {
   text-align: right;
-}
-
-.chat-login-inline-btn {
-  white-space: nowrap;
 }
 
 .chat-send-btn.fui-Button {

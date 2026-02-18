@@ -5,6 +5,7 @@ import {
   useState,
   type CSSProperties,
   type Dispatch,
+  type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
   type SetStateAction,
@@ -290,7 +291,6 @@ export default function Home() {
   const [lastErrorTurnId, setLastErrorTurnId] = useState<string | null>(null);
   const [isComposing, setIsComposing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [showAzureLoginButton, setShowAzureLoginButton] = useState(false);
   const [isStartingAzureLogin, setIsStartingAzureLogin] = useState(false);
   const [isStartingAzureLogout, setIsStartingAzureLogout] = useState(false);
   const [azureLoginError, setAzureLoginError] = useState<string | null>(null);
@@ -353,7 +353,6 @@ export default function Home() {
       void (async () => {
         const stillAuthRequired = await loadAzureConnections();
         if (!stillAuthRequired) {
-          setShowAzureLoginButton(false);
           setAzureLoginError(null);
           setError(null);
         }
@@ -734,17 +733,15 @@ export default function Home() {
     if (isChatLocked) {
       setActiveMainTab("settings");
       setError("Playground is unavailable while logged out. Open ⚙️ Settings and sign in.");
-      setShowAzureLoginButton(false);
       return;
     }
 
     if (!activeAzureConnection) {
       setError(
         isAzureAuthRequired
-          ? "Azure login is required. Click Azure Login and sign in."
+          ? "Azure login is required. Click Project or Deployment and sign in."
           : "No Azure project is available. Check your Azure account permissions.",
       );
-      setShowAzureLoginButton(isAzureAuthRequired);
       return;
     }
 
@@ -776,7 +773,6 @@ export default function Home() {
     setMessages((current) => [...current, userMessage]);
     setDraft("");
     setError(null);
-    setShowAzureLoginButton(false);
     setAzureLoginError(null);
     setLastErrorTurnId(null);
     setIsSending(true);
@@ -848,7 +844,6 @@ export default function Home() {
       }
 
       if (!response.ok || payload.error) {
-        setShowAzureLoginButton(payload.errorCode === "azure_login_required");
         throw new Error(payload.error || "Failed to send message.");
       }
 
@@ -857,7 +852,6 @@ export default function Home() {
       }
 
       setMessages((current) => [...current, createMessage("assistant", payload.message!, turnId)]);
-      setShowAzureLoginButton(false);
       setLastErrorTurnId(null);
     } catch (sendError) {
       setLastErrorTurnId(turnId);
@@ -879,7 +873,6 @@ export default function Home() {
     try {
       const stillAuthRequired = await loadAzureConnections();
       if (!stillAuthRequired) {
-        setShowAzureLoginButton(false);
         return;
       }
 
@@ -892,7 +885,6 @@ export default function Home() {
       }
 
       setError(payload.message || "Azure login started. Sign in and reload Azure connections.");
-      setShowAzureLoginButton(false);
       setAzureConnectionError(null);
     } catch (loginError) {
       setAzureLoginError(
@@ -920,7 +912,6 @@ export default function Home() {
       }
 
       setError(payload.message || "Azure logout completed.");
-      setShowAzureLoginButton(false);
       setAzureDeploymentError(null);
       await loadAzureConnections();
     } catch (logoutError) {
@@ -1147,7 +1138,6 @@ export default function Home() {
       if (!response.ok || payload.error) {
         if (payload.errorCode === "azure_login_required") {
           setIsAzureAuthRequired(true);
-          setShowAzureLoginButton(true);
         }
 
         throw new Error(payload.error || "Failed to enhance instruction.");
@@ -1516,6 +1506,78 @@ export default function Home() {
     );
   }
 
+  function handleChatAzureSelectorAction(target: "project" | "deployment") {
+    if (
+      isSending ||
+      isStartingAzureLogin ||
+      isStartingAzureLogout ||
+      isLoadingAzureConnections ||
+      isLoadingAzureDeployments
+    ) {
+      return;
+    }
+
+    setError(null);
+    setAzureLoginError(null);
+
+    if (isAzureAuthRequired) {
+      void handleAzureLogin();
+      return;
+    }
+
+    const needsProjectReload = azureConnections.length === 0 || !activeAzureConnection;
+    const needsDeploymentReload =
+      target === "deployment" &&
+      (!activeAzureConnection || azureDeployments.length === 0 || !selectedAzureDeploymentName.trim());
+
+    if (needsProjectReload || needsDeploymentReload) {
+      void loadAzureConnections();
+    }
+  }
+
+  function handleChatAzureSelectorActionKeyDown(
+    event: ReactKeyboardEvent<HTMLSelectElement>,
+    target: "project" | "deployment",
+  ) {
+    if (event.key !== "Enter" && event.key !== " ") {
+      return;
+    }
+
+    event.preventDefault();
+    handleChatAzureSelectorAction(target);
+  }
+
+  function renderChatAzureActionSelect(
+    target: "project" | "deployment",
+    label: string,
+    text: string,
+  ) {
+    const elementId =
+      target === "project" ? "chat-azure-project-action" : "chat-azure-deployment-action";
+
+    return (
+      <Select
+        id={elementId}
+        aria-label={label}
+        value=""
+        onMouseDown={(event) => {
+          event.preventDefault();
+          handleChatAzureSelectorAction(target);
+        }}
+        onClick={(event) => {
+          event.preventDefault();
+          handleChatAzureSelectorAction(target);
+        }}
+        onKeyDown={(event) => {
+          handleChatAzureSelectorActionKeyDown(event, target);
+        }}
+        disabled={isSending || isStartingAzureLogin || isStartingAzureLogout}
+      >
+        <option value="">{text}</option>
+      </Select>
+    );
+  }
+
   function renderAddedMcpServersBubbles() {
     if (mcpServers.length === 0) {
       return null;
@@ -1733,137 +1795,122 @@ export default function Home() {
                 />
                 <div className="chat-composer-actions">
                   <div className="chat-quick-controls">
-                    {isAzureAuthRequired || showAzureLoginButton ? (
-                      renderUnifiedTooltip(
-                        "Azure Connection",
-                        ["Sign in to configure Project and Deployment."],
-                        <div className="chat-quick-control">
-                          <Button
-                            type="button"
-                            appearance="primary"
-                            size="small"
-                            className="chat-login-inline-btn"
-                            onClick={() => {
-                              void handleAzureLogin();
-                            }}
-                            disabled={isSending || isStartingAzureLogin}
-                          >
-                            {isStartingAzureLogin ? "🔐 Starting Login..." : "🔐 Login"}
-                          </Button>
-                        </div>,
-                      )
-                    ) : (
-                      <>
-                        {renderUnifiedTooltip(
-                          "Project",
-                          [
-                            isLoadingAzureConnections
-                              ? "Loading project names from Azure..."
+                    {renderUnifiedTooltip(
+                      "Project",
+                      [
+                        isLoadingAzureConnections
+                          ? "Loading project names from Azure..."
+                          : isAzureAuthRequired
+                            ? "Click the selector to start Azure login."
+                            : azureConnections.length === 0
+                              ? "No projects loaded. Click the selector to reload."
                               : "Used for this chat request.",
-                          ],
-                          <div className="chat-quick-control">
-                            {isLoadingAzureConnections ? (
-                              <span
-                                className="chat-control-loader chat-control-loader-project"
-                                role="status"
-                                aria-live="polite"
-                              >
-                                <Spinner size="tiny" />
-                                Loading projects...
-                              </span>
-                            ) : (
-                              <Select
-                                id="chat-azure-project"
-                                aria-label="Project"
-                                value={activeAzureConnection?.id ?? ""}
-                                onChange={(event) => {
-                                  setSelectedAzureConnectionId(event.target.value);
-                                  setSelectedAzureDeploymentName("");
-                                  setAzureDeploymentError(null);
-                                  setError(null);
-                                }}
-                                disabled={isSending || azureConnections.length === 0}
-                              >
-                                {azureConnections.length === 0 ? (
-                                  <option value="">No projects found</option>
-                                ) : (
-                                  <optgroup label="Project name">
-                                    {azureConnections.map((connection) => (
-                                      <option key={connection.id} value={connection.id}>
-                                        {connection.projectName}
-                                      </option>
-                                    ))}
-                                  </optgroup>
-                                )}
-                              </Select>
-                            )}
-                          </div>,
+                      ],
+                      <div className="chat-quick-control">
+                        {isLoadingAzureConnections ? (
+                          <span
+                            className="chat-control-loader chat-control-loader-project"
+                            role="status"
+                            aria-live="polite"
+                          >
+                            <Spinner size="tiny" />
+                            Loading projects...
+                          </span>
+                        ) : isAzureAuthRequired || azureConnections.length === 0 ? (
+                          renderChatAzureActionSelect(
+                            "project",
+                            "Project",
+                            isAzureAuthRequired ? "Project" : "Reload projects",
+                          )
+                        ) : (
+                          <Select
+                            id="chat-azure-project"
+                            aria-label="Project"
+                            value={activeAzureConnection?.id ?? ""}
+                            onChange={(event) => {
+                              setSelectedAzureConnectionId(event.target.value);
+                              setSelectedAzureDeploymentName("");
+                              setAzureDeploymentError(null);
+                              setError(null);
+                            }}
+                            disabled={isSending}
+                          >
+                            <optgroup label="Project name">
+                              {azureConnections.map((connection) => (
+                                <option key={connection.id} value={connection.id}>
+                                  {connection.projectName}
+                                </option>
+                              ))}
+                            </optgroup>
+                          </Select>
                         )}
-                        {renderUnifiedTooltip(
-                          "Deployment",
-                          [
-                            isLoadingAzureConnections || isLoadingAzureDeployments
-                              ? "Loading deployment names for the selected project..."
+                      </div>,
+                    )}
+                    {renderUnifiedTooltip(
+                      "Deployment",
+                      [
+                        isLoadingAzureConnections || isLoadingAzureDeployments
+                          ? "Loading deployment names for the selected project..."
+                          : isAzureAuthRequired
+                            ? "Click the selector to start Azure login."
+                            : !activeAzureConnection || azureDeployments.length === 0
+                              ? "No deployments loaded. Click the selector to reload."
                               : "Used to run the model.",
-                          ],
-                          <div className="chat-quick-control">
-                            {isLoadingAzureConnections || isLoadingAzureDeployments ? (
-                              <span
-                                className="chat-control-loader chat-control-loader-deployment"
-                                role="status"
-                                aria-live="polite"
-                              >
-                                <Spinner size="tiny" />
-                                Loading deployments...
-                              </span>
-                            ) : (
-                              <Select
-                                id="chat-azure-deployment"
-                                aria-label="Deployment"
-                                value={selectedAzureDeploymentName}
-                                onChange={(event) => {
-                                  const nextDeploymentName = event.target.value.trim();
-                                  setSelectedAzureDeploymentName(nextDeploymentName);
-                                  setError(null);
+                      ],
+                      <div className="chat-quick-control">
+                        {isLoadingAzureConnections || isLoadingAzureDeployments ? (
+                          <span
+                            className="chat-control-loader chat-control-loader-deployment"
+                            role="status"
+                            aria-live="polite"
+                          >
+                            <Spinner size="tiny" />
+                            Loading deployments...
+                          </span>
+                        ) : isAzureAuthRequired || !activeAzureConnection || azureDeployments.length === 0 ? (
+                          renderChatAzureActionSelect(
+                            "deployment",
+                            "Deployment",
+                            isAzureAuthRequired ? "Deployment" : "Reload deployments",
+                          )
+                        ) : (
+                          <Select
+                            id="chat-azure-deployment"
+                            aria-label="Deployment"
+                            value={selectedAzureDeploymentName}
+                            onChange={(event) => {
+                              const nextDeploymentName = event.target.value.trim();
+                              setSelectedAzureDeploymentName(nextDeploymentName);
+                              setError(null);
 
-                                  const tenantId = activeAzureTenantIdRef.current.trim();
-                                  const projectId = (activeAzureConnection?.id ?? "").trim();
-                                  if (!tenantId || !projectId || !nextDeploymentName) {
-                                    return;
-                                  }
+                              const tenantId = activeAzureTenantIdRef.current.trim();
+                              const projectId = (activeAzureConnection?.id ?? "").trim();
+                              if (!tenantId || !projectId || !nextDeploymentName) {
+                                return;
+                              }
 
-                                  if (!azureDeployments.includes(nextDeploymentName)) {
-                                    return;
-                                  }
+                              if (!azureDeployments.includes(nextDeploymentName)) {
+                                return;
+                              }
 
-                                  void saveAzureSelectionPreference({
-                                    tenantId,
-                                    projectId,
-                                    deploymentName: nextDeploymentName,
-                                  });
-                                }}
-                                disabled={isSending || !activeAzureConnection}
-                              >
-                                {activeAzureConnection ? (
-                                  azureDeployments.length > 0 ? (
-                                    <optgroup label="Deployment name">
-                                      {azureDeployments.map((deployment) => (
-                                        <option key={deployment} value={deployment}>
-                                          {deployment}
-                                        </option>
-                                      ))}
-                                    </optgroup>
-                                  ) : (
-                                    <option value="">No deployments found</option>
-                                  )
-                                ) : (
-                                  <option value="">No deployments found</option>
-                                )}
-                              </Select>
-                            )}
-                          </div>,
+                              void saveAzureSelectionPreference({
+                                tenantId,
+                                projectId,
+                                deploymentName: nextDeploymentName,
+                              });
+                            }}
+                            disabled={isSending}
+                          >
+                            <optgroup label="Deployment name">
+                              {azureDeployments.map((deployment) => (
+                                <option key={deployment} value={deployment}>
+                                  {deployment}
+                                </option>
+                              ))}
+                            </optgroup>
+                          </Select>
                         )}
-                      </>
+                      </div>,
                     )}
                     {renderUnifiedTooltip(
                       "Reasoning Effort",
