@@ -712,22 +712,72 @@ body {
 }
 
 .chat-form {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 0.6rem;
-  align-items: end;
+  display: block;
 }
 
-.chat-form .fui-Textarea {
-  width: 100%;
+.chat-composer {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.45rem;
+  padding: 0.32rem 0.38rem 0.36rem 0.58rem;
+  border: 1px solid var(--surface-border);
+  border-radius: 16px;
+  background: #ffffff;
 }
 
-.chat-form .fui-Textarea textarea {
-  resize: none;
+.chat-composer:focus-within {
+  border-color: #c5d7ea;
+  box-shadow: 0 0 0 1px rgba(15, 108, 189, 0.18);
 }
 
-.chat-form > .fui-Button {
-  white-space: nowrap;
+.chat-composer .fui-Textarea {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 0;
+  box-shadow: none;
+  background: transparent;
+}
+
+.chat-composer .fui-Textarea textarea {
+  resize: vertical;
+  min-height: 2.8rem;
+  max-height: 40vh;
+  overflow-y: auto;
+  border: 0;
+  background: transparent;
+  padding: 0.36rem 0;
+  line-height: 1.45;
+}
+
+.chat-send-btn.fui-Button {
+  min-width: 2.2rem !important;
+  width: 2.2rem !important;
+  min-height: 2.2rem !important;
+  height: 2.2rem !important;
+  border-radius: 999px;
+  border: 0;
+  padding: 0;
+  align-self: flex-end;
+  background: #e8edf4;
+  color: #244b65;
+}
+
+.chat-send-btn.fui-Button:enabled:hover {
+  background: #dce6f1;
+}
+
+.chat-send-btn.fui-Button:enabled:active {
+  background: #d2ddea;
+}
+
+.chat-send-btn.fui-Button .fui-Button__content {
+  margin: 0;
+  font-size: 1.02rem;
+  line-height: 1;
+}
+
+.chat-send-btn.fui-Button:disabled {
+  opacity: 0.56;
 }
 
 .settings-shell,

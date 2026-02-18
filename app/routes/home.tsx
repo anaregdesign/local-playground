@@ -1713,34 +1713,40 @@ export default function Home() {
               <label className="sr-only" htmlFor="chat-input">
                 Message
               </label>
-              <Textarea
-                id="chat-input"
-                name="message"
-                rows={2}
-                placeholder="Type a message..."
-                value={draft}
-                onChange={(_, data) => setDraft(data.value)}
-                onKeyDown={handleInputKeyDown}
-                onCompositionStart={() => setIsComposing(true)}
-                onCompositionEnd={() => setIsComposing(false)}
-                disabled={isSending || isChatLocked}
-              />
-              <Button
-                type="submit"
-                appearance="primary"
-                disabled={
-                  isSending ||
-                  isChatLocked ||
-                  isLoadingAzureConnections ||
-                  isLoadingAzureDeployments ||
-                  !activeAzureConnection ||
-                  !selectedAzureDeploymentName.trim() ||
-                  draft.trim().length === 0 ||
-                  !contextWindowValidation.isValid
-                }
-              >
-                ✉️ Send
-              </Button>
+              <div className="chat-composer">
+                <Textarea
+                  id="chat-input"
+                  name="message"
+                  rows={2}
+                  className="chat-composer-input"
+                  placeholder="Type a message..."
+                  value={draft}
+                  onChange={(_, data) => setDraft(data.value)}
+                  onKeyDown={handleInputKeyDown}
+                  onCompositionStart={() => setIsComposing(true)}
+                  onCompositionEnd={() => setIsComposing(false)}
+                  disabled={isSending || isChatLocked}
+                />
+                <Button
+                  type="submit"
+                  appearance="subtle"
+                  className="chat-send-btn"
+                  aria-label="Send message"
+                  title="Send"
+                  disabled={
+                    isSending ||
+                    isChatLocked ||
+                    isLoadingAzureConnections ||
+                    isLoadingAzureDeployments ||
+                    !activeAzureConnection ||
+                    !selectedAzureDeploymentName.trim() ||
+                    draft.trim().length === 0 ||
+                    !contextWindowValidation.isValid
+                  }
+                >
+                  ↑
+                </Button>
+              </div>
             </form>
           </footer>
         </section>
