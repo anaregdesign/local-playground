@@ -798,6 +798,28 @@ body {
   min-width: 0;
 }
 
+.chat-control-loader {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  min-height: 32px;
+  padding: 0.35rem 0.62rem;
+  border-radius: 10px;
+  background: #f5f7fa;
+  color: #1f4e67;
+  font-size: 0.72rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.chat-control-loader-project {
+  min-width: 170px;
+}
+
+.chat-control-loader-deployment {
+  min-width: 150px;
+}
+
 .chat-quick-control-context {
   gap: 0.3rem;
 }

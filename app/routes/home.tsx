@@ -1775,104 +1775,121 @@ export default function Home() {
                         <div className="chat-quick-control">
                           <Tooltip
                             relationship="description"
-                            content="Project used for this chat."
+                            content={
+                              isLoadingAzureConnections
+                                ? "Loading project names from Azure..."
+                                : "Project used for this chat."
+                            }
                             showDelay={0}
                             positioning="above"
                           >
                             <span className="chat-tooltip-target" title="Project used for this chat.">
-                              <Select
-                                id="chat-azure-project"
-                                aria-label="Project"
-                                title="Project used for this chat."
-                                value={activeAzureConnection?.id ?? ""}
-                                onChange={(event) => {
-                                  setSelectedAzureConnectionId(event.target.value);
-                                  setSelectedAzureDeploymentName("");
-                                  setAzureDeploymentError(null);
-                                  setError(null);
-                                }}
-                                disabled={
-                                  isSending || isLoadingAzureConnections || azureConnections.length === 0
-                                }
-                              >
-                                {azureConnections.length === 0 ? (
-                                  <option value="">
-                                    {isLoadingAzureConnections ? "Loading projects..." : "No projects found"}
-                                  </option>
-                                ) : (
-                                  <optgroup label="Project name">
-                                    {azureConnections.map((connection) => (
-                                      <option key={connection.id} value={connection.id}>
-                                        {connection.projectName}
-                                      </option>
-                                    ))}
-                                  </optgroup>
-                                )}
-                              </Select>
+                              {isLoadingAzureConnections ? (
+                                <span
+                                  className="chat-control-loader chat-control-loader-project"
+                                  role="status"
+                                  aria-live="polite"
+                                >
+                                  <Spinner size="tiny" />
+                                  Loading projects...
+                                </span>
+                              ) : (
+                                <Select
+                                  id="chat-azure-project"
+                                  aria-label="Project"
+                                  title="Project used for this chat."
+                                  value={activeAzureConnection?.id ?? ""}
+                                  onChange={(event) => {
+                                    setSelectedAzureConnectionId(event.target.value);
+                                    setSelectedAzureDeploymentName("");
+                                    setAzureDeploymentError(null);
+                                    setError(null);
+                                  }}
+                                  disabled={isSending || azureConnections.length === 0}
+                                >
+                                  {azureConnections.length === 0 ? (
+                                    <option value="">No projects found</option>
+                                  ) : (
+                                    <optgroup label="Project name">
+                                      {azureConnections.map((connection) => (
+                                        <option key={connection.id} value={connection.id}>
+                                          {connection.projectName}
+                                        </option>
+                                      ))}
+                                    </optgroup>
+                                  )}
+                                </Select>
+                              )}
                             </span>
                           </Tooltip>
                         </div>
                         <div className="chat-quick-control">
                           <Tooltip
                             relationship="description"
-                            content="Deployment used to run the model."
+                            content={
+                              isLoadingAzureConnections || isLoadingAzureDeployments
+                                ? "Loading deployment names for the selected project..."
+                                : "Deployment used to run the model."
+                            }
                             showDelay={0}
                             positioning="above"
                           >
                             <span className="chat-tooltip-target" title="Deployment used to run the model.">
-                              <Select
-                                id="chat-azure-deployment"
-                                aria-label="Deployment"
-                                title="Deployment used to run the model."
-                                value={selectedAzureDeploymentName}
-                                onChange={(event) => {
-                                  const nextDeploymentName = event.target.value.trim();
-                                  setSelectedAzureDeploymentName(nextDeploymentName);
-                                  setError(null);
+                              {isLoadingAzureConnections || isLoadingAzureDeployments ? (
+                                <span
+                                  className="chat-control-loader chat-control-loader-deployment"
+                                  role="status"
+                                  aria-live="polite"
+                                >
+                                  <Spinner size="tiny" />
+                                  Loading deployments...
+                                </span>
+                              ) : (
+                                <Select
+                                  id="chat-azure-deployment"
+                                  aria-label="Deployment"
+                                  title="Deployment used to run the model."
+                                  value={selectedAzureDeploymentName}
+                                  onChange={(event) => {
+                                    const nextDeploymentName = event.target.value.trim();
+                                    setSelectedAzureDeploymentName(nextDeploymentName);
+                                    setError(null);
 
-                                  const tenantId = activeAzureTenantIdRef.current.trim();
-                                  const projectId = (activeAzureConnection?.id ?? "").trim();
-                                  if (!tenantId || !projectId || !nextDeploymentName) {
-                                    return;
-                                  }
+                                    const tenantId = activeAzureTenantIdRef.current.trim();
+                                    const projectId = (activeAzureConnection?.id ?? "").trim();
+                                    if (!tenantId || !projectId || !nextDeploymentName) {
+                                      return;
+                                    }
 
-                                  if (!azureDeployments.includes(nextDeploymentName)) {
-                                    return;
-                                  }
+                                    if (!azureDeployments.includes(nextDeploymentName)) {
+                                      return;
+                                    }
 
-                                  void saveAzureSelectionPreference({
-                                    tenantId,
-                                    projectId,
-                                    deploymentName: nextDeploymentName,
-                                  });
-                                }}
-                                disabled={
-                                  isSending ||
-                                  isLoadingAzureConnections ||
-                                  isLoadingAzureDeployments ||
-                                  !activeAzureConnection
-                                }
-                              >
-                                {activeAzureConnection ? (
-                                  azureDeployments.length > 0 ? (
-                                    <optgroup label="Deployment name">
-                                      {azureDeployments.map((deployment) => (
-                                        <option key={deployment} value={deployment}>
-                                          {deployment}
-                                        </option>
-                                      ))}
-                                    </optgroup>
+                                    void saveAzureSelectionPreference({
+                                      tenantId,
+                                      projectId,
+                                      deploymentName: nextDeploymentName,
+                                    });
+                                  }}
+                                  disabled={isSending || !activeAzureConnection}
+                                >
+                                  {activeAzureConnection ? (
+                                    azureDeployments.length > 0 ? (
+                                      <optgroup label="Deployment name">
+                                        {azureDeployments.map((deployment) => (
+                                          <option key={deployment} value={deployment}>
+                                            {deployment}
+                                          </option>
+                                        ))}
+                                      </optgroup>
+                                    ) : (
+                                      <option value="">No deployments found</option>
+                                    )
                                   ) : (
-                                    <option value="">
-                                      {isLoadingAzureDeployments
-                                        ? "Loading deployments..."
-                                        : "No deployments found"}
-                                    </option>
-                                  )
-                                ) : (
-                                  <option value="">No deployments found</option>
-                                )}
-                              </Select>
+                                    <option value="">No deployments found</option>
+                                  )}
+                                </Select>
+                              )}
                             </span>
                           </Tooltip>
                         </div>
@@ -2033,13 +2050,13 @@ export default function Home() {
             >
           <header className="settings-header">
             <h2>Settings ⚙️</h2>
-            <p>Model behavior options</p>
+            <p>Authentication and agent instruction options</p>
           </header>
           <div className="settings-content">
             <section className="setting-group">
               <div className="setting-group-header">
                 <h3>Azure Connection 🔐</h3>
-                <p>Select project and deployment for chat requests.</p>
+                <p>Sign in/out for Playground access. Chat controls handle project and model settings.</p>
               </div>
               {isAzureAuthRequired ? (
                 <Button
@@ -2063,120 +2080,26 @@ export default function Home() {
                         : "Loading deployments for the selected project..."}
                     </p>
                   ) : null}
-                  <div className="setting-label-row">
-                    <label className="setting-label" htmlFor="azure-project">
-                      Project 🗂️
-                    </label>
-                    <div className="setting-label-actions">
-                      {isLoadingAzureConnections ? (
-                        <span className="loading-pill" role="status" aria-live="polite">
-                          Loading...
-                        </span>
-                      ) : null}
-                      <Button
-                        type="button"
-                        appearance="secondary"
-                        size="small"
-                        className="project-reload-btn"
-                        aria-label="Reload projects"
-                        title="Reload projects"
-                        onClick={() => {
-                          void loadAzureConnections();
-                        }}
-                        disabled={isSending || isLoadingAzureConnections || isStartingAzureLogout}
-                      >
-                        <span
-                          className={`project-reload-icon ${
-                            isLoadingAzureConnections ? "spinning" : ""
-                          }`}
-                          aria-hidden="true"
-                        >
-                          ↻
-                        </span>
-                        {isLoadingAzureConnections ? "Reloading..." : "Reload"}
-                      </Button>
-                    </div>
-                  </div>
-                  <Select
-                    id="azure-project"
-                    value={activeAzureConnection?.id ?? ""}
-                    onChange={(event) => {
-                      setSelectedAzureConnectionId(event.target.value);
-                      setSelectedAzureDeploymentName("");
-                      setAzureDeploymentError(null);
-                      setError(null);
-                    }}
-                    disabled={isSending || isLoadingAzureConnections || azureConnections.length === 0}
-                  >
-                    {azureConnections.length === 0 ? (
-                      <option value="">
-                        {isLoadingAzureConnections ? "Loading projects..." : "No projects found"}
-                      </option>
-                    ) : null}
-                    {azureConnections.map((connection) => (
-                      <option key={connection.id} value={connection.id}>
-                        {connection.projectName}
-                      </option>
-                    ))}
-                  </Select>
-                  <div className="setting-label-row">
-                    <label className="setting-label" htmlFor="azure-deployment">
-                      Deployment 🚀
-                    </label>
-                    {isLoadingAzureDeployments ? (
-                      <span className="loading-pill" role="status" aria-live="polite">
-                        Loading...
-                      </span>
-                    ) : null}
-                  </div>
-                  <Select
-                    id="azure-deployment"
-                    value={selectedAzureDeploymentName}
-                    onChange={(event) => {
-                      const nextDeploymentName = event.target.value.trim();
-                      setSelectedAzureDeploymentName(nextDeploymentName);
-                      setError(null);
-
-                      const tenantId = activeAzureTenantIdRef.current.trim();
-                      const projectId = (activeAzureConnection?.id ?? "").trim();
-                      if (!tenantId || !projectId || !nextDeploymentName) {
-                        return;
-                      }
-
-                      if (!azureDeployments.includes(nextDeploymentName)) {
-                        return;
-                      }
-
-                      void saveAzureSelectionPreference({
-                        tenantId,
-                        projectId,
-                        deploymentName: nextDeploymentName,
-                      });
-                    }}
-                    disabled={
-                      isSending ||
-                      isLoadingAzureConnections ||
-                      isLoadingAzureDeployments ||
-                      !activeAzureConnection
-                    }
-                  >
-                    {activeAzureConnection ? (
-                      azureDeployments.length > 0 ? (
-                        azureDeployments.map((deployment) => (
-                          <option key={deployment} value={deployment}>
-                            {deployment}
-                          </option>
-                        ))
-                      ) : (
-                        <option value="">
-                          {isLoadingAzureDeployments ? "Loading deployments..." : "No deployments found"}
-                        </option>
-                      )
-                    ) : (
-                      <option value="">No deployments found</option>
-                    )}
-                  </Select>
                   <div className="azure-connection-actions">
+                    <Button
+                      type="button"
+                      appearance="secondary"
+                      className="project-reload-btn"
+                      aria-label="Reload projects"
+                      title="Reload projects"
+                      onClick={() => {
+                        void loadAzureConnections();
+                      }}
+                      disabled={isSending || isLoadingAzureConnections || isStartingAzureLogout}
+                    >
+                      <span
+                        className={`project-reload-icon ${isLoadingAzureConnections ? "spinning" : ""}`}
+                        aria-hidden="true"
+                      >
+                        ↻
+                      </span>
+                      {isLoadingAzureConnections ? "Reloading Projects..." : "Reload Projects"}
+                    </Button>
                     <Button
                       type="button"
                       appearance="outline"
@@ -2191,6 +2114,10 @@ export default function Home() {
                   </div>
                   {activeAzureConnection ? (
                     <>
+                      <p className="field-hint">Active project: {activeAzureConnection.projectName}</p>
+                      <p className="field-hint">
+                        Active deployment: {selectedAzureDeploymentName || "Not selected"}
+                      </p>
                       <p className="field-hint">Endpoint: {activeAzureConnection.baseUrl}</p>
                       <p className="field-hint">API version: {activeAzureConnection.apiVersion}</p>
                     </>
@@ -2387,7 +2314,7 @@ export default function Home() {
                   </div>
                   <p className="field-hint">Supported: .md, .txt, .xml, .json (max 1MB)</p>
                   <p className="field-hint">
-                    Enhance uses the currently selected Azure project + deployment in Azure Connection.
+                    Enhance uses the currently selected Azure project + deployment from chat composer controls.
                   </p>
                   <p className="field-hint">
                     Save destination: `~/.foundry_local_playground/prompts` (leave file name empty to auto-generate).
@@ -2418,60 +2345,6 @@ export default function Home() {
                 <MessageBar intent="success" className="setting-message-bar">
                   <MessageBarBody>{instructionEnhanceSuccess}</MessageBarBody>
                 </MessageBar>
-              ) : null}
-            </section>
-
-            <section className="setting-group mcp-saved-section">
-              <div className="setting-group-header">
-                <h3>Reasoning Effort 🧠</h3>
-                <p>How much internal reasoning the model should use.</p>
-              </div>
-              <Select
-                id="reasoning-effort"
-                value={reasoningEffort}
-                onChange={(event) => setReasoningEffort(event.target.value as ReasoningEffort)}
-                disabled={isSending}
-              >
-                {REASONING_EFFORT_OPTIONS.map((option) => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))}
-              </Select>
-            </section>
-
-            <section className="setting-group mcp-add-section">
-              <div className="setting-group-header">
-                <h3>Context Window 🧵</h3>
-                <p>Number of recent messages to include as context.</p>
-              </div>
-              <SpinButton
-                id="context-window-size"
-                min={MIN_CONTEXT_WINDOW_SIZE}
-                max={MAX_CONTEXT_WINDOW_SIZE}
-                step={1}
-                value={contextWindowValidation.value}
-                displayValue={contextWindowInput}
-                onChange={(_, data) => {
-                  if (typeof data.displayValue === "string") {
-                    setContextWindowInput(data.displayValue);
-                    return;
-                  }
-                  if (typeof data.value === "number" && Number.isFinite(data.value)) {
-                    setContextWindowInput(String(Math.trunc(data.value)));
-                    return;
-                  }
-                  setContextWindowInput("");
-                }}
-                disabled={isSending}
-                aria-invalid={!contextWindowValidation.isValid}
-                aria-describedby="context-window-size-error"
-              />
-              <p className="field-hint">Integer from 1 to 200.</p>
-              {contextWindowValidation.message ? (
-                <p id="context-window-size-error" className="field-error">
-                  {contextWindowValidation.message}
-                </p>
               ) : null}
             </section>
           </div>
