@@ -21,7 +21,7 @@ function resolveFluentUIExports<T extends object>(moduleExports: T): T {
 }
 
 const FluentUI = resolveFluentUIExports(FluentUIComponents);
-const { FluentProvider, webLightTheme } = FluentUI;
+const { FluentProvider, SSRProvider, webLightTheme } = FluentUI;
 
 export const links: Route.LinksFunction = () => [];
 
@@ -45,9 +45,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
 export default function App() {
   return (
-    <FluentProvider theme={webLightTheme}>
-      <Outlet />
-    </FluentProvider>
+    <SSRProvider>
+      <FluentProvider theme={webLightTheme}>
+        <Outlet />
+      </FluentProvider>
+    </SSRProvider>
   );
 }
 

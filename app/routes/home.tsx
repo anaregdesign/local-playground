@@ -6,6 +6,7 @@ import {
   type CSSProperties,
   type Dispatch,
   type PointerEvent as ReactPointerEvent,
+  type ReactNode,
   type SetStateAction,
 } from "react";
 import * as FluentUIComponents from "@fluentui/react-components";
@@ -296,13 +297,11 @@ export default function Home() {
   const [azureLogoutError, setAzureLogoutError] = useState<string | null>(null);
   const [mcpRpcHistory, setMcpRpcHistory] = useState<McpRpcHistoryEntry[]>([]);
   const [rightPaneWidth, setRightPaneWidth] = useState(420);
-  const [sideTopPaneHeight, setSideTopPaneHeight] = useState(420);
-  const [activeResizeHandle, setActiveResizeHandle] = useState<"main" | "side" | null>(null);
+  const [activeResizeHandle, setActiveResizeHandle] = useState<"main" | null>(null);
   const endOfMessagesRef = useRef<HTMLDivElement | null>(null);
   const chatInputRef = useRef<HTMLTextAreaElement | null>(null);
   const instructionFileInputRef = useRef<HTMLInputElement | null>(null);
   const layoutRef = useRef<HTMLDivElement | null>(null);
-  const sideBodyRef = useRef<HTMLDivElement | null>(null);
   const azureDeploymentRequestSeqRef = useRef(0);
   const activeAzureTenantIdRef = useRef("");
   const preferredAzureSelectionRef = useRef<AzureSelectionPreference | null>(null);
@@ -436,9 +435,6 @@ export default function Home() {
     if (activeResizeHandle === "main") {
       body.style.cursor = "col-resize";
       body.style.userSelect = "none";
-    } else if (activeResizeHandle === "side") {
-      body.style.cursor = "row-resize";
-      body.style.userSelect = "none";
     }
 
     return () => {
@@ -458,16 +454,6 @@ export default function Home() {
         setRightPaneWidth((current) => clampNumber(current, minRightWidth, maxRightWidth));
       }
 
-      const sideBodyElement = sideBodyRef.current;
-      if (sideBodyElement) {
-        const rect = sideBodyElement.getBoundingClientRect();
-        const minTopHeight = 220;
-        const minBottomHeight = 180;
-        const maxTopHeight = Math.max(minTopHeight, rect.height - minBottomHeight);
-        setSideTopPaneHeight((current) =>
-          clampNumber(current, minTopHeight, maxTopHeight),
-        );
-      }
     };
 
     handleResize();
@@ -1499,90 +1485,92 @@ export default function Home() {
     window.addEventListener("pointercancel", stopResizing);
   }
 
-  function handleSideSplitterPointerDown(event: ReactPointerEvent<HTMLDivElement>) {
-    event.preventDefault();
-    const sideBodyElement = sideBodyRef.current;
-    if (!sideBodyElement) {
-      return;
-    }
-
-    const rect = sideBodyElement.getBoundingClientRect();
-    const minTopHeight = 220;
-    const minBottomHeight = 180;
-    const maxTopHeight = Math.max(minTopHeight, rect.height - minBottomHeight);
-    setActiveResizeHandle("side");
-
-    const handlePointerMove = (moveEvent: PointerEvent) => {
-      const nextTopHeight = moveEvent.clientY - rect.top;
-      setSideTopPaneHeight(clampNumber(nextTopHeight, minTopHeight, maxTopHeight));
-    };
-
-    const stopResizing = () => {
-      setActiveResizeHandle(null);
-      window.removeEventListener("pointermove", handlePointerMove);
-      window.removeEventListener("pointerup", stopResizing);
-      window.removeEventListener("pointercancel", stopResizing);
-    };
-
-    window.addEventListener("pointermove", handlePointerMove);
-    window.addEventListener("pointerup", stopResizing);
-    window.addEventListener("pointercancel", stopResizing);
+  function renderUnifiedTooltipContent(title: string, lines: ReactNode[] = []) {
+    return (
+      <div className="app-tooltip-content">
+        <p className="app-tooltip-title">{title}</p>
+        {lines.map((line, index) => (
+          <p key={`${title}-${index}`} className="app-tooltip-line">
+            {line}
+          </p>
+        ))}
+      </div>
+    );
   }
 
-  function renderAddedMcpServersPanel() {
+  function renderUnifiedTooltip(
+    title: string,
+    lines: ReactNode[],
+    child: ReactNode,
+    className = "chat-tooltip-target",
+  ) {
     return (
-      <section className="setting-group mcp-added-section">
-        <div className="setting-group-header">
-          <h3>Added MCP Servers 📡</h3>
+      <Tooltip
+        relationship="description"
+        showDelay={0}
+        positioning="above-start"
+        content={renderUnifiedTooltipContent(title, lines)}
+      >
+        <div className={className}>{child}</div>
+      </Tooltip>
+    );
+  }
+
+  function renderAddedMcpServersBubbles() {
+    if (mcpServers.length === 0) {
+      return null;
+    }
+
+    return (
+      <section className="chat-mcp-strip" aria-label="Added MCP Servers">
+        <div className="chat-mcp-bubbles">
+          {mcpServers.map((server) => (
+            <div key={server.id} className="chat-mcp-bubble-item">
+              <Tooltip
+                relationship="description"
+                showDelay={0}
+                positioning="above-start"
+                content={renderUnifiedTooltipContent(
+                  server.name,
+                  server.transport === "stdio"
+                    ? [
+                        "Transport: stdio",
+                        `Command: ${server.command}${server.args.length > 0 ? ` ${server.args.join(" ")}` : ""}`,
+                        ...(server.cwd ? [`Working directory: ${server.cwd}`] : []),
+                        `Environment variables: ${Object.keys(server.env).length}`,
+                      ]
+                    : [
+                        `Transport: ${server.transport}`,
+                        `URL: ${server.url}`,
+                        `Custom headers: ${Object.keys(server.headers).length}`,
+                        `Timeout: ${server.timeoutSeconds}s`,
+                        `Azure auth: ${
+                          server.useAzureAuth ? `enabled (${server.azureAuthScope})` : "disabled"
+                        }`,
+                      ],
+                )}
+              >
+                <span className="chat-tooltip-target">
+                  <span className="chat-mcp-bubble">
+                    {server.name}
+                  </span>
+                </span>
+              </Tooltip>
+              <Button
+                type="button"
+                appearance="subtle"
+                size="small"
+                className="chat-mcp-bubble-remove"
+                onClick={() => handleRemoveMcpServer(server.id)}
+                disabled={isSending}
+                aria-label={`Remove MCP server ${server.name}`}
+                title={`Remove ${server.name}`}
+              >
+                ×
+              </Button>
+            </div>
+          ))}
         </div>
-        {mcpServers.length === 0 ? (
-          <p className="field-hint">No MCP servers added.</p>
-        ) : (
-          <div className="mcp-list">
-            {mcpServers.map((server) => (
-              <article key={server.id} className="mcp-item">
-                <div className="mcp-item-body">
-                  <p className="mcp-item-name">{server.name}</p>
-                  {server.transport === "stdio" ? (
-                    <>
-                      <p className="mcp-item-url">
-                        {server.command}
-                        {server.args.length > 0 ? ` ${server.args.join(" ")}` : ""}
-                      </p>
-                      {server.cwd ? <p className="mcp-item-meta">cwd: {server.cwd}</p> : null}
-                      <p className="mcp-item-meta">
-                        {server.transport} ({Object.keys(server.env).length} env)
-                      </p>
-                    </>
-                  ) : (
-                    <>
-                      <p className="mcp-item-url">{server.url}</p>
-                      <p className="mcp-item-meta">
-                        {server.transport} ({Object.keys(server.headers).length} custom headers)
-                      </p>
-                      <p className="mcp-item-meta">timeout: {server.timeoutSeconds}s</p>
-                      {server.useAzureAuth ? (
-                        <p className="mcp-item-meta">
-                          Azure Authorization: enabled ({server.azureAuthScope})
-                        </p>
-                      ) : null}
-                    </>
-                  )}
-                </div>
-                <Button
-                  type="button"
-                  appearance="secondary"
-                  size="small"
-                  className="mcp-remove-btn"
-                  onClick={() => handleRemoveMcpServer(server.id)}
-                  disabled={isSending}
-                >
-                  🗑 Remove
-                </Button>
-              </article>
-            ))}
-          </div>
-        )}
       </section>
     );
   }
@@ -1746,16 +1734,10 @@ export default function Home() {
                 <div className="chat-composer-actions">
                   <div className="chat-quick-controls">
                     {isAzureAuthRequired || showAzureLoginButton ? (
-                      <Tooltip
-                        relationship="description"
-                        content="Sign in to configure Project and Deployment."
-                        showDelay={0}
-                        positioning="above"
-                      >
-                        <span
-                          className="chat-tooltip-target"
-                          title="Sign in to configure Project and Deployment."
-                        >
+                      renderUnifiedTooltip(
+                        "Azure Connection",
+                        ["Sign in to configure Project and Deployment."],
+                        <div className="chat-quick-control">
                           <Button
                             type="button"
                             appearance="primary"
@@ -1768,220 +1750,198 @@ export default function Home() {
                           >
                             {isStartingAzureLogin ? "🔐 Starting Login..." : "🔐 Login"}
                           </Button>
-                        </span>
-                      </Tooltip>
+                        </div>,
+                      )
                     ) : (
                       <>
-                        <div className="chat-quick-control">
-                          <Tooltip
-                            relationship="description"
-                            content={
-                              isLoadingAzureConnections
-                                ? "Loading project names from Azure..."
-                                : "Project used for this chat."
-                            }
-                            showDelay={0}
-                            positioning="above"
-                          >
-                            <span className="chat-tooltip-target" title="Project used for this chat.">
-                              {isLoadingAzureConnections ? (
-                                <span
-                                  className="chat-control-loader chat-control-loader-project"
-                                  role="status"
-                                  aria-live="polite"
-                                >
-                                  <Spinner size="tiny" />
-                                  Loading projects...
-                                </span>
-                              ) : (
-                                <Select
-                                  id="chat-azure-project"
-                                  aria-label="Project"
-                                  title="Project used for this chat."
-                                  value={activeAzureConnection?.id ?? ""}
-                                  onChange={(event) => {
-                                    setSelectedAzureConnectionId(event.target.value);
-                                    setSelectedAzureDeploymentName("");
-                                    setAzureDeploymentError(null);
-                                    setError(null);
-                                  }}
-                                  disabled={isSending || azureConnections.length === 0}
-                                >
-                                  {azureConnections.length === 0 ? (
-                                    <option value="">No projects found</option>
-                                  ) : (
-                                    <optgroup label="Project name">
-                                      {azureConnections.map((connection) => (
-                                        <option key={connection.id} value={connection.id}>
-                                          {connection.projectName}
+                        {renderUnifiedTooltip(
+                          "Project",
+                          [
+                            isLoadingAzureConnections
+                              ? "Loading project names from Azure..."
+                              : "Used for this chat request.",
+                          ],
+                          <div className="chat-quick-control">
+                            {isLoadingAzureConnections ? (
+                              <span
+                                className="chat-control-loader chat-control-loader-project"
+                                role="status"
+                                aria-live="polite"
+                              >
+                                <Spinner size="tiny" />
+                                Loading projects...
+                              </span>
+                            ) : (
+                              <Select
+                                id="chat-azure-project"
+                                aria-label="Project"
+                                value={activeAzureConnection?.id ?? ""}
+                                onChange={(event) => {
+                                  setSelectedAzureConnectionId(event.target.value);
+                                  setSelectedAzureDeploymentName("");
+                                  setAzureDeploymentError(null);
+                                  setError(null);
+                                }}
+                                disabled={isSending || azureConnections.length === 0}
+                              >
+                                {azureConnections.length === 0 ? (
+                                  <option value="">No projects found</option>
+                                ) : (
+                                  <optgroup label="Project name">
+                                    {azureConnections.map((connection) => (
+                                      <option key={connection.id} value={connection.id}>
+                                        {connection.projectName}
+                                      </option>
+                                    ))}
+                                  </optgroup>
+                                )}
+                              </Select>
+                            )}
+                          </div>,
+                        )}
+                        {renderUnifiedTooltip(
+                          "Deployment",
+                          [
+                            isLoadingAzureConnections || isLoadingAzureDeployments
+                              ? "Loading deployment names for the selected project..."
+                              : "Used to run the model.",
+                          ],
+                          <div className="chat-quick-control">
+                            {isLoadingAzureConnections || isLoadingAzureDeployments ? (
+                              <span
+                                className="chat-control-loader chat-control-loader-deployment"
+                                role="status"
+                                aria-live="polite"
+                              >
+                                <Spinner size="tiny" />
+                                Loading deployments...
+                              </span>
+                            ) : (
+                              <Select
+                                id="chat-azure-deployment"
+                                aria-label="Deployment"
+                                value={selectedAzureDeploymentName}
+                                onChange={(event) => {
+                                  const nextDeploymentName = event.target.value.trim();
+                                  setSelectedAzureDeploymentName(nextDeploymentName);
+                                  setError(null);
+
+                                  const tenantId = activeAzureTenantIdRef.current.trim();
+                                  const projectId = (activeAzureConnection?.id ?? "").trim();
+                                  if (!tenantId || !projectId || !nextDeploymentName) {
+                                    return;
+                                  }
+
+                                  if (!azureDeployments.includes(nextDeploymentName)) {
+                                    return;
+                                  }
+
+                                  void saveAzureSelectionPreference({
+                                    tenantId,
+                                    projectId,
+                                    deploymentName: nextDeploymentName,
+                                  });
+                                }}
+                                disabled={isSending || !activeAzureConnection}
+                              >
+                                {activeAzureConnection ? (
+                                  azureDeployments.length > 0 ? (
+                                    <optgroup label="Deployment name">
+                                      {azureDeployments.map((deployment) => (
+                                        <option key={deployment} value={deployment}>
+                                          {deployment}
                                         </option>
                                       ))}
                                     </optgroup>
-                                  )}
-                                </Select>
-                              )}
-                            </span>
-                          </Tooltip>
-                        </div>
-                        <div className="chat-quick-control">
-                          <Tooltip
-                            relationship="description"
-                            content={
-                              isLoadingAzureConnections || isLoadingAzureDeployments
-                                ? "Loading deployment names for the selected project..."
-                                : "Deployment used to run the model."
-                            }
-                            showDelay={0}
-                            positioning="above"
-                          >
-                            <span className="chat-tooltip-target" title="Deployment used to run the model.">
-                              {isLoadingAzureConnections || isLoadingAzureDeployments ? (
-                                <span
-                                  className="chat-control-loader chat-control-loader-deployment"
-                                  role="status"
-                                  aria-live="polite"
-                                >
-                                  <Spinner size="tiny" />
-                                  Loading deployments...
-                                </span>
-                              ) : (
-                                <Select
-                                  id="chat-azure-deployment"
-                                  aria-label="Deployment"
-                                  title="Deployment used to run the model."
-                                  value={selectedAzureDeploymentName}
-                                  onChange={(event) => {
-                                    const nextDeploymentName = event.target.value.trim();
-                                    setSelectedAzureDeploymentName(nextDeploymentName);
-                                    setError(null);
-
-                                    const tenantId = activeAzureTenantIdRef.current.trim();
-                                    const projectId = (activeAzureConnection?.id ?? "").trim();
-                                    if (!tenantId || !projectId || !nextDeploymentName) {
-                                      return;
-                                    }
-
-                                    if (!azureDeployments.includes(nextDeploymentName)) {
-                                      return;
-                                    }
-
-                                    void saveAzureSelectionPreference({
-                                      tenantId,
-                                      projectId,
-                                      deploymentName: nextDeploymentName,
-                                    });
-                                  }}
-                                  disabled={isSending || !activeAzureConnection}
-                                >
-                                  {activeAzureConnection ? (
-                                    azureDeployments.length > 0 ? (
-                                      <optgroup label="Deployment name">
-                                        {azureDeployments.map((deployment) => (
-                                          <option key={deployment} value={deployment}>
-                                            {deployment}
-                                          </option>
-                                        ))}
-                                      </optgroup>
-                                    ) : (
-                                      <option value="">No deployments found</option>
-                                    )
                                   ) : (
                                     <option value="">No deployments found</option>
-                                  )}
-                                </Select>
-                              )}
-                            </span>
-                          </Tooltip>
-                        </div>
+                                  )
+                                ) : (
+                                  <option value="">No deployments found</option>
+                                )}
+                              </Select>
+                            )}
+                          </div>,
+                        )}
                       </>
                     )}
-                    <div className="chat-quick-control">
-                      <Tooltip
-                        relationship="description"
-                        content="Reasoning Effort for the model response."
-                        showDelay={0}
-                        positioning="above"
-                      >
-                        <span className="chat-tooltip-target" title="Reasoning Effort for the model response.">
-                          <Select
-                            id="chat-reasoning-effort"
-                            aria-label="Reasoning Effort"
-                            title="Reasoning Effort for the model response."
-                            value={reasoningEffort}
-                            onChange={(event) => setReasoningEffort(event.target.value as ReasoningEffort)}
-                            disabled={isSending}
-                          >
-                            <optgroup label="Reasoning effort">
-                              {REASONING_EFFORT_OPTIONS.map((option) => (
-                                <option key={option} value={option}>
-                                  {option}
-                                </option>
-                              ))}
-                            </optgroup>
-                          </Select>
-                        </span>
-                      </Tooltip>
-                    </div>
-                    <div className="chat-quick-control chat-quick-control-context">
-                      <Tooltip
-                        relationship="description"
-                        content="Context Window: number of recent messages to include."
-                        showDelay={0}
-                        positioning="above"
-                      >
-                        <span
-                          className="chat-tooltip-target"
-                          title="Context Window: number of recent messages to include."
+                    {renderUnifiedTooltip(
+                      "Reasoning Effort",
+                      ["Controls how much internal reasoning the model uses."],
+                      <div className="chat-quick-control">
+                        <Select
+                          id="chat-reasoning-effort"
+                          aria-label="Reasoning Effort"
+                          value={reasoningEffort}
+                          onChange={(event) => setReasoningEffort(event.target.value as ReasoningEffort)}
+                          disabled={isSending}
                         >
-                          <SpinButton
-                            id="chat-context-window-size"
-                            aria-label="Context Window"
-                            title="Context Window: number of recent messages to include."
-                            min={MIN_CONTEXT_WINDOW_SIZE}
-                            max={MAX_CONTEXT_WINDOW_SIZE}
-                            step={1}
-                            value={contextWindowValidation.value}
-                            displayValue={contextWindowInput}
-                            onChange={(_, data) => {
-                              if (typeof data.displayValue === "string") {
-                                setContextWindowInput(data.displayValue);
-                                return;
-                              }
-                              if (typeof data.value === "number" && Number.isFinite(data.value)) {
-                                setContextWindowInput(String(Math.trunc(data.value)));
-                                return;
-                              }
-                              setContextWindowInput("");
-                            }}
-                            disabled={isSending}
-                            aria-invalid={!contextWindowValidation.isValid}
-                          />
-                        </span>
-                      </Tooltip>
-                    </div>
+                          <optgroup label="Reasoning effort">
+                            {REASONING_EFFORT_OPTIONS.map((option) => (
+                              <option key={option} value={option}>
+                                {option}
+                              </option>
+                            ))}
+                          </optgroup>
+                        </Select>
+                      </div>,
+                    )}
+                    {renderUnifiedTooltip(
+                      "Context Window",
+                      ["Number of recent messages included in the request."],
+                      <div className="chat-quick-control chat-quick-control-context">
+                        <SpinButton
+                          id="chat-context-window-size"
+                          aria-label="Context Window"
+                          min={MIN_CONTEXT_WINDOW_SIZE}
+                          max={MAX_CONTEXT_WINDOW_SIZE}
+                          step={1}
+                          value={contextWindowValidation.value}
+                          displayValue={contextWindowInput}
+                          onChange={(_, data) => {
+                            if (typeof data.displayValue === "string") {
+                              setContextWindowInput(data.displayValue);
+                              return;
+                            }
+                            if (typeof data.value === "number" && Number.isFinite(data.value)) {
+                              setContextWindowInput(String(Math.trunc(data.value)));
+                              return;
+                            }
+                            setContextWindowInput("");
+                          }}
+                          disabled={isSending}
+                          aria-invalid={!contextWindowValidation.isValid}
+                        />
+                      </div>,
+                    )}
                   </div>
-                  <Button
-                    type="submit"
-                    appearance="subtle"
-                    className="chat-send-btn"
-                    aria-label="Send message"
-                    title="Send"
-                    disabled={
-                      isSending ||
-                      isChatLocked ||
-                      isLoadingAzureConnections ||
-                      isLoadingAzureDeployments ||
-                      !activeAzureConnection ||
-                      !selectedAzureDeploymentName.trim() ||
-                      draft.trim().length === 0 ||
-                      !contextWindowValidation.isValid
-                    }
-                  >
-                    ↑
-                  </Button>
+                  {renderUnifiedTooltip(
+                    "Send",
+                    ["Send current message."],
+                    <Button
+                      type="submit"
+                      appearance="subtle"
+                      className="chat-send-btn"
+                      aria-label="Send message"
+                      disabled={
+                        isSending ||
+                        isChatLocked ||
+                        isLoadingAzureConnections ||
+                        isLoadingAzureDeployments ||
+                        !activeAzureConnection ||
+                        !selectedAzureDeploymentName.trim() ||
+                        draft.trim().length === 0 ||
+                        !contextWindowValidation.isValid
+                      }
+                    >
+                      ↑
+                    </Button>,
+                    "chat-tooltip-target chat-send-tooltip-target",
+                  )}
                 </div>
               </div>
             </form>
+            {renderAddedMcpServersBubbles()}
           </footer>
         </section>
 
@@ -2030,15 +1990,7 @@ export default function Home() {
               </MessageBar>
             ) : null}
           </div>
-          <div
-            className="side-shell-body"
-            ref={sideBodyRef}
-            style={
-              {
-                "--side-top-pane-height": `${sideTopPaneHeight}px`,
-              } as CSSProperties
-            }
-          >
+          <div className="side-shell-body">
             <div className="side-top-panel">
             <section
               className="settings-shell"
@@ -2081,25 +2033,28 @@ export default function Home() {
                     </p>
                   ) : null}
                   <div className="azure-connection-actions">
-                    <Button
-                      type="button"
-                      appearance="secondary"
-                      className="project-reload-btn"
-                      aria-label="Reload projects"
-                      title="Reload projects"
-                      onClick={() => {
-                        void loadAzureConnections();
-                      }}
-                      disabled={isSending || isLoadingAzureConnections || isStartingAzureLogout}
-                    >
-                      <span
-                        className={`project-reload-icon ${isLoadingAzureConnections ? "spinning" : ""}`}
-                        aria-hidden="true"
+                    {renderUnifiedTooltip(
+                      "Reload Projects",
+                      ["Refresh project and deployment names from Azure."],
+                      <Button
+                        type="button"
+                        appearance="secondary"
+                        className="project-reload-btn"
+                        aria-label="Reload projects"
+                        onClick={() => {
+                          void loadAzureConnections();
+                        }}
+                        disabled={isSending || isLoadingAzureConnections || isStartingAzureLogout}
                       >
-                        ↻
-                      </span>
-                      {isLoadingAzureConnections ? "Reloading Projects..." : "Reload Projects"}
-                    </Button>
+                        <span
+                          className={`project-reload-icon ${isLoadingAzureConnections ? "spinning" : ""}`}
+                          aria-hidden="true"
+                        >
+                          ↻
+                        </span>
+                        {isLoadingAzureConnections ? "Reloading Projects..." : "Reload Projects"}
+                      </Button>,
+                    )}
                     <Button
                       type="button"
                       appearance="outline"
@@ -2530,7 +2485,6 @@ export default function Home() {
                             size="small"
                             className="field-info-btn"
                             aria-label="Show Azure authentication behavior details"
-                            title="Show technical details"
                           >
                             ⓘ
                           </Button>
@@ -2618,19 +2572,6 @@ export default function Home() {
             </section>
             </div>
 
-            <div
-              className={`layout-splitter side-splitter ${
-                activeResizeHandle === "side" ? "resizing" : ""
-              }`}
-              role="separator"
-              aria-orientation="horizontal"
-              aria-label="Resize side panels"
-              onPointerDown={handleSideSplitterPointerDown}
-            />
-
-            <div className="side-bottom-panel">
-              {renderAddedMcpServersPanel()}
-            </div>
           </div>
         </aside>
       </div>

@@ -131,10 +131,7 @@ body {
 .side-shell-body {
   --side-splitter-size: 14px;
   display: grid;
-  grid-template-rows:
-    minmax(220px, var(--side-top-pane-height))
-    var(--side-splitter-size)
-    minmax(180px, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   min-height: 0;
   overflow: hidden;
 }
@@ -690,6 +687,83 @@ body {
   background: var(--surface);
 }
 
+.chat-mcp-strip {
+  margin-top: 0.55rem;
+  padding: 0.46rem 0.5rem;
+  border-radius: 14px;
+  background: #f5f7fa;
+}
+
+.chat-mcp-bubbles {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.45rem;
+}
+
+.chat-mcp-bubble-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.18rem;
+  min-width: 0;
+}
+
+.chat-mcp-bubble {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.9rem;
+  max-width: 240px;
+  padding: 0 0.68rem;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #23465f;
+  font-size: 0.74rem;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chat-mcp-bubble-remove.fui-Button {
+  min-width: 1.7rem !important;
+  width: 1.7rem !important;
+  min-height: 1.7rem !important;
+  height: 1.7rem !important;
+  border-radius: 999px;
+  border: 0 !important;
+  box-shadow: none !important;
+  color: #5d646b;
+  padding: 0;
+}
+
+.chat-mcp-bubble-remove.fui-Button:enabled:hover {
+  background: #e7ecf2;
+  color: #2b2f32;
+}
+
+.app-tooltip-content {
+  max-width: 360px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.16rem;
+}
+
+.app-tooltip-title,
+.app-tooltip-line {
+  margin: 0;
+}
+
+.app-tooltip-title {
+  font-size: 0.77rem;
+  font-weight: 700;
+}
+
+.app-tooltip-line {
+  font-size: 0.72rem;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
 .chat-error {
   margin: 0 0 0.65rem;
   color: var(--danger);
@@ -796,6 +870,11 @@ body {
   display: inline-flex;
   align-items: center;
   min-width: 0;
+}
+
+.chat-send-tooltip-target {
+  display: inline-flex;
+  align-items: center;
 }
 
 .chat-control-loader {
@@ -1530,7 +1609,7 @@ body {
   }
 
   .side-shell-body {
-    grid-template-rows: minmax(220px, 1fr) var(--side-splitter-size) minmax(180px, 1fr);
+    grid-template-rows: minmax(0, 1fr);
   }
 
   .message-row {
@@ -1548,7 +1627,7 @@ body {
   }
 
   .side-shell-body {
-    grid-template-rows: minmax(180px, 1fr) var(--side-splitter-size) minmax(160px, 1fr);
+    grid-template-rows: minmax(0, 1fr);
   }
 
   .chat-header {
