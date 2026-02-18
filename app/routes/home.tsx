@@ -1711,19 +1711,6 @@ export default function Home() {
                     {error}
                   </MessageBarBody>
                 </MessageBar>
-                {showAzureLoginButton ? (
-                  <Button
-                    type="button"
-                    appearance="primary"
-                    className="azure-login-btn chat-login-btn"
-                    onClick={() => {
-                      void handleAzureLogin();
-                    }}
-                    disabled={isSending || isStartingAzureLogin}
-                  >
-                    {isStartingAzureLogin ? "🔐 Starting Azure Login..." : "🔐 Azure Login"}
-                  </Button>
-                ) : null}
                 {azureLoginError ? (
                   <MessageBar intent="error">
                     <MessageBarBody>{azureLoginError}</MessageBarBody>
@@ -1755,6 +1742,150 @@ export default function Home() {
                   disabled={isSending || isChatLocked}
                 />
                 <div className="chat-composer-actions">
+                  <div className="chat-quick-controls">
+                    {isAzureAuthRequired || showAzureLoginButton ? (
+                      <Button
+                        type="button"
+                        appearance="primary"
+                        size="small"
+                        className="chat-login-inline-btn"
+                        onClick={() => {
+                          void handleAzureLogin();
+                        }}
+                        disabled={isSending || isStartingAzureLogin}
+                      >
+                        {isStartingAzureLogin ? "🔐 Starting Login..." : "🔐 Login"}
+                      </Button>
+                    ) : (
+                      <>
+                        <div className="chat-quick-control">
+                          <Select
+                            id="chat-azure-project"
+                            aria-label="Project"
+                            title={
+                              activeAzureConnection
+                                ? `Project: ${activeAzureConnection.projectName}`
+                                : "Project"
+                            }
+                            value={activeAzureConnection?.id ?? ""}
+                            onChange={(event) => {
+                              setSelectedAzureConnectionId(event.target.value);
+                              setSelectedAzureDeploymentName("");
+                              setAzureDeploymentError(null);
+                              setError(null);
+                            }}
+                            disabled={
+                              isSending || isLoadingAzureConnections || azureConnections.length === 0
+                            }
+                          >
+                            {azureConnections.length === 0 ? (
+                              <option value="">
+                                {isLoadingAzureConnections ? "Loading projects..." : "No projects found"}
+                              </option>
+                            ) : (
+                              <optgroup label="Project name">
+                                {azureConnections.map((connection) => (
+                                  <option key={connection.id} value={connection.id}>
+                                    {connection.projectName}
+                                  </option>
+                                ))}
+                              </optgroup>
+                            )}
+                          </Select>
+                        </div>
+                        <div className="chat-quick-control">
+                          <Select
+                            id="chat-azure-deployment"
+                            aria-label="Deployment"
+                            title={
+                              selectedAzureDeploymentName
+                                ? `Deployment: ${selectedAzureDeploymentName}`
+                                : "Deployment"
+                            }
+                            value={selectedAzureDeploymentName}
+                            onChange={(event) => {
+                              const nextDeploymentName = event.target.value.trim();
+                              setSelectedAzureDeploymentName(nextDeploymentName);
+                              setError(null);
+
+                              const tenantId = activeAzureTenantIdRef.current.trim();
+                              const projectId = (activeAzureConnection?.id ?? "").trim();
+                              if (!tenantId || !projectId || !nextDeploymentName) {
+                                return;
+                              }
+
+                              if (!azureDeployments.includes(nextDeploymentName)) {
+                                return;
+                              }
+
+                              void saveAzureSelectionPreference({
+                                tenantId,
+                                projectId,
+                                deploymentName: nextDeploymentName,
+                              });
+                            }}
+                            disabled={
+                              isSending ||
+                              isLoadingAzureConnections ||
+                              isLoadingAzureDeployments ||
+                              !activeAzureConnection
+                            }
+                          >
+                            {activeAzureConnection ? (
+                              azureDeployments.length > 0 ? (
+                                <optgroup label="Deployment name">
+                                  {azureDeployments.map((deployment) => (
+                                    <option key={deployment} value={deployment}>
+                                      {deployment}
+                                    </option>
+                                  ))}
+                                </optgroup>
+                              ) : (
+                                <option value="">
+                                  {isLoadingAzureDeployments
+                                    ? "Loading deployments..."
+                                    : "No deployments found"}
+                                </option>
+                              )
+                            ) : (
+                              <option value="">No deployments found</option>
+                            )}
+                          </Select>
+                        </div>
+                      </>
+                    )}
+                    <div className="chat-quick-control">
+                      <Select
+                        id="chat-reasoning-effort"
+                        aria-label="Reasoning Effort"
+                        title={`Reasoning Effort: ${reasoningEffort}`}
+                        value={reasoningEffort}
+                        onChange={(event) => setReasoningEffort(event.target.value as ReasoningEffort)}
+                        disabled={isSending}
+                      >
+                        <optgroup label="Reasoning effort">
+                          {REASONING_EFFORT_OPTIONS.map((option) => (
+                            <option key={option} value={option}>
+                              {option}
+                            </option>
+                          ))}
+                        </optgroup>
+                      </Select>
+                    </div>
+                    <div className="chat-quick-control chat-quick-control-context">
+                      <Input
+                        id="chat-context-window-size"
+                        aria-label="Context Window"
+                        title={`Context Window: ${contextWindowInput || "unset"}`}
+                        inputMode="numeric"
+                        placeholder="Context"
+                        value={contextWindowInput}
+                        onChange={(_, data) => setContextWindowInput(data.value)}
+                        disabled={isSending}
+                        aria-invalid={!contextWindowValidation.isValid}
+                      />
+                    </div>
+                  </div>
                   <Button
                     type="submit"
                     appearance="subtle"

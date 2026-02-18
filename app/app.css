@@ -769,8 +769,53 @@ body {
 
 .chat-composer-actions {
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 0.55rem;
+}
+
+.chat-quick-controls {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: flex-start;
+  gap: 0.35rem 0.55rem;
+}
+
+.chat-quick-control {
+  display: inline-flex;
   align-items: center;
+  gap: 0.2rem;
+  min-width: 0;
+}
+
+.chat-quick-control .fui-Select select:hover,
+.chat-quick-control .fui-Select select:focus,
+.chat-quick-control .fui-Input input:hover,
+.chat-quick-control .fui-Input input:focus {
+  cursor: pointer;
+}
+
+#chat-azure-project {
+  min-width: 170px;
+}
+
+#chat-azure-deployment {
+  min-width: 150px;
+}
+
+.chat-quick-control .fui-Input {
+  width: 92px;
+}
+
+.chat-quick-control .fui-Input input {
+  text-align: right;
+}
+
+.chat-login-inline-btn {
+  white-space: nowrap;
 }
 
 .chat-send-btn.fui-Button {
@@ -781,7 +826,7 @@ body {
   border-radius: 999px;
   border: 1px solid rgba(50, 49, 48, 0.14);
   padding: 0;
-  align-self: center;
+  align-self: flex-end;
   background: #f6f8fb;
   color: #1f3f56;
 }
