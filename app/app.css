@@ -689,9 +689,6 @@ body {
 
 .chat-mcp-strip {
   margin-top: 0.55rem;
-  padding: 0.46rem 0.5rem;
-  border-radius: 14px;
-  background: #f5f7fa;
 }
 
 .chat-mcp-bubbles {
@@ -703,41 +700,46 @@ body {
 
 .chat-mcp-bubble-item {
   display: inline-flex;
-  align-items: center;
-  gap: 0.18rem;
+  align-items: stretch;
   min-width: 0;
 }
 
 .chat-mcp-bubble {
   display: inline-flex;
   align-items: center;
+  gap: 0.28rem;
   min-height: 1.9rem;
-  max-width: 240px;
-  padding: 0 0.68rem;
+  max-width: 260px;
+  padding: 0 0.34rem 0 0.68rem;
   border-radius: 999px;
-  background: #ffffff;
+  background: #e9eff6;
   color: #23465f;
   font-size: 0.74rem;
   font-weight: 600;
   white-space: nowrap;
+}
+
+.chat-mcp-bubble-name {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .chat-mcp-bubble-remove.fui-Button {
-  min-width: 1.7rem !important;
-  width: 1.7rem !important;
-  min-height: 1.7rem !important;
-  height: 1.7rem !important;
+  min-width: 1.45rem !important;
+  width: 1.45rem !important;
+  min-height: 1.45rem !important;
+  height: 1.45rem !important;
   border-radius: 999px;
   border: 0 !important;
   box-shadow: none !important;
-  color: #5d646b;
+  color: #4b5560;
   padding: 0;
+  background: transparent !important;
 }
 
 .chat-mcp-bubble-remove.fui-Button:enabled:hover {
-  background: #e7ecf2;
+  background: rgba(31, 78, 103, 0.15) !important;
   color: #2b2f32;
 }
 

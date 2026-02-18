@@ -1616,22 +1616,22 @@ export default function Home() {
               >
                 <span className="chat-tooltip-target">
                   <span className="chat-mcp-bubble">
-                    {server.name}
+                    <span className="chat-mcp-bubble-name">{server.name}</span>
+                    <Button
+                      type="button"
+                      appearance="subtle"
+                      size="small"
+                      className="chat-mcp-bubble-remove"
+                      onClick={() => handleRemoveMcpServer(server.id)}
+                      disabled={isSending}
+                      aria-label={`Remove MCP server ${server.name}`}
+                      title={`Remove ${server.name}`}
+                    >
+                      ×
+                    </Button>
                   </span>
                 </span>
               </Tooltip>
-              <Button
-                type="button"
-                appearance="subtle"
-                size="small"
-                className="chat-mcp-bubble-remove"
-                onClick={() => handleRemoveMcpServer(server.id)}
-                disabled={isSending}
-                aria-label={`Remove MCP server ${server.name}`}
-                title={`Remove ${server.name}`}
-              >
-                ×
-              </Button>
             </div>
           ))}
         </div>
