@@ -1,0 +1,62 @@
+name: Weekly Dependency Update
+
+on:
+  schedule:
+    # Every Sunday 18:00 UTC (Monday 03:00 JST)
+    - cron: "0 18 * * 0"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update-dependencies:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Update dependencies
+        run: npx npm-check-updates -u
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Audit production dependencies
+        run: npm audit --omit=dev
+
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Unit tests
+        run: npm run test
+
+      - name: Build
+        run: npm run build
+
+      - name: Create pull request
+        uses: peter-evans/create-pull-request@v7
+        with:
+          commit-message: "chore(deps): weekly dependency update"
+          title: "chore(deps): weekly dependency update"
+          body: |
+            This PR updates npm dependencies to the latest available versions.
+
+            - Updated `package.json`
+            - Updated `package-lock.json`
+            - Passed:
+              - `npm audit --omit=dev`
+              - `npm run typecheck`
+              - `npm run test`
+              - `npm run build`
+          branch: chore/weekly-dependency-update
+          delete-branch: true
+          labels: dependencies

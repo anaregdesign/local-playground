@@ -106,6 +106,7 @@
 ## Quality Gates
 
 - After UI/API changes, run:
+  - `npm audit --omit=dev`
   - `npm run typecheck`
   - `npm run build`
   - `npm run test`
