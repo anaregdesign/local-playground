@@ -2070,7 +2070,7 @@ export default function Home() {
             <section className="setting-group setting-group-azure-connection">
               <div className="setting-group-header">
                 <h3>Azure Connection 🔐</h3>
-                <p>Sign in/out for Playground access. Chat controls handle project and model settings.</p>
+                <p>Sign in/out for Playground access.</p>
               </div>
               {isAzureAuthRequired ? (
                 <Button
@@ -2096,15 +2096,27 @@ export default function Home() {
                     </p>
                   ) : null}
                   {activeAzureConnection ? (
-                    <>
-                      <p className="field-hint">Active project: {activeAzureConnection.projectName}</p>
-                      <p className="field-hint">
-                        Active deployment: {selectedAzureDeploymentName || "Not selected"}
-                      </p>
-                      <p className="field-hint">Endpoint: {activeAzureConnection.baseUrl}</p>
-                      <p className="field-hint">API version: {activeAzureConnection.apiVersion}</p>
-                    </>
-                  ) : null}
+                    <dl className="azure-connection-summary" aria-label="Active Azure connection details">
+                      <div className="azure-connection-summary-row">
+                        <dt>Project</dt>
+                        <dd>{activeAzureConnection.projectName}</dd>
+                      </div>
+                      <div className="azure-connection-summary-row">
+                        <dt>Deployment</dt>
+                        <dd>{selectedAzureDeploymentName || "Not selected"}</dd>
+                      </div>
+                      <div className="azure-connection-summary-row">
+                        <dt>Endpoint</dt>
+                        <dd>{activeAzureConnection.baseUrl}</dd>
+                      </div>
+                      <div className="azure-connection-summary-row">
+                        <dt>API version</dt>
+                        <dd>{activeAzureConnection.apiVersion}</dd>
+                      </div>
+                    </dl>
+                  ) : (
+                    <p className="field-hint">No active Azure project.</p>
+                  )}
                   <div className="azure-connection-actions">
                     <Button
                       type="button"
@@ -2318,12 +2330,6 @@ export default function Home() {
                     </span>
                   </div>
                   <p className="field-hint">Supported: .md, .txt, .xml, .json (max 1MB)</p>
-                  <p className="field-hint">
-                    Enhance uses the currently selected Azure project + deployment from chat composer controls.
-                  </p>
-                  <p className="field-hint">
-                    Save destination: `~/.foundry_local_playground/prompts` (leave file name empty to auto-generate).
-                  </p>
                 </>
               )}
               {instructionFileError ? (
