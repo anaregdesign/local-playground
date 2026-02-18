@@ -17,11 +17,44 @@
 - Main layout is two-pane:
   - Left pane: always-visible `Playground` chat area
   - Right pane: `Settings` / `MCP Servers` tabs
-- Keep both splitters resizable:
-  - vertical splitter between left/right panes
-  - horizontal splitter inside right pane
-- Keep `Added MCP Servers` always visible in the lower half of the right pane.
+- Keep the vertical splitter between left/right panes resizable.
+- Keep right-pane width bounded for desktop usability:
+  - right pane minimum: `320px`
+  - left pane minimum: `560px`
+- On narrow screens (`<= 980px`), switch to stacked layout:
+  - top: chat
+  - bottom: side panel
+  - hide vertical splitter
+- Keep `Added MCP Servers` visible in the chat footer as bubble chips under the composer (not in the right pane).
+- Right-pane horizontal splitter styles may exist in CSS, but the current implementation uses a single scrollable panel area.
 - Use Fluent UI components and patterns as default. Apply custom CSS only where needed for layout clarity, splitter behavior, and compact desktop spacing.
+
+## Visual Style Baseline (Current UI)
+
+- Theme direction: light Fluent-like desktop UI with compact spacing and flat surfaces.
+- Keep root design tokens in `app/app.css` as the style source of truth (font, background, text, accent, danger, bubbles).
+- Keep page background as a soft gradient blend (`radial + linear`), not a flat solid color.
+- Keep shell surfaces mostly flat:
+  - white surfaces
+  - minimal/no card shadows
+  - tight borders using `--surface-border`
+  - square-to-small radii (avoid oversized rounded cards)
+- Keep typography stack:
+  - UI text: `"Segoe UI", "Yu Gothic UI", "Hiragino Kaku Gothic ProN", "Meiryo", sans-serif`
+  - code/JSON: `"IBM Plex Mono", "SFMono-Regular", Menlo, monospace`
+- Chat styling rules:
+  - user messages are right-aligned tinted bubbles (`--bubble-user`)
+  - assistant messages stay visually light/flat to prioritize content readability
+  - markdown is rendered with compact spacing; JSON is syntax-highlighted
+  - keep copy affordances (`⎘`) on messages and MCP logs
+- MCP styling rules:
+  - MCP Operation Log is inline per turn and collapsed by default (`<details>`)
+  - nested MCP entries stay compact, with clear `ok`/`error` state coloring
+  - keep request/response JSON blocks readable in constrained height areas
+- Tab/side-panel styling rules:
+  - use compact subtle tabs with clear selected-state border/background
+  - keep setting groups vertically segmented with thin separators
+  - preserve compact desktop-first spacing density
 
 ## Azure / Auth
 
@@ -102,6 +135,7 @@
 - Keep `README.md` aligned with implemented behavior and script names.
 - Keep screenshot assets in `docs/images/` current with the latest UI.
 - When layout/UX changes are introduced, refresh screenshot files referenced by README.
+- Prefer screenshots that show realistic usage value (meaningful prompt/response and relevant panel state), not empty UI.
 
 ## Quality Gates
 
