@@ -1749,7 +1749,8 @@ export default function Home() {
                       <Tooltip
                         relationship="description"
                         content="Sign in to configure Project and Deployment."
-                        showDelay={120}
+                        showDelay={0}
+                        positioning="above"
                       >
                         <span
                           className="chat-tooltip-target"
@@ -1775,7 +1776,8 @@ export default function Home() {
                           <Tooltip
                             relationship="description"
                             content="Project used for this chat."
-                            showDelay={120}
+                            showDelay={0}
+                            positioning="above"
                           >
                             <span className="chat-tooltip-target" title="Project used for this chat.">
                               <Select
@@ -1814,7 +1816,8 @@ export default function Home() {
                           <Tooltip
                             relationship="description"
                             content="Deployment used to run the model."
-                            showDelay={120}
+                            showDelay={0}
+                            positioning="above"
                           >
                             <span className="chat-tooltip-target" title="Deployment used to run the model.">
                               <Select
@@ -1879,7 +1882,8 @@ export default function Home() {
                       <Tooltip
                         relationship="description"
                         content="Reasoning Effort for the model response."
-                        showDelay={120}
+                        showDelay={0}
+                        positioning="above"
                       >
                         <span className="chat-tooltip-target" title="Reasoning Effort for the model response.">
                           <Select
@@ -1905,7 +1909,8 @@ export default function Home() {
                       <Tooltip
                         relationship="description"
                         content="Context Window: number of recent messages to include."
-                        showDelay={120}
+                        showDelay={0}
+                        positioning="above"
                       >
                         <span
                           className="chat-tooltip-target"
