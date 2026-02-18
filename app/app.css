@@ -791,10 +791,14 @@ body {
   min-width: 0;
 }
 
+.chat-quick-control-context {
+  gap: 0.3rem;
+}
+
 .chat-quick-control .fui-Select select:hover,
 .chat-quick-control .fui-Select select:focus,
-.chat-quick-control .fui-Input input:hover,
-.chat-quick-control .fui-Input input:focus {
+.chat-quick-control .fui-SpinButton input:hover,
+.chat-quick-control .fui-SpinButton input:focus {
   cursor: pointer;
 }
 
@@ -806,11 +810,11 @@ body {
   min-width: 150px;
 }
 
-.chat-quick-control .fui-Input {
+.chat-quick-control .fui-SpinButton {
   width: 92px;
 }
 
-.chat-quick-control .fui-Input input {
+.chat-quick-control .fui-SpinButton input {
   text-align: right;
 }
 
@@ -1020,6 +1024,7 @@ body {
 
 .setting-group .fui-Input,
 .setting-group .fui-Select,
+.setting-group .fui-SpinButton,
 .setting-group .fui-Textarea {
   width: 100%;
 }
