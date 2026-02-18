@@ -167,7 +167,7 @@ body {
 .layout-splitter {
   position: relative;
   z-index: 2;
-  border-radius: 999px;
+  border-radius: 0;
   touch-action: none;
   pointer-events: auto;
   background: transparent;
@@ -178,7 +178,7 @@ body {
   content: "";
   position: absolute;
   inset: auto;
-  border-radius: inherit;
+  border-radius: 0;
   transition:
     background-color 0.15s ease,
     transform 0.15s ease;
@@ -192,10 +192,10 @@ body {
 }
 
 .main-splitter::before {
-  width: 3px;
-  height: 56px;
-  left: calc(50% - 1.5px);
-  top: calc(50% - 28px);
+  width: 2px;
+  height: 100%;
+  left: calc(50% - 1px);
+  top: 0;
   background: var(--splitter-track);
 }
 
@@ -218,10 +218,10 @@ body {
 }
 
 .side-splitter::before {
-  height: 3px;
-  width: 76px;
-  top: calc(50% - 1.5px);
-  left: calc(50% - 38px);
+  height: 2px;
+  width: 100%;
+  top: calc(50% - 1px);
+  left: 0;
   background: var(--splitter-track);
 }
 
