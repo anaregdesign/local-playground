@@ -716,58 +716,82 @@ body {
 }
 
 .chat-composer {
-  display: flex;
-  align-items: flex-end;
-  gap: 0.45rem;
-  padding: 0.32rem 0.38rem 0.36rem 0.58rem;
+  display: grid;
+  grid-template-rows: auto auto;
+  gap: 0.25rem;
+  padding: 0.36rem 0.38rem 0.34rem 0.58rem;
   border: 1px solid var(--surface-border);
   border-radius: 16px;
   background: #ffffff;
 }
 
 .chat-composer:focus-within {
-  border-color: #c5d7ea;
-  box-shadow: 0 0 0 1px rgba(15, 108, 189, 0.18);
+  border-color: var(--surface-border);
+  box-shadow: none;
 }
 
-.chat-composer .fui-Textarea {
+.chat-composer-input.fui-Textarea,
+.chat-composer-input.fui-Textarea:hover,
+.chat-composer-input.fui-Textarea:focus-within {
   flex: 1 1 auto;
   min-width: 0;
-  border: 0;
-  box-shadow: none;
-  background: transparent;
+  border: 0 !important;
+  box-shadow: none !important;
+  outline: none;
+  background: transparent !important;
 }
 
-.chat-composer .fui-Textarea textarea {
-  resize: vertical;
+.chat-composer-input.fui-Textarea::before,
+.chat-composer-input.fui-Textarea::after {
+  border: 0 !important;
+  box-shadow: none !important;
+}
+
+.chat-composer-input.fui-Textarea textarea {
+  resize: none;
   min-height: 2.8rem;
   max-height: 40vh;
-  overflow-y: auto;
-  border: 0;
+  overflow-y: hidden;
+  border: 0 !important;
+  outline: none;
+  box-shadow: none !important;
   background: transparent;
   padding: 0.36rem 0;
   line-height: 1.45;
 }
 
+.chat-composer-input.fui-Textarea textarea:hover,
+.chat-composer-input.fui-Textarea textarea:focus {
+  border: 0 !important;
+  outline: none;
+  box-shadow: none !important;
+}
+
+.chat-composer-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+}
+
 .chat-send-btn.fui-Button {
-  min-width: 2.2rem !important;
-  width: 2.2rem !important;
-  min-height: 2.2rem !important;
-  height: 2.2rem !important;
+  min-width: 2.35rem !important;
+  width: 2.35rem !important;
+  min-height: 2.35rem !important;
+  height: 2.35rem !important;
   border-radius: 999px;
-  border: 0;
+  border: 1px solid rgba(50, 49, 48, 0.14);
   padding: 0;
-  align-self: flex-end;
-  background: #e8edf4;
-  color: #244b65;
+  align-self: center;
+  background: #f6f8fb;
+  color: #1f3f56;
 }
 
 .chat-send-btn.fui-Button:enabled:hover {
-  background: #dce6f1;
+  background: #ecf1f7;
 }
 
 .chat-send-btn.fui-Button:enabled:active {
-  background: #d2ddea;
+  background: #e3ebf5;
 }
 
 .chat-send-btn.fui-Button .fui-Button__content {

@@ -219,6 +219,8 @@ const MAX_MCP_TIMEOUT_SECONDS = 600;
 const MAX_MCP_HTTP_HEADERS = 64;
 const HTTP_HEADER_NAME_PATTERN = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/;
 const MAX_MCP_AZURE_AUTH_SCOPE_LENGTH = 512;
+const CHAT_INPUT_MIN_HEIGHT_PX = 44;
+const CHAT_INPUT_MAX_HEIGHT_PX = 220;
 
 export function meta({}: Route.MetaArgs) {
   return [
@@ -295,6 +297,7 @@ export default function Home() {
   const [sideTopPaneHeight, setSideTopPaneHeight] = useState(420);
   const [activeResizeHandle, setActiveResizeHandle] = useState<"main" | "side" | null>(null);
   const endOfMessagesRef = useRef<HTMLDivElement | null>(null);
+  const chatInputRef = useRef<HTMLTextAreaElement | null>(null);
   const instructionFileInputRef = useRef<HTMLInputElement | null>(null);
   const layoutRef = useRef<HTMLDivElement | null>(null);
   const sideBodyRef = useRef<HTMLDivElement | null>(null);
@@ -321,6 +324,15 @@ export default function Home() {
   useEffect(() => {
     endOfMessagesRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isSending, sendProgressMessages]);
+
+  useEffect(() => {
+    const input = chatInputRef.current;
+    if (!input) {
+      return;
+    }
+
+    resizeChatInput(input);
+  }, [draft]);
 
   useEffect(() => {
     void loadSavedMcpServers();
@@ -954,6 +966,16 @@ export default function Home() {
       }
       void sendMessage();
     }
+  }
+
+  function resizeChatInput(input: HTMLTextAreaElement) {
+    input.style.height = "auto";
+    const boundedHeight = Math.max(
+      CHAT_INPUT_MIN_HEIGHT_PX,
+      Math.min(input.scrollHeight, CHAT_INPUT_MAX_HEIGHT_PX),
+    );
+    input.style.height = `${boundedHeight}px`;
+    input.style.overflowY = input.scrollHeight > CHAT_INPUT_MAX_HEIGHT_PX ? "auto" : "hidden";
   }
 
   async function handleInstructionFileChange(
@@ -1718,34 +1740,41 @@ export default function Home() {
                   id="chat-input"
                   name="message"
                   rows={2}
+                  resize="none"
+                  ref={chatInputRef}
                   className="chat-composer-input"
                   placeholder="Type a message..."
                   value={draft}
-                  onChange={(_, data) => setDraft(data.value)}
+                  onChange={(event, data) => {
+                    setDraft(data.value);
+                    resizeChatInput(event.currentTarget);
+                  }}
                   onKeyDown={handleInputKeyDown}
                   onCompositionStart={() => setIsComposing(true)}
                   onCompositionEnd={() => setIsComposing(false)}
                   disabled={isSending || isChatLocked}
                 />
-                <Button
-                  type="submit"
-                  appearance="subtle"
-                  className="chat-send-btn"
-                  aria-label="Send message"
-                  title="Send"
-                  disabled={
-                    isSending ||
-                    isChatLocked ||
-                    isLoadingAzureConnections ||
-                    isLoadingAzureDeployments ||
-                    !activeAzureConnection ||
-                    !selectedAzureDeploymentName.trim() ||
-                    draft.trim().length === 0 ||
-                    !contextWindowValidation.isValid
-                  }
-                >
-                  ↑
-                </Button>
+                <div className="chat-composer-actions">
+                  <Button
+                    type="submit"
+                    appearance="subtle"
+                    className="chat-send-btn"
+                    aria-label="Send message"
+                    title="Send"
+                    disabled={
+                      isSending ||
+                      isChatLocked ||
+                      isLoadingAzureConnections ||
+                      isLoadingAzureDeployments ||
+                      !activeAzureConnection ||
+                      !selectedAzureDeploymentName.trim() ||
+                      draft.trim().length === 0 ||
+                      !contextWindowValidation.isValid
+                    }
+                  >
+                    ↑
+                  </Button>
+                </div>
               </div>
             </form>
           </footer>
