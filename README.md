@@ -49,7 +49,7 @@ Open `http://localhost:5173`.
 
 - Two-pane desktop layout with draggable splitter for chat vs. configuration work
 - Markdown rendering and JSON syntax highlighting for fast response inspection
-- Agent Instruction load/save/enhance workflow with diff review
+- Agent Instruction local file load/save (client-side save dialog) and enhance workflow with diff review
 - Per-server MCP headers, Azure auth scope, and timeout controls
 
 ## Developer Details
@@ -90,7 +90,6 @@ Files:
 
 - Azure selection: `azure-selection.json`
 - MCP profiles: `mcp-servers.json`
-- Saved prompts: `prompts/`
 
 Legacy Windows fallback is also read:
 

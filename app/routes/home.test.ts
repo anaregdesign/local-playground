@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildInstructionEnhanceMessage,
   buildInstructionDiffLines,
+  buildInstructionSuggestedFileName,
   detectInstructionLanguage,
   normalizeEnhancedInstructionResponse,
   resolveInstructionFormatExtension,
@@ -53,10 +54,16 @@ describe("validateContextWindowInput", () => {
 });
 
 describe("instruction enhance helpers", () => {
-  it("resolves source file name with loaded file precedence", () => {
-    expect(resolveInstructionSourceFileName("prompt.md", "override.json")).toBe("prompt.md");
-    expect(resolveInstructionSourceFileName(null, "override.json")).toBe("override.json");
-    expect(resolveInstructionSourceFileName(null, "   ")).toBeNull();
+  it("resolves source file name from loaded file", () => {
+    expect(resolveInstructionSourceFileName("prompt.md")).toBe("prompt.md");
+    expect(resolveInstructionSourceFileName("  prompt.md  ")).toBe("prompt.md");
+    expect(resolveInstructionSourceFileName(null)).toBeNull();
+  });
+
+  it("builds suggested save file name from source and content", () => {
+    expect(buildInstructionSuggestedFileName("prompt.md", "text")).toBe("prompt.md");
+    expect(buildInstructionSuggestedFileName("prompt.bin", "{\"a\":1}")).toBe("prompt.json");
+    expect(buildInstructionSuggestedFileName(null, "<root/>")).toBe("instruction.xml");
   });
 
   it("resolves extension from file name and content fallback", () => {

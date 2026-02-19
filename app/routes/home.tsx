@@ -107,10 +107,28 @@ type ChatApiResponse = {
   error?: string;
   errorCode?: "azure_login_required";
 };
-type SaveInstructionPromptApiResponse = {
-  fileName?: unknown;
-  savedPath?: unknown;
-  error?: string;
+type SaveInstructionToClientFileResult = {
+  fileName: string;
+  mode: "picker" | "download";
+};
+type SaveFilePickerFileType = {
+  description?: string;
+  accept: Record<string, string[]>;
+};
+type SaveFilePickerOptionsCompat = {
+  suggestedName?: string;
+  types?: SaveFilePickerFileType[];
+};
+type SaveFileWritableStream = {
+  write(data: string): Promise<void>;
+  close(): Promise<void>;
+};
+type SaveFileHandleCompat = {
+  name: string;
+  createWritable(): Promise<SaveFileWritableStream>;
+};
+type WindowWithSaveFilePicker = Window & {
+  showSaveFilePicker?: (options?: SaveFilePickerOptionsCompat) => Promise<SaveFileHandleCompat>;
 };
 type InstructionLanguage = "japanese" | "english" | "mixed" | "unknown";
 type InstructionDiffLineType = "context" | "added" | "removed";
@@ -202,6 +220,18 @@ const DEFAULT_AGENT_INSTRUCTION = "You are a concise assistant for a local playg
 const MAX_INSTRUCTION_FILE_SIZE_BYTES = 1_000_000;
 const MAX_INSTRUCTION_FILE_SIZE_LABEL = "1MB";
 const ALLOWED_INSTRUCTION_EXTENSIONS = new Set(["md", "txt", "xml", "json"]);
+const INSTRUCTION_SAVE_FILE_TYPES: SaveFilePickerFileType[] = [
+  {
+    description: "Instruction files",
+    accept: {
+      "text/markdown": [".md"],
+      "text/plain": [".txt"],
+      "application/json": [".json"],
+      "application/xml": [".xml"],
+      "text/xml": [".xml"],
+    },
+  },
+];
 const DEFAULT_INSTRUCTION_EXTENSION = "txt";
 const MAX_INSTRUCTION_DIFF_MATRIX_CELLS = 250_000;
 const ENHANCE_INSTRUCTION_SYSTEM_PROMPT = [
@@ -249,7 +279,6 @@ export default function Home() {
   const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffort>("none");
   const [agentInstruction, setAgentInstruction] = useState(DEFAULT_AGENT_INSTRUCTION);
   const [loadedInstructionFileName, setLoadedInstructionFileName] = useState<string | null>(null);
-  const [instructionSaveFileNameInput, setInstructionSaveFileNameInput] = useState("");
   const [instructionFileError, setInstructionFileError] = useState<string | null>(null);
   const [instructionSaveError, setInstructionSaveError] = useState<string | null>(null);
   const [instructionSaveSuccess, setInstructionSaveSuccess] = useState<string | null>(null);
@@ -313,7 +342,6 @@ export default function Home() {
     null;
   const canClearAgentInstruction =
     agentInstruction.length > 0 ||
-    instructionSaveFileNameInput.trim().length > 0 ||
     loadedInstructionFileName !== null ||
     instructionFileError !== null;
   const canSaveAgentInstructionPrompt = agentInstruction.trim().length > 0;
@@ -987,7 +1015,6 @@ export default function Home() {
       const text = await file.text();
       setAgentInstruction(text);
       setLoadedInstructionFileName(file.name);
-      setInstructionSaveFileNameInput(file.name);
       setInstructionSaveError(null);
       setInstructionSaveSuccess(null);
       setInstructionEnhanceError(null);
@@ -1016,37 +1043,22 @@ export default function Home() {
     setIsSavingInstructionPrompt(true);
 
     try {
-      const response = await fetch("/api/instruction-prompts", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          instruction: agentInstruction,
-          fileName: instructionSaveFileNameInput,
-          sourceFileName: loadedInstructionFileName,
-        }),
-      });
-
-      const payload = (await response.json()) as SaveInstructionPromptApiResponse;
-      if (!response.ok) {
-        const errorMessage =
-          typeof payload.error === "string" && payload.error.trim()
-            ? payload.error
-            : "Failed to save instruction prompt.";
-        throw new Error(errorMessage);
-      }
-
-      const savedPath =
-        typeof payload.savedPath === "string" && payload.savedPath.trim()
-          ? payload.savedPath.trim()
-          : "";
-      if (savedPath) {
-        setInstructionSaveSuccess(`Saved to ${savedPath}`);
-      } else {
-        setInstructionSaveSuccess("Saved instruction prompt.");
-      }
+      const sourceFileName = resolveInstructionSourceFileName(loadedInstructionFileName);
+      const suggestedFileName = buildInstructionSuggestedFileName(
+        sourceFileName,
+        agentInstruction,
+      );
+      const saveResult = await saveInstructionToClientFile(agentInstruction, suggestedFileName);
+      setLoadedInstructionFileName(saveResult.fileName);
+      setInstructionSaveSuccess(
+        saveResult.mode === "picker"
+          ? `Saved as ${saveResult.fileName}`
+          : `Download started: ${saveResult.fileName}`,
+      );
     } catch (saveError) {
+      if (isInstructionSaveCanceled(saveError)) {
+        return;
+      }
       setInstructionSaveError(
         saveError instanceof Error ? saveError.message : "Failed to save instruction prompt.",
       );
@@ -1094,10 +1106,7 @@ export default function Home() {
       return;
     }
 
-    const sourceFileName = resolveInstructionSourceFileName(
-      loadedInstructionFileName,
-      instructionSaveFileNameInput,
-    );
+    const sourceFileName = resolveInstructionSourceFileName(loadedInstructionFileName);
     const instructionExtension = resolveInstructionFormatExtension(
       sourceFileName,
       currentInstruction,
@@ -2246,22 +2255,6 @@ export default function Home() {
                       </div>
                     </div>
                   ) : null}
-                  <Field label="📝 Save file name (optional)">
-                    <Input
-                      id="agent-instruction-save-file-name"
-                      placeholder="instruction.md"
-                      title="Optional file name used when saving the instruction."
-                      value={instructionSaveFileNameInput}
-                      onChange={(_, data) => {
-                        setInstructionSaveFileNameInput(data.value);
-                        setInstructionSaveError(null);
-                        setInstructionSaveSuccess(null);
-                        setInstructionEnhanceError(null);
-                        setInstructionEnhanceSuccess(null);
-                      }}
-                      disabled={isSending || isSavingInstructionPrompt || isEnhancingInstruction}
-                    />
-                  </Field>
                   <div className="file-picker-row">
                     <input
                       id="agent-instruction-file"
@@ -2288,7 +2281,7 @@ export default function Home() {
                       type="button"
                       appearance="secondary"
                       size="small"
-                      title="Save current instruction to the prompt directory."
+                      title="Save current instruction to a local file."
                       onClick={() => {
                         void handleSaveInstructionPrompt();
                       }}
@@ -2320,7 +2313,6 @@ export default function Home() {
                       title="Clear instruction text and related form values."
                       onClick={() => {
                         setAgentInstruction("");
-                        setInstructionSaveFileNameInput("");
                         setLoadedInstructionFileName(null);
                         setInstructionFileError(null);
                         setInstructionSaveError(null);
@@ -2337,7 +2329,10 @@ export default function Home() {
                       {loadedInstructionFileName ?? "No file loaded"}
                     </span>
                   </div>
-                  <p className="field-hint">Supported: .md, .txt, .xml, .json (max 1MB)</p>
+                  <p className="field-hint">
+                    Supported: .md, .txt, .xml, .json (max 1MB). Click Save to choose file name and
+                    destination.
+                  </p>
                 </>
               )}
               {instructionFileError ? (
@@ -3621,17 +3616,122 @@ function readMcpTimeoutSecondsFromUnknown(value: unknown): number {
   return value;
 }
 
-export function resolveInstructionSourceFileName(
-  loadedFileName: string | null,
-  saveFileNameInput: string,
-): string | null {
+export function resolveInstructionSourceFileName(loadedFileName: string | null): string | null {
   const loaded = (loadedFileName ?? "").trim();
-  if (loaded) {
-    return loaded;
+  return loaded || null;
+}
+
+export function buildInstructionSuggestedFileName(
+  sourceFileName: string | null,
+  instruction: string,
+): string {
+  const resolvedExtension = resolveInstructionFormatExtension(sourceFileName, instruction);
+  const normalizedSource = normalizeInstructionFileNameCandidate(sourceFileName);
+  if (!normalizedSource) {
+    return `instruction.${resolvedExtension}`;
   }
 
-  const saveInput = saveFileNameInput.trim();
-  return saveInput || null;
+  const sourceExtension = getFileExtension(normalizedSource);
+  if (ALLOWED_INSTRUCTION_EXTENSIONS.has(sourceExtension)) {
+    return normalizedSource;
+  }
+
+  const stem = stripFileExtension(normalizedSource);
+  return `${stem || "instruction"}.${resolvedExtension}`;
+}
+
+async function saveInstructionToClientFile(
+  instruction: string,
+  suggestedFileName: string,
+): Promise<SaveInstructionToClientFileResult> {
+  const savePickerWindow = window as WindowWithSaveFilePicker;
+  if (typeof savePickerWindow.showSaveFilePicker === "function") {
+    const fileHandle = await savePickerWindow.showSaveFilePicker({
+      suggestedName: suggestedFileName,
+      types: INSTRUCTION_SAVE_FILE_TYPES,
+    });
+    const writable = await fileHandle.createWritable();
+    await writable.write(instruction);
+    await writable.close();
+    return {
+      fileName: fileHandle.name || suggestedFileName,
+      mode: "picker",
+    };
+  }
+
+  downloadInstructionFile(instruction, suggestedFileName);
+  return {
+    fileName: suggestedFileName,
+    mode: "download",
+  };
+}
+
+function downloadInstructionFile(instruction: string, fileName: string): void {
+  const blob = new Blob([instruction], {
+    type: resolveInstructionMimeType(fileName),
+  });
+  const downloadUrl = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = downloadUrl;
+  anchor.download = fileName;
+  anchor.rel = "noopener";
+  document.body.append(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(downloadUrl);
+}
+
+function resolveInstructionMimeType(fileName: string): string {
+  const extension = getFileExtension(fileName);
+  if (extension === "json") {
+    return "application/json;charset=utf-8";
+  }
+
+  if (extension === "xml") {
+    return "application/xml;charset=utf-8";
+  }
+
+  if (extension === "md") {
+    return "text/markdown;charset=utf-8";
+  }
+
+  return "text/plain;charset=utf-8";
+}
+
+function isInstructionSaveCanceled(error: unknown): boolean {
+  if (!(error instanceof DOMException)) {
+    return false;
+  }
+
+  return error.name === "AbortError";
+}
+
+function normalizeInstructionFileNameCandidate(fileName: string | null): string {
+  const candidate = (fileName ?? "").trim();
+  if (!candidate) {
+    return "";
+  }
+
+  const normalized = candidate.replace(/\\/g, "/");
+  const lastSegment = normalized.slice(normalized.lastIndexOf("/") + 1);
+  if (!lastSegment) {
+    return "";
+  }
+
+  return lastSegment
+    .replace(/[<>:"/\\|?*\u0000-\u001f]+/g, "-")
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^[-.]+|[-.]+$/g, "");
+}
+
+function stripFileExtension(fileName: string): string {
+  const extension = getFileExtension(fileName);
+  if (!extension) {
+    return fileName;
+  }
+
+  return fileName.slice(0, -(extension.length + 1));
 }
 
 export function resolveInstructionFormatExtension(
