@@ -7,9 +7,15 @@ import {
   assistant,
   run,
   user,
+  type AgentInputItem,
   type MCPServer,
+  type OpenAIResponsesCompactionAwareSession,
 } from "@openai/agents";
-import { OpenAIResponsesModel, codeInterpreterTool } from "@openai/agents-openai";
+import {
+  OpenAIResponsesCompactionSession,
+  OpenAIResponsesModel,
+  codeInterpreterTool,
+} from "@openai/agents-openai";
 import { toFile } from "openai";
 import {
   getAzureDependencies,
@@ -29,9 +35,6 @@ import {
   CHAT_MAX_RUN_TURNS,
   CHAT_MAX_MCP_SERVERS,
   CHAT_MODEL_RUN_TIMEOUT_MS,
-  CONTEXT_WINDOW_DEFAULT,
-  CONTEXT_WINDOW_MAX,
-  CONTEXT_WINDOW_MIN,
   DEFAULT_AGENT_INSTRUCTION,
   ENV_KEY_PATTERN,
   HTTP_HEADER_NAME_PATTERN,
@@ -204,8 +207,7 @@ export async function action({ request }: Route.ActionArgs) {
     return Response.json({ error: "`message` is required." }, { status: 400 });
   }
 
-  const contextWindowSize = readContextWindowSize(payload);
-  const historyResult = readHistory(payload, contextWindowSize);
+  const historyResult = readHistory(payload);
   if (!historyResult.ok) {
     return Response.json({ error: historyResult.error }, { status: 400 });
   }
@@ -475,18 +477,28 @@ async function executeChat(
       mcpServers: connectedMcpServers,
     });
 
-    const runInput = [
-      ...options.history.map((entry) =>
-        entry.role === "user"
-          ? buildUserMessageInput(entry.content, entry.attachments, {
-              useCodeInterpreter: enableCodeInterpreterTool,
-            })
-          : assistant(entry.content),
-      ),
-      buildUserMessageInput(options.message, options.attachments, {
-        useCodeInterpreter: enableCodeInterpreterTool,
-      }),
-    ];
+    const historyInput = options.history.map((entry) =>
+      entry.role === "user"
+        ? buildUserMessageInput(entry.content, entry.attachments, {
+            useCodeInterpreter: enableCodeInterpreterTool,
+          })
+        : assistant(entry.content),
+    );
+    const currentInput = buildUserMessageInput(options.message, options.attachments, {
+      useCodeInterpreter: enableCodeInterpreterTool,
+    });
+    const compactionSession = await initializeCompactionSession({
+      client: azureOpenAIClient,
+      deploymentName: options.azureConfig.deploymentName,
+      historyInput,
+      onCompactionUnavailable: () => {
+        emitProgress({
+          message:
+            "Automatic context compaction is unavailable for this deployment; continuing without it.",
+        });
+      },
+    });
+    const runInput = compactionSession ? [currentInput] : [...historyInput, currentInput];
 
     emitProgress({ message: "Sending request to Azure OpenAI..." });
     const runTimeoutSeconds = Math.ceil(CHAT_MODEL_RUN_TIMEOUT_MS / 1000);
@@ -501,6 +513,7 @@ async function executeChat(
             stream: true,
             signal,
             maxTurns: CHAT_MAX_RUN_TURNS,
+            ...(compactionSession ? { session: compactionSession } : {}),
           }),
         CHAT_MODEL_RUN_TIMEOUT_MS,
         runTimeoutMessage,
@@ -536,6 +549,7 @@ async function executeChat(
         run(agent, runInput, {
           signal,
           maxTurns: CHAT_MAX_RUN_TURNS,
+          ...(compactionSession ? { session: compactionSession } : {}),
         }),
       CHAT_MODEL_RUN_TIMEOUT_MS,
       runTimeoutMessage,
@@ -869,6 +883,72 @@ function getAzureOpenAIClient(
   return dependencies.getAzureOpenAIClient(baseUrl);
 }
 
+async function initializeCompactionSession(options: {
+  client: ReturnType<AzureDependencies["getAzureOpenAIClient"]>;
+  deploymentName: string;
+  historyInput: AgentInputItem[];
+  onCompactionUnavailable: () => void;
+}): Promise<OpenAIResponsesCompactionAwareSession | null> {
+  let session: OpenAIResponsesCompactionSession;
+  try {
+    session = new OpenAIResponsesCompactionSession({
+      client: options.client,
+      model: options.deploymentName,
+    });
+  } catch {
+    options.onCompactionUnavailable();
+    return null;
+  }
+
+  const resilientSession = createResilientCompactionSession(
+    session,
+    options.onCompactionUnavailable,
+  );
+
+  try {
+    if (options.historyInput.length > 0) {
+      await resilientSession.addItems(options.historyInput);
+    }
+  } catch {
+    options.onCompactionUnavailable();
+    return null;
+  }
+
+  return resilientSession;
+}
+
+function createResilientCompactionSession(
+  baseSession: OpenAIResponsesCompactionSession,
+  onCompactionUnavailable: () => void,
+): OpenAIResponsesCompactionAwareSession {
+  let compactionEnabled = true;
+  let hasNotifiedFailure = false;
+
+  return {
+    getSessionId: () => baseSession.getSessionId(),
+    getItems: (limit) => baseSession.getItems(limit),
+    addItems: (items) => baseSession.addItems(items),
+    popItem: () => baseSession.popItem(),
+    clearSession: () => baseSession.clearSession(),
+    runCompaction: async (args) => {
+      if (!compactionEnabled) {
+        return null;
+      }
+
+      try {
+        return await baseSession.runCompaction(args);
+      } catch {
+        compactionEnabled = false;
+        if (!hasNotifiedFailure) {
+          hasNotifiedFailure = true;
+          onCompactionUnavailable();
+        }
+        return null;
+      }
+    },
+  };
+}
+
 function readMessage(payload: unknown): string {
   if (!isRecord(payload)) {
     return "";
@@ -880,7 +960,7 @@ function readMessage(payload: unknown): string {
   return message.trim();
 }
 
-function readHistory(payload: unknown, contextWindowSize: number): ParseResult<ClientMessage[]> {
+function readHistory(payload: unknown): ParseResult<ClientMessage[]> {
   if (!isRecord(payload) || !Array.isArray(payload.history)) {
     return { ok: true, value: [] };
   }
@@ -919,7 +999,7 @@ function readHistory(payload: unknown, contextWindowSize: number): ParseResult<C
 
   return {
     ok: true,
-    value: parsedHistory.slice(-contextWindowSize),
+    value: parsedHistory,
   };
 }
 
@@ -1159,19 +1239,6 @@ function buildAttachmentKey(attachment: ClientAttachment): string {
 function readFileExtension(fileName: string): string {
   const parts = fileName.toLowerCase().split(".");
   return parts.length > 1 ? parts[parts.length - 1] : "";
-}
-
-function readContextWindowSize(payload: unknown): number {
-  if (!isRecord(payload)) {
-    return CONTEXT_WINDOW_DEFAULT;
-  }
-
-  const value = payload.contextWindowSize;
-  if (typeof value !== "number" || !Number.isSafeInteger(value)) {
-    return CONTEXT_WINDOW_DEFAULT;
-  }
-
-  return clamp(value, CONTEXT_WINDOW_MIN, CONTEXT_WINDOW_MAX);
 }
 
 function readReasoningEffort(payload: unknown): ReasoningEffort {
@@ -2189,16 +2256,6 @@ function shortenToolCallId(callId: string): string {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object";
-}
-
-function clamp(value: number, min: number, max: number): number {
-  if (value < min) {
-    return min;
-  }
-  if (value > max) {
-    return max;
-  }
-  return value;
 }
 
 async function awaitWithTimeout<T>(

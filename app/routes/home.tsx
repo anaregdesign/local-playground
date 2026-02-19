@@ -19,9 +19,6 @@ import {
   CHAT_ATTACHMENT_MAX_PDF_FILE_SIZE_BYTES,
   CHAT_ATTACHMENT_MAX_PDF_TOTAL_SIZE_BYTES,
   CHAT_ATTACHMENT_MAX_TOTAL_SIZE_BYTES,
-  CONTEXT_WINDOW_DEFAULT,
-  CONTEXT_WINDOW_MAX,
-  CONTEXT_WINDOW_MIN,
   DEFAULT_AGENT_INSTRUCTION,
   HOME_CHAT_INPUT_MAX_HEIGHT_PX,
   HOME_CHAT_INPUT_MIN_HEIGHT_PX,
@@ -104,9 +101,6 @@ import {
   parseStdioArgsInput,
   parseStdioEnvInput,
 } from "~/lib/home/mcp/stdio-inputs";
-import {
-  validateContextWindowInput,
-} from "~/lib/home/settings/context-window";
 import { copyTextToClipboard } from "~/lib/home/shared/clipboard";
 import { getFileExtension } from "~/lib/home/shared/files";
 import { createId } from "~/lib/home/shared/ids";
@@ -203,9 +197,6 @@ export default function Home() {
   const [savedMcpError, setSavedMcpError] = useState<string | null>(null);
   const [isLoadingSavedMcpServers, setIsLoadingSavedMcpServers] = useState(false);
   const [isSavingMcpServer, setIsSavingMcpServer] = useState(false);
-  const [contextWindowInput, setContextWindowInput] = useState(
-    String(CONTEXT_WINDOW_DEFAULT),
-  );
   const [isSending, setIsSending] = useState(false);
   const [sendProgressMessages, setSendProgressMessages] = useState<string[]>([]);
   const [activeTurnId, setActiveTurnId] = useState<string | null>(null);
@@ -227,7 +218,6 @@ export default function Home() {
   const azureDeploymentRequestSeqRef = useRef(0);
   const activeAzureTenantIdRef = useRef("");
   const preferredAzureSelectionRef = useRef<AzureSelectionPreference | null>(null);
-  const contextWindowValidation = validateContextWindowInput(contextWindowInput);
   const isChatLocked = isAzureAuthRequired;
   const activeAzureConnection =
     azureConnections.find((connection) => connection.id === selectedAzureConnectionId) ??
@@ -267,8 +257,7 @@ export default function Home() {
     !isLoadingAzureDeployments &&
     !!activeAzureConnection &&
     !!selectedAzureDeploymentName.trim() &&
-    draft.trim().length > 0 &&
-    contextWindowValidation.isValid;
+    draft.trim().length > 0;
 
   useEffect(() => {
     endOfMessagesRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -670,11 +659,7 @@ export default function Home() {
 
   async function sendMessage() {
     const content = draft.trim();
-    if (
-      !content ||
-      isSending ||
-      !contextWindowValidation.isValid
-    ) {
+    if (!content || isSending) {
       return;
     }
 
@@ -714,13 +699,7 @@ export default function Home() {
       turnId,
       requestAttachments,
     );
-    const contextWindowSize = contextWindowValidation.value;
-    if (contextWindowSize === null) {
-      return;
-    }
-
     const history = messages
-      .slice(-contextWindowSize)
       .map(({ role, content: previousContent, attachments }) => {
         if (role === "user" && attachments.length > 0) {
           return {
@@ -765,7 +744,6 @@ export default function Home() {
             deploymentName,
           },
           reasoningEffort,
-          contextWindowSize,
           agentInstruction,
           mcpServers: mcpServers.map((server) =>
             server.transport === "stdio"
@@ -1779,11 +1757,6 @@ export default function Home() {
     reasoningEffort,
     reasoningEffortOptions,
     onReasoningEffortChange: setReasoningEffort,
-    contextWindowValidation,
-    contextWindowInput,
-    onContextWindowInputChange: setContextWindowInput,
-    minContextWindowSize: CONTEXT_WINDOW_MIN,
-    maxContextWindowSize: CONTEXT_WINDOW_MAX,
     maxChatAttachmentFiles: CHAT_ATTACHMENT_MAX_FILES,
     canSendMessage,
     mcpServers,

@@ -12,38 +12,6 @@ import {
   validateEnhancedInstructionFormat,
   validateInstructionLanguagePreserved,
 } from "./helpers";
-import { validateContextWindowInput } from "../settings/context-window";
-
-describe("validateContextWindowInput", () => {
-  it("accepts integers in the allowed range", () => {
-    expect(validateContextWindowInput("10")).toEqual({
-      isValid: true,
-      value: 10,
-      message: null,
-    });
-  });
-
-  it("rejects non-integer input", () => {
-    expect(validateContextWindowInput("1.5")).toEqual({
-      isValid: false,
-      value: null,
-      message: "Context window must be an integer.",
-    });
-  });
-
-  it("rejects values outside range", () => {
-    expect(validateContextWindowInput("0")).toEqual({
-      isValid: false,
-      value: null,
-      message: "Context window must be between 1 and 200.",
-    });
-    expect(validateContextWindowInput("201")).toEqual({
-      isValid: false,
-      value: null,
-      message: "Context window must be between 1 and 200.",
-    });
-  });
-});
 
 describe("instruction enhance helpers", () => {
   it("resolves source file name from loaded file", () => {

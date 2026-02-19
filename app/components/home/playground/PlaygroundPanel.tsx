@@ -16,7 +16,6 @@ import { formatChatAttachmentSize } from "~/lib/home/chat/attachments";
 const {
   Button,
   Select,
-  SpinButton,
   Spinner,
   Textarea,
 } = FluentUI;
@@ -33,11 +32,6 @@ type ChatAttachmentLike = {
   id: string;
   name: string;
   sizeBytes: number;
-};
-
-type ContextWindowValidationLike = {
-  isValid: boolean;
-  value: number | null;
 };
 
 type AzureConnectionLike = {
@@ -126,11 +120,6 @@ type PlaygroundPanelProps<
   reasoningEffort: ReasoningEffort;
   reasoningEffortOptions: ReasoningEffort[];
   onReasoningEffortChange: (value: ReasoningEffort) => void;
-  contextWindowValidation: ContextWindowValidationLike;
-  contextWindowInput: string;
-  onContextWindowInputChange: (value: string) => void;
-  minContextWindowSize: number;
-  maxContextWindowSize: number;
   maxChatAttachmentFiles: number;
   canSendMessage: boolean;
   mcpServers: TMcpServer[];
@@ -188,11 +177,6 @@ export function PlaygroundPanel<
     reasoningEffort,
     reasoningEffortOptions,
     onReasoningEffortChange,
-    contextWindowValidation,
-    contextWindowInput,
-    onContextWindowInputChange,
-    minContextWindowSize,
-    maxContextWindowSize,
     maxChatAttachmentFiles,
     canSendMessage,
     mcpServers,
@@ -614,35 +598,6 @@ export function PlaygroundPanel<
                         ))}
                       </optgroup>
                     </Select>
-                  </div>,
-                )}
-                {renderLabeledTooltip(
-                  "Context Window",
-                  ["Number of recent messages included in the request."],
-                  <div className="chat-quick-control chat-quick-control-context">
-                    <SpinButton
-                      id="chat-context-window-size"
-                      aria-label="Context Window"
-                      title="Number of recent messages included in the request."
-                      min={minContextWindowSize}
-                      max={maxContextWindowSize}
-                      step={1}
-                      value={contextWindowValidation.value}
-                      displayValue={contextWindowInput}
-                      onChange={(_, data) => {
-                        if (typeof data.displayValue === "string") {
-                          onContextWindowInputChange(data.displayValue);
-                          return;
-                        }
-                        if (typeof data.value === "number" && Number.isFinite(data.value)) {
-                          onContextWindowInputChange(String(Math.trunc(data.value)));
-                          return;
-                        }
-                        onContextWindowInputChange("");
-                      }}
-                      disabled={isSending}
-                      aria-invalid={!contextWindowValidation.isValid}
-                    />
                   </div>,
                 )}
               </div>
