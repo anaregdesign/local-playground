@@ -1,5 +1,8 @@
 import { FluentUI } from "~/components/home/shared/fluent";
-const { Button, MessageBar, MessageBarBody, Spinner } = FluentUI;
+import { ConfigSection } from "~/components/home/shared/ConfigSection";
+import { StatusMessageList } from "~/components/home/shared/StatusMessageList";
+
+const { Button, Spinner } = FluentUI;
 
 type AzureConnectionLike = {
   projectName: string;
@@ -41,11 +44,11 @@ export function AzureConnectionSection(props: AzureConnectionSectionProps) {
   } = props;
 
   return (
-    <section className="setting-group setting-group-azure-connection">
-      <div className="setting-group-header">
-        <h3>Azure Connection 🔐</h3>
-        <p>Sign in/out for Playground access.</p>
-      </div>
+    <ConfigSection
+      className="setting-group-azure-connection"
+      title="Azure Connection 🔐"
+      description="Sign in/out for Playground access."
+    >
       {isAzureAuthRequired ? (
         <Button
           type="button"
@@ -105,23 +108,15 @@ export function AzureConnectionSection(props: AzureConnectionSectionProps) {
               {isStartingAzureLogout ? "🚪 Logging Out..." : "🚪 Logout"}
             </Button>
           </div>
-          {azureDeploymentError ? (
-            <MessageBar intent="error" className="setting-message-bar">
-              <MessageBarBody>{azureDeploymentError}</MessageBarBody>
-            </MessageBar>
-          ) : null}
-          {azureLogoutError ? (
-            <MessageBar intent="error" className="setting-message-bar">
-              <MessageBarBody>{azureLogoutError}</MessageBarBody>
-            </MessageBar>
-          ) : null}
-          {azureConnectionError ? (
-            <MessageBar intent="error" className="setting-message-bar">
-              <MessageBarBody>{azureConnectionError}</MessageBarBody>
-            </MessageBar>
-          ) : null}
+          <StatusMessageList
+            messages={[
+              { intent: "error", text: azureDeploymentError },
+              { intent: "error", text: azureLogoutError },
+              { intent: "error", text: azureConnectionError },
+            ]}
+          />
         </>
       )}
-    </section>
+    </ConfigSection>
   );
 }

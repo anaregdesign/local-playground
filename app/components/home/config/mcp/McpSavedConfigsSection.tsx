@@ -1,6 +1,8 @@
 import { FluentUI } from "~/components/home/shared/fluent";
+import { ConfigSection } from "~/components/home/shared/ConfigSection";
+import { StatusMessageList } from "~/components/home/shared/StatusMessageList";
 
-const { Button, Field, MessageBar, MessageBarBody, Select } = FluentUI;
+const { Button, Field, Select } = FluentUI;
 
 export type SavedMcpServerOption = {
   id: string;
@@ -31,10 +33,7 @@ export function McpSavedConfigsSection(props: McpSavedConfigsSectionProps) {
   } = props;
 
   return (
-    <section className="setting-group">
-      <div className="setting-group-header">
-        <h3>Saved Configs 💾</h3>
-      </div>
+    <ConfigSection title="Saved Configs 💾">
       <Field label="💾 Saved config">
         <Select
           id="mcp-saved-config"
@@ -80,11 +79,7 @@ export function McpSavedConfigsSection(props: McpSavedConfigsSectionProps) {
           {isLoadingSavedMcpServers ? "🔄 Loading..." : "🔄 Reload"}
         </Button>
       </div>
-      {savedMcpError ? (
-        <MessageBar intent="error" className="setting-message-bar">
-          <MessageBarBody>{savedMcpError}</MessageBarBody>
-        </MessageBar>
-      ) : null}
-    </section>
+      <StatusMessageList messages={[{ intent: "error", text: savedMcpError }]} />
+    </ConfigSection>
   );
 }

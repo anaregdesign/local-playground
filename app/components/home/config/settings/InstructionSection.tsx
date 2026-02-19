@@ -1,6 +1,9 @@
 import type { ChangeEvent, RefObject } from "react";
 import { FluentUI } from "~/components/home/shared/fluent";
-const { Button, MessageBar, MessageBarBody, Spinner, Textarea } = FluentUI;
+import { ConfigSection } from "~/components/home/shared/ConfigSection";
+import { StatusMessageList } from "~/components/home/shared/StatusMessageList";
+
+const { Button, Spinner, Textarea } = FluentUI;
 
 type InstructionDiffLineType = "context" | "added" | "removed";
 type InstructionLanguageLike = "japanese" | "english" | "mixed" | "unknown";
@@ -72,11 +75,11 @@ export function InstructionSection(props: InstructionSectionProps) {
   } = props;
 
   return (
-    <section className="setting-group setting-group-agent-instruction">
-      <div className="setting-group-header">
-        <h3>Agent Instruction 🧾</h3>
-        <p>System instruction used for the agent.</p>
-      </div>
+    <ConfigSection
+      className="setting-group-agent-instruction"
+      title="Agent Instruction 🧾"
+      description="System instruction used for the agent."
+    >
       {instructionEnhanceComparison ? (
         <section className="instruction-diff-panel" aria-label="Instruction diff review">
           <div className="instruction-diff-header">
@@ -221,31 +224,15 @@ export function InstructionSection(props: InstructionSectionProps) {
           </p>
         </>
       )}
-      {instructionFileError ? (
-        <MessageBar intent="error" className="setting-message-bar">
-          <MessageBarBody>{instructionFileError}</MessageBarBody>
-        </MessageBar>
-      ) : null}
-      {instructionSaveError ? (
-        <MessageBar intent="error" className="setting-message-bar">
-          <MessageBarBody>{instructionSaveError}</MessageBarBody>
-        </MessageBar>
-      ) : null}
-      {instructionSaveSuccess ? (
-        <MessageBar intent="success" className="setting-message-bar">
-          <MessageBarBody>{instructionSaveSuccess}</MessageBarBody>
-        </MessageBar>
-      ) : null}
-      {instructionEnhanceError ? (
-        <MessageBar intent="error" className="setting-message-bar">
-          <MessageBarBody>{instructionEnhanceError}</MessageBarBody>
-        </MessageBar>
-      ) : null}
-      {instructionEnhanceSuccess ? (
-        <MessageBar intent="success" className="setting-message-bar">
-          <MessageBarBody>{instructionEnhanceSuccess}</MessageBarBody>
-        </MessageBar>
-      ) : null}
-    </section>
+      <StatusMessageList
+        messages={[
+          { intent: "error", text: instructionFileError },
+          { intent: "error", text: instructionSaveError },
+          { intent: "success", text: instructionSaveSuccess },
+          { intent: "error", text: instructionEnhanceError },
+          { intent: "success", text: instructionEnhanceSuccess },
+        ]}
+      />
+    </ConfigSection>
   );
 }

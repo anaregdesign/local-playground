@@ -1,4 +1,6 @@
 import { FluentUI } from "~/components/home/shared/fluent";
+import { ConfigSection } from "~/components/home/shared/ConfigSection";
+import { StatusMessageList } from "~/components/home/shared/StatusMessageList";
 import type { McpTransport } from "~/components/home/shared/types";
 
 const {
@@ -6,8 +8,6 @@ const {
   Checkbox,
   Field,
   Input,
-  MessageBar,
-  MessageBarBody,
   Popover,
   PopoverSurface,
   PopoverTrigger,
@@ -85,10 +85,7 @@ export function McpAddServerSection(props: McpAddServerSectionProps) {
   } = props;
 
   return (
-    <section className="setting-group">
-      <div className="setting-group-header">
-        <h3>Add MCP Server ➕</h3>
-      </div>
+    <ConfigSection title="Add MCP Server ➕">
       <Field label="🏷️ Server name (optional)">
         <Input
           id="mcp-server-name"
@@ -274,16 +271,12 @@ export function McpAddServerSection(props: McpAddServerSectionProps) {
       >
         ➕ Add Server
       </Button>
-      {mcpFormError ? (
-        <MessageBar intent="error" className="setting-message-bar">
-          <MessageBarBody>{mcpFormError}</MessageBarBody>
-        </MessageBar>
-      ) : null}
-      {mcpFormWarning ? (
-        <MessageBar intent="warning" className="setting-message-bar">
-          <MessageBarBody>{mcpFormWarning}</MessageBarBody>
-        </MessageBar>
-      ) : null}
-    </section>
+      <StatusMessageList
+        messages={[
+          { intent: "error", text: mcpFormError },
+          { intent: "warning", text: mcpFormWarning },
+        ]}
+      />
+    </ConfigSection>
   );
 }

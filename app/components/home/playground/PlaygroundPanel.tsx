@@ -6,19 +6,18 @@ import {
   type ReactNode,
   type RefObject,
 } from "react";
+import { CopyIconButton } from "~/components/home/shared/CopyIconButton";
 import { FluentUI } from "~/components/home/shared/fluent";
+import { LabeledTooltip } from "~/components/home/shared/LabeledTooltip";
+import { StatusMessageList } from "~/components/home/shared/StatusMessageList";
 import type { ReasoningEffort } from "~/components/home/shared/types";
 
 const {
   Button,
-  MessageBar,
-  MessageBarBody,
-  MessageBarTitle,
   Select,
   SpinButton,
   Spinner,
   Textarea,
-  Tooltip,
 } = FluentUI;
 type ChatRole = "user" | "assistant";
 
@@ -175,34 +174,16 @@ export function PlaygroundPanel<
     onRemoveMcpServer,
   } = props;
 
-  function renderUnifiedTooltipContent(title: string, lines: ReactNode[] = []) {
-    return (
-      <div className="app-tooltip-content">
-        <p className="app-tooltip-title">{title}</p>
-        {lines.map((line, index) => (
-          <p key={`${title}-${index}`} className="app-tooltip-line">
-            {line}
-          </p>
-        ))}
-      </div>
-    );
-  }
-
-  function renderUnifiedTooltip(
+  function renderLabeledTooltip(
     title: string,
     lines: ReactNode[],
     child: ReactNode,
     className = "chat-tooltip-target",
   ) {
     return (
-      <Tooltip
-        relationship="description"
-        showDelay={0}
-        positioning="above-start"
-        content={renderUnifiedTooltipContent(title, lines)}
-      >
-        <div className={className}>{child}</div>
-      </Tooltip>
+      <LabeledTooltip title={title} lines={lines} className={className}>
+        {child}
+      </LabeledTooltip>
     );
   }
 
@@ -261,12 +242,9 @@ export function PlaygroundPanel<
         <div className="chat-mcp-bubbles">
           {mcpServers.map((server) => (
             <div key={server.id} className="chat-mcp-bubble-item">
-              <Tooltip
-                relationship="description"
-                showDelay={0}
-                positioning="above-start"
-                content={renderUnifiedTooltipContent(
-                  server.name,
+              <LabeledTooltip
+                title={server.name}
+                lines={
                   server.transport === "stdio"
                     ? [
                         "Transport: stdio",
@@ -280,27 +258,25 @@ export function PlaygroundPanel<
                         `Custom headers: ${Object.keys(server.headers).length}`,
                         `Timeout: ${server.timeoutSeconds}s`,
                         `Azure auth: ${server.useAzureAuth ? `enabled (${server.azureAuthScope})` : "disabled"}`,
-                      ],
-                )}
+                      ]
+                }
               >
-                <span className="chat-tooltip-target">
-                  <span className="chat-mcp-bubble">
-                    <span className="chat-mcp-bubble-name">{server.name}</span>
-                    <Button
-                      type="button"
-                      appearance="subtle"
-                      size="small"
-                      className="chat-mcp-bubble-remove"
-                      onClick={() => onRemoveMcpServer(server.id)}
-                      disabled={isSending}
-                      aria-label={`Remove MCP server ${server.name}`}
-                      title={`Remove ${server.name}`}
-                    >
-                      ×
-                    </Button>
-                  </span>
+                <span className="chat-mcp-bubble">
+                  <span className="chat-mcp-bubble-name">{server.name}</span>
+                  <Button
+                    type="button"
+                    appearance="subtle"
+                    size="small"
+                    className="chat-mcp-bubble-remove"
+                    onClick={() => onRemoveMcpServer(server.id)}
+                    disabled={isSending}
+                    aria-label={`Remove MCP server ${server.name}`}
+                    title={`Remove ${server.name}`}
+                  >
+                    ×
+                  </Button>
                 </span>
-              </Tooltip>
+              </LabeledTooltip>
             </div>
           ))}
         </div>
@@ -341,19 +317,14 @@ export function PlaygroundPanel<
             <Fragment key={message.id}>
               <article className={`message-row ${message.role === "user" ? "user" : "assistant"}`}>
                 <div className="message-content">{renderMessageContent(message)}</div>
-                <Button
-                  type="button"
-                  appearance="transparent"
-                  size="small"
-                  className="copy-symbol-btn message-copy-btn"
-                  aria-label="Copy message"
+                <CopyIconButton
+                  className="message-copy-btn"
+                  ariaLabel="Copy message"
                   title="Copy this message."
                   onClick={() => {
                     onCopyMessage(message.content);
                   }}
-                >
-                  ⎘
-                </Button>
+                />
               </article>
               {shouldRenderTurnMcpLog ? (
                 <article className="mcp-turn-log-row">
@@ -402,19 +373,13 @@ export function PlaygroundPanel<
 
       <footer className="chat-footer">
         {error ? (
-          <div className="chat-error-stack">
-            <MessageBar intent="error">
-              <MessageBarBody>
-                <MessageBarTitle>Request failed</MessageBarTitle>
-                {error}
-              </MessageBarBody>
-            </MessageBar>
-            {azureLoginError ? (
-              <MessageBar intent="error">
-                <MessageBarBody>{azureLoginError}</MessageBarBody>
-              </MessageBar>
-            ) : null}
-          </div>
+          <StatusMessageList
+            className="chat-error-stack"
+            messages={[
+              { intent: "error", title: "Request failed", text: error },
+              { intent: "error", text: azureLoginError },
+            ]}
+          />
         ) : null}
         <form className="chat-form" onSubmit={onSubmit}>
           <label className="sr-only" htmlFor="chat-input">
@@ -441,7 +406,7 @@ export function PlaygroundPanel<
             />
             <div className="chat-composer-actions">
               <div className="chat-quick-controls">
-                {renderUnifiedTooltip(
+                {renderLabeledTooltip(
                   "Project",
                   [
                     isLoadingAzureConnections
@@ -489,7 +454,7 @@ export function PlaygroundPanel<
                     )}
                   </div>,
                 )}
-                {renderUnifiedTooltip(
+                {renderLabeledTooltip(
                   "Deployment",
                   [
                     isLoadingAzureConnections || isLoadingAzureDeployments
@@ -537,7 +502,7 @@ export function PlaygroundPanel<
                     )}
                   </div>,
                 )}
-                {renderUnifiedTooltip(
+                {renderLabeledTooltip(
                   "Reasoning Effort",
                   ["Controls how much internal reasoning the model uses."],
                   <div className="chat-quick-control">
@@ -559,7 +524,7 @@ export function PlaygroundPanel<
                     </Select>
                   </div>,
                 )}
-                {renderUnifiedTooltip(
+                {renderLabeledTooltip(
                   "Context Window",
                   ["Number of recent messages included in the request."],
                   <div className="chat-quick-control chat-quick-control-context">
@@ -589,7 +554,7 @@ export function PlaygroundPanel<
                   </div>,
                 )}
               </div>
-              {renderUnifiedTooltip(
+              {renderLabeledTooltip(
                 "Send",
                 ["Send current message."],
                 <Button

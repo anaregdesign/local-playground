@@ -11,6 +11,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { ConfigPanel } from "~/components/home/config/ConfigPanel";
 import { PlaygroundPanel } from "~/components/home/playground/PlaygroundPanel";
+import { CopyIconButton } from "~/components/home/shared/CopyIconButton";
 import { FluentUI } from "~/components/home/shared/fluent";
 import type { MainViewTab, McpTransport, ReasoningEffort } from "~/components/home/shared/types";
 import type { Route } from "./+types/home";
@@ -1999,12 +2000,9 @@ function renderTurnMcpLog(
     <details className="mcp-turn-log">
       <summary>
         <span>🧩 MCP Operation Log ({entries.length})</span>
-        <Button
-          type="button"
-          appearance="subtle"
-          size="small"
-          className="copy-symbol-btn mcp-log-copy-btn"
-          aria-label="Copy MCP operation log"
+        <CopyIconButton
+          className="mcp-log-copy-btn"
+          ariaLabel="Copy MCP operation log"
           title="Copy all MCP operation logs in this turn."
           onClick={(event) => {
             event.preventDefault();
@@ -2015,9 +2013,7 @@ function renderTurnMcpLog(
               ),
             );
           }}
-        >
-          ⎘
-        </Button>
+        />
       </summary>
       {entries.length === 0 ? (
         <p className="mcp-turn-log-empty">
@@ -2034,21 +2030,16 @@ function renderTurnMcpLog(
                 <span className={`mcp-history-state ${entry.isError ? "error" : "ok"}`}>
                   {entry.isError ? "error" : "ok"}
                 </span>
-                <Button
-                  type="button"
-                  appearance="subtle"
-                  size="small"
-                  className="copy-symbol-btn mcp-history-copy-btn"
-                  aria-label="Copy MCP operation entry"
+                <CopyIconButton
+                  className="mcp-history-copy-btn"
+                  ariaLabel="Copy MCP operation entry"
                   title="Copy this MCP operation entry."
                   onClick={(event) => {
                     event.preventDefault();
                     event.stopPropagation();
                     onCopyText(formatJsonForDisplay(buildMcpEntryCopyPayload(entry)));
                   }}
-                >
-                  ⎘
-                </Button>
+                />
               </summary>
               <div className="mcp-history-body">
                 <p className="mcp-history-time">
@@ -2058,12 +2049,9 @@ function renderTurnMcpLog(
                 </p>
                 <p className="mcp-history-label-row">
                   <span className="mcp-history-label">request</span>
-                  <Button
-                    type="button"
-                    appearance="subtle"
-                    size="small"
-                    className="copy-symbol-btn mcp-part-copy-btn"
-                    aria-label="Copy MCP request payload"
+                  <CopyIconButton
+                    className="mcp-part-copy-btn"
+                    ariaLabel="Copy MCP request payload"
                     title="Copy MCP request payload."
                     onClick={() => {
                       onCopyText(
@@ -2072,19 +2060,14 @@ function renderTurnMcpLog(
                         }),
                       );
                     }}
-                  >
-                    ⎘
-                  </Button>
+                  />
                 </p>
                 {renderHighlightedJson(entry.request, "MCP request JSON", "compact")}
                 <p className="mcp-history-label-row">
                   <span className="mcp-history-label">response</span>
-                  <Button
-                    type="button"
-                    appearance="subtle"
-                    size="small"
-                    className="copy-symbol-btn mcp-part-copy-btn"
-                    aria-label="Copy MCP response payload"
+                  <CopyIconButton
+                    className="mcp-part-copy-btn"
+                    ariaLabel="Copy MCP response payload"
                     title="Copy MCP response payload."
                     onClick={() => {
                       onCopyText(
@@ -2093,9 +2076,7 @@ function renderTurnMcpLog(
                         }),
                       );
                     }}
-                  >
-                    ⎘
-                  </Button>
+                  />
                 </p>
                 {renderHighlightedJson(entry.response, "MCP response JSON", "compact")}
               </div>
