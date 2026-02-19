@@ -31,11 +31,7 @@ export function StatusMessageList(props: StatusMessageListProps) {
         }
 
         return (
-          <MessageBar
-            key={`${message.intent}-${index}`}
-            intent={message.intent}
-            className={buildClassName("setting-message-bar", message.title ? "status-message-with-title" : undefined)}
-          >
+          <MessageBar key={`${message.intent}-${index}`} intent={message.intent} className="setting-message-bar">
             <MessageBarBody>
               {message.title ? <MessageBarTitle>{message.title}</MessageBarTitle> : null}
               {message.text}
