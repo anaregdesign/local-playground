@@ -1,4 +1,8 @@
-import { DefaultAzureCredential } from "@azure/identity";
+import {
+  getAzureDependencies,
+  normalizeAzureOpenAIBaseURL,
+} from "~/lib/azure-dependencies";
+import type { AzureDependencies } from "~/lib/azure-dependencies";
 import type { Route } from "./+types/api.azure-connections";
 
 type AzureProject = {
@@ -455,18 +459,16 @@ function parseResourceGroupFromResourceId(resourceId: string): string {
   return match?.[1] ?? "";
 }
 
-async function getArmAccessToken(): Promise<{ ok: true; token: string; tenantId: string } | { ok: false }> {
+async function getArmAccessToken(
+  dependencies: AzureDependencies = getAzureDependencies(),
+): Promise<{ ok: true; token: string; tenantId: string } | { ok: false }> {
   try {
-    const credential = new DefaultAzureCredential();
-    const token = await credential.getToken(ARM_SCOPE);
-    if (!token?.token) {
-      return { ok: false };
-    }
+    const token = await dependencies.getAzureBearerToken(ARM_SCOPE);
 
     return {
       ok: true,
-      token: token.token,
-      tenantId: readTenantIdFromAccessToken(token.token),
+      token,
+      tenantId: readTenantIdFromAccessToken(token),
     };
   } catch {
     return { ok: false };
@@ -522,19 +524,6 @@ async function fetchArmPaged<T>(
   }
 
   return items;
-}
-
-function normalizeAzureOpenAIBaseURL(rawValue: string): string {
-  const trimmed = rawValue.trim().replace(/\/+$/, "");
-  if (!trimmed) {
-    return "";
-  }
-
-  if (/\/openai\/v1$/i.test(trimmed)) {
-    return `${trimmed}/`;
-  }
-
-  return `${trimmed}/openai/v1/`;
 }
 
 function readArmErrorMessage(payload: unknown): string {

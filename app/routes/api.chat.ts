@@ -1,5 +1,4 @@
 import type { Route } from "./+types/api.chat";
-import { DefaultAzureCredential, getBearerTokenProvider } from "@azure/identity";
 import {
   Agent,
   MCPServerSSE,
@@ -11,7 +10,12 @@ import {
   type MCPServer,
 } from "@openai/agents";
 import { OpenAIChatCompletionsModel } from "@openai/agents-openai";
-import OpenAI from "openai";
+import {
+  AZURE_COGNITIVE_SERVICES_SCOPE,
+  getAzureDependencies,
+  normalizeAzureOpenAIBaseURL,
+} from "~/lib/azure-dependencies";
+import type { AzureDependencies } from "~/lib/azure-dependencies";
 
 type ChatRole = "user" | "assistant";
 
@@ -144,12 +148,10 @@ const DEFAULT_MCP_HTTP_HEADERS: Record<string, string> = {
   "Content-Type": "application/json",
 };
 
-const AZURE_COGNITIVE_SERVICES_SCOPE = "https://cognitiveservices.azure.com/.default";
 const DEFAULT_MCP_AZURE_AUTH_SCOPE = AZURE_COGNITIVE_SERVICES_SCOPE;
 const DEFAULT_MCP_TIMEOUT_SECONDS = 30;
 const SYSTEM_PROMPT = "You are a concise assistant for a local playground app.";
 const MAX_AGENT_INSTRUCTION_LENGTH = 4000;
-const azureOpenAIClientsByBaseURL = new Map<string, OpenAI>();
 
 export function loader({}: Route.LoaderArgs) {
   return Response.json(
@@ -246,6 +248,7 @@ async function executeChat(
   options: ChatExecutionOptions,
   onEvent?: (event: ChatExecutionEvent) => void,
 ): Promise<string> {
+  const azureDependencies = getAzureDependencies();
   const connectedMcpServers: MCPServer[] = [];
   const toolNameByCallId = new Map<string, string>();
   let mcpRpcSequence = 0;
@@ -303,7 +306,10 @@ async function executeChat(
               return current;
             }
 
-            const created = getAzureMcpAuthorizationToken(normalizedScope);
+            const created = getAzureMcpAuthorizationToken(
+              normalizedScope,
+              azureDependencies,
+            );
             azureMcpAuthorizationTokenPromiseByScope.set(normalizedScope, created);
             return created;
           },
@@ -369,7 +375,7 @@ async function executeChat(
     emitProgress({ message: "Initializing model and agent..." });
 
     const model = new OpenAIChatCompletionsModel(
-      getAzureOpenAIClient(options.azureConfig.baseUrl),
+      getAzureOpenAIClient(options.azureConfig.baseUrl, azureDependencies),
       options.azureConfig.deploymentName,
     );
 
@@ -519,42 +525,11 @@ function extractAgentFinalOutput(finalOutput: unknown): string {
   return "";
 }
 
-function getAzureOpenAIClient(baseUrl: string): OpenAI {
-  const normalizedBaseURL = normalizeAzureOpenAIBaseURL(baseUrl);
-  if (!normalizedBaseURL) {
-    throw new Error("Azure base URL is missing.");
-  }
-
-  const existingClient = azureOpenAIClientsByBaseURL.get(normalizedBaseURL);
-  if (existingClient) {
-    return existingClient;
-  }
-
-  const credential = new DefaultAzureCredential();
-  const azureADTokenProvider = getBearerTokenProvider(
-    credential,
-    AZURE_COGNITIVE_SERVICES_SCOPE,
-  );
-
-  const client = new OpenAI({
-    baseURL: normalizedBaseURL,
-    apiKey: azureADTokenProvider,
-  });
-  azureOpenAIClientsByBaseURL.set(normalizedBaseURL, client);
-  return client;
-}
-
-function normalizeAzureOpenAIBaseURL(rawValue: string): string {
-  const trimmed = rawValue.trim().replace(/\/+$/, "");
-  if (!trimmed) {
-    return "";
-  }
-
-  if (/\/openai\/v1$/i.test(trimmed)) {
-    return `${trimmed}/`;
-  }
-
-  return `${trimmed}/openai/v1/`;
+function getAzureOpenAIClient(
+  baseUrl: string,
+  dependencies: AzureDependencies,
+) {
+  return dependencies.getAzureOpenAIClient(baseUrl);
 }
 
 function readMessage(payload: unknown): string {
@@ -1488,15 +1463,17 @@ function buildMcpHttpRequestHeaders(headers: Record<string, string>): Record<str
   return mergedHeaders;
 }
 
-async function getAzureMcpAuthorizationToken(scope: string): Promise<string> {
-  const credential = new DefaultAzureCredential();
-  const token = await credential.getToken(scope);
-  if (!token?.token) {
+async function getAzureMcpAuthorizationToken(
+  scope: string,
+  dependencies: AzureDependencies,
+): Promise<string> {
+  try {
+    return await dependencies.getAzureBearerToken(scope);
+  } catch {
     throw new Error(
       `DefaultAzureCredential failed to acquire Azure token for MCP Authorization header (scope: ${scope}). Run Azure Login and try again.`,
     );
   }
-  return token.token;
 }
 
 function buildHttpHeadersDedupeKey(headers: Record<string, string>): string {
