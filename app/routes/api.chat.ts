@@ -1,5 +1,4 @@
 import type { Route } from "./+types/api.chat";
-import { DefaultAzureCredential, getBearerTokenProvider } from "@azure/identity";
 import {
   Agent,
   MCPServerSSE,
@@ -10,8 +9,34 @@ import {
   user,
   type MCPServer,
 } from "@openai/agents";
-import { OpenAIChatCompletionsModel } from "@openai/agents-openai";
-import OpenAI from "openai";
+import { OpenAIResponsesModel } from "@openai/agents-openai";
+import {
+  getAzureDependencies,
+  normalizeAzureOpenAIBaseURL,
+} from "~/lib/azure/dependencies";
+import {
+  CHAT_MAX_AGENT_INSTRUCTION_LENGTH,
+  CHAT_MAX_MCP_SERVERS,
+  CONTEXT_WINDOW_DEFAULT,
+  CONTEXT_WINDOW_MAX,
+  CONTEXT_WINDOW_MIN,
+  DEFAULT_AGENT_INSTRUCTION,
+  ENV_KEY_PATTERN,
+  HTTP_HEADER_NAME_PATTERN,
+  MCP_AZURE_AUTH_SCOPE_MAX_LENGTH,
+  MCP_DEFAULT_AZURE_AUTH_SCOPE,
+  MCP_DEFAULT_HTTP_HEADERS,
+  MCP_DEFAULT_TIMEOUT_SECONDS,
+  MCP_HTTP_HEADERS_MAX,
+  MCP_SERVER_NAME_MAX_LENGTH,
+  MCP_STDIO_ARGS_MAX,
+  MCP_STDIO_ENV_VARS_MAX,
+  MCP_TIMEOUT_SECONDS_MAX,
+  MCP_TIMEOUT_SECONDS_MIN,
+  TEMPERATURE_MAX,
+  TEMPERATURE_MIN,
+} from "~/lib/constants";
+import type { AzureDependencies } from "~/lib/azure/dependencies";
 
 type ChatRole = "user" | "assistant";
 
@@ -125,32 +150,6 @@ type ChatStreamPayload =
       errorCode?: "azure_login_required";
     };
 
-const DEFAULT_CONTEXT_WINDOW_SIZE = 10;
-const MIN_CONTEXT_WINDOW_SIZE = 1;
-const MAX_CONTEXT_WINDOW_SIZE = 200;
-const MIN_TEMPERATURE = 0;
-const MAX_TEMPERATURE = 2;
-const MAX_MCP_SERVERS = 8;
-const MAX_MCP_SERVER_NAME_LENGTH = 80;
-const MAX_MCP_STDIO_ARGS = 64;
-const MAX_MCP_STDIO_ENV_VARS = 64;
-const MAX_MCP_HTTP_HEADERS = 64;
-const MAX_MCP_AZURE_AUTH_SCOPE_LENGTH = 512;
-const MIN_MCP_TIMEOUT_SECONDS = 1;
-const MAX_MCP_TIMEOUT_SECONDS = 600;
-const ENV_KEY_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
-const HTTP_HEADER_NAME_PATTERN = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/;
-const DEFAULT_MCP_HTTP_HEADERS: Record<string, string> = {
-  "Content-Type": "application/json",
-};
-
-const AZURE_COGNITIVE_SERVICES_SCOPE = "https://cognitiveservices.azure.com/.default";
-const DEFAULT_MCP_AZURE_AUTH_SCOPE = AZURE_COGNITIVE_SERVICES_SCOPE;
-const DEFAULT_MCP_TIMEOUT_SECONDS = 30;
-const SYSTEM_PROMPT = "You are a concise assistant for a local playground app.";
-const MAX_AGENT_INSTRUCTION_LENGTH = 4000;
-const azureOpenAIClientsByBaseURL = new Map<string, OpenAI>();
-
 export function loader({}: Route.LoaderArgs) {
   return Response.json(
     { error: "Use POST /api/chat for this endpoint." },
@@ -246,6 +245,7 @@ async function executeChat(
   options: ChatExecutionOptions,
   onEvent?: (event: ChatExecutionEvent) => void,
 ): Promise<string> {
+  const azureDependencies = getAzureDependencies();
   const connectedMcpServers: MCPServer[] = [];
   const toolNameByCallId = new Map<string, string>();
   let mcpRpcSequence = 0;
@@ -303,7 +303,10 @@ async function executeChat(
               return current;
             }
 
-            const created = getAzureMcpAuthorizationToken(normalizedScope);
+            const created = getAzureMcpAuthorizationToken(
+              normalizedScope,
+              azureDependencies,
+            );
             azureMcpAuthorizationTokenPromiseByScope.set(normalizedScope, created);
             return created;
           },
@@ -368,8 +371,8 @@ async function executeChat(
 
     emitProgress({ message: "Initializing model and agent..." });
 
-    const model = new OpenAIChatCompletionsModel(
-      getAzureOpenAIClient(options.azureConfig.baseUrl),
+    const model = new OpenAIResponsesModel(
+      getAzureOpenAIClient(options.azureConfig.baseUrl, azureDependencies),
       options.azureConfig.deploymentName,
     );
 
@@ -519,42 +522,11 @@ function extractAgentFinalOutput(finalOutput: unknown): string {
   return "";
 }
 
-function getAzureOpenAIClient(baseUrl: string): OpenAI {
-  const normalizedBaseURL = normalizeAzureOpenAIBaseURL(baseUrl);
-  if (!normalizedBaseURL) {
-    throw new Error("Azure base URL is missing.");
-  }
-
-  const existingClient = azureOpenAIClientsByBaseURL.get(normalizedBaseURL);
-  if (existingClient) {
-    return existingClient;
-  }
-
-  const credential = new DefaultAzureCredential();
-  const azureADTokenProvider = getBearerTokenProvider(
-    credential,
-    AZURE_COGNITIVE_SERVICES_SCOPE,
-  );
-
-  const client = new OpenAI({
-    baseURL: normalizedBaseURL,
-    apiKey: azureADTokenProvider,
-  });
-  azureOpenAIClientsByBaseURL.set(normalizedBaseURL, client);
-  return client;
-}
-
-function normalizeAzureOpenAIBaseURL(rawValue: string): string {
-  const trimmed = rawValue.trim().replace(/\/+$/, "");
-  if (!trimmed) {
-    return "";
-  }
-
-  if (/\/openai\/v1$/i.test(trimmed)) {
-    return `${trimmed}/`;
-  }
-
-  return `${trimmed}/openai/v1/`;
+function getAzureOpenAIClient(
+  baseUrl: string,
+  dependencies: AzureDependencies,
+) {
+  return dependencies.getAzureOpenAIClient(baseUrl);
 }
 
 function readMessage(payload: unknown): string {
@@ -598,15 +570,15 @@ function readHistory(payload: unknown, contextWindowSize: number): ClientMessage
 
 function readContextWindowSize(payload: unknown): number {
   if (!isRecord(payload)) {
-    return DEFAULT_CONTEXT_WINDOW_SIZE;
+    return CONTEXT_WINDOW_DEFAULT;
   }
 
   const value = payload.contextWindowSize;
   if (typeof value !== "number" || !Number.isSafeInteger(value)) {
-    return DEFAULT_CONTEXT_WINDOW_SIZE;
+    return CONTEXT_WINDOW_DEFAULT;
   }
 
-  return clamp(value, MIN_CONTEXT_WINDOW_SIZE, MAX_CONTEXT_WINDOW_SIZE);
+  return clamp(value, CONTEXT_WINDOW_MIN, CONTEXT_WINDOW_MAX);
 }
 
 function readReasoningEffort(payload: unknown): ReasoningEffort {
@@ -640,7 +612,7 @@ function readTemperature(payload: unknown): ParseResult<number | null> {
     };
   }
 
-  if (parsed < MIN_TEMPERATURE || parsed > MAX_TEMPERATURE) {
+  if (parsed < TEMPERATURE_MIN || parsed > TEMPERATURE_MAX) {
     return {
       ok: false,
       error: "`temperature` must be between 0 and 2, or omitted (None).",
@@ -652,20 +624,20 @@ function readTemperature(payload: unknown): ParseResult<number | null> {
 
 function readAgentInstruction(payload: unknown): string {
   if (!isRecord(payload)) {
-    return SYSTEM_PROMPT;
+    return DEFAULT_AGENT_INSTRUCTION;
   }
 
   const value = payload.agentInstruction;
   if (typeof value !== "string") {
-    return SYSTEM_PROMPT;
+    return DEFAULT_AGENT_INSTRUCTION;
   }
 
   const trimmed = value.trim();
   if (!trimmed) {
-    return SYSTEM_PROMPT;
+    return DEFAULT_AGENT_INSTRUCTION;
   }
 
-  return trimmed.slice(0, MAX_AGENT_INSTRUCTION_LENGTH);
+  return trimmed.slice(0, CHAT_MAX_AGENT_INSTRUCTION_LENGTH);
 }
 
 function readAzureConfig(payload: unknown): ParseResult<ResolvedAzureConfig> {
@@ -738,8 +710,8 @@ function readMcpServers(payload: unknown): ParseResult<ClientMcpServerConfig[]> 
     return { ok: false, error: "`mcpServers` must be an array." };
   }
 
-  if (value.length > MAX_MCP_SERVERS) {
-    return { ok: false, error: `You can add up to ${MAX_MCP_SERVERS} MCP servers.` };
+  if (value.length > CHAT_MAX_MCP_SERVERS) {
+    return { ok: false, error: `You can add up to ${CHAT_MAX_MCP_SERVERS} MCP servers.` };
   }
 
   const result: ClientMcpServerConfig[] = [];
@@ -788,12 +760,16 @@ function readMcpServers(payload: unknown): ParseResult<ClientMcpServerConfig[]> 
       }
 
       const cwd = typeof entry.cwd === "string" ? entry.cwd.trim() : "";
-      const name = (rawName || command).slice(0, MAX_MCP_SERVER_NAME_LENGTH);
+      const name = (rawName || command).slice(0, MCP_SERVER_NAME_MAX_LENGTH);
       if (!name) {
         return { ok: false, error: `mcpServers[${index}].name is required.` };
       }
 
-      const dedupeKey = `${transport}:${command.toLowerCase()}:${argsResult.value.join("\u0000")}:${cwd.toLowerCase()}`;
+      const envKey = Object.entries(envResult.value)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([key, value]) => `${key}=${value}`)
+        .join("\u0000");
+      const dedupeKey = `${transport}:${command.toLowerCase()}:${argsResult.value.join("\u0000")}:${cwd.toLowerCase()}:${envKey}`;
       if (dedupeKeys.has(dedupeKey)) {
         continue;
       }
@@ -829,7 +805,7 @@ function readMcpServers(payload: unknown): ParseResult<ClientMcpServerConfig[]> 
       };
     }
 
-    const name = (rawName || parsedUrl.hostname).slice(0, MAX_MCP_SERVER_NAME_LENGTH);
+    const name = (rawName || parsedUrl.hostname).slice(0, MCP_SERVER_NAME_MAX_LENGTH);
     if (!name) {
       return { ok: false, error: `mcpServers[${index}].name is required.` };
     }
@@ -1315,10 +1291,10 @@ function parseStdioArgs(argsValue: unknown, index: number): ParseResult<string[]
     return { ok: false, error: `mcpServers[${index}].args must be an array of strings.` };
   }
 
-  if (argsValue.length > MAX_MCP_STDIO_ARGS) {
+  if (argsValue.length > MCP_STDIO_ARGS_MAX) {
     return {
       ok: false,
-      error: `mcpServers[${index}].args can include up to ${MAX_MCP_STDIO_ARGS} entries.`,
+      error: `mcpServers[${index}].args can include up to ${MCP_STDIO_ARGS_MAX} entries.`,
     };
   }
 
@@ -1352,10 +1328,10 @@ function parseStdioEnv(
   }
 
   const entries = Object.entries(envValue);
-  if (entries.length > MAX_MCP_STDIO_ENV_VARS) {
+  if (entries.length > MCP_STDIO_ENV_VARS_MAX) {
     return {
       ok: false,
-      error: `mcpServers[${index}].env can include up to ${MAX_MCP_STDIO_ENV_VARS} entries.`,
+      error: `mcpServers[${index}].env can include up to ${MCP_STDIO_ENV_VARS_MAX} entries.`,
     };
   }
 
@@ -1389,10 +1365,10 @@ function parseHttpHeaders(
   }
 
   const entries = Object.entries(headersValue);
-  if (entries.length > MAX_MCP_HTTP_HEADERS) {
+  if (entries.length > MCP_HTTP_HEADERS_MAX) {
     return {
       ok: false,
-      error: `mcpServers[${index}].headers can include up to ${MAX_MCP_HTTP_HEADERS} entries.`,
+      error: `mcpServers[${index}].headers can include up to ${MCP_HTTP_HEADERS_MAX} entries.`,
     };
   }
 
@@ -1425,18 +1401,18 @@ function parseAzureAuthScope(
   useAzureAuth: boolean,
 ): ParseResult<string> {
   if (rawScope === undefined || rawScope === null) {
-    return { ok: true, value: DEFAULT_MCP_AZURE_AUTH_SCOPE };
+    return { ok: true, value: MCP_DEFAULT_AZURE_AUTH_SCOPE };
   }
 
   if (typeof rawScope !== "string") {
     return { ok: false, error: `mcpServers[${index}].azureAuthScope must be a string.` };
   }
 
-  const scope = rawScope.trim() || DEFAULT_MCP_AZURE_AUTH_SCOPE;
-  if (scope.length > MAX_MCP_AZURE_AUTH_SCOPE_LENGTH) {
+  const scope = rawScope.trim() || MCP_DEFAULT_AZURE_AUTH_SCOPE;
+  if (scope.length > MCP_AZURE_AUTH_SCOPE_MAX_LENGTH) {
     return {
       ok: false,
-      error: `mcpServers[${index}].azureAuthScope must be ${MAX_MCP_AZURE_AUTH_SCOPE_LENGTH} characters or fewer.`,
+      error: `mcpServers[${index}].azureAuthScope must be ${MCP_AZURE_AUTH_SCOPE_MAX_LENGTH} characters or fewer.`,
     };
   }
 
@@ -1459,17 +1435,17 @@ function parseTimeoutSeconds(
   index: number,
 ): ParseResult<number> {
   if (rawTimeout === undefined || rawTimeout === null) {
-    return { ok: true, value: DEFAULT_MCP_TIMEOUT_SECONDS };
+    return { ok: true, value: MCP_DEFAULT_TIMEOUT_SECONDS };
   }
 
   if (typeof rawTimeout !== "number" || !Number.isSafeInteger(rawTimeout)) {
     return { ok: false, error: `mcpServers[${index}].timeoutSeconds must be an integer.` };
   }
 
-  if (rawTimeout < MIN_MCP_TIMEOUT_SECONDS || rawTimeout > MAX_MCP_TIMEOUT_SECONDS) {
+  if (rawTimeout < MCP_TIMEOUT_SECONDS_MIN || rawTimeout > MCP_TIMEOUT_SECONDS_MAX) {
     return {
       ok: false,
-      error: `mcpServers[${index}].timeoutSeconds must be between ${MIN_MCP_TIMEOUT_SECONDS} and ${MAX_MCP_TIMEOUT_SECONDS}.`,
+      error: `mcpServers[${index}].timeoutSeconds must be between ${MCP_TIMEOUT_SECONDS_MIN} and ${MCP_TIMEOUT_SECONDS_MAX}.`,
     };
   }
 
@@ -1477,7 +1453,7 @@ function parseTimeoutSeconds(
 }
 
 function buildMcpHttpRequestHeaders(headers: Record<string, string>): Record<string, string> {
-  const mergedHeaders: Record<string, string> = { ...DEFAULT_MCP_HTTP_HEADERS };
+  const mergedHeaders: Record<string, string> = { ...MCP_DEFAULT_HTTP_HEADERS };
   for (const [key, value] of Object.entries(headers)) {
     if (key.toLowerCase() === "content-type") {
       continue;
@@ -1488,15 +1464,17 @@ function buildMcpHttpRequestHeaders(headers: Record<string, string>): Record<str
   return mergedHeaders;
 }
 
-async function getAzureMcpAuthorizationToken(scope: string): Promise<string> {
-  const credential = new DefaultAzureCredential();
-  const token = await credential.getToken(scope);
-  if (!token?.token) {
+async function getAzureMcpAuthorizationToken(
+  scope: string,
+  dependencies: AzureDependencies,
+): Promise<string> {
+  try {
+    return await dependencies.getAzureBearerToken(scope);
+  } catch {
     throw new Error(
       `DefaultAzureCredential failed to acquire Azure token for MCP Authorization header (scope: ${scope}). Run Azure Login and try again.`,
     );
   }
-  return token.token;
 }
 
 function buildHttpHeadersDedupeKey(headers: Record<string, string>): string {
@@ -1691,3 +1669,13 @@ function isAzureCredentialError(error: unknown): boolean {
 function readErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Unknown error.";
 }
+
+export const chatRouteTestUtils = {
+  readTemperature,
+  readMcpServers,
+  buildMcpHttpRequestHeaders,
+  normalizeMcpMetaNulls,
+  normalizeMcpInitializeNullOptionals,
+  normalizeMcpListToolsNullOptionals,
+  readProgressEventFromRunStreamEvent,
+};

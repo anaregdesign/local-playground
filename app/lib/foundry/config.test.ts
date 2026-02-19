@@ -6,7 +6,7 @@ import {
   readFoundryConfigTextFile,
   resolveFoundryConfigDirectory,
   resolveFoundryConfigFilePaths,
-} from "./foundry-config";
+} from "./config";
 
 const tempDirectories: string[] = [];
 

@@ -1,9 +1,10 @@
 import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
-
-const LEGACY_CONFIG_DIRECTORY_NAME = ".foundry_local_playground";
-const WINDOWS_CONFIG_DIRECTORY_NAME = "FoundryLocalPlayground";
+import {
+  FOUNDRY_LEGACY_CONFIG_DIRECTORY_NAME,
+  FOUNDRY_WINDOWS_CONFIG_DIRECTORY_NAME,
+} from "~/lib/constants";
 
 type ResolveFoundryConfigDirectoryOptions = {
   platform?: NodeJS.Platform;
@@ -23,7 +24,7 @@ export function resolveLegacyFoundryConfigDirectory(
   const platform = options.platform ?? process.platform;
   const homeDirectory = options.homeDirectory ?? homedir();
   const pathModule = platform === "win32" ? path.win32 : path.posix;
-  return pathModule.join(homeDirectory, LEGACY_CONFIG_DIRECTORY_NAME);
+  return pathModule.join(homeDirectory, FOUNDRY_LEGACY_CONFIG_DIRECTORY_NAME);
 }
 
 export function resolveFoundryConfigDirectory(
@@ -41,7 +42,7 @@ export function resolveFoundryConfigDirectory(
     return legacyDirectory;
   }
 
-  return path.win32.join(appDataDirectory, WINDOWS_CONFIG_DIRECTORY_NAME);
+  return path.win32.join(appDataDirectory, FOUNDRY_WINDOWS_CONFIG_DIRECTORY_NAME);
 }
 
 export function resolveFoundryConfigFilePaths(

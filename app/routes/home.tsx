@@ -1,166 +1,115 @@
 import {
-  Fragment,
   useEffect,
   useRef,
   useState,
   type CSSProperties,
-  type Dispatch,
-  type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
-  type ReactNode,
-  type SetStateAction,
 } from "react";
-import * as FluentUIComponents from "@fluentui/react-components";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { ConfigPanel } from "~/components/home/config/ConfigPanel";
+import { PlaygroundPanel } from "~/components/home/playground/PlaygroundPanel";
+import { CopyIconButton } from "~/components/home/shared/CopyIconButton";
+import type { MainViewTab, McpTransport, ReasoningEffort } from "~/components/home/shared/types";
+import {
+  CONTEXT_WINDOW_DEFAULT,
+  CONTEXT_WINDOW_MAX,
+  CONTEXT_WINDOW_MIN,
+  DEFAULT_AGENT_INSTRUCTION,
+  HOME_CHAT_INPUT_MAX_HEIGHT_PX,
+  HOME_CHAT_INPUT_MIN_HEIGHT_PX,
+  HOME_DEFAULT_MCP_TRANSPORT,
+  HOME_INITIAL_MESSAGES,
+  HOME_MAIN_SPLITTER_MIN_RIGHT_WIDTH_PX,
+  HOME_REASONING_EFFORT_OPTIONS,
+  INSTRUCTION_ALLOWED_EXTENSIONS,
+  INSTRUCTION_ENHANCE_SYSTEM_PROMPT,
+  INSTRUCTION_MAX_FILE_SIZE_BYTES,
+  INSTRUCTION_MAX_FILE_SIZE_LABEL,
+  MCP_DEFAULT_AZURE_AUTH_SCOPE,
+  MCP_DEFAULT_TIMEOUT_SECONDS,
+  MCP_TIMEOUT_SECONDS_MAX,
+  MCP_TIMEOUT_SECONDS_MIN,
+} from "~/lib/constants";
+import type {
+  AzureConnectionOption,
+  AzureSelectionPreference,
+} from "~/lib/home/azure/parsers";
+import {
+  readAzureDeploymentList,
+  readAzureProjectList,
+  readAzureSelectionFromUnknown,
+  readTenantIdFromUnknown,
+} from "~/lib/home/azure/parsers";
+import { buildMcpEntryCopyPayload, buildMcpHistoryByTurnId } from "~/lib/home/chat/history";
+import type { ChatMessage } from "~/lib/home/chat/messages";
+import { createMessage } from "~/lib/home/chat/messages";
+import type { JsonToken } from "~/lib/home/chat/json-highlighting";
+import {
+  formatJsonForDisplay,
+  isJsonCodeClassName,
+  parseJsonMessageTokens,
+  tokenizeJson,
+} from "~/lib/home/chat/json-highlighting";
+import type { ChatApiResponse, McpRpcHistoryEntry } from "~/lib/home/chat/stream";
+import {
+  appendProgressMessage,
+  readChatEventStreamPayload,
+  upsertMcpRpcHistoryEntry,
+} from "~/lib/home/chat/stream";
+import type { InstructionDiffLine, InstructionLanguage } from "~/lib/home/instruction/helpers";
+import {
+  applyInstructionUnifiedDiffPatch,
+  buildInstructionDiffLines,
+  buildInstructionEnhanceMessage,
+  buildInstructionSuggestedFileName,
+  describeInstructionLanguage,
+  detectInstructionLanguage,
+  isInstructionSaveCanceled,
+  normalizeInstructionDiffPatchResponse,
+  resolveInstructionFormatExtension,
+  resolveInstructionSourceFileName,
+  saveInstructionToClientFile,
+  validateEnhancedInstructionCompleteness,
+  validateEnhancedInstructionFormat,
+  validateInstructionLanguagePreserved,
+} from "~/lib/home/instruction/helpers";
+import { resolveMainSplitterMaxRightWidth } from "~/lib/home/layout/main-splitter";
+import {
+  parseAzureAuthScopeInput,
+  parseHttpHeadersInput,
+  parseMcpTimeoutSecondsInput,
+} from "~/lib/home/mcp/http-inputs";
+import type { McpServerConfig } from "~/lib/home/mcp/profile";
+import {
+  buildMcpServerKey,
+  formatMcpServerOption,
+  readMcpServerFromUnknown,
+  readMcpServerList,
+  serializeMcpServerForSave,
+  upsertMcpServer,
+} from "~/lib/home/mcp/profile";
+import {
+  formatKeyValueLines,
+  formatStdioArgsInput,
+  parseStdioArgsInput,
+  parseStdioEnvInput,
+} from "~/lib/home/mcp/stdio-inputs";
+import {
+  validateContextWindowInput,
+} from "~/lib/home/settings/context-window";
+import { copyTextToClipboard } from "~/lib/home/shared/clipboard";
+import { getFileExtension } from "~/lib/home/shared/files";
+import { createId } from "~/lib/home/shared/ids";
+import { clampNumber } from "~/lib/home/shared/numbers";
 import type { Route } from "./+types/home";
 
-function resolveFluentUIExports<T extends object>(moduleExports: T): T {
-  const maybeDefault = Reflect.get(moduleExports, "default");
-  if (maybeDefault && typeof maybeDefault === "object") {
-    return maybeDefault as T;
-  }
-
-  return moduleExports;
-}
-
-const FluentUI = resolveFluentUIExports(FluentUIComponents);
-const {
-  Button,
-  Checkbox,
-  Field,
-  Input,
-  MessageBar,
-  MessageBarBody,
-  MessageBarTitle,
-  Popover,
-  PopoverSurface,
-  PopoverTrigger,
-  Select,
-  SpinButton,
-  Spinner,
-  Tab,
-  TabList,
-  Textarea,
-  Tooltip,
-} = FluentUI;
-
-type ChatRole = "user" | "assistant";
-type ReasoningEffort = "none" | "low" | "medium" | "high";
-type McpTransport = "streamable_http" | "sse" | "stdio";
-type MainViewTab = "settings" | "mcp";
-
-type McpHttpServerConfig = {
-  id: string;
-  name: string;
-  transport: "streamable_http" | "sse";
-  url: string;
-  headers: Record<string, string>;
-  useAzureAuth: boolean;
-  azureAuthScope: string;
-  timeoutSeconds: number;
-};
-
-type McpStdioServerConfig = {
-  id: string;
-  name: string;
-  transport: "stdio";
-  command: string;
-  args: string[];
-  cwd?: string;
-  env: Record<string, string>;
-};
-
-type McpServerConfig = McpHttpServerConfig | McpStdioServerConfig;
-type AzureConnectionOption = {
-  id: string;
-  projectName: string;
-  baseUrl: string;
-  apiVersion: string;
-};
-
-type ParseResult<T> = { ok: true; value: T } | { ok: false; error: string };
-
-type ChatMessage = {
-  id: string;
-  role: ChatRole;
-  content: string;
-  turnId: string;
-};
-
-type JsonTokenType =
-  | "plain"
-  | "key"
-  | "string"
-  | "number"
-  | "boolean"
-  | "null"
-  | "punctuation";
-
-type JsonToken = {
-  value: string;
-  type: JsonTokenType;
-};
-
-type ChatApiResponse = {
-  message?: string;
-  error?: string;
-  errorCode?: "azure_login_required";
-};
-type SaveInstructionPromptApiResponse = {
-  fileName?: unknown;
-  savedPath?: unknown;
-  error?: string;
-};
-type InstructionLanguage = "japanese" | "english" | "mixed" | "unknown";
-type InstructionDiffLineType = "context" | "added" | "removed";
-type InstructionDiffLine = {
-  type: InstructionDiffLineType;
-  oldLineNumber: number | null;
-  newLineNumber: number | null;
-  content: string;
-};
 type InstructionEnhanceComparison = {
   original: string;
   enhanced: string;
   extension: string;
   language: InstructionLanguage;
   diffLines: InstructionDiffLine[];
-};
-type ChatStreamProgressEvent = {
-  type: "progress";
-  message?: unknown;
-  isMcp?: unknown;
-};
-type ChatStreamFinalEvent = {
-  type: "final";
-  message?: unknown;
-};
-type ChatStreamErrorEvent = {
-  type: "error";
-  error?: unknown;
-  errorCode?: unknown;
-};
-type ChatStreamMcpRpcEvent = {
-  type: "mcp_rpc";
-  record?: unknown;
-};
-type ChatStreamEvent =
-  | ChatStreamProgressEvent
-  | ChatStreamFinalEvent
-  | ChatStreamErrorEvent
-  | ChatStreamMcpRpcEvent;
-type McpRpcHistoryEntry = {
-  id: string;
-  sequence: number;
-  serverName: string;
-  method: string;
-  startedAt: string;
-  completedAt: string;
-  request: unknown;
-  response: unknown;
-  isError: boolean;
-  turnId: string;
 };
 
 type JsonHighlightStyle = "default" | "compact";
@@ -176,55 +125,17 @@ type AzureConnectionsApiResponse = {
   authRequired?: boolean;
   error?: string;
 };
-type AzureSelectionPreference = {
-  tenantId: string;
-  projectId: string;
-  deploymentName: string;
-};
 type AzureSelectionApiResponse = {
   selection?: unknown;
   error?: string;
 };
 
-type SaveMcpServerRequest = Omit<McpHttpServerConfig, "id"> | Omit<McpStdioServerConfig, "id">;
 type McpServersApiResponse = {
   profile?: unknown;
   profiles?: unknown;
   warning?: string;
   error?: string;
 };
-
-const INITIAL_MESSAGES: ChatMessage[] = [];
-const DEFAULT_CONTEXT_WINDOW_SIZE = 10;
-const MIN_CONTEXT_WINDOW_SIZE = 1;
-const MAX_CONTEXT_WINDOW_SIZE = 200;
-const DEFAULT_AGENT_INSTRUCTION = "You are a concise assistant for a local playground app.";
-const MAX_INSTRUCTION_FILE_SIZE_BYTES = 1_000_000;
-const MAX_INSTRUCTION_FILE_SIZE_LABEL = "1MB";
-const ALLOWED_INSTRUCTION_EXTENSIONS = new Set(["md", "txt", "xml", "json"]);
-const DEFAULT_INSTRUCTION_EXTENSION = "txt";
-const MAX_INSTRUCTION_DIFF_MATRIX_CELLS = 250_000;
-const ENHANCE_INSTRUCTION_SYSTEM_PROMPT = [
-  "You are an expert editor for agent system instructions.",
-  "Rewrite the provided instruction to remove contradictions and ambiguity.",
-  "Keep the original intent, constraints, and safety boundaries.",
-  "Preserve as much of the original information as possible and avoid removing details unless necessary.",
-  "Do not omit, summarize, truncate, or replace any part with placeholders.",
-  "Do not insert comments like 'omitted', '省略', 'same as original', or similar markers.",
-  "Even if the instruction is long, return the complete revised text.",
-  "Preserve the language and file-format style requested by the user.",
-  "Return only the revised instruction text with no explanations.",
-].join(" ");
-const DEFAULT_MCP_TRANSPORT: McpTransport = "streamable_http";
-const DEFAULT_MCP_AZURE_AUTH_SCOPE = "https://cognitiveservices.azure.com/.default";
-const DEFAULT_MCP_TIMEOUT_SECONDS = 30;
-const MIN_MCP_TIMEOUT_SECONDS = 1;
-const MAX_MCP_TIMEOUT_SECONDS = 600;
-const MAX_MCP_HTTP_HEADERS = 64;
-const HTTP_HEADER_NAME_PATTERN = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/;
-const MAX_MCP_AZURE_AUTH_SCOPE_LENGTH = 512;
-const CHAT_INPUT_MIN_HEIGHT_PX = 44;
-const CHAT_INPUT_MAX_HEIGHT_PX = 220;
 
 export function meta({}: Route.MetaArgs) {
   return [
@@ -236,7 +147,7 @@ export function meta({}: Route.MetaArgs) {
 export default function Home() {
   const [azureConnections, setAzureConnections] = useState<AzureConnectionOption[]>([]);
   const [azureDeployments, setAzureDeployments] = useState<string[]>([]);
-  const [messages, setMessages] = useState<ChatMessage[]>(INITIAL_MESSAGES);
+  const [messages, setMessages] = useState<ChatMessage[]>([...HOME_INITIAL_MESSAGES]);
   const [draft, setDraft] = useState("");
   const [activeMainTab, setActiveMainTab] = useState<MainViewTab>("settings");
   const [selectedAzureConnectionId, setSelectedAzureConnectionId] = useState("");
@@ -249,7 +160,6 @@ export default function Home() {
   const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffort>("none");
   const [agentInstruction, setAgentInstruction] = useState(DEFAULT_AGENT_INSTRUCTION);
   const [loadedInstructionFileName, setLoadedInstructionFileName] = useState<string | null>(null);
-  const [instructionSaveFileNameInput, setInstructionSaveFileNameInput] = useState("");
   const [instructionFileError, setInstructionFileError] = useState<string | null>(null);
   const [instructionSaveError, setInstructionSaveError] = useState<string | null>(null);
   const [instructionSaveSuccess, setInstructionSaveSuccess] = useState<string | null>(null);
@@ -271,19 +181,19 @@ export default function Home() {
   const [mcpHeadersInput, setMcpHeadersInput] = useState("");
   const [mcpUseAzureAuthInput, setMcpUseAzureAuthInput] = useState(false);
   const [mcpAzureAuthScopeInput, setMcpAzureAuthScopeInput] = useState(
-    DEFAULT_MCP_AZURE_AUTH_SCOPE,
+    MCP_DEFAULT_AZURE_AUTH_SCOPE,
   );
   const [mcpTimeoutSecondsInput, setMcpTimeoutSecondsInput] = useState(
-    String(DEFAULT_MCP_TIMEOUT_SECONDS),
+    String(MCP_DEFAULT_TIMEOUT_SECONDS),
   );
-  const [mcpTransport, setMcpTransport] = useState<McpTransport>(DEFAULT_MCP_TRANSPORT);
+  const [mcpTransport, setMcpTransport] = useState<McpTransport>(HOME_DEFAULT_MCP_TRANSPORT);
   const [mcpFormError, setMcpFormError] = useState<string | null>(null);
   const [mcpFormWarning, setMcpFormWarning] = useState<string | null>(null);
   const [savedMcpError, setSavedMcpError] = useState<string | null>(null);
   const [isLoadingSavedMcpServers, setIsLoadingSavedMcpServers] = useState(false);
   const [isSavingMcpServer, setIsSavingMcpServer] = useState(false);
   const [contextWindowInput, setContextWindowInput] = useState(
-    String(DEFAULT_CONTEXT_WINDOW_SIZE),
+    String(CONTEXT_WINDOW_DEFAULT),
   );
   const [isSending, setIsSending] = useState(false);
   const [sendProgressMessages, setSendProgressMessages] = useState<string[]>([]);
@@ -313,14 +223,27 @@ export default function Home() {
     null;
   const canClearAgentInstruction =
     agentInstruction.length > 0 ||
-    instructionSaveFileNameInput.trim().length > 0 ||
     loadedInstructionFileName !== null ||
     instructionFileError !== null;
   const canSaveAgentInstructionPrompt = agentInstruction.trim().length > 0;
   const canEnhanceAgentInstruction = agentInstruction.trim().length > 0;
+  const reasoningEffortOptions: ReasoningEffort[] = [...HOME_REASONING_EFFORT_OPTIONS];
   const mcpHistoryByTurnId = buildMcpHistoryByTurnId(mcpRpcHistory);
   const activeTurnMcpHistory = activeTurnId ? (mcpHistoryByTurnId.get(activeTurnId) ?? []) : [];
   const errorTurnMcpHistory = lastErrorTurnId ? (mcpHistoryByTurnId.get(lastErrorTurnId) ?? []) : [];
+  const savedMcpServerOptions = savedMcpServers.map((server) => ({
+    id: server.id,
+    label: formatMcpServerOption(server),
+  }));
+  const canSendMessage =
+    !isSending &&
+    !isChatLocked &&
+    !isLoadingAzureConnections &&
+    !isLoadingAzureDeployments &&
+    !!activeAzureConnection &&
+    !!selectedAzureDeploymentName.trim() &&
+    draft.trim().length > 0 &&
+    contextWindowValidation.isValid;
 
   useEffect(() => {
     endOfMessagesRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -447,10 +370,10 @@ export default function Home() {
       const layoutElement = layoutRef.current;
       if (layoutElement) {
         const rect = layoutElement.getBoundingClientRect();
-        const minRightWidth = 320;
-        const minLeftWidth = 560;
-        const maxRightWidth = Math.max(minRightWidth, rect.width - minLeftWidth);
-        setRightPaneWidth((current) => clampNumber(current, minRightWidth, maxRightWidth));
+        const maxRightWidth = resolveMainSplitterMaxRightWidth(rect.width);
+        setRightPaneWidth((current) =>
+          clampNumber(current, HOME_MAIN_SPLITTER_MIN_RIGHT_WIDTH_PX, maxRightWidth),
+        );
       }
 
     };
@@ -947,14 +870,68 @@ export default function Home() {
     }
   }
 
+  function handleDraftChange(event: React.ChangeEvent<HTMLTextAreaElement>, value: string) {
+    setDraft(value);
+    resizeChatInput(event.currentTarget);
+  }
+
   function resizeChatInput(input: HTMLTextAreaElement) {
     input.style.height = "auto";
     const boundedHeight = Math.max(
-      CHAT_INPUT_MIN_HEIGHT_PX,
-      Math.min(input.scrollHeight, CHAT_INPUT_MAX_HEIGHT_PX),
+      HOME_CHAT_INPUT_MIN_HEIGHT_PX,
+      Math.min(input.scrollHeight, HOME_CHAT_INPUT_MAX_HEIGHT_PX),
     );
     input.style.height = `${boundedHeight}px`;
-    input.style.overflowY = input.scrollHeight > CHAT_INPUT_MAX_HEIGHT_PX ? "auto" : "hidden";
+    input.style.overflowY = input.scrollHeight > HOME_CHAT_INPUT_MAX_HEIGHT_PX ? "auto" : "hidden";
+  }
+
+  function handleChatProjectChange(projectId: string) {
+    setSelectedAzureConnectionId(projectId);
+    setSelectedAzureDeploymentName("");
+    setAzureDeploymentError(null);
+    setError(null);
+  }
+
+  function handleChatDeploymentChange(nextDeploymentNameRaw: string) {
+    const nextDeploymentName = nextDeploymentNameRaw.trim();
+    setSelectedAzureDeploymentName(nextDeploymentName);
+    setError(null);
+
+    const tenantId = activeAzureTenantIdRef.current.trim();
+    const projectId = (activeAzureConnection?.id ?? "").trim();
+    if (!tenantId || !projectId || !nextDeploymentName) {
+      return;
+    }
+
+    if (!azureDeployments.includes(nextDeploymentName)) {
+      return;
+    }
+
+    void saveAzureSelectionPreference({
+      tenantId,
+      projectId,
+      deploymentName: nextDeploymentName,
+    });
+  }
+
+  function handleAgentInstructionChange(value: string) {
+    setAgentInstruction(value);
+    setInstructionSaveError(null);
+    setInstructionSaveSuccess(null);
+    setInstructionEnhanceError(null);
+    setInstructionEnhanceSuccess(null);
+    setInstructionEnhanceComparison(null);
+  }
+
+  function handleClearInstruction() {
+    setAgentInstruction("");
+    setLoadedInstructionFileName(null);
+    setInstructionFileError(null);
+    setInstructionSaveError(null);
+    setInstructionSaveSuccess(null);
+    setInstructionEnhanceError(null);
+    setInstructionEnhanceSuccess(null);
+    setInstructionEnhanceComparison(null);
   }
 
   async function handleInstructionFileChange(
@@ -969,15 +946,15 @@ export default function Home() {
     setInstructionFileError(null);
 
     const extension = getFileExtension(file.name);
-    if (!ALLOWED_INSTRUCTION_EXTENSIONS.has(extension)) {
+    if (!INSTRUCTION_ALLOWED_EXTENSIONS.has(extension)) {
       setInstructionFileError("Only .md, .txt, .xml, and .json files are supported.");
       input.value = "";
       return;
     }
 
-    if (file.size > MAX_INSTRUCTION_FILE_SIZE_BYTES) {
+    if (file.size > INSTRUCTION_MAX_FILE_SIZE_BYTES) {
       setInstructionFileError(
-        `Instruction file is too large. Max ${MAX_INSTRUCTION_FILE_SIZE_LABEL}.`,
+        `Instruction file is too large. Max ${INSTRUCTION_MAX_FILE_SIZE_LABEL}.`,
       );
       input.value = "";
       return;
@@ -987,7 +964,6 @@ export default function Home() {
       const text = await file.text();
       setAgentInstruction(text);
       setLoadedInstructionFileName(file.name);
-      setInstructionSaveFileNameInput(file.name);
       setInstructionSaveError(null);
       setInstructionSaveSuccess(null);
       setInstructionEnhanceError(null);
@@ -1016,37 +992,22 @@ export default function Home() {
     setIsSavingInstructionPrompt(true);
 
     try {
-      const response = await fetch("/api/instruction-prompts", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          instruction: agentInstruction,
-          fileName: instructionSaveFileNameInput,
-          sourceFileName: loadedInstructionFileName,
-        }),
-      });
-
-      const payload = (await response.json()) as SaveInstructionPromptApiResponse;
-      if (!response.ok) {
-        const errorMessage =
-          typeof payload.error === "string" && payload.error.trim()
-            ? payload.error
-            : "Failed to save instruction prompt.";
-        throw new Error(errorMessage);
-      }
-
-      const savedPath =
-        typeof payload.savedPath === "string" && payload.savedPath.trim()
-          ? payload.savedPath.trim()
-          : "";
-      if (savedPath) {
-        setInstructionSaveSuccess(`Saved to ${savedPath}`);
-      } else {
-        setInstructionSaveSuccess("Saved instruction prompt.");
-      }
+      const sourceFileName = resolveInstructionSourceFileName(loadedInstructionFileName);
+      const suggestedFileName = buildInstructionSuggestedFileName(
+        sourceFileName,
+        agentInstruction,
+      );
+      const saveResult = await saveInstructionToClientFile(agentInstruction, suggestedFileName);
+      setLoadedInstructionFileName(saveResult.fileName);
+      setInstructionSaveSuccess(
+        saveResult.mode === "picker"
+          ? `Saved as ${saveResult.fileName}`
+          : `Download started: ${saveResult.fileName}`,
+      );
     } catch (saveError) {
+      if (isInstructionSaveCanceled(saveError)) {
+        return;
+      }
       setInstructionSaveError(
         saveError instanceof Error ? saveError.message : "Failed to save instruction prompt.",
       );
@@ -1094,10 +1055,7 @@ export default function Home() {
       return;
     }
 
-    const sourceFileName = resolveInstructionSourceFileName(
-      loadedInstructionFileName,
-      instructionSaveFileNameInput,
-    );
+    const sourceFileName = resolveInstructionSourceFileName(loadedInstructionFileName);
     const instructionExtension = resolveInstructionFormatExtension(
       sourceFileName,
       currentInstruction,
@@ -1112,7 +1070,7 @@ export default function Home() {
     setIsEnhancingInstruction(true);
 
     try {
-      const response = await fetch("/api/chat", {
+      const response = await fetch("/api/instruction", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -1120,17 +1078,13 @@ export default function Home() {
         },
         body: JSON.stringify({
           message: enhanceRequestMessage,
-          history: [],
           azureConfig: {
             projectName: activeAzureConnection.projectName,
             baseUrl: activeAzureConnection.baseUrl,
             apiVersion: activeAzureConnection.apiVersion,
             deploymentName,
           },
-          reasoningEffort: "none",
-          contextWindowSize: 1,
-          agentInstruction: ENHANCE_INSTRUCTION_SYSTEM_PROMPT,
-          mcpServers: [],
+          enhanceAgentInstruction: INSTRUCTION_ENHANCE_SYSTEM_PROMPT,
         }),
       });
 
@@ -1143,15 +1097,24 @@ export default function Home() {
         throw new Error(payload.error || "Failed to enhance instruction.");
       }
 
-      const rawEnhancedInstruction =
-        typeof payload.message === "string" ? payload.message.trim() : "";
-      if (!rawEnhancedInstruction) {
-        throw new Error("Enhancement response is empty.");
+      const rawInstructionPatch =
+        typeof payload.message === "string" ? payload.message : "";
+      const normalizedInstructionPatch = normalizeInstructionDiffPatchResponse(
+        rawInstructionPatch,
+      );
+      if (!normalizedInstructionPatch) {
+        setInstructionEnhanceSuccess("No changes were suggested.");
+        return;
       }
 
-      const normalizedEnhancedInstruction = normalizeEnhancedInstructionResponse(
-        rawEnhancedInstruction,
+      const patchApplyResult = applyInstructionUnifiedDiffPatch(
+        currentInstruction,
+        normalizedInstructionPatch,
       );
+      if (!patchApplyResult.ok) {
+        throw new Error(patchApplyResult.error);
+      }
+      const normalizedEnhancedInstruction = patchApplyResult.value;
       const formatValidation = validateEnhancedInstructionFormat(
         normalizedEnhancedInstruction,
         instructionExtension,
@@ -1302,7 +1265,7 @@ export default function Home() {
         return;
       }
 
-      let azureAuthScope = DEFAULT_MCP_AZURE_AUTH_SCOPE;
+      let azureAuthScope = MCP_DEFAULT_AZURE_AUTH_SCOPE;
       if (mcpUseAzureAuthInput) {
         const scopeResult = parseAzureAuthScopeInput(mcpAzureAuthScopeInput);
         if (!scopeResult.ok) {
@@ -1379,9 +1342,9 @@ export default function Home() {
     setMcpEnvInput("");
     setMcpHeadersInput("");
     setMcpUseAzureAuthInput(false);
-    setMcpAzureAuthScopeInput(DEFAULT_MCP_AZURE_AUTH_SCOPE);
-    setMcpTimeoutSecondsInput(String(DEFAULT_MCP_TIMEOUT_SECONDS));
-    setMcpTransport(DEFAULT_MCP_TRANSPORT);
+    setMcpAzureAuthScopeInput(MCP_DEFAULT_AZURE_AUTH_SCOPE);
+    setMcpTimeoutSecondsInput(String(MCP_DEFAULT_TIMEOUT_SECONDS));
+    setMcpTransport(HOME_DEFAULT_MCP_TRANSPORT);
   }
 
   function handleLoadSavedMcpServerToForm() {
@@ -1409,8 +1372,8 @@ export default function Home() {
       setMcpUrlInput("");
       setMcpHeadersInput("");
       setMcpUseAzureAuthInput(false);
-      setMcpAzureAuthScopeInput(DEFAULT_MCP_AZURE_AUTH_SCOPE);
-      setMcpTimeoutSecondsInput(String(DEFAULT_MCP_TIMEOUT_SECONDS));
+      setMcpAzureAuthScopeInput(MCP_DEFAULT_AZURE_AUTH_SCOPE);
+      setMcpTimeoutSecondsInput(String(MCP_DEFAULT_TIMEOUT_SECONDS));
     } else {
       setMcpUrlInput(selected.url);
       setMcpHeadersInput(formatKeyValueLines(selected.headers));
@@ -1435,7 +1398,7 @@ export default function Home() {
       return;
     }
 
-    setMessages(INITIAL_MESSAGES);
+    setMessages([...HOME_INITIAL_MESSAGES]);
     setMcpRpcHistory([]);
     setDraft("");
     setError(null);
@@ -1453,14 +1416,14 @@ export default function Home() {
     }
 
     const rect = layoutElement.getBoundingClientRect();
-    const minRightWidth = 320;
-    const minLeftWidth = 560;
-    const maxRightWidth = Math.max(minRightWidth, rect.width - minLeftWidth);
+    const maxRightWidth = resolveMainSplitterMaxRightWidth(rect.width);
     setActiveResizeHandle("main");
 
     const handlePointerMove = (moveEvent: PointerEvent) => {
       const nextRightWidth = rect.right - moveEvent.clientX;
-      setRightPaneWidth(clampNumber(nextRightWidth, minRightWidth, maxRightWidth));
+      setRightPaneWidth(
+        clampNumber(nextRightWidth, HOME_MAIN_SPLITTER_MIN_RIGHT_WIDTH_PX, maxRightWidth),
+      );
     };
 
     const stopResizing = () => {
@@ -1473,37 +1436,6 @@ export default function Home() {
     window.addEventListener("pointermove", handlePointerMove);
     window.addEventListener("pointerup", stopResizing);
     window.addEventListener("pointercancel", stopResizing);
-  }
-
-  function renderUnifiedTooltipContent(title: string, lines: ReactNode[] = []) {
-    return (
-      <div className="app-tooltip-content">
-        <p className="app-tooltip-title">{title}</p>
-        {lines.map((line, index) => (
-          <p key={`${title}-${index}`} className="app-tooltip-line">
-            {line}
-          </p>
-        ))}
-      </div>
-    );
-  }
-
-  function renderUnifiedTooltip(
-    title: string,
-    lines: ReactNode[],
-    child: ReactNode,
-    className = "chat-tooltip-target",
-  ) {
-    return (
-      <Tooltip
-        relationship="description"
-        showDelay={0}
-        positioning="above-start"
-        content={renderUnifiedTooltipContent(title, lines)}
-      >
-        <div className={className}>{child}</div>
-      </Tooltip>
-    );
   }
 
   function handleChatAzureSelectorAction(target: "project" | "deployment") {
@@ -1535,109 +1467,160 @@ export default function Home() {
     }
   }
 
-  function handleChatAzureSelectorActionKeyDown(
-    event: ReactKeyboardEvent<HTMLSelectElement>,
-    target: "project" | "deployment",
-  ) {
-    if (event.key !== "Enter" && event.key !== " ") {
-      return;
-    }
+  const handleCopyMessage = (content: string) => {
+    void copyTextToClipboard(content).catch(() => {
+      setError("Failed to copy message to clipboard.");
+    });
+  };
 
-    event.preventDefault();
-    handleChatAzureSelectorAction(target);
-  }
+  const handleCopyMcpLog = (text: string) => {
+    void copyTextToClipboard(text).catch(() => {
+      setError("Failed to copy MCP log to clipboard.");
+    });
+  };
 
-  function renderChatAzureActionSelect(
-    target: "project" | "deployment",
-    label: string,
-    text: string,
-    title: string,
-  ) {
-    const elementId =
-      target === "project" ? "chat-azure-project-action" : "chat-azure-deployment-action";
+  const settingsTabProps = {
+    azureConnectionSectionProps: {
+      isAzureAuthRequired,
+      isSending,
+      isStartingAzureLogin,
+      onAzureLogin: handleAzureLogin,
+      isLoadingAzureConnections,
+      isLoadingAzureDeployments,
+      activeAzureConnection,
+      selectedAzureDeploymentName,
+      isStartingAzureLogout,
+      onAzureLogout: handleAzureLogout,
+      azureDeploymentError,
+      azureLogoutError,
+      azureConnectionError,
+    },
+    instructionSectionProps: {
+      agentInstruction,
+      instructionEnhanceComparison,
+      describeInstructionLanguage,
+      isSending,
+      isEnhancingInstruction,
+      isSavingInstructionPrompt,
+      canSaveAgentInstructionPrompt,
+      canEnhanceAgentInstruction,
+      canClearAgentInstruction,
+      loadedInstructionFileName,
+      instructionFileInputRef,
+      instructionFileError,
+      instructionSaveError,
+      instructionSaveSuccess,
+      instructionEnhanceError,
+      instructionEnhanceSuccess,
+      onAgentInstructionChange: handleAgentInstructionChange,
+      onInstructionFileChange: handleInstructionFileChange,
+      onSaveInstructionPrompt: handleSaveInstructionPrompt,
+      onEnhanceInstruction: handleEnhanceInstruction,
+      onClearInstruction: handleClearInstruction,
+      onAdoptEnhancedInstruction: handleAdoptEnhancedInstruction,
+      onAdoptOriginalInstruction: handleAdoptOriginalInstruction,
+    },
+  };
 
-    return (
-      <Select
-        id={elementId}
-        aria-label={label}
-        value=""
-        onMouseDown={(event) => {
-          event.preventDefault();
-          handleChatAzureSelectorAction(target);
-        }}
-        onClick={(event) => {
-          event.preventDefault();
-          handleChatAzureSelectorAction(target);
-        }}
-        onKeyDown={(event) => {
-          handleChatAzureSelectorActionKeyDown(event, target);
-        }}
-        disabled={isSending || isStartingAzureLogin || isStartingAzureLogout}
-        title={title}
-      >
-        <option value="">{text}</option>
-      </Select>
-    );
-  }
+  const mcpServersTabProps = {
+    selectedSavedMcpServerId,
+    savedMcpServerOptions,
+    isSending,
+    isLoadingSavedMcpServers,
+    savedMcpError,
+    onSelectedSavedMcpServerIdChange: (value: string) => {
+      setSelectedSavedMcpServerId(value);
+      setSavedMcpError(null);
+    },
+    onLoadSavedMcpServerToForm: handleLoadSavedMcpServerToForm,
+    onReloadSavedMcpServers: loadSavedMcpServers,
+    mcpNameInput,
+    onMcpNameInputChange: setMcpNameInput,
+    mcpTransport,
+    onMcpTransportChange: (value: McpTransport) => {
+      setMcpTransport(value);
+      setMcpFormError(null);
+    },
+    mcpCommandInput,
+    onMcpCommandInputChange: setMcpCommandInput,
+    mcpArgsInput,
+    onMcpArgsInputChange: setMcpArgsInput,
+    mcpCwdInput,
+    onMcpCwdInputChange: setMcpCwdInput,
+    mcpEnvInput,
+    onMcpEnvInputChange: setMcpEnvInput,
+    mcpUrlInput,
+    onMcpUrlInputChange: setMcpUrlInput,
+    mcpHeadersInput,
+    onMcpHeadersInputChange: setMcpHeadersInput,
+    mcpUseAzureAuthInput,
+    onMcpUseAzureAuthInputChange: (checked: boolean) => {
+      setMcpUseAzureAuthInput(checked);
+      if (checked && !mcpAzureAuthScopeInput.trim()) {
+        setMcpAzureAuthScopeInput(MCP_DEFAULT_AZURE_AUTH_SCOPE);
+      }
+    },
+    mcpAzureAuthScopeInput,
+    onMcpAzureAuthScopeInputChange: setMcpAzureAuthScopeInput,
+    mcpTimeoutSecondsInput,
+    onMcpTimeoutSecondsInputChange: setMcpTimeoutSecondsInput,
+    defaultMcpAzureAuthScope: MCP_DEFAULT_AZURE_AUTH_SCOPE,
+    defaultMcpTimeoutSeconds: MCP_DEFAULT_TIMEOUT_SECONDS,
+    minMcpTimeoutSeconds: MCP_TIMEOUT_SECONDS_MIN,
+    maxMcpTimeoutSeconds: MCP_TIMEOUT_SECONDS_MAX,
+    onAddMcpServer: handleAddMcpServer,
+    isSavingMcpServer,
+    mcpFormError,
+    mcpFormWarning,
+  };
 
-  function renderAddedMcpServersBubbles() {
-    if (mcpServers.length === 0) {
-      return null;
-    }
-
-    return (
-      <section className="chat-mcp-strip" aria-label="Added MCP Servers">
-        <div className="chat-mcp-bubbles">
-          {mcpServers.map((server) => (
-            <div key={server.id} className="chat-mcp-bubble-item">
-              <Tooltip
-                relationship="description"
-                showDelay={0}
-                positioning="above-start"
-                content={renderUnifiedTooltipContent(
-                  server.name,
-                  server.transport === "stdio"
-                    ? [
-                        "Transport: stdio",
-                        `Command: ${server.command}${server.args.length > 0 ? ` ${server.args.join(" ")}` : ""}`,
-                        ...(server.cwd ? [`Working directory: ${server.cwd}`] : []),
-                        `Environment variables: ${Object.keys(server.env).length}`,
-                      ]
-                    : [
-                        `Transport: ${server.transport}`,
-                        `URL: ${server.url}`,
-                        `Custom headers: ${Object.keys(server.headers).length}`,
-                        `Timeout: ${server.timeoutSeconds}s`,
-                        `Azure auth: ${
-                          server.useAzureAuth ? `enabled (${server.azureAuthScope})` : "disabled"
-                        }`,
-                      ],
-                )}
-              >
-                <span className="chat-tooltip-target">
-                  <span className="chat-mcp-bubble">
-                    <span className="chat-mcp-bubble-name">{server.name}</span>
-                    <Button
-                      type="button"
-                      appearance="subtle"
-                      size="small"
-                      className="chat-mcp-bubble-remove"
-                      onClick={() => handleRemoveMcpServer(server.id)}
-                      disabled={isSending}
-                      aria-label={`Remove MCP server ${server.name}`}
-                      title={`Remove ${server.name}`}
-                    >
-                      ×
-                    </Button>
-                  </span>
-                </span>
-              </Tooltip>
-            </div>
-          ))}
-        </div>
-      </section>
-    );
-  }
+  const playgroundPanelProps = {
+    messages,
+    mcpHistoryByTurnId,
+    isSending,
+    onResetThread: handleResetThread,
+    renderMessageContent,
+    renderTurnMcpLog,
+    onCopyMessage: handleCopyMessage,
+    onCopyMcpLog: handleCopyMcpLog,
+    sendProgressMessages,
+    activeTurnMcpHistory,
+    errorTurnMcpHistory,
+    endOfMessagesRef,
+    error,
+    azureLoginError,
+    onSubmit: handleSubmit,
+    chatInputRef,
+    draft,
+    onDraftChange: handleDraftChange,
+    onInputKeyDown: handleInputKeyDown,
+    onCompositionStart: () => setIsComposing(true),
+    onCompositionEnd: () => setIsComposing(false),
+    isChatLocked,
+    isLoadingAzureConnections,
+    isLoadingAzureDeployments,
+    isAzureAuthRequired,
+    isStartingAzureLogin,
+    isStartingAzureLogout,
+    onChatAzureSelectorAction: handleChatAzureSelectorAction,
+    azureConnections,
+    activeAzureConnectionId: activeAzureConnection?.id ?? "",
+    onProjectChange: handleChatProjectChange,
+    selectedAzureDeploymentName,
+    azureDeployments,
+    onDeploymentChange: handleChatDeploymentChange,
+    reasoningEffort,
+    reasoningEffortOptions,
+    onReasoningEffortChange: setReasoningEffort,
+    contextWindowValidation,
+    contextWindowInput,
+    onContextWindowInputChange: setContextWindowInput,
+    minContextWindowSize: CONTEXT_WINDOW_MIN,
+    maxContextWindowSize: CONTEXT_WINDOW_MAX,
+    canSendMessage,
+    mcpServers,
+    onRemoveMcpServer: handleRemoveMcpServer,
+  };
 
   return (
     <main className="chat-page">
@@ -1650,371 +1633,7 @@ export default function Home() {
           } as CSSProperties
         }
       >
-        <section className="chat-shell main-panel" aria-label="Playground">
-          <header className="chat-header">
-            <div className="chat-header-row">
-              <div className="chat-header-main">
-                <div className="chat-header-title">
-                  <img
-                    className="chat-header-symbol"
-                    src="/foundry-symbol.svg"
-                    alt=""
-                    aria-hidden="true"
-                  />
-                  <h1>Local Playground</h1>
-                </div>
-              </div>
-              <Button
-                type="button"
-                appearance="secondary"
-                size="small"
-                className="chat-reset-btn"
-                onClick={handleResetThread}
-                disabled={isSending}
-                title="Clear all messages in the current thread."
-              >
-                🧹 Reset Thread
-              </Button>
-            </div>
-          </header>
-
-          <div className="chat-log" aria-live="polite">
-            {messages.map((message) => {
-              const turnMcpHistory = mcpHistoryByTurnId.get(message.turnId) ?? [];
-              const shouldRenderTurnMcpLog =
-                message.role === "assistant" && turnMcpHistory.length > 0;
-
-              return (
-                <Fragment key={message.id}>
-                  <article
-                    className={`message-row ${message.role === "user" ? "user" : "assistant"}`}
-                  >
-                    <div className="message-content">
-                      {renderMessageContent(message)}
-                    </div>
-                    <Button
-                      type="button"
-                      appearance="transparent"
-                      size="small"
-                      className="copy-symbol-btn message-copy-btn"
-                      aria-label="Copy message"
-                      title="Copy this message."
-                      onClick={() => {
-                        void copyTextToClipboard(message.content).catch(() => {
-                          setError("Failed to copy message to clipboard.");
-                        });
-                      }}
-                    >
-                      ⎘
-                    </Button>
-                  </article>
-                  {shouldRenderTurnMcpLog ? (
-                    <article className="mcp-turn-log-row">
-                      {renderTurnMcpLog(turnMcpHistory, false, (text) => {
-                        void copyTextToClipboard(text).catch(() => {
-                          setError("Failed to copy MCP log to clipboard.");
-                        });
-                      })}
-                    </article>
-                  ) : null}
-                </Fragment>
-              );
-            })}
-
-            {isSending ? (
-              <article className="message-row assistant progress-row">
-                <div className="typing-progress" role="status" aria-live="polite">
-                  {sendProgressMessages.length > 0 ? (
-                    <ul className="typing-progress-list">
-                      {sendProgressMessages.map((status, index) => (
-                        <li
-                          key={`${index}-${status}`}
-                          className={index === sendProgressMessages.length - 1 ? "active" : ""}
-                        >
-                          {status}
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <p className="typing">Thinking...</p>
-                  )}
-                </div>
-              </article>
-            ) : null}
-            {isSending && activeTurnMcpHistory.length > 0 ? (
-              <article className="mcp-turn-log-row">
-                {renderTurnMcpLog(
-                  activeTurnMcpHistory,
-                  true,
-                  (text) => {
-                    void copyTextToClipboard(text).catch(() => {
-                      setError("Failed to copy MCP log to clipboard.");
-                    });
-                  },
-                )}
-              </article>
-            ) : null}
-            {!isSending && errorTurnMcpHistory.length > 0 ? (
-              <article className="mcp-turn-log-row">
-                {renderTurnMcpLog(errorTurnMcpHistory, false, (text) => {
-                  void copyTextToClipboard(text).catch(() => {
-                    setError("Failed to copy MCP log to clipboard.");
-                  });
-                })}
-              </article>
-            ) : null}
-            <div ref={endOfMessagesRef} />
-          </div>
-
-          <footer className="chat-footer">
-            {error ? (
-              <div className="chat-error-stack">
-                <MessageBar intent="error">
-                  <MessageBarBody>
-                    <MessageBarTitle>Request failed</MessageBarTitle>
-                    {error}
-                  </MessageBarBody>
-                </MessageBar>
-                {azureLoginError ? (
-                  <MessageBar intent="error">
-                    <MessageBarBody>{azureLoginError}</MessageBarBody>
-                  </MessageBar>
-                ) : null}
-              </div>
-            ) : null}
-            <form className="chat-form" onSubmit={handleSubmit}>
-              <label className="sr-only" htmlFor="chat-input">
-                Message
-              </label>
-              <div className="chat-composer">
-                <Textarea
-                  id="chat-input"
-                  name="message"
-                  rows={2}
-                  resize="none"
-                  ref={chatInputRef}
-                  className="chat-composer-input"
-                  placeholder="Type a message..."
-                  title="Message input. Enter sends, Shift+Enter inserts a new line."
-                  value={draft}
-                  onChange={(event, data) => {
-                    setDraft(data.value);
-                    resizeChatInput(event.currentTarget);
-                  }}
-                  onKeyDown={handleInputKeyDown}
-                  onCompositionStart={() => setIsComposing(true)}
-                  onCompositionEnd={() => setIsComposing(false)}
-                  disabled={isSending || isChatLocked}
-                />
-                <div className="chat-composer-actions">
-                  <div className="chat-quick-controls">
-                    {renderUnifiedTooltip(
-                      "Project",
-                      [
-                        isLoadingAzureConnections
-                          ? "Loading project names from Azure..."
-                          : isAzureAuthRequired
-                            ? "Click the selector to start Azure login."
-                            : azureConnections.length === 0
-                              ? "No projects loaded. Click the selector to reload."
-                              : "Used for this chat request.",
-                      ],
-                      <div className="chat-quick-control">
-                        {isLoadingAzureConnections ? (
-                          <span
-                            className="chat-control-loader chat-control-loader-project"
-                            role="status"
-                            aria-live="polite"
-                          >
-                            <Spinner size="tiny" />
-                            Loading projects...
-                          </span>
-                        ) : isAzureAuthRequired || azureConnections.length === 0 ? (
-                          renderChatAzureActionSelect(
-                            "project",
-                            "Project",
-                            isAzureAuthRequired ? "Project" : "Reload projects",
-                            isAzureAuthRequired
-                              ? "Click to sign in with Azure and load projects."
-                              : "Click to reload Azure projects.",
-                          )
-                        ) : (
-                          <Select
-                            id="chat-azure-project"
-                            aria-label="Project"
-                            title="Azure project used for this chat."
-                            value={activeAzureConnection?.id ?? ""}
-                            onChange={(event) => {
-                              setSelectedAzureConnectionId(event.target.value);
-                              setSelectedAzureDeploymentName("");
-                              setAzureDeploymentError(null);
-                              setError(null);
-                            }}
-                            disabled={isSending}
-                          >
-                            <optgroup label="Project name">
-                              {azureConnections.map((connection) => (
-                                <option key={connection.id} value={connection.id}>
-                                  {connection.projectName}
-                                </option>
-                              ))}
-                            </optgroup>
-                          </Select>
-                        )}
-                      </div>,
-                    )}
-                    {renderUnifiedTooltip(
-                      "Deployment",
-                      [
-                        isLoadingAzureConnections || isLoadingAzureDeployments
-                          ? "Loading deployment names for the selected project..."
-                          : isAzureAuthRequired
-                            ? "Click the selector to start Azure login."
-                            : !activeAzureConnection || azureDeployments.length === 0
-                              ? "No deployments loaded. Click the selector to reload."
-                              : "Used to run the model.",
-                      ],
-                      <div className="chat-quick-control">
-                        {isLoadingAzureConnections || isLoadingAzureDeployments ? (
-                          <span
-                            className="chat-control-loader chat-control-loader-deployment"
-                            role="status"
-                            aria-live="polite"
-                          >
-                            <Spinner size="tiny" />
-                            Loading deployments...
-                          </span>
-                        ) : isAzureAuthRequired || !activeAzureConnection || azureDeployments.length === 0 ? (
-                          renderChatAzureActionSelect(
-                            "deployment",
-                            "Deployment",
-                            isAzureAuthRequired ? "Deployment" : "Reload deployments",
-                            isAzureAuthRequired
-                              ? "Click to sign in with Azure and load deployments."
-                              : "Click to reload deployments for the selected project.",
-                          )
-                        ) : (
-                          <Select
-                            id="chat-azure-deployment"
-                            aria-label="Deployment"
-                            title="Azure deployment used to run the model."
-                            value={selectedAzureDeploymentName}
-                            onChange={(event) => {
-                              const nextDeploymentName = event.target.value.trim();
-                              setSelectedAzureDeploymentName(nextDeploymentName);
-                              setError(null);
-
-                              const tenantId = activeAzureTenantIdRef.current.trim();
-                              const projectId = (activeAzureConnection?.id ?? "").trim();
-                              if (!tenantId || !projectId || !nextDeploymentName) {
-                                return;
-                              }
-
-                              if (!azureDeployments.includes(nextDeploymentName)) {
-                                return;
-                              }
-
-                              void saveAzureSelectionPreference({
-                                tenantId,
-                                projectId,
-                                deploymentName: nextDeploymentName,
-                              });
-                            }}
-                            disabled={isSending}
-                          >
-                            <optgroup label="Deployment name">
-                              {azureDeployments.map((deployment) => (
-                                <option key={deployment} value={deployment}>
-                                  {deployment}
-                                </option>
-                              ))}
-                            </optgroup>
-                          </Select>
-                        )}
-                      </div>,
-                    )}
-                    {renderUnifiedTooltip(
-                      "Reasoning Effort",
-                      ["Controls how much internal reasoning the model uses."],
-                      <div className="chat-quick-control">
-                        <Select
-                          id="chat-reasoning-effort"
-                          aria-label="Reasoning Effort"
-                          title="Reasoning effort level for the model."
-                          value={reasoningEffort}
-                          onChange={(event) => setReasoningEffort(event.target.value as ReasoningEffort)}
-                          disabled={isSending}
-                        >
-                          <optgroup label="Reasoning effort">
-                            {REASONING_EFFORT_OPTIONS.map((option) => (
-                              <option key={option} value={option}>
-                                {option}
-                              </option>
-                            ))}
-                          </optgroup>
-                        </Select>
-                      </div>,
-                    )}
-                    {renderUnifiedTooltip(
-                      "Context Window",
-                      ["Number of recent messages included in the request."],
-                      <div className="chat-quick-control chat-quick-control-context">
-                        <SpinButton
-                          id="chat-context-window-size"
-                          aria-label="Context Window"
-                          title="Number of recent messages included in the request."
-                          min={MIN_CONTEXT_WINDOW_SIZE}
-                          max={MAX_CONTEXT_WINDOW_SIZE}
-                          step={1}
-                          value={contextWindowValidation.value}
-                          displayValue={contextWindowInput}
-                          onChange={(_, data) => {
-                            if (typeof data.displayValue === "string") {
-                              setContextWindowInput(data.displayValue);
-                              return;
-                            }
-                            if (typeof data.value === "number" && Number.isFinite(data.value)) {
-                              setContextWindowInput(String(Math.trunc(data.value)));
-                              return;
-                            }
-                            setContextWindowInput("");
-                          }}
-                          disabled={isSending}
-                          aria-invalid={!contextWindowValidation.isValid}
-                        />
-                      </div>,
-                    )}
-                  </div>
-                  {renderUnifiedTooltip(
-                    "Send",
-                    ["Send current message."],
-                    <Button
-                      type="submit"
-                      appearance="subtle"
-                      className="chat-send-btn"
-                      aria-label="Send message"
-                      title="Send current message."
-                      disabled={
-                        isSending ||
-                        isChatLocked ||
-                        isLoadingAzureConnections ||
-                        isLoadingAzureDeployments ||
-                        !activeAzureConnection ||
-                        !selectedAzureDeploymentName.trim() ||
-                        draft.trim().length === 0 ||
-                        !contextWindowValidation.isValid
-                      }
-                    >
-                      ↑
-                    </Button>,
-                    "chat-tooltip-target chat-send-tooltip-target",
-                  )}
-                </div>
-              </div>
-            </form>
-            {renderAddedMcpServersBubbles()}
-          </footer>
-        </section>
+        <PlaygroundPanel {...playgroundPanelProps} />
 
         <div
           className={`layout-splitter main-splitter ${
@@ -2027,883 +1646,16 @@ export default function Home() {
           onPointerDown={handleMainSplitterPointerDown}
         />
 
-        <aside className="side-shell main-panel" aria-label="Configuration panels">
-          <div className="side-shell-header">
-            <TabList
-              className="main-tabs"
-              aria-label="Side panels"
-              appearance="subtle"
-              size="small"
-              title="Switch side panel content."
-              selectedValue={activeMainTab}
-              onTabSelect={(_, data) => {
-                const nextTab = String(data.value);
-                if (nextTab === "settings" || nextTab === "mcp") {
-                  setActiveMainTab(nextTab);
-                }
-              }}
-            >
-              {MAIN_VIEW_TAB_OPTIONS.map((tab) => (
-                <Tab
-                  key={tab.id}
-                  value={tab.id}
-                  id={`tab-${tab.id}`}
-                  aria-controls={`panel-${tab.id}`}
-                  className="main-tab-btn"
-                  title={tab.id === "settings" ? "Open Settings panel." : "Open MCP Servers panel."}
-                >
-                  {tab.label}
-                </Tab>
-              ))}
-            </TabList>
-            {isChatLocked ? (
-              <MessageBar intent="warning" className="tab-guidance-bar">
-                <MessageBarBody>
-                  🔒 Playground is locked. Open Settings and sign in to Azure.
-                </MessageBarBody>
-              </MessageBar>
-            ) : null}
-          </div>
-          <div className="side-shell-body">
-            <div className="side-top-panel">
-            <section
-              className="settings-shell"
-              aria-label="Playground settings"
-              id="panel-settings"
-              role="tabpanel"
-              aria-labelledby="tab-settings"
-              hidden={activeMainTab !== "settings"}
-            >
-          <div className="settings-content">
-            <section className="setting-group setting-group-azure-connection">
-              <div className="setting-group-header">
-                <h3>Azure Connection 🔐</h3>
-                <p>Sign in/out for Playground access.</p>
-              </div>
-              {isAzureAuthRequired ? (
-                <Button
-                  type="button"
-                  appearance="primary"
-                  className="azure-login-btn"
-                  title="Start Azure login in your browser."
-                  onClick={() => {
-                    void handleAzureLogin();
-                  }}
-                  disabled={isSending || isStartingAzureLogin}
-                >
-                  {isStartingAzureLogin ? "🔐 Starting Azure Login..." : "🔐 Azure Login"}
-                </Button>
-              ) : (
-                <>
-                  {isLoadingAzureConnections || isLoadingAzureDeployments ? (
-                    <p className="azure-loading-notice" role="status" aria-live="polite">
-                      <Spinner size="tiny" />
-                      {isLoadingAzureConnections
-                        ? "Loading projects from Azure..."
-                        : "Loading deployments for the selected project..."}
-                    </p>
-                  ) : null}
-                  {activeAzureConnection ? (
-                    <dl className="azure-connection-summary" aria-label="Active Azure connection details">
-                      <div className="azure-connection-summary-row">
-                        <dt>Project</dt>
-                        <dd>{activeAzureConnection.projectName}</dd>
-                      </div>
-                      <div className="azure-connection-summary-row">
-                        <dt>Deployment</dt>
-                        <dd>{selectedAzureDeploymentName || "Not selected"}</dd>
-                      </div>
-                      <div className="azure-connection-summary-row">
-                        <dt>Endpoint</dt>
-                        <dd>{activeAzureConnection.baseUrl}</dd>
-                      </div>
-                      <div className="azure-connection-summary-row">
-                        <dt>API version</dt>
-                        <dd>{activeAzureConnection.apiVersion}</dd>
-                      </div>
-                    </dl>
-                  ) : (
-                    <p className="field-hint">No active Azure project.</p>
-                  )}
-                  <div className="azure-connection-actions">
-                    <Button
-                      type="button"
-                      appearance="outline"
-                      className="azure-logout-btn"
-                      title="Sign out from Azure for this app."
-                      onClick={() => {
-                        void handleAzureLogout();
-                      }}
-                      disabled={isSending || isLoadingAzureConnections || isStartingAzureLogout}
-                    >
-                      {isStartingAzureLogout ? "🚪 Logging Out..." : "🚪 Logout"}
-                    </Button>
-                  </div>
-                  {azureDeploymentError ? (
-                    <MessageBar intent="error" className="setting-message-bar">
-                      <MessageBarBody>{azureDeploymentError}</MessageBarBody>
-                    </MessageBar>
-                  ) : null}
-                  {azureLogoutError ? (
-                    <MessageBar intent="error" className="setting-message-bar">
-                      <MessageBarBody>{azureLogoutError}</MessageBarBody>
-                    </MessageBar>
-                  ) : null}
-                  {azureConnectionError ? (
-                    <MessageBar intent="error" className="setting-message-bar">
-                      <MessageBarBody>{azureConnectionError}</MessageBarBody>
-                    </MessageBar>
-                  ) : null}
-                </>
-              )}
-            </section>
-
-            <section className="setting-group setting-group-agent-instruction">
-              <div className="setting-group-header">
-                <h3>Agent Instruction 🧾</h3>
-                <p>System instruction used for the agent.</p>
-              </div>
-              {instructionEnhanceComparison ? (
-                <section className="instruction-diff-panel" aria-label="Instruction diff review">
-                  <div className="instruction-diff-header">
-                    <p className="instruction-diff-title">🔀 Enhanced Diff Preview</p>
-                    <div className="instruction-diff-actions">
-                      <Button
-                        type="button"
-                        appearance="primary"
-                        size="small"
-                        title="Use the enhanced instruction text."
-                        onClick={handleAdoptEnhancedInstruction}
-                        disabled={isSending || isEnhancingInstruction}
-                      >
-                        ✅ Adopt Enhanced
-                      </Button>
-                      <Button
-                        type="button"
-                        appearance="secondary"
-                        size="small"
-                        title="Keep the original instruction text."
-                        onClick={handleAdoptOriginalInstruction}
-                        disabled={isSending || isEnhancingInstruction}
-                      >
-                        ↩️ Keep Original
-                      </Button>
-                    </div>
-                  </div>
-                  <p className="instruction-diff-meta">
-                    Format: .{instructionEnhanceComparison.extension} | Language:{" "}
-                    {describeInstructionLanguage(instructionEnhanceComparison.language)}
-                  </p>
-                  <div className="instruction-diff-table" role="table" aria-label="Instruction diff">
-                    {instructionEnhanceComparison.diffLines.map((line, index) => (
-                      <div
-                        key={`instruction-diff-${index}-${line.oldLineNumber ?? "n"}-${line.newLineNumber ?? "n"}`}
-                        className={`instruction-diff-row ${line.type}`}
-                        role="row"
-                      >
-                        <span className="instruction-diff-line-number old" aria-hidden="true">
-                          {line.oldLineNumber ?? ""}
-                        </span>
-                        <span className="instruction-diff-line-number new" aria-hidden="true">
-                          {line.newLineNumber ?? ""}
-                        </span>
-                        <span className={`instruction-diff-sign ${line.type}`} aria-hidden="true">
-                          {line.type === "added" ? "+" : line.type === "removed" ? "-" : " "}
-                        </span>
-                        <code className="instruction-diff-content">
-                          {line.content.length > 0 ? line.content : " "}
-                        </code>
-                      </div>
-                    ))}
-                  </div>
-                </section>
-              ) : (
-                <>
-                  <Textarea
-                    id="agent-instruction"
-                    rows={6}
-                    title="System instruction text sent to the agent."
-                    value={agentInstruction}
-                    onChange={(_, data) => {
-                      setAgentInstruction(data.value);
-                      setInstructionSaveError(null);
-                      setInstructionSaveSuccess(null);
-                      setInstructionEnhanceError(null);
-                      setInstructionEnhanceSuccess(null);
-                      setInstructionEnhanceComparison(null);
-                    }}
-                    disabled={isSending || isEnhancingInstruction}
-                    placeholder="System instruction for the agent"
-                  />
-                  {isEnhancingInstruction ? (
-                    <div className="instruction-enhancing-state" role="status" aria-live="polite">
-                      <div className="instruction-enhancing-head">
-                        <Spinner size="tiny" />
-                        <span>Enhancing instruction with the selected Azure model...</span>
-                      </div>
-                      <div className="instruction-enhancing-track" aria-hidden="true">
-                        <span className="instruction-enhancing-bar" />
-                      </div>
-                    </div>
-                  ) : null}
-                  <Field label="📝 Save file name (optional)">
-                    <Input
-                      id="agent-instruction-save-file-name"
-                      placeholder="instruction.md"
-                      title="Optional file name used when saving the instruction."
-                      value={instructionSaveFileNameInput}
-                      onChange={(_, data) => {
-                        setInstructionSaveFileNameInput(data.value);
-                        setInstructionSaveError(null);
-                        setInstructionSaveSuccess(null);
-                        setInstructionEnhanceError(null);
-                        setInstructionEnhanceSuccess(null);
-                      }}
-                      disabled={isSending || isSavingInstructionPrompt || isEnhancingInstruction}
-                    />
-                  </Field>
-                  <div className="file-picker-row">
-                    <input
-                      id="agent-instruction-file"
-                      ref={instructionFileInputRef}
-                      className="file-input-hidden"
-                      type="file"
-                      accept=".md,.txt,.xml,.json,text/plain,text/markdown,application/json,application/xml,text/xml"
-                      onChange={(event) => {
-                        void handleInstructionFileChange(event);
-                      }}
-                      disabled={isSending || isEnhancingInstruction}
-                    />
-                    <Button
-                      type="button"
-                      appearance="secondary"
-                      size="small"
-                      title="Load instruction content from a local file."
-                      onClick={() => instructionFileInputRef.current?.click()}
-                      disabled={isSending || isEnhancingInstruction}
-                    >
-                      📂 Load File
-                    </Button>
-                    <Button
-                      type="button"
-                      appearance="secondary"
-                      size="small"
-                      title="Save current instruction to the prompt directory."
-                      onClick={() => {
-                        void handleSaveInstructionPrompt();
-                      }}
-                      disabled={
-                        isSending ||
-                        isSavingInstructionPrompt ||
-                        isEnhancingInstruction ||
-                        !canSaveAgentInstructionPrompt
-                      }
-                    >
-                      {isSavingInstructionPrompt ? "💾 Saving..." : "💾 Save"}
-                    </Button>
-                    <Button
-                      type="button"
-                      appearance="primary"
-                      size="small"
-                      title="Enhance the instruction using the selected Azure model."
-                      onClick={() => {
-                        void handleEnhanceInstruction();
-                      }}
-                      disabled={isSending || isEnhancingInstruction || !canEnhanceAgentInstruction}
-                    >
-                      {isEnhancingInstruction ? "✨ Enhancing..." : "✨ Enhance"}
-                    </Button>
-                    <Button
-                      type="button"
-                      appearance="secondary"
-                      size="small"
-                      title="Clear instruction text and related form values."
-                      onClick={() => {
-                        setAgentInstruction("");
-                        setInstructionSaveFileNameInput("");
-                        setLoadedInstructionFileName(null);
-                        setInstructionFileError(null);
-                        setInstructionSaveError(null);
-                        setInstructionSaveSuccess(null);
-                        setInstructionEnhanceError(null);
-                        setInstructionEnhanceSuccess(null);
-                        setInstructionEnhanceComparison(null);
-                      }}
-                      disabled={isSending || isEnhancingInstruction || !canClearAgentInstruction}
-                    >
-                      🧹 Clear
-                    </Button>
-                    <span className="file-picker-name">
-                      {loadedInstructionFileName ?? "No file loaded"}
-                    </span>
-                  </div>
-                  <p className="field-hint">Supported: .md, .txt, .xml, .json (max 1MB)</p>
-                </>
-              )}
-              {instructionFileError ? (
-                <MessageBar intent="error" className="setting-message-bar">
-                  <MessageBarBody>{instructionFileError}</MessageBarBody>
-                </MessageBar>
-              ) : null}
-              {instructionSaveError ? (
-                <MessageBar intent="error" className="setting-message-bar">
-                  <MessageBarBody>{instructionSaveError}</MessageBarBody>
-                </MessageBar>
-              ) : null}
-              {instructionSaveSuccess ? (
-                <MessageBar intent="success" className="setting-message-bar">
-                  <MessageBarBody>{instructionSaveSuccess}</MessageBarBody>
-                </MessageBar>
-              ) : null}
-              {instructionEnhanceError ? (
-                <MessageBar intent="error" className="setting-message-bar">
-                  <MessageBarBody>{instructionEnhanceError}</MessageBarBody>
-                </MessageBar>
-              ) : null}
-              {instructionEnhanceSuccess ? (
-                <MessageBar intent="success" className="setting-message-bar">
-                  <MessageBarBody>{instructionEnhanceSuccess}</MessageBarBody>
-                </MessageBar>
-              ) : null}
-            </section>
-          </div>
-            </section>
-
-            <section
-              className="mcp-shell"
-              aria-label="MCP server settings"
-              id="panel-mcp"
-              role="tabpanel"
-              aria-labelledby="tab-mcp"
-              hidden={activeMainTab !== "mcp"}
-            >
-          <div className="mcp-content">
-            <section className="setting-group">
-              <div className="setting-group-header">
-                <h3>Saved Configs 💾</h3>
-              </div>
-              <Field label="💾 Saved config">
-                <Select
-                  id="mcp-saved-config"
-                  title="Choose a saved MCP server configuration."
-                  value={selectedSavedMcpServerId}
-                  onChange={(event) => {
-                    setSelectedSavedMcpServerId(event.target.value);
-                    setSavedMcpError(null);
-                  }}
-                  disabled={isSending || isLoadingSavedMcpServers || savedMcpServers.length === 0}
-                >
-                  {savedMcpServers.length === 0 ? (
-                    <option value="">No saved MCP servers</option>
-                  ) : null}
-                  {savedMcpServers.map((server) => (
-                    <option key={server.id} value={server.id}>
-                      {formatMcpServerOption(server)}
-                    </option>
-                  ))}
-                </Select>
-              </Field>
-              <div className="mcp-action-row">
-                <Button
-                  type="button"
-                  appearance="secondary"
-                  title="Load the selected saved MCP config into the form."
-                  onClick={handleLoadSavedMcpServerToForm}
-                  disabled={
-                    isSending ||
-                    isLoadingSavedMcpServers ||
-                    savedMcpServers.length === 0 ||
-                    !selectedSavedMcpServerId
-                  }
-                >
-                  📥 Load Selected
-                </Button>
-                <Button
-                  type="button"
-                  appearance="secondary"
-                  title="Reload saved MCP configs from disk."
-                  onClick={() => {
-                    void loadSavedMcpServers();
-                  }}
-                  disabled={isSending || isLoadingSavedMcpServers}
-                >
-                  {isLoadingSavedMcpServers ? "🔄 Loading..." : "🔄 Reload"}
-                </Button>
-              </div>
-              {savedMcpError ? (
-                <MessageBar intent="error" className="setting-message-bar">
-                  <MessageBarBody>{savedMcpError}</MessageBarBody>
-                </MessageBar>
-              ) : null}
-            </section>
-
-            <section className="setting-group">
-              <div className="setting-group-header">
-                <h3>Add MCP Server ➕</h3>
-              </div>
-              <Field label="🏷️ Server name (optional)">
-                <Input
-                  id="mcp-server-name"
-                  placeholder="Server name (optional)"
-                  title="Optional display name for this MCP server."
-                  value={mcpNameInput}
-                  onChange={(_, data) => setMcpNameInput(data.value)}
-                  disabled={isSending}
-                />
-              </Field>
-              <Field label="🚚 Transport">
-                <Select
-                  id="mcp-transport"
-                  title="Select MCP transport type."
-                  value={mcpTransport}
-                  onChange={(event) => {
-                    setMcpTransport(event.target.value as McpTransport);
-                    setMcpFormError(null);
-                  }}
-                  disabled={isSending}
-                >
-                  <option value="streamable_http">streamable_http</option>
-                  <option value="sse">sse</option>
-                  <option value="stdio">stdio</option>
-                </Select>
-              </Field>
-              {mcpTransport === "stdio" ? (
-                <>
-                  <Field label="⚙️ Command">
-                    <Input
-                      id="mcp-command"
-                      placeholder="Command (e.g. npx)"
-                      title="Command used to start the stdio MCP server."
-                      value={mcpCommandInput}
-                      onChange={(_, data) => setMcpCommandInput(data.value)}
-                      disabled={isSending}
-                    />
-                  </Field>
-                  <Field label="🧩 Arguments">
-                    <Input
-                      id="mcp-args"
-                      placeholder='Args (space-separated or JSON array)'
-                      title="Arguments passed to the MCP command."
-                      value={mcpArgsInput}
-                      onChange={(_, data) => setMcpArgsInput(data.value)}
-                      disabled={isSending}
-                    />
-                  </Field>
-                  <Field label="📂 Working directory (optional)">
-                    <Input
-                      id="mcp-cwd"
-                      placeholder="Working directory (optional)"
-                      title="Optional working directory for the command."
-                      value={mcpCwdInput}
-                      onChange={(_, data) => setMcpCwdInput(data.value)}
-                      disabled={isSending}
-                    />
-                  </Field>
-                  <Field label="🌿 Environment variables (optional)">
-                    <Textarea
-                      id="mcp-env"
-                      rows={3}
-                      placeholder={"Environment variables (optional)\nKEY=value"}
-                      title="Environment variables for stdio MCP (KEY=value)."
-                      value={mcpEnvInput}
-                      onChange={(_, data) => setMcpEnvInput(data.value)}
-                      disabled={isSending}
-                    />
-                  </Field>
-                </>
-              ) : (
-                <>
-                  <Field label="🔗 Endpoint URL">
-                    <Input
-                      id="mcp-url"
-                      placeholder="https://example.com/mcp"
-                      title="HTTP/SSE endpoint URL for the MCP server."
-                      value={mcpUrlInput}
-                      onChange={(_, data) => setMcpUrlInput(data.value)}
-                      disabled={isSending}
-                    />
-                  </Field>
-                  <Field label="🧾 Additional HTTP headers (optional)">
-                    <Textarea
-                      id="mcp-headers"
-                      rows={3}
-                      placeholder={"Additional HTTP headers (optional)\nAuthorization=Bearer <token>\nX-Api-Key=<key>"}
-                      title="Additional HTTP headers (one per line: Name=Value)."
-                      value={mcpHeadersInput}
-                      onChange={(_, data) => setMcpHeadersInput(data.value)}
-                      disabled={isSending}
-                    />
-                  </Field>
-                  <Field label="🔐 Azure authentication">
-                    <div className="field-with-info">
-                      <Checkbox
-                        className="field-checkbox"
-                        title="Attach Azure Bearer token from DefaultAzureCredential."
-                        checked={mcpUseAzureAuthInput}
-                        onChange={(_, data) => {
-                          const checked = data.checked === true;
-                          setMcpUseAzureAuthInput(checked);
-                          if (checked && !mcpAzureAuthScopeInput.trim()) {
-                            setMcpAzureAuthScopeInput(DEFAULT_MCP_AZURE_AUTH_SCOPE);
-                          }
-                        }}
-                        disabled={isSending}
-                        label="Use Azure Bearer token from DefaultAzureCredential"
-                      />
-                      <Popover withArrow positioning="below-end">
-                        <PopoverTrigger disableButtonEnhancement>
-                          <Button
-                            type="button"
-                            appearance="subtle"
-                            size="small"
-                            className="field-info-btn"
-                            aria-label="Show Azure authentication behavior details"
-                            title="Show Azure authentication behavior details."
-                          >
-                            ⓘ
-                          </Button>
-                        </PopoverTrigger>
-                        <PopoverSurface className="field-info-popover">
-                          <p className="field-info-title">Azure auth behavior</p>
-                          <ul className="field-info-list">
-                            <li>
-                              Applies to HTTP MCP transports (<code>streamable_http</code> and{" "}
-                              <code>sse</code>).
-                            </li>
-                            <li>
-                              <code>Content-Type: application/json</code> is always included.
-                            </li>
-                            <li>
-                              At connect time, the app calls{" "}
-                              <code>DefaultAzureCredential.getToken(scope)</code>.
-                            </li>
-                            <li>
-                              The resulting <code>Authorization: Bearer &lt;token&gt;</code> header
-                              is added after custom headers and takes precedence.
-                            </li>
-                            <li>
-                              Only <code>useAzureAuth</code> and <code>scope</code> are stored in
-                              config; token values are never persisted.
-                            </li>
-                            <li>
-                              If token acquisition fails, server connection fails and the error appears
-                              in MCP Operation Log.
-                            </li>
-                          </ul>
-                        </PopoverSurface>
-                      </Popover>
-                    </div>
-                  </Field>
-                  {mcpUseAzureAuthInput ? (
-                    <Field label="🎯 Token scope">
-                      <Input
-                        id="mcp-azure-auth-scope"
-                        placeholder={DEFAULT_MCP_AZURE_AUTH_SCOPE}
-                        title="Azure token scope used to acquire Bearer token."
-                        value={mcpAzureAuthScopeInput}
-                        onChange={(_, data) => setMcpAzureAuthScopeInput(data.value)}
-                        disabled={isSending}
-                      />
-                    </Field>
-                  ) : null}
-                  <Field label="⏱️ Timeout (seconds)">
-                    <Input
-                      id="mcp-timeout-seconds"
-                      placeholder={String(DEFAULT_MCP_TIMEOUT_SECONDS)}
-                      title="Request timeout in seconds (1-600)."
-                      value={mcpTimeoutSecondsInput}
-                      onChange={(_, data) => setMcpTimeoutSecondsInput(data.value)}
-                      disabled={isSending}
-                    />
-                  </Field>
-                  <p className="field-hint">
-                    Timeout (seconds): integer from {MIN_MCP_TIMEOUT_SECONDS} to {MAX_MCP_TIMEOUT_SECONDS}.
-                  </p>
-                  <p className="field-hint">Content-Type: application/json is always included.</p>
-                </>
-              )}
-              <Button
-                type="button"
-                appearance="primary"
-                title="Add this MCP server to the active chat session."
-                onClick={() => {
-                  void handleAddMcpServer();
-                }}
-                disabled={isSending || isSavingMcpServer}
-              >
-                ➕ Add Server
-              </Button>
-              {mcpFormError ? (
-                <MessageBar intent="error" className="setting-message-bar">
-                  <MessageBarBody>{mcpFormError}</MessageBarBody>
-                </MessageBar>
-              ) : null}
-              {mcpFormWarning ? (
-                <MessageBar intent="warning" className="setting-message-bar">
-                  <MessageBarBody>{mcpFormWarning}</MessageBarBody>
-                </MessageBar>
-              ) : null}
-            </section>
-
-          </div>
-            </section>
-            </div>
-
-          </div>
-        </aside>
+        <ConfigPanel
+          activeMainTab={activeMainTab}
+          onMainTabChange={setActiveMainTab}
+          isChatLocked={isChatLocked}
+          settingsTabProps={settingsTabProps}
+          mcpServersTabProps={mcpServersTabProps}
+        />
       </div>
     </main>
   );
-}
-
-function clampNumber(value: number, min: number, max: number): number {
-  if (Number.isNaN(value)) {
-    return min;
-  }
-  if (value < min) {
-    return min;
-  }
-  if (value > max) {
-    return max;
-  }
-  return value;
-}
-
-async function readChatEventStreamPayload(
-  response: Response,
-  handlers: {
-    onProgress: (message: string) => void;
-    onMcpRpcRecord: (entry: McpRpcHistoryEntry) => void;
-  },
-): Promise<ChatApiResponse> {
-  if (!response.body) {
-    return {
-      error: "The server returned an empty stream.",
-    };
-  }
-
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-  let finalPayload: ChatApiResponse = {};
-
-  const readChunk = (chunk: string) => {
-    buffer += chunk;
-    buffer = buffer.replace(/\r\n/g, "\n");
-
-    let separatorIndex = buffer.indexOf("\n\n");
-    while (separatorIndex >= 0) {
-      const block = buffer.slice(0, separatorIndex);
-      buffer = buffer.slice(separatorIndex + 2);
-
-      const data = parseSseDataBlock(block);
-      if (data) {
-        const event = readChatStreamEvent(data);
-        if (event) {
-          if (event.type === "progress") {
-            handlers.onProgress(event.message);
-          } else if (event.type === "mcp_rpc") {
-            handlers.onMcpRpcRecord(event.record);
-          } else if (event.type === "final") {
-            finalPayload = { message: event.message };
-          } else if (event.type === "error") {
-            finalPayload = {
-              error: event.error,
-              ...(event.errorCode ? { errorCode: event.errorCode } : {}),
-            };
-          }
-        }
-      }
-
-      separatorIndex = buffer.indexOf("\n\n");
-    }
-  };
-
-  while (true) {
-    const { value, done } = await reader.read();
-    if (done) {
-      break;
-    }
-
-    readChunk(decoder.decode(value, { stream: true }));
-  }
-
-  const tail = decoder.decode();
-  if (tail) {
-    readChunk(tail);
-  }
-
-  return finalPayload.message || finalPayload.error
-    ? finalPayload
-    : { error: "The server returned an empty stream response." };
-}
-
-export function parseSseDataBlock(block: string): string | null {
-  const lines = block.split("\n");
-  const dataLines = lines
-    .filter((line) => line.startsWith("data:"))
-    .map((line) => line.slice(5).trimStart());
-
-  if (dataLines.length === 0) {
-    return null;
-  }
-
-  return dataLines.join("\n").trim();
-}
-
-export function readChatStreamEvent(data: string): (
-  | { type: "progress"; message: string }
-  | { type: "final"; message: string }
-  | { type: "error"; error: string; errorCode?: "azure_login_required" }
-  | { type: "mcp_rpc"; record: McpRpcHistoryEntry }
-) | null {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(data);
-  } catch {
-    return null;
-  }
-
-  if (!isRecord(parsed) || typeof parsed.type !== "string") {
-    return null;
-  }
-
-  if (parsed.type === "progress") {
-    const message = typeof parsed.message === "string" ? parsed.message.trim() : "";
-    if (!message) {
-      return null;
-    }
-    return {
-      type: "progress",
-      message,
-    };
-  }
-
-  if (parsed.type === "final") {
-    const message = typeof parsed.message === "string" ? parsed.message : "";
-    if (!message) {
-      return null;
-    }
-    return {
-      type: "final",
-      message,
-    };
-  }
-
-  if (parsed.type === "error") {
-    const error = typeof parsed.error === "string" ? parsed.error : "Failed to send message.";
-    return {
-      type: "error",
-      error,
-      ...(parsed.errorCode === "azure_login_required"
-        ? { errorCode: parsed.errorCode }
-        : {}),
-    };
-  }
-
-  if (parsed.type === "mcp_rpc") {
-    const record = readMcpRpcHistoryEntryFromUnknown(parsed.record);
-    if (!record) {
-      return null;
-    }
-
-    return {
-      type: "mcp_rpc",
-      record,
-    };
-  }
-
-  return null;
-}
-
-export function readMcpRpcHistoryEntryFromUnknown(value: unknown): McpRpcHistoryEntry | null {
-  if (!isRecord(value)) {
-    return null;
-  }
-
-  const id = typeof value.id === "string" ? value.id.trim() : "";
-  const sequence = typeof value.sequence === "number" ? value.sequence : Number.NaN;
-  const serverName = typeof value.serverName === "string" ? value.serverName.trim() : "";
-  const method = typeof value.method === "string" ? value.method.trim() : "";
-  const startedAt = typeof value.startedAt === "string" ? value.startedAt.trim() : "";
-  const completedAt = typeof value.completedAt === "string" ? value.completedAt.trim() : "";
-  const isError = value.isError === true;
-
-  if (
-    !id ||
-    !Number.isSafeInteger(sequence) ||
-    sequence < 1 ||
-    !serverName ||
-    !method ||
-    !startedAt ||
-    !completedAt
-  ) {
-    return null;
-  }
-
-  return {
-    id,
-    sequence,
-    serverName,
-    method,
-    startedAt,
-    completedAt,
-    request: "request" in value ? value.request : null,
-    response: "response" in value ? value.response : null,
-    isError,
-    turnId: "",
-  };
-}
-
-export function upsertMcpRpcHistoryEntry(
-  current: McpRpcHistoryEntry[],
-  entry: McpRpcHistoryEntry,
-): McpRpcHistoryEntry[] {
-  const filtered = current.filter((existing) => existing.id !== entry.id);
-  const next = [...filtered, entry];
-  next.sort((left, right) => {
-    const timeOrder = left.startedAt.localeCompare(right.startedAt);
-    if (timeOrder !== 0) {
-      return timeOrder;
-    }
-    return left.sequence - right.sequence;
-  });
-  return next;
-}
-
-function buildMcpHistoryByTurnId(
-  entries: McpRpcHistoryEntry[],
-): Map<string, McpRpcHistoryEntry[]> {
-  const byTurnId = new Map<string, McpRpcHistoryEntry[]>();
-  for (const entry of entries) {
-    if (!entry.turnId) {
-      continue;
-    }
-
-    const current = byTurnId.get(entry.turnId) ?? [];
-    current.push(entry);
-    byTurnId.set(entry.turnId, current);
-  }
-  return byTurnId;
-}
-
-function appendProgressMessage(
-  message: string,
-  setMessages: Dispatch<SetStateAction<string[]>>,
-): void {
-  const trimmed = message.trim();
-  if (!trimmed) {
-    return;
-  }
-
-  setMessages((current) => {
-    if (current[current.length - 1] === trimmed) {
-      return current;
-    }
-
-    const next = [...current, trimmed];
-    return next.slice(-8);
-  });
 }
 
 function renderTurnMcpLog(
@@ -2915,12 +1667,9 @@ function renderTurnMcpLog(
     <details className="mcp-turn-log">
       <summary>
         <span>🧩 MCP Operation Log ({entries.length})</span>
-        <Button
-          type="button"
-          appearance="subtle"
-          size="small"
-          className="copy-symbol-btn mcp-log-copy-btn"
-          aria-label="Copy MCP operation log"
+        <CopyIconButton
+          className="mcp-log-copy-btn"
+          ariaLabel="Copy MCP operation log"
           title="Copy all MCP operation logs in this turn."
           onClick={(event) => {
             event.preventDefault();
@@ -2931,9 +1680,7 @@ function renderTurnMcpLog(
               ),
             );
           }}
-        >
-          ⎘
-        </Button>
+        />
       </summary>
       {entries.length === 0 ? (
         <p className="mcp-turn-log-empty">
@@ -2950,21 +1697,16 @@ function renderTurnMcpLog(
                 <span className={`mcp-history-state ${entry.isError ? "error" : "ok"}`}>
                   {entry.isError ? "error" : "ok"}
                 </span>
-                <Button
-                  type="button"
-                  appearance="subtle"
-                  size="small"
-                  className="copy-symbol-btn mcp-history-copy-btn"
-                  aria-label="Copy MCP operation entry"
+                <CopyIconButton
+                  className="mcp-history-copy-btn"
+                  ariaLabel="Copy MCP operation entry"
                   title="Copy this MCP operation entry."
                   onClick={(event) => {
                     event.preventDefault();
                     event.stopPropagation();
                     onCopyText(formatJsonForDisplay(buildMcpEntryCopyPayload(entry)));
                   }}
-                >
-                  ⎘
-                </Button>
+                />
               </summary>
               <div className="mcp-history-body">
                 <p className="mcp-history-time">
@@ -2974,12 +1716,9 @@ function renderTurnMcpLog(
                 </p>
                 <p className="mcp-history-label-row">
                   <span className="mcp-history-label">request</span>
-                  <Button
-                    type="button"
-                    appearance="subtle"
-                    size="small"
-                    className="copy-symbol-btn mcp-part-copy-btn"
-                    aria-label="Copy MCP request payload"
+                  <CopyIconButton
+                    className="mcp-part-copy-btn"
+                    ariaLabel="Copy MCP request payload"
                     title="Copy MCP request payload."
                     onClick={() => {
                       onCopyText(
@@ -2988,19 +1727,14 @@ function renderTurnMcpLog(
                         }),
                       );
                     }}
-                  >
-                    ⎘
-                  </Button>
+                  />
                 </p>
                 {renderHighlightedJson(entry.request, "MCP request JSON", "compact")}
                 <p className="mcp-history-label-row">
                   <span className="mcp-history-label">response</span>
-                  <Button
-                    type="button"
-                    appearance="subtle"
-                    size="small"
-                    className="copy-symbol-btn mcp-part-copy-btn"
-                    aria-label="Copy MCP response payload"
+                  <CopyIconButton
+                    className="mcp-part-copy-btn"
+                    ariaLabel="Copy MCP response payload"
                     title="Copy MCP response payload."
                     onClick={() => {
                       onCopyText(
@@ -3009,9 +1743,7 @@ function renderTurnMcpLog(
                         }),
                       );
                     }}
-                  >
-                    ⎘
-                  </Button>
+                  />
                 </p>
                 {renderHighlightedJson(entry.response, "MCP response JSON", "compact")}
               </div>
@@ -3031,1089 +1763,6 @@ function renderHighlightedJson(
   const formatted = formatJsonForDisplay(value);
   const tokens = tokenizeJson(formatted);
   return renderJsonTokens(tokens, ariaLabel, style);
-}
-
-function formatJsonForDisplay(value: unknown): string {
-  const normalizedValue = normalizeJsonStringValue(value);
-  try {
-    return JSON.stringify(normalizedValue, null, 2);
-  } catch {
-    return String(normalizedValue);
-  }
-}
-
-function normalizeJsonStringValue(value: unknown): unknown {
-  if (typeof value !== "string") {
-    return value;
-  }
-
-  const trimmed = value.trim();
-  if (!(trimmed.startsWith("{") || trimmed.startsWith("["))) {
-    return value;
-  }
-
-  try {
-    return JSON.parse(trimmed);
-  } catch {
-    return value;
-  }
-}
-
-function createMessage(role: ChatRole, content: string, turnId: string): ChatMessage {
-  const randomPart = Math.random().toString(36).slice(2);
-  return {
-    id: `${role}-${Date.now()}-${randomPart}`,
-    role,
-    content,
-    turnId,
-  };
-}
-
-const MAIN_VIEW_TAB_OPTIONS: Array<{ id: MainViewTab; label: string }> = [
-  { id: "settings", label: "⚙️ Settings" },
-  { id: "mcp", label: "🧩 MCP Servers" },
-];
-
-const REASONING_EFFORT_OPTIONS: ReasoningEffort[] = ["none", "low", "medium", "high"];
-const ENV_KEY_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
-
-export function validateContextWindowInput(input: string): {
-  isValid: boolean;
-  value: number | null;
-  message: string | null;
-} {
-  const trimmed = input.trim();
-  if (!trimmed) {
-    return {
-      isValid: false,
-      value: null,
-      message: `Enter an integer between ${MIN_CONTEXT_WINDOW_SIZE} and ${MAX_CONTEXT_WINDOW_SIZE}.`,
-    };
-  }
-  if (!/^\d+$/.test(trimmed)) {
-    return {
-      isValid: false,
-      value: null,
-      message: "Context window must be an integer.",
-    };
-  }
-
-  const parsed = Number(trimmed);
-  if (
-    !Number.isSafeInteger(parsed) ||
-    parsed < MIN_CONTEXT_WINDOW_SIZE ||
-    parsed > MAX_CONTEXT_WINDOW_SIZE
-  ) {
-    return {
-      isValid: false,
-      value: null,
-      message: `Context window must be between ${MIN_CONTEXT_WINDOW_SIZE} and ${MAX_CONTEXT_WINDOW_SIZE}.`,
-    };
-  }
-
-  return {
-    isValid: true,
-    value: parsed,
-    message: null,
-  };
-}
-
-export function readTenantIdFromUnknown(value: unknown): string {
-  return typeof value === "string" ? value.trim() : "";
-}
-
-export function readAzureSelectionFromUnknown(
-  value: unknown,
-  expectedTenantId: string,
-): AzureSelectionPreference | null {
-  if (!isRecord(value)) {
-    return null;
-  }
-
-  const tenantId = typeof value.tenantId === "string" ? value.tenantId.trim() : "";
-  const projectId = typeof value.projectId === "string" ? value.projectId.trim() : "";
-  const deploymentName = typeof value.deploymentName === "string" ? value.deploymentName.trim() : "";
-  if (!tenantId || !projectId || !deploymentName) {
-    return null;
-  }
-
-  if (expectedTenantId && tenantId !== expectedTenantId) {
-    return null;
-  }
-
-  return {
-    tenantId,
-    projectId,
-    deploymentName,
-  };
-}
-
-function readAzureProjectList(value: unknown): AzureConnectionOption[] {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-
-  const projects: AzureConnectionOption[] = [];
-  for (const entry of value) {
-    const project = readAzureProjectFromUnknown(entry);
-    if (!project) {
-      continue;
-    }
-
-    projects.push(project);
-  }
-
-  return projects;
-}
-
-function readAzureProjectFromUnknown(value: unknown): AzureConnectionOption | null {
-  if (!isRecord(value)) {
-    return null;
-  }
-
-  const id = typeof value.id === "string" ? value.id.trim() : "";
-  const projectName = typeof value.projectName === "string" ? value.projectName.trim() : "";
-  const baseUrl = typeof value.baseUrl === "string" ? value.baseUrl.trim() : "";
-  const apiVersion = typeof value.apiVersion === "string" ? value.apiVersion.trim() : "";
-
-  if (!id || !projectName || !baseUrl || !apiVersion) {
-    return null;
-  }
-
-  return {
-    id,
-    projectName,
-    baseUrl,
-    apiVersion,
-  };
-}
-
-function readAzureDeploymentList(value: unknown): string[] {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-
-  return uniqueStringsCaseInsensitive(
-    value
-      .filter((entry): entry is string => typeof entry === "string")
-      .map((entry) => entry.trim())
-      .filter(Boolean),
-  );
-}
-
-function uniqueStringsCaseInsensitive(values: string[]): string[] {
-  const seen = new Set<string>();
-  const unique: string[] = [];
-
-  for (const value of values) {
-    const key = value.toLowerCase();
-    if (seen.has(key)) {
-      continue;
-    }
-    seen.add(key);
-    unique.push(value);
-  }
-
-  return unique;
-}
-
-function buildMcpServerKey(server: McpServerConfig): string {
-  if (server.transport === "stdio") {
-    const argsKey = server.args.join("\u0000");
-    const cwdKey = (server.cwd ?? "").toLowerCase();
-    const envKey = Object.entries(server.env)
-      .sort(([left], [right]) => left.localeCompare(right))
-      .map(([key, value]) => `${key}=${value}`)
-      .join("\u0000");
-    return `stdio:${server.command.toLowerCase()}:${argsKey}:${cwdKey}:${envKey}`;
-  }
-
-  const headersKey = buildHttpHeadersKey(server.headers);
-  const authKey = server.useAzureAuth ? "azure-auth:on" : "azure-auth:off";
-  const scopeKey = server.useAzureAuth ? server.azureAuthScope.toLowerCase() : "";
-  return `${server.transport}:${server.url.toLowerCase()}:${headersKey}:${authKey}:${scopeKey}:${server.timeoutSeconds}`;
-}
-
-function parseStdioArgsInput(input: string): ParseResult<string[]> {
-  const trimmed = input.trim();
-  if (!trimmed) {
-    return { ok: true, value: [] };
-  }
-
-  if (trimmed.startsWith("[")) {
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(trimmed);
-    } catch {
-      return {
-        ok: false,
-        error: "Args must be space-separated text or a JSON string array.",
-      };
-    }
-
-    if (!Array.isArray(parsed) || !parsed.every((entry) => typeof entry === "string")) {
-      return {
-        ok: false,
-        error: "Args JSON must be an array of strings.",
-      };
-    }
-
-    return { ok: true, value: parsed.map((entry) => entry.trim()).filter(Boolean) };
-  }
-
-  return {
-    ok: true,
-    value: trimmed.split(/\s+/).filter(Boolean),
-  };
-}
-
-function parseStdioEnvInput(input: string): ParseResult<Record<string, string>> {
-  const trimmed = input.trim();
-  if (!trimmed) {
-    return { ok: true, value: {} };
-  }
-
-  const env: Record<string, string> = {};
-  const lines = input.split(/\r?\n/);
-
-  for (const [index, line] of lines.entries()) {
-    const lineTrimmed = line.trim();
-    if (!lineTrimmed) {
-      continue;
-    }
-
-    const separatorIndex = lineTrimmed.indexOf("=");
-    if (separatorIndex <= 0) {
-      return {
-        ok: false,
-        error: `ENV line ${index + 1} must use KEY=value format.`,
-      };
-    }
-
-    const key = lineTrimmed.slice(0, separatorIndex).trim();
-    const value = lineTrimmed.slice(separatorIndex + 1);
-
-    if (!ENV_KEY_PATTERN.test(key)) {
-      return {
-        ok: false,
-        error: `ENV line ${index + 1} has invalid key.`,
-      };
-    }
-
-    env[key] = value;
-  }
-
-  return { ok: true, value: env };
-}
-
-export function parseHttpHeadersInput(input: string): ParseResult<Record<string, string>> {
-  const trimmed = input.trim();
-  if (!trimmed) {
-    return { ok: true, value: {} };
-  }
-
-  const headers: Record<string, string> = {};
-  const lines = input.split(/\r?\n/);
-  let count = 0;
-
-  for (const [index, line] of lines.entries()) {
-    const lineTrimmed = line.trim();
-    if (!lineTrimmed) {
-      continue;
-    }
-
-    const separatorIndex = lineTrimmed.indexOf("=");
-    if (separatorIndex <= 0) {
-      return {
-        ok: false,
-        error: `Header line ${index + 1} must use KEY=value format.`,
-      };
-    }
-
-    const key = lineTrimmed.slice(0, separatorIndex).trim();
-    const value = lineTrimmed.slice(separatorIndex + 1).trim();
-    if (!HTTP_HEADER_NAME_PATTERN.test(key)) {
-      return {
-        ok: false,
-        error: `Header line ${index + 1} has invalid key.`,
-      };
-    }
-
-    if (key.toLowerCase() === "content-type") {
-      return {
-        ok: false,
-        error: 'Header line cannot override "Content-Type". It is fixed to "application/json".',
-      };
-    }
-
-    headers[key] = value;
-    count += 1;
-    if (count > MAX_MCP_HTTP_HEADERS) {
-      return {
-        ok: false,
-        error: `Headers can include up to ${MAX_MCP_HTTP_HEADERS} entries.`,
-      };
-    }
-  }
-
-  return { ok: true, value: headers };
-}
-
-export function parseAzureAuthScopeInput(input: string): ParseResult<string> {
-  const trimmed = input.trim();
-  const scope = trimmed || DEFAULT_MCP_AZURE_AUTH_SCOPE;
-  if (scope.length > MAX_MCP_AZURE_AUTH_SCOPE_LENGTH) {
-    return {
-      ok: false,
-      error: `Azure auth scope must be ${MAX_MCP_AZURE_AUTH_SCOPE_LENGTH} characters or fewer.`,
-    };
-  }
-
-  if (/\s/.test(scope)) {
-    return {
-      ok: false,
-      error: "Azure auth scope must not include spaces.",
-    };
-  }
-
-  return { ok: true, value: scope };
-}
-
-export function parseMcpTimeoutSecondsInput(input: string): ParseResult<number> {
-  const trimmed = input.trim();
-  if (!trimmed) {
-    return { ok: true, value: DEFAULT_MCP_TIMEOUT_SECONDS };
-  }
-
-  const parsed = Number(trimmed);
-  if (!Number.isSafeInteger(parsed)) {
-    return {
-      ok: false,
-      error: "MCP timeout must be an integer number of seconds.",
-    };
-  }
-
-  if (parsed < MIN_MCP_TIMEOUT_SECONDS || parsed > MAX_MCP_TIMEOUT_SECONDS) {
-    return {
-      ok: false,
-      error: `MCP timeout must be between ${MIN_MCP_TIMEOUT_SECONDS} and ${MAX_MCP_TIMEOUT_SECONDS} seconds.`,
-    };
-  }
-
-  return { ok: true, value: parsed };
-}
-
-function formatStdioArgsInput(args: string[]): string {
-  if (args.length === 0) {
-    return "";
-  }
-  return JSON.stringify(args);
-}
-
-function formatKeyValueLines(entries: Record<string, string>): string {
-  return Object.entries(entries)
-    .sort(([left], [right]) => left.localeCompare(right))
-    .map(([key, value]) => `${key}=${value}`)
-    .join("\n");
-}
-
-function readMcpServerList(value: unknown): McpServerConfig[] {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-
-  const servers: McpServerConfig[] = [];
-  for (const entry of value) {
-    const server = readMcpServerFromUnknown(entry);
-    if (!server) {
-      continue;
-    }
-    servers.push(server);
-  }
-
-  return servers;
-}
-
-function readMcpServerFromUnknown(value: unknown): McpServerConfig | null {
-  if (!isRecord(value)) {
-    return null;
-  }
-
-  const id = typeof value.id === "string" ? value.id.trim() : "";
-  if (!id) {
-    return null;
-  }
-
-  const name = typeof value.name === "string" ? value.name.trim() : "";
-  if (!name) {
-    return null;
-  }
-
-  const transport = value.transport;
-  if (transport === "stdio") {
-    const command = typeof value.command === "string" ? value.command.trim() : "";
-    if (!command) {
-      return null;
-    }
-
-    if (!Array.isArray(value.args) || !value.args.every((arg) => typeof arg === "string")) {
-      return null;
-    }
-
-    const envValue = value.env;
-    if (!isRecord(envValue) || !Object.values(envValue).every((entry) => typeof entry === "string")) {
-      return null;
-    }
-
-    return {
-      id,
-      name,
-      transport,
-      command,
-      args: value.args.map((arg) => arg.trim()).filter(Boolean),
-      cwd: typeof value.cwd === "string" && value.cwd.trim() ? value.cwd.trim() : undefined,
-      env: Object.fromEntries(
-        Object.entries(envValue)
-          .filter(([key, entry]) => ENV_KEY_PATTERN.test(key) && typeof entry === "string")
-          .map(([key, entry]) => [key, entry as string]),
-      ),
-    };
-  }
-
-  if (transport !== "streamable_http" && transport !== "sse") {
-    return null;
-  }
-
-  const url = typeof value.url === "string" ? value.url.trim() : "";
-  if (!url) {
-    return null;
-  }
-
-  const headers = readHttpHeadersFromUnknown(value.headers);
-  if (headers === null) {
-    return null;
-  }
-
-  return {
-    id,
-    name,
-    transport,
-    url,
-    headers,
-    useAzureAuth: value.useAzureAuth === true,
-    azureAuthScope: readAzureAuthScopeFromUnknown(value.azureAuthScope),
-    timeoutSeconds: readMcpTimeoutSecondsFromUnknown(value.timeoutSeconds),
-  };
-}
-
-function serializeMcpServerForSave(server: McpServerConfig): SaveMcpServerRequest {
-  if (server.transport === "stdio") {
-    return {
-      name: server.name,
-      transport: server.transport,
-      command: server.command,
-      args: server.args,
-      cwd: server.cwd,
-      env: server.env,
-    };
-  }
-
-  return {
-    name: server.name,
-    transport: server.transport,
-    url: server.url,
-    headers: server.headers,
-    useAzureAuth: server.useAzureAuth,
-    azureAuthScope: server.azureAuthScope,
-    timeoutSeconds: server.timeoutSeconds,
-  };
-}
-
-function upsertMcpServer(current: McpServerConfig[], profile: McpServerConfig): McpServerConfig[] {
-  const existingIndex = current.findIndex((entry) => entry.id === profile.id);
-  if (existingIndex < 0) {
-    return [...current, profile];
-  }
-
-  return current.map((entry, index) => (index === existingIndex ? profile : entry));
-}
-
-function formatMcpServerOption(server: McpServerConfig): string {
-  if (server.transport === "stdio") {
-    return `${server.name} (stdio: ${server.command})`;
-  }
-
-  const headerCount = Object.keys(server.headers).length;
-  const azureAuthLabel = server.useAzureAuth ? `, Azure auth (${server.azureAuthScope})` : "";
-  const timeoutLabel = `, timeout ${server.timeoutSeconds}s`;
-  if (headerCount > 0) {
-    return `${server.name} (${server.transport}, +${headerCount} headers${azureAuthLabel}${timeoutLabel})`;
-  }
-  return `${server.name} (${server.transport}${azureAuthLabel}${timeoutLabel})`;
-}
-
-function buildHttpHeadersKey(headers: Record<string, string>): string {
-  return Object.entries(headers)
-    .map(([key, value]) => [key.toLowerCase(), value] as const)
-    .sort(([left], [right]) => left.localeCompare(right))
-    .map(([key, value]) => `${key}=${value}`)
-    .join("\u0000");
-}
-
-function readHttpHeadersFromUnknown(value: unknown): Record<string, string> | null {
-  if (value === undefined || value === null) {
-    return {};
-  }
-
-  if (!isRecord(value)) {
-    return null;
-  }
-
-  const headers: Record<string, string> = {};
-  let count = 0;
-  for (const [key, rawValue] of Object.entries(value)) {
-    if (!HTTP_HEADER_NAME_PATTERN.test(key)) {
-      return null;
-    }
-    if (key.toLowerCase() === "content-type") {
-      continue;
-    }
-    if (typeof rawValue !== "string") {
-      return null;
-    }
-
-    headers[key] = rawValue;
-    count += 1;
-    if (count > MAX_MCP_HTTP_HEADERS) {
-      return null;
-    }
-  }
-
-  return headers;
-}
-
-function readAzureAuthScopeFromUnknown(value: unknown): string {
-  if (typeof value !== "string") {
-    return DEFAULT_MCP_AZURE_AUTH_SCOPE;
-  }
-
-  const trimmed = value.trim();
-  if (!trimmed || /\s/.test(trimmed)) {
-    return DEFAULT_MCP_AZURE_AUTH_SCOPE;
-  }
-
-  if (trimmed.length > MAX_MCP_AZURE_AUTH_SCOPE_LENGTH) {
-    return DEFAULT_MCP_AZURE_AUTH_SCOPE;
-  }
-
-  return trimmed;
-}
-
-function readMcpTimeoutSecondsFromUnknown(value: unknown): number {
-  if (typeof value !== "number" || !Number.isSafeInteger(value)) {
-    return DEFAULT_MCP_TIMEOUT_SECONDS;
-  }
-
-  if (value < MIN_MCP_TIMEOUT_SECONDS || value > MAX_MCP_TIMEOUT_SECONDS) {
-    return DEFAULT_MCP_TIMEOUT_SECONDS;
-  }
-
-  return value;
-}
-
-export function resolveInstructionSourceFileName(
-  loadedFileName: string | null,
-  saveFileNameInput: string,
-): string | null {
-  const loaded = (loadedFileName ?? "").trim();
-  if (loaded) {
-    return loaded;
-  }
-
-  const saveInput = saveFileNameInput.trim();
-  return saveInput || null;
-}
-
-export function resolveInstructionFormatExtension(
-  sourceFileName: string | null,
-  instruction: string,
-): string {
-  const sourceExtension = getFileExtension(sourceFileName ?? "");
-  if (ALLOWED_INSTRUCTION_EXTENSIONS.has(sourceExtension)) {
-    return sourceExtension;
-  }
-
-  const trimmedInstruction = instruction.trim();
-  if (!trimmedInstruction) {
-    return DEFAULT_INSTRUCTION_EXTENSION;
-  }
-
-  if (
-    (trimmedInstruction.startsWith("{") || trimmedInstruction.startsWith("[")) &&
-    canParseJson(trimmedInstruction)
-  ) {
-    return "json";
-  }
-
-  if (looksLikeXmlDocument(trimmedInstruction)) {
-    return "xml";
-  }
-
-  if (looksLikeMarkdownText(trimmedInstruction)) {
-    return "md";
-  }
-
-  return DEFAULT_INSTRUCTION_EXTENSION;
-}
-
-export function detectInstructionLanguage(value: string): InstructionLanguage {
-  const hasJapanese = /[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff]/.test(value);
-  const hasEnglish = /[A-Za-z]/.test(value);
-  if (hasJapanese && hasEnglish) {
-    return "mixed";
-  }
-  if (hasJapanese) {
-    return "japanese";
-  }
-  if (hasEnglish) {
-    return "english";
-  }
-  return "unknown";
-}
-
-export function buildInstructionEnhanceMessage(options: {
-  instruction: string;
-  extension: string;
-  language: InstructionLanguage;
-}): string {
-  const languageLabel = describeInstructionLanguage(options.language);
-  return [
-    "Improve the following agent instruction.",
-    "Requirements:",
-    "- Remove contradictions and ambiguity.",
-    "- Keep original intent, guardrails, and constraints.",
-    "- Preserve as much original information as possible; avoid deleting details unless necessary.",
-    "- Do not omit, summarize, or truncate sections. Keep all important details and examples.",
-    "- Do not add placeholder comments/markers such as '省略', 'omitted', 'same as original', or equivalent.",
-    "- Normalize and improve formatting for readability.",
-    `- Preserve the original language (${languageLabel}).`,
-    `- Preserve the original file format style for .${options.extension}.`,
-    "- Return only the revised instruction text.",
-    "",
-    "<instruction>",
-    options.instruction,
-    "</instruction>",
-  ].join("\n");
-}
-
-export function normalizeEnhancedInstructionResponse(value: string): string {
-  return unwrapCodeFence(value).trim();
-}
-
-export function validateEnhancedInstructionFormat(
-  instruction: string,
-  extension: string,
-): ParseResult<true> {
-  const normalizedExtension = extension.trim().toLowerCase();
-  if (normalizedExtension === "json" && !canParseJson(instruction.trim())) {
-    return {
-      ok: false,
-      error: "Enhanced instruction is not valid JSON. Please retry.",
-    };
-  }
-
-  if (normalizedExtension === "xml" && !looksLikeXmlDocument(instruction.trim())) {
-    return {
-      ok: false,
-      error: "Enhanced instruction is not valid XML-like content. Please retry.",
-    };
-  }
-
-  return { ok: true, value: true };
-}
-
-export function validateInstructionLanguagePreserved(
-  originalInstruction: string,
-  enhancedInstruction: string,
-): ParseResult<true> {
-  const originalLanguage = detectInstructionLanguage(originalInstruction);
-  if (originalLanguage === "unknown" || originalLanguage === "mixed") {
-    return { ok: true, value: true };
-  }
-
-  const enhancedHasJapanese = /[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff]/.test(
-    enhancedInstruction,
-  );
-  const enhancedHasEnglish = /[A-Za-z]/.test(enhancedInstruction);
-
-  if (originalLanguage === "japanese" && !enhancedHasJapanese) {
-    return {
-      ok: false,
-      error: "Enhanced instruction changed language unexpectedly. Please retry.",
-    };
-  }
-
-  if (originalLanguage === "english" && !enhancedHasEnglish) {
-    return {
-      ok: false,
-      error: "Enhanced instruction changed language unexpectedly. Please retry.",
-    };
-  }
-
-  return { ok: true, value: true };
-}
-
-export function validateEnhancedInstructionCompleteness(
-  enhancedInstruction: string,
-): ParseResult<true> {
-  const omissionMarkerPatterns: RegExp[] = [
-    /<!--[\s\S]{0,240}(省略|omitted|omit|same as original|for brevity|truncated|原文どおり)[\s\S]*?-->/i,
-    /\[[^\]]{0,180}(省略|omitted|same as original|for brevity|truncated|原文どおり)[^\]]{0,180}\]/i,
-    /\([^)]{0,180}(省略|omitted|same as original|for brevity|truncated|原文どおり)[^)]{0,180}\)/i,
-    /(?:以下|以降).{0,40}(?:省略|同様)/i,
-    /same as (?:original|above)/i,
-    /for brevity/i,
-  ];
-
-  for (const pattern of omissionMarkerPatterns) {
-    if (pattern.test(enhancedInstruction)) {
-      return {
-        ok: false,
-        error:
-          "Enhanced instruction appears to omit original content with placeholders/comments. Please retry.",
-      };
-    }
-  }
-
-  return { ok: true, value: true };
-}
-
-function describeInstructionLanguage(language: InstructionLanguage): string {
-  if (language === "japanese") {
-    return "Japanese";
-  }
-  if (language === "english") {
-    return "English";
-  }
-  if (language === "mixed") {
-    return "mixed language";
-  }
-  return "same language as source";
-}
-
-function canParseJson(value: string): boolean {
-  try {
-    JSON.parse(value);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function looksLikeXmlDocument(value: string): boolean {
-  const trimmed = value.trim();
-  if (!trimmed.startsWith("<") || !trimmed.endsWith(">")) {
-    return false;
-  }
-
-  if (/^<([A-Za-z_][A-Za-z0-9:_.-]*)(?:\s[^>]*)?\/>\s*$/.test(trimmed)) {
-    return true;
-  }
-
-  const firstTag = trimmed.match(/^<([A-Za-z_][A-Za-z0-9:_.-]*)(?:\s[^>]*)?>/);
-  if (!firstTag) {
-    return false;
-  }
-
-  const rootTagName = firstTag[1];
-  if (new RegExp(`<\\/${rootTagName}>\\s*$`).test(trimmed)) {
-    return true;
-  }
-
-  return /\/>\s*$/.test(trimmed);
-}
-
-function looksLikeMarkdownText(value: string): boolean {
-  if (/^(#{1,6})\s/m.test(value)) {
-    return true;
-  }
-  if (/```/.test(value)) {
-    return true;
-  }
-  return /^\s*[-*+]\s/m.test(value);
-}
-
-function unwrapCodeFence(value: string): string {
-  const trimmed = value.trim();
-  const fenced = trimmed.match(/^```[^\n]*\n([\s\S]*?)\n```$/);
-  if (fenced) {
-    return fenced[1];
-  }
-
-  const fencedWithoutTrailingNewLine = trimmed.match(/^```[^\n]*\n([\s\S]*?)```$/);
-  if (fencedWithoutTrailingNewLine) {
-    return fencedWithoutTrailingNewLine[1];
-  }
-
-  return value;
-}
-
-export function buildInstructionDiffLines(
-  originalInstruction: string,
-  enhancedInstruction: string,
-  options: {
-    maxMatrixCells?: number;
-  } = {},
-): InstructionDiffLine[] {
-  const originalLines = splitInstructionLines(originalInstruction);
-  const enhancedLines = splitInstructionLines(enhancedInstruction);
-  const maxMatrixCells = options.maxMatrixCells ?? MAX_INSTRUCTION_DIFF_MATRIX_CELLS;
-  const operations = computeInstructionDiffOperations(
-    originalLines,
-    enhancedLines,
-    maxMatrixCells,
-  );
-
-  let oldLineNumber = 0;
-  let newLineNumber = 0;
-  const diffLines: InstructionDiffLine[] = [];
-  for (const operation of operations) {
-    if (operation.type === "context") {
-      oldLineNumber += 1;
-      newLineNumber += 1;
-      diffLines.push({
-        type: "context",
-        oldLineNumber,
-        newLineNumber,
-        content: operation.content,
-      });
-      continue;
-    }
-
-    if (operation.type === "removed") {
-      oldLineNumber += 1;
-      diffLines.push({
-        type: "removed",
-        oldLineNumber,
-        newLineNumber: null,
-        content: operation.content,
-      });
-      continue;
-    }
-
-    newLineNumber += 1;
-    diffLines.push({
-      type: "added",
-      oldLineNumber: null,
-      newLineNumber,
-      content: operation.content,
-    });
-  }
-
-  if (diffLines.length > 0) {
-    return diffLines;
-  }
-
-  return [
-    {
-      type: "context",
-      oldLineNumber: 1,
-      newLineNumber: 1,
-      content: "",
-    },
-  ];
-}
-
-type InstructionDiffOperation = {
-  type: "context" | "added" | "removed";
-  content: string;
-};
-
-function computeInstructionDiffOperations(
-  originalLines: string[],
-  enhancedLines: string[],
-  maxMatrixCells: number,
-): InstructionDiffOperation[] {
-  const totalMatrixCells = originalLines.length * enhancedLines.length;
-  if (totalMatrixCells <= 0) {
-    if (originalLines.length === 0 && enhancedLines.length === 0) {
-      return [];
-    }
-
-    return [
-      ...originalLines.map((content) => ({ type: "removed", content }) as InstructionDiffOperation),
-      ...enhancedLines.map((content) => ({ type: "added", content }) as InstructionDiffOperation),
-    ];
-  }
-
-  if (totalMatrixCells > maxMatrixCells) {
-    return computeInstructionDiffOperationsFast(originalLines, enhancedLines);
-  }
-
-  const matrix: number[][] = Array.from({ length: originalLines.length + 1 }, () =>
-    Array.from({ length: enhancedLines.length + 1 }, () => 0),
-  );
-
-  for (let i = originalLines.length - 1; i >= 0; i -= 1) {
-    for (let j = enhancedLines.length - 1; j >= 0; j -= 1) {
-      if (originalLines[i] === enhancedLines[j]) {
-        matrix[i][j] = matrix[i + 1][j + 1] + 1;
-      } else {
-        matrix[i][j] = Math.max(matrix[i + 1][j], matrix[i][j + 1]);
-      }
-    }
-  }
-
-  const operations: InstructionDiffOperation[] = [];
-  let oldCursor = 0;
-  let newCursor = 0;
-  while (oldCursor < originalLines.length && newCursor < enhancedLines.length) {
-    if (originalLines[oldCursor] === enhancedLines[newCursor]) {
-      operations.push({
-        type: "context",
-        content: originalLines[oldCursor],
-      });
-      oldCursor += 1;
-      newCursor += 1;
-      continue;
-    }
-
-    if (matrix[oldCursor + 1][newCursor] >= matrix[oldCursor][newCursor + 1]) {
-      operations.push({
-        type: "removed",
-        content: originalLines[oldCursor],
-      });
-      oldCursor += 1;
-      continue;
-    }
-
-    operations.push({
-      type: "added",
-      content: enhancedLines[newCursor],
-    });
-    newCursor += 1;
-  }
-
-  while (oldCursor < originalLines.length) {
-    operations.push({
-      type: "removed",
-      content: originalLines[oldCursor],
-    });
-    oldCursor += 1;
-  }
-
-  while (newCursor < enhancedLines.length) {
-    operations.push({
-      type: "added",
-      content: enhancedLines[newCursor],
-    });
-    newCursor += 1;
-  }
-
-  return operations;
-}
-
-function computeInstructionDiffOperationsFast(
-  originalLines: string[],
-  enhancedLines: string[],
-): InstructionDiffOperation[] {
-  const operations: InstructionDiffOperation[] = [];
-  let oldCursor = 0;
-  let newCursor = 0;
-  while (oldCursor < originalLines.length || newCursor < enhancedLines.length) {
-    const hasOld = oldCursor < originalLines.length;
-    const hasNew = newCursor < enhancedLines.length;
-    if (hasOld && hasNew && originalLines[oldCursor] === enhancedLines[newCursor]) {
-      operations.push({
-        type: "context",
-        content: originalLines[oldCursor],
-      });
-      oldCursor += 1;
-      newCursor += 1;
-      continue;
-    }
-
-    if (hasOld) {
-      operations.push({
-        type: "removed",
-        content: originalLines[oldCursor],
-      });
-      oldCursor += 1;
-    }
-
-    if (hasNew) {
-      operations.push({
-        type: "added",
-        content: enhancedLines[newCursor],
-      });
-      newCursor += 1;
-    }
-  }
-
-  return operations;
-}
-
-function splitInstructionLines(value: string): string[] {
-  const normalized = value.replace(/\r\n/g, "\n");
-  if (!normalized) {
-    return [];
-  }
-
-  return normalized.split("\n");
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object";
-}
-
-function getFileExtension(fileName: string): string {
-  const parts = fileName.toLowerCase().split(".");
-  return parts.length > 1 ? parts[parts.length - 1] : "";
-}
-
-function createId(prefix: string): string {
-  const randomPart = Math.random().toString(36).slice(2);
-  return `${prefix}-${Date.now()}-${randomPart}`;
-}
-
-function buildMcpEntryCopyPayload(entry: McpRpcHistoryEntry): Record<string, unknown> {
-  return {
-    id: entry.id,
-    sequence: entry.sequence,
-    serverName: entry.serverName,
-    method: entry.method,
-    startedAt: entry.startedAt,
-    completedAt: entry.completedAt,
-    request: entry.request ?? null,
-    response: entry.response ?? null,
-    isError: entry.isError,
-    turnId: entry.turnId,
-  };
-}
-
-async function copyTextToClipboard(text: string): Promise<void> {
-  if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
-    await navigator.clipboard.writeText(text);
-    return;
-  }
-
-  if (typeof document === "undefined") {
-    throw new Error("Clipboard API is not available.");
-  }
-
-  const textarea = document.createElement("textarea");
-  textarea.value = text;
-  textarea.setAttribute("readonly", "true");
-  textarea.style.position = "fixed";
-  textarea.style.opacity = "0";
-  textarea.style.pointerEvents = "none";
-  document.body.append(textarea);
-  textarea.select();
-  const copied = document.execCommand("copy");
-  textarea.remove();
-  if (!copied) {
-    throw new Error("Failed to copy text.");
-  }
 }
 
 function renderMessageContent(message: ChatMessage) {
@@ -4165,23 +1814,6 @@ function renderMessageContent(message: ChatMessage) {
   return renderJsonTokens(jsonTokens, "JSON response", "default");
 }
 
-function parseJsonMessageTokens(content: string): JsonToken[] | null {
-  const trimmed = content.trim();
-  if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) {
-    return null;
-  }
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(trimmed);
-  } catch {
-    return null;
-  }
-
-  const formatted = JSON.stringify(parsed, null, 2);
-  return tokenizeJson(formatted);
-}
-
 function renderJsonTokens(
   tokens: JsonToken[],
   ariaLabel: string,
@@ -4200,78 +1832,4 @@ function renderJsonTokens(
       ))}
     </pre>
   );
-}
-
-function isJsonCodeClassName(className: string | undefined): boolean {
-  if (!className) {
-    return false;
-  }
-
-  return /\blanguage-json\b/i.test(className) || /\blanguage-jsonc\b/i.test(className);
-}
-
-function tokenizeJson(input: string): JsonToken[] {
-  const pattern =
-    /"(?:\\u[\da-fA-F]{4}|\\[^u]|[^\\"])*"(?=\s*:)|"(?:\\u[\da-fA-F]{4}|\\[^u]|[^\\"])*"|true|false|null|-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?|[{}[\],:]/g;
-  const tokens: JsonToken[] = [];
-  let lastIndex = 0;
-
-  for (const match of input.matchAll(pattern)) {
-    const tokenIndex = match.index ?? 0;
-    const tokenValue = match[0];
-
-    if (tokenIndex > lastIndex) {
-      tokens.push({
-        value: input.slice(lastIndex, tokenIndex),
-        type: "plain",
-      });
-    }
-
-    tokens.push({
-      value: tokenValue,
-      type: classifyJsonToken(input, tokenIndex, tokenValue),
-    });
-
-    lastIndex = tokenIndex + tokenValue.length;
-  }
-
-  if (lastIndex < input.length) {
-    tokens.push({
-      value: input.slice(lastIndex),
-      type: "plain",
-    });
-  }
-
-  return tokens;
-}
-
-function classifyJsonToken(
-  source: string,
-  tokenIndex: number,
-  tokenValue: string,
-): JsonTokenType {
-  if (tokenValue === "true" || tokenValue === "false") {
-    return "boolean";
-  }
-  if (tokenValue === "null") {
-    return "null";
-  }
-  if (/^-?\d/.test(tokenValue)) {
-    return "number";
-  }
-  if (/^[\[\]{}:,]$/.test(tokenValue)) {
-    return "punctuation";
-  }
-  if (tokenValue.startsWith('"')) {
-    return isJsonKeyToken(source, tokenIndex, tokenValue.length) ? "key" : "string";
-  }
-  return "plain";
-}
-
-function isJsonKeyToken(source: string, tokenIndex: number, tokenLength: number): boolean {
-  let cursor = tokenIndex + tokenLength;
-  while (cursor < source.length && /\s/.test(source[cursor])) {
-    cursor += 1;
-  }
-  return source[cursor] === ":";
 }

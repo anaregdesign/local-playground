@@ -1,8 +1,6 @@
 import { spawn } from "node:child_process";
+import { AZURE_CLI_COMMAND, AZURE_LOGIN_ARGS } from "~/lib/constants";
 import type { Route } from "./+types/api.azure-login";
-
-const AZURE_LOGIN_COMMAND = "az";
-const AZURE_LOGIN_ARGS = ["login"];
 
 export function loader({}: Route.LoaderArgs) {
   return Response.json(
@@ -17,7 +15,7 @@ export async function action({ request }: Route.ActionArgs) {
   }
 
   try {
-    const loginProcess = spawn(AZURE_LOGIN_COMMAND, AZURE_LOGIN_ARGS, {
+    const loginProcess = spawn(AZURE_CLI_COMMAND, [...AZURE_LOGIN_ARGS], {
       detached: true,
       stdio: "ignore",
       windowsHide: true,
@@ -41,4 +39,3 @@ export async function action({ request }: Route.ActionArgs) {
 function readErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Unknown error.";
 }
-

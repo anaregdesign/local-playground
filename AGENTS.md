@@ -29,10 +29,31 @@
 - Right-pane horizontal splitter styles may exist in CSS, but the current implementation uses a single scrollable panel area.
 - Use Fluent UI components and patterns as default. Apply custom CSS only where needed for layout clarity, splitter behavior, and compact desktop spacing.
 
+## Frontend Component Architecture
+
+- Keep component boundaries aligned with the real DOM tree.
+- For `home` UI, preserve this directory structure:
+  - `app/components/home/playground/` for left-pane Playground panel
+  - `app/components/home/config/` for right-pane configuration panel
+  - `app/components/home/config/settings/` for Settings tab and its sections
+  - `app/components/home/config/mcp/` for MCP Servers tab and its sections
+  - `app/components/home/shared/` for reusable UI primitives and shared types
+- Naming conventions:
+  - `*Panel`: top-level pane container (`PlaygroundPanel`, `ConfigPanel`)
+  - `*Tab`: tab content root under a panel (`SettingsTab`, `McpServersTab`)
+  - `*Section`: vertically segmented form/content block inside a tab
+  - Shared primitives should use purpose-based names (`ConfigSection`, `StatusMessageList`, `LabeledTooltip`, `CopyIconButton`)
+- `app/routes/home.tsx` should focus on state orchestration and composition, not large inline UI markup.
+- Prefer one-directional dependencies:
+  - panel -> tab -> section -> shared
+  - avoid cross-importing siblings when a shared primitive is appropriate.
+
 ## Visual Style Baseline (Current UI)
 
 - Theme direction: light Fluent-like desktop UI with compact spacing and flat surfaces.
 - Keep root design tokens in `app/app.css` as the style source of truth (font, background, text, accent, danger, bubbles).
+- Keep Home-specific shape/typography tokens in `:root` (`--home-*`) and reuse them across components.
+- Avoid duplicating hard-coded values for radius/font size/line-height when a token already exists.
 - Keep page background as a soft gradient blend (`radial + linear`), not a flat solid color.
 - Keep shell surfaces mostly flat:
   - white surfaces
@@ -87,7 +108,7 @@
   - text edit
   - clear
   - load file (`.md`, `.txt`, `.xml`, `.json`, max `1MB`)
-  - save to `~/.foundry_local_playground/prompts`
+  - save on the client side using save picker/download flow (user chooses destination and file name)
   - AI enhancement using currently selected Azure project/deployment
   - diff review (adopt enhanced vs keep original)
 
@@ -121,6 +142,16 @@
   - dialog content
   - whole MCP operation entry
   - request/response payload parts
+- Use shared copy UI primitives for copy affordances to keep behavior and appearance consistent.
+
+## Shared UI Primitives
+
+- Reuse shared components in `app/components/home/shared/` instead of duplicating markup:
+  - `ConfigSection` for section header/title/description shell
+  - `StatusMessageList` for grouped status/error/success bars
+  - `LabeledTooltip` for titled multiline tooltips
+  - `CopyIconButton` for copy icon action buttons
+- When adding new repeated UI patterns, extract to `shared` first if used in 2+ places.
 
 ## Build / Release
 
@@ -144,3 +175,7 @@
   - `npm run typecheck`
   - `npm run build`
   - `npm run test`
+- After refactors, remove dead code:
+  - unused components/files
+  - unused CSS selectors in `app/app.css`
+  - stale/obsolete tests or old-name references

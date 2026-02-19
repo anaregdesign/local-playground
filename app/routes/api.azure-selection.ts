@@ -1,5 +1,6 @@
 import { mkdir, writeFile } from "node:fs/promises";
-import { getFoundryConfigFilePaths, readFoundryConfigTextFile } from "~/lib/foundry-config";
+import { FOUNDRY_AZURE_SELECTION_FILE_NAME } from "~/lib/constants";
+import { getFoundryConfigFilePaths, readFoundryConfigTextFile } from "~/lib/foundry/config";
 import type { Route } from "./+types/api.azure-selection";
 
 type AzureSelectionPreference = {
@@ -12,8 +13,6 @@ type AzureSelectionPreference = {
 type StoredAzureSelectionFile = {
   tenants: Record<string, AzureSelectionPreference>;
 };
-
-const AZURE_SELECTION_FILE_PATHS = getFoundryConfigFilePaths("azure-selection.json");
 
 export async function loader({ request }: Route.LoaderArgs) {
   if (request.method !== "GET") {
@@ -96,7 +95,8 @@ export function parseAzureSelectionPreference(value: unknown): AzureSelectionPre
 }
 
 async function readStoredSelectionFile(): Promise<StoredAzureSelectionFile> {
-  const content = await readFoundryConfigTextFile(AZURE_SELECTION_FILE_PATHS);
+  const selectionFilePaths = getFoundryConfigFilePaths(FOUNDRY_AZURE_SELECTION_FILE_NAME);
+  const content = await readFoundryConfigTextFile(selectionFilePaths);
   if (content === null) {
     return { tenants: {} };
   }
@@ -130,9 +130,10 @@ async function readStoredSelectionFile(): Promise<StoredAzureSelectionFile> {
 }
 
 async function writeStoredSelectionFile(file: StoredAzureSelectionFile): Promise<void> {
-  await mkdir(AZURE_SELECTION_FILE_PATHS.primaryDirectoryPath, { recursive: true });
+  const selectionFilePaths = getFoundryConfigFilePaths(FOUNDRY_AZURE_SELECTION_FILE_NAME);
+  await mkdir(selectionFilePaths.primaryDirectoryPath, { recursive: true });
   await writeFile(
-    AZURE_SELECTION_FILE_PATHS.primaryFilePath,
+    selectionFilePaths.primaryFilePath,
     JSON.stringify(file, null, 2) + "\n",
     "utf8",
   );

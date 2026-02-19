@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
+import { PROMPT_MAX_CONTENT_BYTES } from "~/lib/constants";
 import {
   buildPromptFileName,
   normalizeRequestedPromptFileName,
   parseInstructionContent,
   parseRequestedPromptFileName,
-} from "./api.instruction-prompts";
+} from "./api.instruction";
 
 describe("parseInstructionContent", () => {
   it("accepts a non-empty instruction string", () => {
@@ -23,6 +24,17 @@ describe("parseInstructionContent", () => {
     expect(result).toEqual({
       ok: false,
       error: "Instruction is empty.",
+    });
+  });
+
+  it("rejects oversized instruction content", () => {
+    const result = parseInstructionContent({
+      instruction: "a".repeat(PROMPT_MAX_CONTENT_BYTES + 1),
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      error: `Instruction is too large. Max ${PROMPT_MAX_CONTENT_BYTES} bytes.`,
     });
   });
 });
@@ -89,6 +101,17 @@ describe("parseRequestedPromptFileName", () => {
       error: "File extension must be .md, .txt, .xml, or .json.",
     });
   });
+
+  it("rejects non-string fileName", () => {
+    const result = parseRequestedPromptFileName({
+      fileName: 123,
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      error: "`fileName` must be a string.",
+    });
+  });
 });
 
 describe("normalizeRequestedPromptFileName", () => {
@@ -98,6 +121,15 @@ describe("normalizeRequestedPromptFileName", () => {
     expect(result).toEqual({
       ok: true,
       value: "prompt-file.md",
+    });
+  });
+
+  it("rejects invalid basename", () => {
+    const result = normalizeRequestedPromptFileName("..");
+
+    expect(result).toEqual({
+      ok: false,
+      error: "File name is invalid.",
     });
   });
 });
