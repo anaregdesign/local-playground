@@ -1,16 +1,5 @@
 import type { ChangeEvent, RefObject } from "react";
-import * as FluentUIComponents from "@fluentui/react-components";
-
-function resolveFluentUIExports<T extends object>(moduleExports: T): T {
-  const maybeDefault = Reflect.get(moduleExports, "default");
-  if (maybeDefault && typeof maybeDefault === "object") {
-    return maybeDefault as T;
-  }
-
-  return moduleExports;
-}
-
-const FluentUI = resolveFluentUIExports(FluentUIComponents);
+import { FluentUI } from "~/components/home/fluent";
 const { Button, MessageBar, MessageBarBody, Spinner, Textarea } = FluentUI;
 
 type InstructionDiffLineType = "context" | "added" | "removed";
@@ -29,7 +18,7 @@ type InstructionEnhanceComparisonLike = {
   diffLines: InstructionDiffLine[];
 };
 
-type InstructionSettingsSectionProps = {
+type InstructionSectionProps = {
   agentInstruction: string;
   instructionEnhanceComparison: InstructionEnhanceComparisonLike | null;
   describeInstructionLanguage: (language: InstructionLanguageLike) => string;
@@ -55,7 +44,7 @@ type InstructionSettingsSectionProps = {
   onAdoptOriginalInstruction: () => void;
 };
 
-export function InstructionSettingsSection(props: InstructionSettingsSectionProps) {
+export function InstructionSection(props: InstructionSectionProps) {
   const {
     agentInstruction,
     instructionEnhanceComparison,

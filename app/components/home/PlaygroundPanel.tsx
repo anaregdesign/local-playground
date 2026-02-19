@@ -6,18 +6,9 @@ import {
   type ReactNode,
   type RefObject,
 } from "react";
-import * as FluentUIComponents from "@fluentui/react-components";
+import { FluentUI } from "~/components/home/fluent";
+import type { ReasoningEffort } from "~/components/home/types";
 
-function resolveFluentUIExports<T extends object>(moduleExports: T): T {
-  const maybeDefault = Reflect.get(moduleExports, "default");
-  if (maybeDefault && typeof maybeDefault === "object") {
-    return maybeDefault as T;
-  }
-
-  return moduleExports;
-}
-
-const FluentUI = resolveFluentUIExports(FluentUIComponents);
 const {
   Button,
   MessageBar,
@@ -29,8 +20,6 @@ const {
   Textarea,
   Tooltip,
 } = FluentUI;
-
-type ReasoningEffort = "none" | "low" | "medium" | "high";
 type ChatRole = "user" | "assistant";
 
 type ChatMessageLike = {

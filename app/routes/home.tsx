@@ -7,38 +7,17 @@ import {
   type PointerEvent as ReactPointerEvent,
   type SetStateAction,
 } from "react";
-import * as FluentUIComponents from "@fluentui/react-components";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { InstructionSettingsSection } from "~/components/home/InstructionSettingsSection";
-import { McpSettingsPanel } from "~/components/home/McpSettingsPanel";
+import { ConfigPanel } from "~/components/home/ConfigPanel";
+import { FluentUI } from "~/components/home/fluent";
 import { PlaygroundPanel } from "~/components/home/PlaygroundPanel";
+import type { MainViewTab, McpTransport, ReasoningEffort } from "~/components/home/types";
 import type { Route } from "./+types/home";
 
-function resolveFluentUIExports<T extends object>(moduleExports: T): T {
-  const maybeDefault = Reflect.get(moduleExports, "default");
-  if (maybeDefault && typeof maybeDefault === "object") {
-    return maybeDefault as T;
-  }
-
-  return moduleExports;
-}
-
-const FluentUI = resolveFluentUIExports(FluentUIComponents);
-const {
-  Button,
-  MessageBar,
-  MessageBarBody,
-  MessageBarTitle,
-  Spinner,
-  Tab,
-  TabList,
-} = FluentUI;
+const { Button } = FluentUI;
 
 type ChatRole = "user" | "assistant";
-type ReasoningEffort = "none" | "low" | "medium" | "high";
-type McpTransport = "streamable_http" | "sse" | "stdio";
-type MainViewTab = "settings" | "mcp";
 
 type McpHttpServerConfig = {
   id: string;
@@ -1570,6 +1549,161 @@ export default function Home() {
     }
   }
 
+  const handleCopyMessage = (content: string) => {
+    void copyTextToClipboard(content).catch(() => {
+      setError("Failed to copy message to clipboard.");
+    });
+  };
+
+  const handleCopyMcpLog = (text: string) => {
+    void copyTextToClipboard(text).catch(() => {
+      setError("Failed to copy MCP log to clipboard.");
+    });
+  };
+
+  const settingsTabProps = {
+    azureConnectionSectionProps: {
+      isAzureAuthRequired,
+      isSending,
+      isStartingAzureLogin,
+      onAzureLogin: handleAzureLogin,
+      isLoadingAzureConnections,
+      isLoadingAzureDeployments,
+      activeAzureConnection,
+      selectedAzureDeploymentName,
+      isStartingAzureLogout,
+      onAzureLogout: handleAzureLogout,
+      azureDeploymentError,
+      azureLogoutError,
+      azureConnectionError,
+    },
+    instructionSectionProps: {
+      agentInstruction,
+      instructionEnhanceComparison,
+      describeInstructionLanguage,
+      isSending,
+      isEnhancingInstruction,
+      isSavingInstructionPrompt,
+      canSaveAgentInstructionPrompt,
+      canEnhanceAgentInstruction,
+      canClearAgentInstruction,
+      loadedInstructionFileName,
+      instructionFileInputRef,
+      instructionFileError,
+      instructionSaveError,
+      instructionSaveSuccess,
+      instructionEnhanceError,
+      instructionEnhanceSuccess,
+      onAgentInstructionChange: handleAgentInstructionChange,
+      onInstructionFileChange: handleInstructionFileChange,
+      onSaveInstructionPrompt: handleSaveInstructionPrompt,
+      onEnhanceInstruction: handleEnhanceInstruction,
+      onClearInstruction: handleClearInstruction,
+      onAdoptEnhancedInstruction: handleAdoptEnhancedInstruction,
+      onAdoptOriginalInstruction: handleAdoptOriginalInstruction,
+    },
+  };
+
+  const mcpServersTabProps = {
+    selectedSavedMcpServerId,
+    savedMcpServerOptions,
+    isSending,
+    isLoadingSavedMcpServers,
+    savedMcpError,
+    onSelectedSavedMcpServerIdChange: (value: string) => {
+      setSelectedSavedMcpServerId(value);
+      setSavedMcpError(null);
+    },
+    onLoadSavedMcpServerToForm: handleLoadSavedMcpServerToForm,
+    onReloadSavedMcpServers: loadSavedMcpServers,
+    mcpNameInput,
+    onMcpNameInputChange: setMcpNameInput,
+    mcpTransport,
+    onMcpTransportChange: (value: McpTransport) => {
+      setMcpTransport(value);
+      setMcpFormError(null);
+    },
+    mcpCommandInput,
+    onMcpCommandInputChange: setMcpCommandInput,
+    mcpArgsInput,
+    onMcpArgsInputChange: setMcpArgsInput,
+    mcpCwdInput,
+    onMcpCwdInputChange: setMcpCwdInput,
+    mcpEnvInput,
+    onMcpEnvInputChange: setMcpEnvInput,
+    mcpUrlInput,
+    onMcpUrlInputChange: setMcpUrlInput,
+    mcpHeadersInput,
+    onMcpHeadersInputChange: setMcpHeadersInput,
+    mcpUseAzureAuthInput,
+    onMcpUseAzureAuthInputChange: (checked: boolean) => {
+      setMcpUseAzureAuthInput(checked);
+      if (checked && !mcpAzureAuthScopeInput.trim()) {
+        setMcpAzureAuthScopeInput(DEFAULT_MCP_AZURE_AUTH_SCOPE);
+      }
+    },
+    mcpAzureAuthScopeInput,
+    onMcpAzureAuthScopeInputChange: setMcpAzureAuthScopeInput,
+    mcpTimeoutSecondsInput,
+    onMcpTimeoutSecondsInputChange: setMcpTimeoutSecondsInput,
+    defaultMcpAzureAuthScope: DEFAULT_MCP_AZURE_AUTH_SCOPE,
+    defaultMcpTimeoutSeconds: DEFAULT_MCP_TIMEOUT_SECONDS,
+    minMcpTimeoutSeconds: MIN_MCP_TIMEOUT_SECONDS,
+    maxMcpTimeoutSeconds: MAX_MCP_TIMEOUT_SECONDS,
+    onAddMcpServer: handleAddMcpServer,
+    isSavingMcpServer,
+    mcpFormError,
+    mcpFormWarning,
+  };
+
+  const playgroundPanelProps = {
+    messages,
+    mcpHistoryByTurnId,
+    isSending,
+    onResetThread: handleResetThread,
+    renderMessageContent,
+    renderTurnMcpLog,
+    onCopyMessage: handleCopyMessage,
+    onCopyMcpLog: handleCopyMcpLog,
+    sendProgressMessages,
+    activeTurnMcpHistory,
+    errorTurnMcpHistory,
+    endOfMessagesRef,
+    error,
+    azureLoginError,
+    onSubmit: handleSubmit,
+    chatInputRef,
+    draft,
+    onDraftChange: handleDraftChange,
+    onInputKeyDown: handleInputKeyDown,
+    onCompositionStart: () => setIsComposing(true),
+    onCompositionEnd: () => setIsComposing(false),
+    isChatLocked,
+    isLoadingAzureConnections,
+    isLoadingAzureDeployments,
+    isAzureAuthRequired,
+    isStartingAzureLogin,
+    isStartingAzureLogout,
+    onChatAzureSelectorAction: handleChatAzureSelectorAction,
+    azureConnections,
+    activeAzureConnectionId: activeAzureConnection?.id ?? "",
+    onProjectChange: handleChatProjectChange,
+    selectedAzureDeploymentName,
+    azureDeployments,
+    onDeploymentChange: handleChatDeploymentChange,
+    reasoningEffort,
+    reasoningEffortOptions: REASONING_EFFORT_OPTIONS,
+    onReasoningEffortChange: setReasoningEffort,
+    contextWindowValidation,
+    contextWindowInput,
+    onContextWindowInputChange: setContextWindowInput,
+    minContextWindowSize: MIN_CONTEXT_WINDOW_SIZE,
+    maxContextWindowSize: MAX_CONTEXT_WINDOW_SIZE,
+    canSendMessage,
+    mcpServers,
+    onRemoveMcpServer: handleRemoveMcpServer,
+  };
+
   return (
     <main className="chat-page">
       <div
@@ -1581,61 +1715,7 @@ export default function Home() {
           } as CSSProperties
         }
       >
-        <PlaygroundPanel
-          messages={messages}
-          mcpHistoryByTurnId={mcpHistoryByTurnId}
-          isSending={isSending}
-          onResetThread={handleResetThread}
-          renderMessageContent={renderMessageContent}
-          renderTurnMcpLog={renderTurnMcpLog}
-          onCopyMessage={(content) => {
-            void copyTextToClipboard(content).catch(() => {
-              setError("Failed to copy message to clipboard.");
-            });
-          }}
-          onCopyMcpLog={(text) => {
-            void copyTextToClipboard(text).catch(() => {
-              setError("Failed to copy MCP log to clipboard.");
-            });
-          }}
-          sendProgressMessages={sendProgressMessages}
-          activeTurnMcpHistory={activeTurnMcpHistory}
-          errorTurnMcpHistory={errorTurnMcpHistory}
-          endOfMessagesRef={endOfMessagesRef}
-          error={error}
-          azureLoginError={azureLoginError}
-          onSubmit={handleSubmit}
-          chatInputRef={chatInputRef}
-          draft={draft}
-          onDraftChange={handleDraftChange}
-          onInputKeyDown={handleInputKeyDown}
-          onCompositionStart={() => setIsComposing(true)}
-          onCompositionEnd={() => setIsComposing(false)}
-          isChatLocked={isChatLocked}
-          isLoadingAzureConnections={isLoadingAzureConnections}
-          isLoadingAzureDeployments={isLoadingAzureDeployments}
-          isAzureAuthRequired={isAzureAuthRequired}
-          isStartingAzureLogin={isStartingAzureLogin}
-          isStartingAzureLogout={isStartingAzureLogout}
-          onChatAzureSelectorAction={handleChatAzureSelectorAction}
-          azureConnections={azureConnections}
-          activeAzureConnectionId={activeAzureConnection?.id ?? ""}
-          onProjectChange={handleChatProjectChange}
-          selectedAzureDeploymentName={selectedAzureDeploymentName}
-          azureDeployments={azureDeployments}
-          onDeploymentChange={handleChatDeploymentChange}
-          reasoningEffort={reasoningEffort}
-          reasoningEffortOptions={REASONING_EFFORT_OPTIONS}
-          onReasoningEffortChange={setReasoningEffort}
-          contextWindowValidation={contextWindowValidation}
-          contextWindowInput={contextWindowInput}
-          onContextWindowInputChange={setContextWindowInput}
-          minContextWindowSize={MIN_CONTEXT_WINDOW_SIZE}
-          maxContextWindowSize={MAX_CONTEXT_WINDOW_SIZE}
-          canSendMessage={canSendMessage}
-          mcpServers={mcpServers}
-          onRemoveMcpServer={handleRemoveMcpServer}
-        />
+        <PlaygroundPanel {...playgroundPanelProps} />
 
         <div
           className={`layout-splitter main-splitter ${
@@ -1648,221 +1728,13 @@ export default function Home() {
           onPointerDown={handleMainSplitterPointerDown}
         />
 
-        <aside className="side-shell main-panel" aria-label="Configuration panels">
-          <div className="side-shell-header">
-            <TabList
-              className="main-tabs"
-              aria-label="Side panels"
-              appearance="subtle"
-              size="small"
-              title="Switch side panel content."
-              selectedValue={activeMainTab}
-              onTabSelect={(_, data) => {
-                const nextTab = String(data.value);
-                if (nextTab === "settings" || nextTab === "mcp") {
-                  setActiveMainTab(nextTab);
-                }
-              }}
-            >
-              {MAIN_VIEW_TAB_OPTIONS.map((tab) => (
-                <Tab
-                  key={tab.id}
-                  value={tab.id}
-                  id={`tab-${tab.id}`}
-                  aria-controls={`panel-${tab.id}`}
-                  className="main-tab-btn"
-                  title={tab.id === "settings" ? "Open Settings panel." : "Open MCP Servers panel."}
-                >
-                  {tab.label}
-                </Tab>
-              ))}
-            </TabList>
-            {isChatLocked ? (
-              <MessageBar intent="warning" className="tab-guidance-bar">
-                <MessageBarBody>
-                  🔒 Playground is locked. Open Settings and sign in to Azure.
-                </MessageBarBody>
-              </MessageBar>
-            ) : null}
-          </div>
-          <div className="side-shell-body">
-            <div className="side-top-panel">
-            <section
-              className="settings-shell"
-              aria-label="Playground settings"
-              id="panel-settings"
-              role="tabpanel"
-              aria-labelledby="tab-settings"
-              hidden={activeMainTab !== "settings"}
-            >
-          <div className="settings-content">
-            <section className="setting-group setting-group-azure-connection">
-              <div className="setting-group-header">
-                <h3>Azure Connection 🔐</h3>
-                <p>Sign in/out for Playground access.</p>
-              </div>
-              {isAzureAuthRequired ? (
-                <Button
-                  type="button"
-                  appearance="primary"
-                  className="azure-login-btn"
-                  title="Start Azure login in your browser."
-                  onClick={() => {
-                    void handleAzureLogin();
-                  }}
-                  disabled={isSending || isStartingAzureLogin}
-                >
-                  {isStartingAzureLogin ? "🔐 Starting Azure Login..." : "🔐 Azure Login"}
-                </Button>
-              ) : (
-                <>
-                  {isLoadingAzureConnections || isLoadingAzureDeployments ? (
-                    <p className="azure-loading-notice" role="status" aria-live="polite">
-                      <Spinner size="tiny" />
-                      {isLoadingAzureConnections
-                        ? "Loading projects from Azure..."
-                        : "Loading deployments for the selected project..."}
-                    </p>
-                  ) : null}
-                  {activeAzureConnection ? (
-                    <dl className="azure-connection-summary" aria-label="Active Azure connection details">
-                      <div className="azure-connection-summary-row">
-                        <dt>Project</dt>
-                        <dd>{activeAzureConnection.projectName}</dd>
-                      </div>
-                      <div className="azure-connection-summary-row">
-                        <dt>Deployment</dt>
-                        <dd>{selectedAzureDeploymentName || "Not selected"}</dd>
-                      </div>
-                      <div className="azure-connection-summary-row">
-                        <dt>Endpoint</dt>
-                        <dd>{activeAzureConnection.baseUrl}</dd>
-                      </div>
-                      <div className="azure-connection-summary-row">
-                        <dt>API version</dt>
-                        <dd>{activeAzureConnection.apiVersion}</dd>
-                      </div>
-                    </dl>
-                  ) : (
-                    <p className="field-hint">No active Azure project.</p>
-                  )}
-                  <div className="azure-connection-actions">
-                    <Button
-                      type="button"
-                      appearance="outline"
-                      className="azure-logout-btn"
-                      title="Sign out from Azure for this app."
-                      onClick={() => {
-                        void handleAzureLogout();
-                      }}
-                      disabled={isSending || isLoadingAzureConnections || isStartingAzureLogout}
-                    >
-                      {isStartingAzureLogout ? "🚪 Logging Out..." : "🚪 Logout"}
-                    </Button>
-                  </div>
-                  {azureDeploymentError ? (
-                    <MessageBar intent="error" className="setting-message-bar">
-                      <MessageBarBody>{azureDeploymentError}</MessageBarBody>
-                    </MessageBar>
-                  ) : null}
-                  {azureLogoutError ? (
-                    <MessageBar intent="error" className="setting-message-bar">
-                      <MessageBarBody>{azureLogoutError}</MessageBarBody>
-                    </MessageBar>
-                  ) : null}
-                  {azureConnectionError ? (
-                    <MessageBar intent="error" className="setting-message-bar">
-                      <MessageBarBody>{azureConnectionError}</MessageBarBody>
-                    </MessageBar>
-                  ) : null}
-                </>
-              )}
-            </section>
-
-            <InstructionSettingsSection
-              agentInstruction={agentInstruction}
-              instructionEnhanceComparison={instructionEnhanceComparison}
-              describeInstructionLanguage={describeInstructionLanguage}
-              isSending={isSending}
-              isEnhancingInstruction={isEnhancingInstruction}
-              isSavingInstructionPrompt={isSavingInstructionPrompt}
-              canSaveAgentInstructionPrompt={canSaveAgentInstructionPrompt}
-              canEnhanceAgentInstruction={canEnhanceAgentInstruction}
-              canClearAgentInstruction={canClearAgentInstruction}
-              loadedInstructionFileName={loadedInstructionFileName}
-              instructionFileInputRef={instructionFileInputRef}
-              instructionFileError={instructionFileError}
-              instructionSaveError={instructionSaveError}
-              instructionSaveSuccess={instructionSaveSuccess}
-              instructionEnhanceError={instructionEnhanceError}
-              instructionEnhanceSuccess={instructionEnhanceSuccess}
-              onAgentInstructionChange={handleAgentInstructionChange}
-              onInstructionFileChange={handleInstructionFileChange}
-              onSaveInstructionPrompt={handleSaveInstructionPrompt}
-              onEnhanceInstruction={handleEnhanceInstruction}
-              onClearInstruction={handleClearInstruction}
-              onAdoptEnhancedInstruction={handleAdoptEnhancedInstruction}
-              onAdoptOriginalInstruction={handleAdoptOriginalInstruction}
-            />
-          </div>
-            </section>
-
-            <McpSettingsPanel
-              activeMainTab={activeMainTab}
-              selectedSavedMcpServerId={selectedSavedMcpServerId}
-              savedMcpServerOptions={savedMcpServerOptions}
-              isSending={isSending}
-              isLoadingSavedMcpServers={isLoadingSavedMcpServers}
-              savedMcpError={savedMcpError}
-              onSelectedSavedMcpServerIdChange={(value) => {
-                setSelectedSavedMcpServerId(value);
-                setSavedMcpError(null);
-              }}
-              onLoadSavedMcpServerToForm={handleLoadSavedMcpServerToForm}
-              onReloadSavedMcpServers={loadSavedMcpServers}
-              mcpNameInput={mcpNameInput}
-              onMcpNameInputChange={setMcpNameInput}
-              mcpTransport={mcpTransport}
-              onMcpTransportChange={(value) => {
-                setMcpTransport(value);
-                setMcpFormError(null);
-              }}
-              mcpCommandInput={mcpCommandInput}
-              onMcpCommandInputChange={setMcpCommandInput}
-              mcpArgsInput={mcpArgsInput}
-              onMcpArgsInputChange={setMcpArgsInput}
-              mcpCwdInput={mcpCwdInput}
-              onMcpCwdInputChange={setMcpCwdInput}
-              mcpEnvInput={mcpEnvInput}
-              onMcpEnvInputChange={setMcpEnvInput}
-              mcpUrlInput={mcpUrlInput}
-              onMcpUrlInputChange={setMcpUrlInput}
-              mcpHeadersInput={mcpHeadersInput}
-              onMcpHeadersInputChange={setMcpHeadersInput}
-              mcpUseAzureAuthInput={mcpUseAzureAuthInput}
-              onMcpUseAzureAuthInputChange={(checked) => {
-                setMcpUseAzureAuthInput(checked);
-                if (checked && !mcpAzureAuthScopeInput.trim()) {
-                  setMcpAzureAuthScopeInput(DEFAULT_MCP_AZURE_AUTH_SCOPE);
-                }
-              }}
-              mcpAzureAuthScopeInput={mcpAzureAuthScopeInput}
-              onMcpAzureAuthScopeInputChange={setMcpAzureAuthScopeInput}
-              mcpTimeoutSecondsInput={mcpTimeoutSecondsInput}
-              onMcpTimeoutSecondsInputChange={setMcpTimeoutSecondsInput}
-              defaultMcpAzureAuthScope={DEFAULT_MCP_AZURE_AUTH_SCOPE}
-              defaultMcpTimeoutSeconds={DEFAULT_MCP_TIMEOUT_SECONDS}
-              minMcpTimeoutSeconds={MIN_MCP_TIMEOUT_SECONDS}
-              maxMcpTimeoutSeconds={MAX_MCP_TIMEOUT_SECONDS}
-              onAddMcpServer={handleAddMcpServer}
-              isSavingMcpServer={isSavingMcpServer}
-              mcpFormError={mcpFormError}
-              mcpFormWarning={mcpFormWarning}
-            />
-            </div>
-
-          </div>
-        </aside>
+        <ConfigPanel
+          activeMainTab={activeMainTab}
+          onMainTabChange={setActiveMainTab}
+          isChatLocked={isChatLocked}
+          settingsTabProps={settingsTabProps}
+          mcpServersTabProps={mcpServersTabProps}
+        />
       </div>
     </main>
   );
@@ -2280,11 +2152,6 @@ function createMessage(role: ChatRole, content: string, turnId: string): ChatMes
     turnId,
   };
 }
-
-const MAIN_VIEW_TAB_OPTIONS: Array<{ id: MainViewTab; label: string }> = [
-  { id: "settings", label: "⚙️ Settings" },
-  { id: "mcp", label: "🧩 MCP Servers" },
-];
 
 const REASONING_EFFORT_OPTIONS: ReasoningEffort[] = ["none", "low", "medium", "high"];
 const ENV_KEY_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;

@@ -1,15 +1,5 @@
-import * as FluentUIComponents from "@fluentui/react-components";
-
-function resolveFluentUIExports<T extends object>(moduleExports: T): T {
-  const maybeDefault = Reflect.get(moduleExports, "default");
-  if (maybeDefault && typeof maybeDefault === "object") {
-    return maybeDefault as T;
-  }
-
-  return moduleExports;
-}
-
-const FluentUI = resolveFluentUIExports(FluentUIComponents);
+import { FluentUI } from "~/components/home/fluent";
+import type { MainViewTab, McpTransport } from "~/components/home/types";
 const {
   Button,
   Checkbox,
@@ -24,15 +14,13 @@ const {
   Textarea,
 } = FluentUI;
 
-type McpTransport = "streamable_http" | "sse" | "stdio";
-
 type SavedMcpServerOption = {
   id: string;
   label: string;
 };
 
-type McpSettingsPanelProps = {
-  activeMainTab: "settings" | "mcp";
+type McpServersTabProps = {
+  activeMainTab: MainViewTab;
   selectedSavedMcpServerId: string;
   savedMcpServerOptions: SavedMcpServerOption[];
   isSending: boolean;
@@ -73,7 +61,7 @@ type McpSettingsPanelProps = {
   mcpFormWarning: string | null;
 };
 
-export function McpSettingsPanel(props: McpSettingsPanelProps) {
+export function McpServersTab(props: McpServersTabProps) {
   const {
     activeMainTab,
     selectedSavedMcpServerId,
