@@ -172,6 +172,9 @@ export function buildInstructionEnhanceMessage(options: {
     "- Do not include markdown code fences or explanations.",
     `- Set fileName to ${fileName}.`,
     "- Use hunk lines with op values: context, add, remove.",
+    "- oldStart/newStart must match exact 1-based line numbers in the source text.",
+    "- Context/remove line text must match the original lines exactly.",
+    "- Include enough context lines around edits to anchor each hunk reliably.",
     "- If no changes are needed, return an empty hunks array.",
     "",
     "<instruction>",
@@ -223,19 +226,16 @@ export function applyInstructionUnifiedDiffPatch(
   let oldCursor = 0;
 
   for (const [hunkIndex, hunk] of parseResult.value.entries()) {
-    const hunkStartIndex = Math.max(hunk.oldStart - 1, 0);
-    if (hunkStartIndex < oldCursor) {
-      return {
-        ok: false,
-        error: `Patch hunk #${hunkIndex + 1} overlaps with a previous hunk.`,
-      };
+    const resolvedHunkStart = resolveUnifiedDiffHunkStartIndex({
+      originalLines,
+      oldCursor,
+      hunk,
+      hunkIndex,
+    });
+    if (!resolvedHunkStart.ok) {
+      return resolvedHunkStart;
     }
-    if (hunkStartIndex > originalLines.length) {
-      return {
-        ok: false,
-        error: `Patch hunk #${hunkIndex + 1} starts outside the original instruction.`,
-      };
-    }
+    const hunkStartIndex = resolvedHunkStart.value;
 
     nextLines.push(...originalLines.slice(oldCursor, hunkStartIndex));
     oldCursor = hunkStartIndex;
@@ -374,6 +374,125 @@ function parseInstructionUnifiedDiffHunks(patch: string): ParseResult<UnifiedDif
   }
 
   return { ok: true, value: hunks };
+}
+
+function resolveUnifiedDiffHunkStartIndex(options: {
+  originalLines: string[];
+  oldCursor: number;
+  hunk: UnifiedDiffHunk;
+  hunkIndex: number;
+}): ParseResult<number> {
+  const { originalLines, oldCursor, hunk, hunkIndex } = options;
+  const sourceLines = hunk.lines
+    .filter((line) => line.type !== "added")
+    .map((line) => line.content);
+
+  if (sourceLines.length === 0) {
+    return {
+      ok: true,
+      value: clampInstructionLineIndex(hunk.oldStart - 1, oldCursor, originalLines.length),
+    };
+  }
+
+  const maxStartIndex = originalLines.length - sourceLines.length;
+  if (maxStartIndex < oldCursor) {
+    return {
+      ok: false,
+      error: `Patch hunk #${hunkIndex + 1} starts outside the original instruction.`,
+    };
+  }
+
+  const preferredStartIndex = Math.max(hunk.oldStart - 1, oldCursor);
+  if (
+    preferredStartIndex <= maxStartIndex &&
+    canMatchUnifiedDiffHunkSourceAtIndex(originalLines, sourceLines, preferredStartIndex)
+  ) {
+    return { ok: true, value: preferredStartIndex };
+  }
+
+  const nearbyStartIndex = findUnifiedDiffHunkStartNearPreferred({
+    originalLines,
+    sourceLines,
+    oldCursor,
+    maxStartIndex,
+    preferredStartIndex,
+    radius: 80,
+  });
+  if (nearbyStartIndex !== null) {
+    return { ok: true, value: nearbyStartIndex };
+  }
+
+  for (let startIndex = oldCursor; startIndex <= maxStartIndex; startIndex += 1) {
+    if (canMatchUnifiedDiffHunkSourceAtIndex(originalLines, sourceLines, startIndex)) {
+      return { ok: true, value: startIndex };
+    }
+  }
+
+  return {
+    ok: false,
+    error: `Patch mismatch at hunk #${hunkIndex + 1}, line 1. Please retry enhancement.`,
+  };
+}
+
+function findUnifiedDiffHunkStartNearPreferred(options: {
+  originalLines: string[];
+  sourceLines: string[];
+  oldCursor: number;
+  maxStartIndex: number;
+  preferredStartIndex: number;
+  radius: number;
+}): number | null {
+  const {
+    originalLines,
+    sourceLines,
+    oldCursor,
+    maxStartIndex,
+    preferredStartIndex,
+    radius,
+  } = options;
+
+  const startIndex = Math.max(oldCursor, preferredStartIndex - radius);
+  const endIndex = Math.min(maxStartIndex, preferredStartIndex + radius);
+  let matchedStartIndex: number | null = null;
+  let matchedDistance = Number.POSITIVE_INFINITY;
+
+  for (let candidateIndex = startIndex; candidateIndex <= endIndex; candidateIndex += 1) {
+    if (!canMatchUnifiedDiffHunkSourceAtIndex(originalLines, sourceLines, candidateIndex)) {
+      continue;
+    }
+
+    const distance = Math.abs(candidateIndex - preferredStartIndex);
+    if (distance < matchedDistance) {
+      matchedDistance = distance;
+      matchedStartIndex = candidateIndex;
+    }
+  }
+
+  return matchedStartIndex;
+}
+
+function canMatchUnifiedDiffHunkSourceAtIndex(
+  originalLines: string[],
+  sourceLines: string[],
+  startIndex: number,
+): boolean {
+  for (let index = 0; index < sourceLines.length; index += 1) {
+    if (originalLines[startIndex + index] !== sourceLines[index]) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+function clampInstructionLineIndex(value: number, min: number, max: number): number {
+  if (value < min) {
+    return min;
+  }
+  if (value > max) {
+    return max;
+  }
+  return value;
 }
 
 function isUnifiedDiffMetadataLine(line: string): boolean {

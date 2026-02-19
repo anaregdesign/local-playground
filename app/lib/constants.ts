@@ -93,6 +93,9 @@ export const INSTRUCTION_ENHANCE_SYSTEM_PROMPT = [
   "Do not insert comments like 'omitted', '省略', 'same as original', or similar markers.",
   "Do not return the full rewritten instruction text.",
   "Preserve the language and file-format style requested by the user.",
+  "oldStart/newStart must reference exact 1-based line numbers in the source text.",
+  "Context/remove lines must match original source lines exactly.",
+  "Include sufficient context lines around edits so hunks can be applied reliably.",
   "Return only structured output that matches the schema. No explanations or markdown fences.",
 ].join(" ");
 export type InstructionSaveFileType = {

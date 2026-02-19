@@ -1084,7 +1084,7 @@ export default function Home() {
             apiVersion: activeAzureConnection.apiVersion,
             deploymentName,
           },
-          agentInstruction: INSTRUCTION_ENHANCE_SYSTEM_PROMPT,
+          enhanceAgentInstruction: INSTRUCTION_ENHANCE_SYSTEM_PROMPT,
         }),
       });
 

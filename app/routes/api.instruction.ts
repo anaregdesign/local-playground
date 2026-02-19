@@ -10,8 +10,8 @@ import {
 import { resolveFoundryConfigDirectory } from "~/lib/foundry/config";
 import {
   CHAT_MAX_AGENT_INSTRUCTION_LENGTH,
-  DEFAULT_AGENT_INSTRUCTION,
   FOUNDRY_PROMPTS_SUBDIRECTORY_NAME,
+  INSTRUCTION_ENHANCE_SYSTEM_PROMPT,
   PROMPT_ALLOWED_FILE_EXTENSIONS,
   PROMPT_DEFAULT_FILE_EXTENSION,
   PROMPT_DEFAULT_FILE_STEM,
@@ -36,7 +36,7 @@ type UpstreamErrorPayload = {
 
 type InstructionEnhanceOptions = {
   message: string;
-  agentInstruction: string;
+  enhanceAgentInstruction: string;
   azureConfig: ResolvedAzureConfig;
 };
 
@@ -142,7 +142,7 @@ export async function action({ request }: Route.ActionArgs) {
     return Response.json({ error: "`message` is required." }, { status: 400 });
   }
 
-  const agentInstruction = readAgentInstruction(payload);
+  const enhanceAgentInstruction = readEnhanceAgentInstruction(payload);
   const azureConfigResult = readAzureConfig(payload);
   if (!azureConfigResult.ok) {
     return Response.json({ error: azureConfigResult.error }, { status: 400 });
@@ -175,7 +175,7 @@ export async function action({ request }: Route.ActionArgs) {
   try {
     const patch = await enhanceInstruction({
       message,
-      agentInstruction,
+      enhanceAgentInstruction,
       azureConfig,
     });
     return Response.json({ message: patch });
@@ -194,7 +194,7 @@ async function enhanceInstruction(options: InstructionEnhanceOptions): Promise<s
 
   const agent = new Agent({
     name: "LocalPlaygroundInstructionAgent",
-    instructions: options.agentInstruction,
+    instructions: options.enhanceAgentInstruction,
     model,
     modelSettings: {
       reasoning: {
@@ -357,19 +357,19 @@ function readMessage(payload: unknown): string {
   return message.trim();
 }
 
-function readAgentInstruction(payload: unknown): string {
+function readEnhanceAgentInstruction(payload: unknown): string {
   if (!isRecord(payload)) {
-    return DEFAULT_AGENT_INSTRUCTION;
+    return INSTRUCTION_ENHANCE_SYSTEM_PROMPT;
   }
 
-  const value = payload.agentInstruction;
+  const value = payload.enhanceAgentInstruction;
   if (typeof value !== "string") {
-    return DEFAULT_AGENT_INSTRUCTION;
+    return INSTRUCTION_ENHANCE_SYSTEM_PROMPT;
   }
 
   const trimmed = value.trim();
   if (!trimmed) {
-    return DEFAULT_AGENT_INSTRUCTION;
+    return INSTRUCTION_ENHANCE_SYSTEM_PROMPT;
   }
 
   return trimmed.slice(0, CHAT_MAX_AGENT_INSTRUCTION_LENGTH);

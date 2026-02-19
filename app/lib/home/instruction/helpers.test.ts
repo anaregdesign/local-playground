@@ -91,6 +91,7 @@ describe("instruction enhance helpers", () => {
     expect(message).toContain("Preserve the original file format style for .md.");
     expect(message).toContain("Set fileName to instruction.md.");
     expect(message).toContain("Use hunk lines with op values: context, add, remove.");
+    expect(message).toContain("oldStart/newStart must match exact 1-based line numbers");
     expect(message).toContain("<instruction>");
   });
 
@@ -108,6 +109,25 @@ describe("instruction enhance helpers", () => {
     expect(result).toEqual({
       ok: true,
       value: "line-1\nline-2-updated\nline-3\nline-4",
+    });
+  });
+
+  it("applies patch even when hunk start line is slightly off", () => {
+    const result = applyInstructionUnifiedDiffPatch(
+      "line-1\nline-2\nline-3\nline-4",
+      [
+        "--- a/instruction.txt",
+        "+++ b/instruction.txt",
+        "@@ -1,2 +1,2 @@",
+        " line-2",
+        "-line-3",
+        "+line-3-updated",
+      ].join("\n"),
+    );
+
+    expect(result).toEqual({
+      ok: true,
+      value: "line-1\nline-2\nline-3-updated\nline-4",
     });
   });
 
