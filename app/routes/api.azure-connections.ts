@@ -1,8 +1,8 @@
 import {
   getAzureDependencies,
   normalizeAzureOpenAIBaseURL,
-} from "~/lib/azure-dependencies";
-import type { AzureDependencies } from "~/lib/azure-dependencies";
+} from "~/lib/azure/dependencies";
+import type { AzureDependencies } from "~/lib/azure/dependencies";
 import type { Route } from "./+types/api.azure-connections";
 
 type AzureProject = {

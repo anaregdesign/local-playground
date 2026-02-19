@@ -3,7 +3,7 @@ import {
   AZURE_COGNITIVE_SERVICES_SCOPE,
   createAzureDependencies,
   normalizeAzureOpenAIBaseURL,
-} from "./azure-dependencies";
+} from "./dependencies";
 
 describe("normalizeAzureOpenAIBaseURL", () => {
   it("appends /openai/v1/ when endpoint does not include it", () => {

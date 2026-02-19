@@ -3,57 +3,7 @@ import {
   parseAzureAuthScopeInput,
   parseHttpHeadersInput,
   parseMcpTimeoutSecondsInput,
-  readAzureSelectionFromUnknown,
-  readTenantIdFromUnknown,
-} from "./input-parsers";
-
-describe("readTenantIdFromUnknown", () => {
-  it("returns trimmed tenantId for string values", () => {
-    expect(readTenantIdFromUnknown(" tenant-a ")).toBe("tenant-a");
-  });
-
-  it("returns empty string for non-string values", () => {
-    expect(readTenantIdFromUnknown(100)).toBe("");
-    expect(readTenantIdFromUnknown(null)).toBe("");
-  });
-});
-
-describe("readAzureSelectionFromUnknown", () => {
-  it("returns normalized selection when tenant matches", () => {
-    expect(
-      readAzureSelectionFromUnknown(
-        {
-          tenantId: " tenant-a ",
-          projectId: " project-a ",
-          deploymentName: " deploy-a ",
-        },
-        "tenant-a",
-      ),
-    ).toEqual({
-      tenantId: "tenant-a",
-      projectId: "project-a",
-      deploymentName: "deploy-a",
-    });
-  });
-
-  it("returns null when tenant does not match expected tenant", () => {
-    expect(
-      readAzureSelectionFromUnknown(
-        {
-          tenantId: "tenant-a",
-          projectId: "project-a",
-          deploymentName: "deploy-a",
-        },
-        "tenant-b",
-      ),
-    ).toBeNull();
-  });
-
-  it("returns null for invalid payload", () => {
-    expect(readAzureSelectionFromUnknown({}, "tenant-a")).toBeNull();
-    expect(readAzureSelectionFromUnknown("invalid", "tenant-a")).toBeNull();
-  });
-});
+} from "./http-inputs";
 
 describe("parseHttpHeadersInput", () => {
   it("parses valid KEY=value lines", () => {

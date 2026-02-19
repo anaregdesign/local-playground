@@ -11,7 +11,7 @@ export type InstructionDiffLine = {
   content: string;
 };
 
-type SaveInstructionToClientFileResult = {
+export type SaveInstructionToClientFileResult = {
   fileName: string;
   mode: "picker" | "download";
 };
@@ -40,7 +40,7 @@ type WindowWithSaveFilePicker = Window & {
   showSaveFilePicker?: (options?: SaveFilePickerOptionsCompat) => Promise<SaveFileHandleCompat>;
 };
 
-const ALLOWED_INSTRUCTION_EXTENSIONS = new Set(["md", "txt", "xml", "json"]);
+export const ALLOWED_INSTRUCTION_EXTENSIONS = new Set(["md", "txt", "xml", "json"]);
 const INSTRUCTION_SAVE_FILE_TYPES: SaveFilePickerFileType[] = [
   {
     description: "Instruction files",

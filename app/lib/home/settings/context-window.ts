@@ -1,5 +1,6 @@
-const MIN_CONTEXT_WINDOW_SIZE = 1;
-const MAX_CONTEXT_WINDOW_SIZE = 200;
+export const DEFAULT_CONTEXT_WINDOW_SIZE = 10;
+export const MIN_CONTEXT_WINDOW_SIZE = 1;
+export const MAX_CONTEXT_WINDOW_SIZE = 200;
 
 export function validateContextWindowInput(input: string): {
   isValid: boolean;

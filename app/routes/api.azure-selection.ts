@@ -1,5 +1,5 @@
 import { mkdir, writeFile } from "node:fs/promises";
-import { getFoundryConfigFilePaths, readFoundryConfigTextFile } from "~/lib/foundry-config";
+import { getFoundryConfigFilePaths, readFoundryConfigTextFile } from "~/lib/foundry/config";
 import type { Route } from "./+types/api.azure-selection";
 
 type AzureSelectionPreference = {

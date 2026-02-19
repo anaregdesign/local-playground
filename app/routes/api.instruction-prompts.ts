@@ -1,6 +1,6 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { resolveFoundryConfigDirectory } from "~/lib/foundry-config";
+import { resolveFoundryConfigDirectory } from "~/lib/foundry/config";
 import type { Route } from "./+types/api.instruction-prompts";
 
 type ParseResult<T> = { ok: true; value: T } | { ok: false; error: string };

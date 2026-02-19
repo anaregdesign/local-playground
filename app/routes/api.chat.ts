@@ -14,8 +14,8 @@ import {
   AZURE_COGNITIVE_SERVICES_SCOPE,
   getAzureDependencies,
   normalizeAzureOpenAIBaseURL,
-} from "~/lib/azure-dependencies";
-import type { AzureDependencies } from "~/lib/azure-dependencies";
+} from "~/lib/azure/dependencies";
+import type { AzureDependencies } from "~/lib/azure/dependencies";
 
 type ChatRole = "user" | "assistant";
 

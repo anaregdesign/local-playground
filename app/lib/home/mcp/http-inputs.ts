@@ -1,48 +1,13 @@
 export type ParseResult<T> = { ok: true; value: T } | { ok: false; error: string };
 
-export type AzureSelectionPreference = {
-  tenantId: string;
-  projectId: string;
-  deploymentName: string;
-};
+export const DEFAULT_MCP_AZURE_AUTH_SCOPE = "https://cognitiveservices.azure.com/.default";
+export const DEFAULT_MCP_TIMEOUT_SECONDS = 30;
+export const MIN_MCP_TIMEOUT_SECONDS = 1;
+export const MAX_MCP_TIMEOUT_SECONDS = 600;
 
-const DEFAULT_MCP_AZURE_AUTH_SCOPE = "https://cognitiveservices.azure.com/.default";
-const DEFAULT_MCP_TIMEOUT_SECONDS = 30;
-const MIN_MCP_TIMEOUT_SECONDS = 1;
-const MAX_MCP_TIMEOUT_SECONDS = 600;
 const MAX_MCP_HTTP_HEADERS = 64;
 const HTTP_HEADER_NAME_PATTERN = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/;
 const MAX_MCP_AZURE_AUTH_SCOPE_LENGTH = 512;
-
-export function readTenantIdFromUnknown(value: unknown): string {
-  return typeof value === "string" ? value.trim() : "";
-}
-
-export function readAzureSelectionFromUnknown(
-  value: unknown,
-  expectedTenantId: string,
-): AzureSelectionPreference | null {
-  if (!isRecord(value)) {
-    return null;
-  }
-
-  const tenantId = typeof value.tenantId === "string" ? value.tenantId.trim() : "";
-  const projectId = typeof value.projectId === "string" ? value.projectId.trim() : "";
-  const deploymentName = typeof value.deploymentName === "string" ? value.deploymentName.trim() : "";
-  if (!tenantId || !projectId || !deploymentName) {
-    return null;
-  }
-
-  if (expectedTenantId && tenantId !== expectedTenantId) {
-    return null;
-  }
-
-  return {
-    tenantId,
-    projectId,
-    deploymentName,
-  };
-}
 
 export function parseHttpHeadersInput(input: string): ParseResult<Record<string, string>> {
   const trimmed = input.trim();
@@ -139,8 +104,4 @@ export function parseMcpTimeoutSecondsInput(input: string): ParseResult<number> 
   }
 
   return { ok: true, value: parsed };
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object";
 }
