@@ -4,7 +4,7 @@ import {
   readChatStreamEvent,
   readMcpRpcHistoryEntryFromUnknown,
   upsertMcpRpcHistoryEntry,
-} from "./home";
+} from "./stream";
 
 describe("parseSseDataBlock", () => {
   it("extracts data payload lines", () => {

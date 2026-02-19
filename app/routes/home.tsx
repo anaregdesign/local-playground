@@ -14,6 +14,7 @@ import { PlaygroundPanel } from "~/components/home/playground/PlaygroundPanel";
 import { CopyIconButton } from "~/components/home/shared/CopyIconButton";
 import { FluentUI } from "~/components/home/shared/fluent";
 import type { MainViewTab, McpTransport, ReasoningEffort } from "~/components/home/shared/types";
+import { validateContextWindowInput } from "~/lib/home/settings/context-window";
 import type { Route } from "./+types/home";
 
 const { Button } = FluentUI;
@@ -2136,47 +2137,6 @@ function createMessage(role: ChatRole, content: string, turnId: string): ChatMes
 
 const REASONING_EFFORT_OPTIONS: ReasoningEffort[] = ["none", "low", "medium", "high"];
 const ENV_KEY_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
-
-export function validateContextWindowInput(input: string): {
-  isValid: boolean;
-  value: number | null;
-  message: string | null;
-} {
-  const trimmed = input.trim();
-  if (!trimmed) {
-    return {
-      isValid: false,
-      value: null,
-      message: `Enter an integer between ${MIN_CONTEXT_WINDOW_SIZE} and ${MAX_CONTEXT_WINDOW_SIZE}.`,
-    };
-  }
-  if (!/^\d+$/.test(trimmed)) {
-    return {
-      isValid: false,
-      value: null,
-      message: "Context window must be an integer.",
-    };
-  }
-
-  const parsed = Number(trimmed);
-  if (
-    !Number.isSafeInteger(parsed) ||
-    parsed < MIN_CONTEXT_WINDOW_SIZE ||
-    parsed > MAX_CONTEXT_WINDOW_SIZE
-  ) {
-    return {
-      isValid: false,
-      value: null,
-      message: `Context window must be between ${MIN_CONTEXT_WINDOW_SIZE} and ${MAX_CONTEXT_WINDOW_SIZE}.`,
-    };
-  }
-
-  return {
-    isValid: true,
-    value: parsed,
-    message: null,
-  };
-}
 
 export function readTenantIdFromUnknown(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";

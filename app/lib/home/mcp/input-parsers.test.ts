@@ -5,7 +5,7 @@ import {
   parseMcpTimeoutSecondsInput,
   readAzureSelectionFromUnknown,
   readTenantIdFromUnknown,
-} from "./home";
+} from "./input-parsers";
 
 describe("readTenantIdFromUnknown", () => {
   it("returns trimmed tenantId for string values", () => {

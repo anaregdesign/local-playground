@@ -7,11 +7,11 @@ import {
   normalizeEnhancedInstructionResponse,
   resolveInstructionFormatExtension,
   resolveInstructionSourceFileName,
-  validateContextWindowInput,
   validateEnhancedInstructionCompleteness,
   validateEnhancedInstructionFormat,
   validateInstructionLanguagePreserved,
-} from "./home";
+} from "./helpers";
+import { validateContextWindowInput } from "../settings/context-window";
 
 describe("validateContextWindowInput", () => {
   it("accepts integers in the allowed range", () => {
