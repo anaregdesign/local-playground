@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { PROMPT_MAX_CONTENT_BYTES } from "~/lib/constants";
 import {
   buildPromptFileName,
+  extractInstructionDiffPatch,
   normalizeRequestedPromptFileName,
   parseInstructionContent,
   parseRequestedPromptFileName,
@@ -131,5 +132,72 @@ describe("normalizeRequestedPromptFileName", () => {
       ok: false,
       error: "File name is invalid.",
     });
+  });
+});
+
+describe("extractInstructionDiffPatch", () => {
+  it("rejects unsupported patch file names", () => {
+    expect(() =>
+      extractInstructionDiffPatch({
+        fileName: "../instruction.md",
+        hunks: [
+          {
+            oldStart: 1,
+            newStart: 1,
+            lines: [{ op: "context", text: "line-1" }],
+          },
+        ],
+      }),
+    ).toThrow("required patch schema");
+  });
+
+  it("rejects hunks with empty lines array", () => {
+    expect(() =>
+      extractInstructionDiffPatch({
+        fileName: "instruction.md",
+        hunks: [
+          {
+            oldStart: 1,
+            newStart: 1,
+            lines: [],
+          },
+        ],
+      }),
+    ).toThrow("required patch schema");
+  });
+
+  it("preserves hunk order from model output", () => {
+    const patch = extractInstructionDiffPatch({
+      fileName: "instruction.md",
+      hunks: [
+        {
+          oldStart: 2,
+          newStart: 2,
+          lines: [{ op: "context", text: "line-2" }],
+        },
+        {
+          oldStart: 5,
+          newStart: 5,
+          lines: [
+            { op: "context", text: "line-5" },
+            { op: "remove", text: "line-6" },
+            { op: "add", text: "line-6-updated" },
+          ],
+        },
+      ],
+    });
+
+    expect(patch).toBe(
+      [
+        "--- a/instruction.md",
+        "+++ b/instruction.md",
+        "@@ -2,1 +2,1 @@",
+        " line-2",
+        "@@ -5,2 +5,2 @@",
+        " line-5",
+        "-line-6",
+        "+line-6-updated",
+      ].join("\n"),
+    );
   });
 });

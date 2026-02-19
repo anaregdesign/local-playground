@@ -56,6 +56,11 @@ type InstructionDiffPatchOutput = {
   hunks: InstructionDiffPatchHunkOutput[];
 };
 
+const INSTRUCTION_DIFF_PATCH_FILE_NAME_PATTERN = /^[A-Za-z0-9._-]+\.(?:md|txt|xml|json)$/;
+const INSTRUCTION_DIFF_PATCH_MAX_HUNKS = 256;
+const INSTRUCTION_DIFF_PATCH_MAX_HUNK_LINES = 512;
+const INSTRUCTION_DIFF_PATCH_MAX_LINE_TEXT_LENGTH = 4_000;
+
 const INSTRUCTION_DIFF_PATCH_OUTPUT_TYPE = {
   type: "json_schema" as const,
   name: "instruction_diff_patch",
@@ -67,24 +72,32 @@ const INSTRUCTION_DIFF_PATCH_OUTPUT_TYPE = {
       fileName: {
         type: "string",
         description: "Target file name for the instruction patch, e.g. instruction.md",
+        minLength: 1,
+        maxLength: 128,
+        pattern: "^[A-Za-z0-9._-]+\\.(?:md|txt|xml|json)$",
       },
       hunks: {
         type: "array",
         description: "Unified diff-style hunks.",
+        maxItems: INSTRUCTION_DIFF_PATCH_MAX_HUNKS,
         items: {
           type: "object",
           properties: {
             oldStart: {
               type: "integer",
+              minimum: 0,
               description:
                 "1-based start line in original text. Use 0 only for pure insertion at start.",
             },
             newStart: {
               type: "integer",
+              minimum: 0,
               description: "1-based start line in revised text.",
             },
             lines: {
               type: "array",
+              minItems: 1,
+              maxItems: INSTRUCTION_DIFF_PATCH_MAX_HUNK_LINES,
               items: {
                 type: "object",
                 properties: {
@@ -94,6 +107,7 @@ const INSTRUCTION_DIFF_PATCH_OUTPUT_TYPE = {
                   },
                   text: {
                     type: "string",
+                    maxLength: INSTRUCTION_DIFF_PATCH_MAX_LINE_TEXT_LENGTH,
                   },
                 },
                 required: ["op", "text"],
@@ -198,7 +212,7 @@ async function enhanceInstruction(options: InstructionEnhanceOptions): Promise<s
     model,
     modelSettings: {
       reasoning: {
-        effort: "none",
+        effort: "high",
       },
     },
     outputType: INSTRUCTION_DIFF_PATCH_OUTPUT_TYPE,
@@ -208,7 +222,7 @@ async function enhanceInstruction(options: InstructionEnhanceOptions): Promise<s
   return extractInstructionDiffPatch(result.finalOutput);
 }
 
-function extractInstructionDiffPatch(finalOutput: unknown): string {
+export function extractInstructionDiffPatch(finalOutput: unknown): string {
   if (isRecord(finalOutput)) {
     const output = readInstructionDiffPatchOutput(finalOutput);
     if (output) {
@@ -222,14 +236,16 @@ function extractInstructionDiffPatch(finalOutput: unknown): string {
       throw new Error("Enhancement response is empty.");
     }
 
+    let parsed: unknown;
     try {
-      const parsed = JSON.parse(trimmed);
-      const output = readInstructionDiffPatchOutput(parsed);
-      if (output) {
-        return buildInstructionDiffPatchText(output);
-      }
+      parsed = JSON.parse(trimmed);
     } catch {
       throw new Error("Enhancement response is not valid JSON.");
+    }
+
+    const output = readInstructionDiffPatchOutput(parsed);
+    if (output) {
+      return buildInstructionDiffPatchText(output);
     }
   }
 
@@ -297,9 +313,21 @@ function readInstructionDiffPatchOutput(
     return null;
   }
 
+  if (
+    !INSTRUCTION_DIFF_PATCH_FILE_NAME_PATTERN.test(value.fileName) ||
+    value.fileName.length > 128 ||
+    value.hunks.length > INSTRUCTION_DIFF_PATCH_MAX_HUNKS
+  ) {
+    return null;
+  }
+
   const hunks: InstructionDiffPatchHunkOutput[] = [];
   for (const hunk of value.hunks) {
     if (!isRecord(hunk) || !Array.isArray(hunk.lines)) {
+      return null;
+    }
+
+    if (hunk.lines.length === 0 || hunk.lines.length > INSTRUCTION_DIFF_PATCH_MAX_HUNK_LINES) {
       return null;
     }
 
@@ -318,7 +346,11 @@ function readInstructionDiffPatchOutput(
 
     const lines: InstructionDiffPatchLineOutput[] = [];
     for (const line of hunk.lines) {
-      if (!isRecord(line) || typeof line.text !== "string") {
+      if (
+        !isRecord(line) ||
+        typeof line.text !== "string" ||
+        line.text.length > INSTRUCTION_DIFF_PATCH_MAX_LINE_TEXT_LENGTH
+      ) {
         return null;
       }
 
