@@ -1451,6 +1451,38 @@ body {
   margin: 0;
 }
 
+.setting-message-bar .fui-MessageBarBody {
+  width: 100%;
+  min-width: 0;
+}
+
+.status-message-body {
+  width: 100%;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  column-gap: 0.35rem;
+}
+
+.status-message-main {
+  min-width: 0;
+}
+
+.status-message-text {
+  display: block;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  line-height: var(--home-line-height-body);
+}
+
+.status-message-copy-btn {
+  align-self: start;
+  justify-self: end;
+  margin-top: 0.05rem;
+}
+
 .fui-Button.azure-login-btn {
   font-weight: 600;
 }
