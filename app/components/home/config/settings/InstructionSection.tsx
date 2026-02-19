@@ -1,24 +1,19 @@
+import { useMemo } from "react";
 import type { ChangeEvent, RefObject } from "react";
 import { FluentUI } from "~/components/home/shared/fluent";
 import { ConfigSection } from "~/components/home/shared/ConfigSection";
 import { StatusMessageList } from "~/components/home/shared/StatusMessageList";
+import { Diff, Hunk, parseDiff } from "react-diff-view";
+import "react-diff-view/style/index.css";
 
 const { Button, Spinner, Textarea } = FluentUI;
 
-type InstructionDiffLineType = "context" | "added" | "removed";
 type InstructionLanguageLike = "japanese" | "english" | "mixed" | "unknown";
-
-type InstructionDiffLine = {
-  type: InstructionDiffLineType;
-  oldLineNumber: number | null;
-  newLineNumber: number | null;
-  content: string;
-};
 
 type InstructionEnhanceComparisonLike = {
   extension: string;
   language: InstructionLanguageLike;
-  diffLines: InstructionDiffLine[];
+  diffPatch: string;
 };
 
 type InstructionSectionProps = {
@@ -73,6 +68,10 @@ export function InstructionSection(props: InstructionSectionProps) {
     onAdoptEnhancedInstruction,
     onAdoptOriginalInstruction,
   } = props;
+  const parsedDiffFiles = useMemo(
+    () => (instructionEnhanceComparison ? parseDiff(instructionEnhanceComparison.diffPatch) : []),
+    [instructionEnhanceComparison],
+  );
 
   return (
     <ConfigSection
@@ -111,26 +110,25 @@ export function InstructionSection(props: InstructionSectionProps) {
             Format: .{instructionEnhanceComparison.extension} | Language:{" "}
             {describeInstructionLanguage(instructionEnhanceComparison.language)}
           </p>
-          <div className="instruction-diff-table" role="table" aria-label="Instruction diff">
-            {instructionEnhanceComparison.diffLines.map((line, index) => (
-              <div
-                key={`instruction-diff-${index}-${line.oldLineNumber ?? "n"}-${line.newLineNumber ?? "n"}`}
-                className={`instruction-diff-row ${line.type}`}
-                role="row"
-              >
-                <span className="instruction-diff-line-number old" aria-hidden="true">
-                  {line.oldLineNumber ?? ""}
-                </span>
-                <span className="instruction-diff-line-number new" aria-hidden="true">
-                  {line.newLineNumber ?? ""}
-                </span>
-                <span className={`instruction-diff-sign ${line.type}`} aria-hidden="true">
-                  {line.type === "added" ? "+" : line.type === "removed" ? "-" : " "}
-                </span>
-                <code className="instruction-diff-content">{line.content.length > 0 ? line.content : " "}</code>
-              </div>
-            ))}
-          </div>
+          {parsedDiffFiles.length > 0 ? (
+            <div className="instruction-diff-table" aria-label="Instruction diff">
+              {parsedDiffFiles.map((file, index) => (
+                <Diff
+                  key={`${file.oldRevision ?? "old"}-${file.newRevision ?? "new"}-${index}`}
+                  viewType="unified"
+                  diffType={file.type}
+                  hunks={file.hunks}
+                  className="instruction-diff-github"
+                >
+                  {(hunks) => hunks.map((hunk) => <Hunk key={hunk.content} hunk={hunk} />)}
+                </Diff>
+              ))}
+            </div>
+          ) : (
+            <pre className="instruction-diff-raw" aria-label="Instruction diff">
+              <code>{instructionEnhanceComparison.diffPatch}</code>
+            </pre>
+          )}
         </section>
       ) : (
         <>

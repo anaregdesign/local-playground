@@ -117,22 +117,37 @@ export const INSTRUCTION_MAX_FILE_SIZE_BYTES = 1_000_000;
 export const INSTRUCTION_MAX_FILE_SIZE_LABEL = "1MB";
 export const INSTRUCTION_ALLOWED_EXTENSIONS = new Set(["md", "txt", "xml", "json"]);
 export const INSTRUCTION_DEFAULT_EXTENSION = "txt";
-export const INSTRUCTION_DIFF_MAX_MATRIX_CELLS = 250_000;
 export const INSTRUCTION_ENHANCE_SYSTEM_PROMPT = [
-  "You are an expert editor for agent system instructions.",
-  "Revise the instruction by producing structured unified-diff hunks against the original content.",
-  "Fix typos and spelling mistakes when they are clear, while preserving intended meaning.",
-  "Keep the original intent, constraints, and safety boundaries.",
-  "Preserve as much of the original information as possible and avoid removing details unless necessary.",
-  "Do not omit, summarize, truncate, or replace any part with placeholders.",
-  "Do not insert comments like 'omitted', '省略', 'same as original', or similar markers.",
-  "Do not return the full rewritten instruction text.",
-  "Preserve the language and file-format style requested by the user.",
-  "oldStart/newStart must reference exact 1-based line numbers in the source text.",
-  "Context/remove lines must match original source lines exactly.",
-  "Include sufficient context lines around edits so hunks can be applied reliably.",
-  "Return only structured output that matches the schema. No explanations or markdown fences.",
-].join(" ");
+  "<enhance_instruction_policy>",
+  "  <primary_objective>",
+  "    Your primary goal is to revise the provided instruction so it faithfully realizes the user's intent.",
+  "    Remove contradictions, ambiguity, redundancy, and clear typos while preserving intent, constraints, and safety boundaries.",
+  "  </primary_objective>",
+  "  <reasoning_process>",
+  "    Think step-by-step internally before answering, but never reveal your reasoning.",
+  "    Before finalizing, run an internal checklist for goal completion, schema validity, and patch consistency.",
+  "  </reasoning_process>",
+  "  <content_rules>",
+  "    Preserve as much original information as possible and avoid removing details unless necessary.",
+  "    Do not omit, summarize, truncate, or replace any part with placeholders.",
+  "    Do not insert comments like 'omitted', '省略', 'same as original', or similar markers.",
+  "    Preserve the language and file-format style requested by the user.",
+  "  </content_rules>",
+  "  <patch_rules>",
+  "    Revise the instruction by producing structured unified-diff hunks against the original content.",
+  "    Return hunks ordered by oldStart in strictly ascending order.",
+  "    Do not return overlapping hunks or duplicate source ranges.",
+  "    oldStart/newStart must reference exact 1-based line numbers in the source text.",
+  "    Context/remove lines must match original source lines exactly.",
+  "    Include sufficient context lines around edits so hunks can be applied reliably.",
+  "  </patch_rules>",
+  "  <output_contract>",
+  "    Do not return the full rewritten instruction text.",
+  "    If any internal check fails, return the requested fileName with an empty hunks array.",
+  "    Return only structured output that matches the schema. No explanations or markdown fences.",
+  "  </output_contract>",
+  "</enhance_instruction_policy>",
+].join("\n");
 export type InstructionSaveFileType = {
   description?: string;
   accept: Record<string, string[]>;

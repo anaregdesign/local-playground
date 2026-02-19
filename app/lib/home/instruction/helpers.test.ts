@@ -1,16 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
   applyInstructionUnifiedDiffPatch,
-  buildInstructionDiffLines,
   buildInstructionEnhanceMessage,
   buildInstructionSuggestedFileName,
   detectInstructionLanguage,
   normalizeInstructionDiffPatchResponse,
   resolveInstructionFormatExtension,
   resolveInstructionSourceFileName,
-  validateEnhancedInstructionCompleteness,
   validateEnhancedInstructionFormat,
-  validateInstructionLanguagePreserved,
 } from "./helpers";
 
 describe("instruction enhance helpers", () => {
@@ -46,6 +43,10 @@ describe("instruction enhance helpers", () => {
       extension: "md",
       language: "english",
     });
+    expect(message).toContain("<enhance_request>");
+    expect(message).toContain(
+      "Your primary goal is to improve this instruction so the user's intent is realized precisely.",
+    );
     expect(message).toContain(
       "Preserve as much original information as possible; avoid deleting details unless necessary.",
     );
@@ -57,8 +58,17 @@ describe("instruction enhance helpers", () => {
     );
     expect(message).toContain("Preserve the original language (English).");
     expect(message).toContain("Preserve the original file format style for .md.");
+    expect(message).toContain(
+      "Think step-by-step internally before responding, but do not reveal your reasoning.",
+    );
     expect(message).toContain("Set fileName to instruction.md.");
+    expect(message).toContain("Before output, verify schema validity and patch consistency.");
     expect(message).toContain("Use hunk lines with op values: context, add, remove.");
+    expect(message).toContain("Return hunks sorted by oldStart in strictly ascending order.");
+    expect(message).toContain("Do not return overlapping hunks or duplicate source ranges.");
+    expect(message).toContain(
+      "If any internal check fails, return the requested fileName with an empty hunks array.",
+    );
     expect(message).toContain("oldStart/newStart must match exact 1-based line numbers");
     expect(message).toContain("<instruction>");
   });
@@ -113,7 +123,7 @@ describe("instruction enhance helpers", () => {
     });
   });
 
-  it("validates enhanced format and language preservation", () => {
+  it("validates enhanced format", () => {
     expect(validateEnhancedInstructionFormat('{"a":1}', "json")).toEqual({
       ok: true,
       value: true,
@@ -130,96 +140,6 @@ describe("instruction enhance helpers", () => {
       ok: false,
       error: "Enhanced instruction is not valid XML-like content. Please retry.",
     });
-
-    expect(validateInstructionLanguagePreserved("日本語で回答してください", "簡潔に回答します。")).toEqual({
-      ok: true,
-      value: true,
-    });
-    expect(validateInstructionLanguagePreserved("日本語で回答してください", "Answer briefly.")).toEqual({
-      ok: false,
-      error: "Enhanced instruction changed language unexpectedly. Please retry.",
-    });
-    expect(validateInstructionLanguagePreserved("Answer in English.", "こんにちは")).toEqual({
-      ok: false,
-      error: "Enhanced instruction changed language unexpectedly. Please retry.",
-    });
   });
 
-  it("rejects omission-marker placeholders in enhanced content", () => {
-    expect(
-      validateEnhancedInstructionCompleteness(
-        "<!-- 以降のExamplesは原文どおり（長大のため省略せずに保持する想定） -->",
-      ),
-    ).toEqual({
-      ok: false,
-      error:
-        "Enhanced instruction appears to omit original content with placeholders/comments. Please retry.",
-    });
-
-    expect(validateEnhancedInstructionCompleteness("All original examples are fully included.")).toEqual({
-      ok: true,
-      value: true,
-    });
-  });
-
-  it("builds github-style line diff entries", () => {
-    const diff = buildInstructionDiffLines("line-1\nline-2\nline-3", "line-1\nline-2-updated\nline-3\nline-4");
-    expect(diff).toEqual([
-      {
-        type: "context",
-        oldLineNumber: 1,
-        newLineNumber: 1,
-        content: "line-1",
-      },
-      {
-        type: "removed",
-        oldLineNumber: 2,
-        newLineNumber: null,
-        content: "line-2",
-      },
-      {
-        type: "added",
-        oldLineNumber: null,
-        newLineNumber: 2,
-        content: "line-2-updated",
-      },
-      {
-        type: "context",
-        oldLineNumber: 3,
-        newLineNumber: 3,
-        content: "line-3",
-      },
-      {
-        type: "added",
-        oldLineNumber: null,
-        newLineNumber: 4,
-        content: "line-4",
-      },
-    ]);
-  });
-
-  it("falls back to linear diff strategy when matrix is capped", () => {
-    const diff = buildInstructionDiffLines("a\nb\nc", "a\nx\nc", {
-      maxMatrixCells: 1,
-    });
-    expect(diff.map((line) => line.type)).toEqual(["context", "removed", "added", "context"]);
-  });
-
-  it("returns only context lines for identical instructions", () => {
-    const diff = buildInstructionDiffLines("same\nlines", "same\nlines");
-    expect(diff).toEqual([
-      {
-        type: "context",
-        oldLineNumber: 1,
-        newLineNumber: 1,
-        content: "same",
-      },
-      {
-        type: "context",
-        oldLineNumber: 2,
-        newLineNumber: 2,
-        content: "lines",
-      },
-    ]);
-  });
 });

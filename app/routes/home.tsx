@@ -63,10 +63,9 @@ import {
   readChatEventStreamPayload,
   upsertMcpRpcHistoryEntry,
 } from "~/lib/home/chat/stream";
-import type { InstructionDiffLine, InstructionLanguage } from "~/lib/home/instruction/helpers";
+import type { InstructionLanguage } from "~/lib/home/instruction/helpers";
 import {
   applyInstructionUnifiedDiffPatch,
-  buildInstructionDiffLines,
   buildInstructionEnhanceMessage,
   buildInstructionSuggestedFileName,
   describeInstructionLanguage,
@@ -76,9 +75,7 @@ import {
   resolveInstructionFormatExtension,
   resolveInstructionSourceFileName,
   saveInstructionToClientFile,
-  validateEnhancedInstructionCompleteness,
   validateEnhancedInstructionFormat,
-  validateInstructionLanguagePreserved,
 } from "~/lib/home/instruction/helpers";
 import { resolveMainSplitterMaxRightWidth } from "~/lib/home/layout/main-splitter";
 import {
@@ -112,7 +109,7 @@ type InstructionEnhanceComparison = {
   enhanced: string;
   extension: string;
   language: InstructionLanguage;
-  diffLines: InstructionDiffLine[];
+  diffPatch: string;
 };
 
 type JsonHighlightStyle = "default" | "compact";
@@ -1258,21 +1255,6 @@ export default function Home() {
         throw new Error(formatValidation.error);
       }
 
-      const languageValidation = validateInstructionLanguagePreserved(
-        currentInstruction,
-        normalizedEnhancedInstruction,
-      );
-      if (!languageValidation.ok) {
-        throw new Error(languageValidation.error);
-      }
-
-      const completenessValidation = validateEnhancedInstructionCompleteness(
-        normalizedEnhancedInstruction,
-      );
-      if (!completenessValidation.ok) {
-        throw new Error(completenessValidation.error);
-      }
-
       if (normalizedEnhancedInstruction === currentInstruction) {
         setInstructionEnhanceSuccess("No changes were suggested.");
         return;
@@ -1283,7 +1265,7 @@ export default function Home() {
         enhanced: normalizedEnhancedInstruction,
         extension: instructionExtension,
         language: instructionLanguage,
-        diffLines: buildInstructionDiffLines(currentInstruction, normalizedEnhancedInstruction),
+        diffPatch: normalizedInstructionPatch,
       });
       setInstructionFileError(null);
       setInstructionSaveError(null);
