@@ -44,17 +44,17 @@ describe("instruction enhance helpers", () => {
       language: "english",
     });
     expect(message).toContain("<enhance_request>");
+    expect(message).toContain("<editing_boundaries>");
+    expect(message).toContain("<diff_contract>");
+    expect(message).toContain("<output_contract>");
     expect(message).toContain(
-      "Your primary goal is to improve this instruction so the user's intent is realized precisely.",
+      "Improve this instruction so the user's intent is realized precisely.",
     );
     expect(message).toContain(
-      "Preserve as much original information as possible; avoid deleting details unless necessary.",
+      "Preserve original information as much as possible.",
     );
     expect(message).toContain(
       "Do not add placeholder comments/markers such as '省略', 'omitted', 'same as original', or equivalent.",
-    );
-    expect(message).toContain(
-      "Correct clear typos and spelling mistakes without changing intended meaning.",
     );
     expect(message).toContain("Preserve the original language (English).");
     expect(message).toContain("Preserve the original file format style for .md.");
@@ -62,7 +62,9 @@ describe("instruction enhance helpers", () => {
       "Think step-by-step internally before responding, but do not reveal your reasoning.",
     );
     expect(message).toContain("Set fileName to instruction.md.");
-    expect(message).toContain("Before output, verify schema validity and patch consistency.");
+    expect(message).toContain(
+      "Before output, verify objective completion, schema validity, and patch consistency.",
+    );
     expect(message).toContain("Use hunk lines with op values: context, add, remove.");
     expect(message).toContain("Return hunks sorted by oldStart in strictly ascending order.");
     expect(message).toContain("Do not return overlapping hunks or duplicate source ranges.");
