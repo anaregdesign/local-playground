@@ -1,5 +1,5 @@
 import type { ChangeEvent, RefObject } from "react";
-import { FluentUI } from "~/components/home/fluent";
+import { FluentUI } from "~/components/home/shared/fluent";
 const { Button, MessageBar, MessageBarBody, Spinner, Textarea } = FluentUI;
 
 type InstructionDiffLineType = "context" | "added" | "removed";

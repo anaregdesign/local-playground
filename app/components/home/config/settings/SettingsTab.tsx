@@ -1,7 +1,7 @@
 import type { ComponentProps } from "react";
-import { AzureConnectionSection } from "~/components/home/AzureConnectionSection";
-import { InstructionSection } from "~/components/home/InstructionSection";
-import type { MainViewTab } from "~/components/home/types";
+import { AzureConnectionSection } from "~/components/home/config/settings/AzureConnectionSection";
+import { InstructionSection } from "~/components/home/config/settings/InstructionSection";
+import type { MainViewTab } from "~/components/home/shared/types";
 
 type SettingsTabProps = {
   activeMainTab: MainViewTab;

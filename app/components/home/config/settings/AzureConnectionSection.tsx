@@ -1,4 +1,4 @@
-import { FluentUI } from "~/components/home/fluent";
+import { FluentUI } from "~/components/home/shared/fluent";
 const { Button, MessageBar, MessageBarBody, Spinner } = FluentUI;
 
 type AzureConnectionLike = {

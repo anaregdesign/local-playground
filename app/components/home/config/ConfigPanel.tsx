@@ -1,8 +1,8 @@
 import type { ComponentProps } from "react";
-import { FluentUI } from "~/components/home/fluent";
-import { McpServersTab } from "~/components/home/McpServersTab";
-import { SettingsTab } from "~/components/home/SettingsTab";
-import type { MainViewTab } from "~/components/home/types";
+import { FluentUI } from "~/components/home/shared/fluent";
+import { McpServersTab } from "~/components/home/config/mcp/McpServersTab";
+import { SettingsTab } from "~/components/home/config/settings/SettingsTab";
+import type { MainViewTab } from "~/components/home/shared/types";
 
 const { MessageBar, MessageBarBody, Tab, TabList } = FluentUI;
 

@@ -6,8 +6,8 @@ import {
   type ReactNode,
   type RefObject,
 } from "react";
-import { FluentUI } from "~/components/home/fluent";
-import type { ReasoningEffort } from "~/components/home/types";
+import { FluentUI } from "~/components/home/shared/fluent";
+import type { ReasoningEffort } from "~/components/home/shared/types";
 
 const {
   Button,

@@ -9,10 +9,10 @@ import {
 } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { ConfigPanel } from "~/components/home/ConfigPanel";
-import { FluentUI } from "~/components/home/fluent";
-import { PlaygroundPanel } from "~/components/home/PlaygroundPanel";
-import type { MainViewTab, McpTransport, ReasoningEffort } from "~/components/home/types";
+import { ConfigPanel } from "~/components/home/config/ConfigPanel";
+import { PlaygroundPanel } from "~/components/home/playground/PlaygroundPanel";
+import { FluentUI } from "~/components/home/shared/fluent";
+import type { MainViewTab, McpTransport, ReasoningEffort } from "~/components/home/shared/types";
 import type { Route } from "./+types/home";
 
 const { Button } = FluentUI;
