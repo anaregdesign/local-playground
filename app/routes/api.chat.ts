@@ -46,7 +46,6 @@ type ClientMessage = {
 };
 
 type ReasoningEffort = "none" | "low" | "medium" | "high";
-type ChatResponseMode = "text" | "instruction_diff_patch";
 type McpTransport = "streamable_http" | "sse" | "stdio";
 type ClientMcpHttpServerConfig = {
   name: string;
@@ -86,7 +85,6 @@ type ChatExecutionOptions = {
   agentInstruction: string;
   azureConfig: ResolvedAzureConfig;
   mcpServers: ClientMcpServerConfig[];
-  responseMode: ChatResponseMode;
 };
 type JsonRpcRequestPayload = {
   jsonrpc: "2.0";
@@ -152,77 +150,6 @@ type ChatStreamPayload =
       errorCode?: "azure_login_required";
     };
 
-type InstructionDiffPatchLineOutput = {
-  op: "context" | "add" | "remove";
-  text: string;
-};
-
-type InstructionDiffPatchHunkOutput = {
-  oldStart: number;
-  newStart: number;
-  lines: InstructionDiffPatchLineOutput[];
-};
-
-type InstructionDiffPatchOutput = {
-  fileName: string;
-  hunks: InstructionDiffPatchHunkOutput[];
-};
-
-const INSTRUCTION_DIFF_PATCH_OUTPUT_TYPE = {
-  type: "json_schema" as const,
-  name: "instruction_diff_patch",
-  strict: true,
-  schema: {
-    type: "object" as const,
-    description: "Structured patch hunks for instruction enhancement.",
-    properties: {
-      fileName: {
-        type: "string",
-        description:
-          "Target file name for the instruction patch, e.g. instruction.md",
-      },
-      hunks: {
-        type: "array",
-        description: "Unified diff-style hunks.",
-        items: {
-          type: "object",
-          properties: {
-            oldStart: {
-              type: "integer",
-              description: "1-based start line in original text. Use 0 only for pure insertion at start.",
-            },
-            newStart: {
-              type: "integer",
-              description: "1-based start line in revised text.",
-            },
-            lines: {
-              type: "array",
-              items: {
-                type: "object",
-                properties: {
-                  op: {
-                    type: "string",
-                    enum: ["context", "add", "remove"],
-                  },
-                  text: {
-                    type: "string",
-                  },
-                },
-                required: ["op", "text"],
-                additionalProperties: false,
-              },
-            },
-          },
-          required: ["oldStart", "newStart", "lines"],
-          additionalProperties: false,
-        },
-      },
-    },
-    required: ["fileName", "hunks"] as Array<"fileName" | "hunks">,
-    additionalProperties: false as const,
-  },
-};
-
 export function loader({}: Route.LoaderArgs) {
   return Response.json(
     { error: "Use POST /api/chat for this endpoint." },
@@ -247,12 +174,8 @@ export async function action({ request }: Route.ActionArgs) {
     return Response.json({ error: "`message` is required." }, { status: 400 });
   }
 
-  const responseMode = readResponseMode(payload);
   const contextWindowSize = readContextWindowSize(payload);
-  const history =
-    responseMode === "instruction_diff_patch"
-      ? []
-      : readHistory(payload, contextWindowSize);
+  const history = readHistory(payload, contextWindowSize);
   const reasoningEffort = readReasoningEffort(payload);
   const temperatureResult = readTemperature(payload);
   if (!temperatureResult.ok) {
@@ -264,10 +187,7 @@ export async function action({ request }: Route.ActionArgs) {
     return Response.json({ error: azureConfigResult.error }, { status: 400 });
   }
   const azureConfig = azureConfigResult.value;
-  const mcpServersResult =
-    responseMode === "instruction_diff_patch"
-      ? ({ ok: true, value: [] } satisfies ParseResult<ClientMcpServerConfig[]>)
-      : readMcpServers(payload);
+  const mcpServersResult = readMcpServers(payload);
   if (!mcpServersResult.ok) {
     return Response.json({ error: mcpServersResult.error }, { status: 400 });
   }
@@ -303,10 +223,9 @@ export async function action({ request }: Route.ActionArgs) {
     agentInstruction,
     azureConfig,
     mcpServers: mcpServersResult.value,
-    responseMode,
   };
 
-  if (responseMode === "text" && wantsEventStream(request)) {
+  if (wantsEventStream(request)) {
     return streamChatResponse(executionOptions);
   }
 
@@ -457,7 +376,7 @@ async function executeChat(
       options.azureConfig.deploymentName,
     );
 
-    const baseAgentConfig = {
+    const agent = new Agent({
       name: "LocalPlaygroundAgent",
       instructions: options.agentInstruction,
       model,
@@ -468,14 +387,7 @@ async function executeChat(
         },
       },
       mcpServers: connectedMcpServers,
-    };
-    const agent =
-      options.responseMode === "instruction_diff_patch"
-        ? new Agent({
-            ...baseAgentConfig,
-            outputType: INSTRUCTION_DIFF_PATCH_OUTPUT_TYPE,
-          })
-        : new Agent(baseAgentConfig);
+    });
 
     const runInput = [
       ...options.history.map((entry) =>
@@ -501,11 +413,8 @@ async function executeChat(
 
       await streamedResult.completed;
 
-      const assistantMessage = extractAgentFinalOutput(
-        streamedResult.finalOutput,
-        options.responseMode,
-      );
-      if (options.responseMode === "text" && !assistantMessage) {
+      const assistantMessage = extractAgentFinalOutput(streamedResult.finalOutput);
+      if (!assistantMessage) {
         throw new Error("Azure OpenAI returned an empty message.");
       }
 
@@ -514,8 +423,8 @@ async function executeChat(
     }
 
     const result = await run(agent, runInput);
-    const assistantMessage = extractAgentFinalOutput(result.finalOutput, options.responseMode);
-    if (options.responseMode === "text" && !assistantMessage) {
+    const assistantMessage = extractAgentFinalOutput(result.finalOutput);
+    if (!assistantMessage) {
       throw new Error("Azure OpenAI returned an empty message.");
     }
 
@@ -596,14 +505,7 @@ function wantsEventStream(request: Request): boolean {
   );
 }
 
-function extractAgentFinalOutput(
-  finalOutput: unknown,
-  responseMode: ChatResponseMode,
-): string {
-  if (responseMode === "instruction_diff_patch") {
-    return extractInstructionDiffPatch(finalOutput);
-  }
-
+function extractAgentFinalOutput(finalOutput: unknown): string {
   if (typeof finalOutput === "string") {
     return finalOutput.trim();
   }
@@ -618,84 +520,6 @@ function extractAgentFinalOutput(
     }
   }
   return "";
-}
-
-function extractInstructionDiffPatch(finalOutput: unknown): string {
-  if (isRecord(finalOutput)) {
-    const output = readInstructionDiffPatchOutput(finalOutput);
-    if (output) {
-      return buildInstructionDiffPatchText(output);
-    }
-  }
-
-  if (typeof finalOutput === "string") {
-    const trimmed = finalOutput.trim();
-    if (!trimmed) {
-      throw new Error("Enhancement response is empty.");
-    }
-
-    try {
-      const parsed = JSON.parse(trimmed);
-      const output = readInstructionDiffPatchOutput(parsed);
-      if (output) {
-        return buildInstructionDiffPatchText(output);
-      }
-    } catch {
-      throw new Error("Enhancement response is not valid JSON.");
-    }
-  }
-
-  throw new Error("Enhancement response does not match the required patch schema.");
-}
-
-function buildInstructionDiffPatchText(output: InstructionDiffPatchOutput): string {
-  if (output.hunks.length === 0) {
-    return "";
-  }
-
-  const fileName = normalizeInstructionPatchFileName(output.fileName);
-  const patchLines: string[] = [`--- a/${fileName}`, `+++ b/${fileName}`];
-
-  for (const hunk of output.hunks) {
-    let oldLength = 0;
-    let newLength = 0;
-    const hunkLines: string[] = [];
-
-    for (const line of hunk.lines) {
-      if (line.op === "context") {
-        oldLength += 1;
-        newLength += 1;
-        hunkLines.push(` ${line.text}`);
-        continue;
-      }
-
-      if (line.op === "remove") {
-        oldLength += 1;
-        hunkLines.push(`-${line.text}`);
-        continue;
-      }
-
-      newLength += 1;
-      hunkLines.push(`+${line.text}`);
-    }
-
-    patchLines.push(`@@ -${hunk.oldStart},${oldLength} +${hunk.newStart},${newLength} @@`);
-    patchLines.push(...hunkLines);
-  }
-
-  return patchLines.join("\n");
-}
-
-function normalizeInstructionPatchFileName(value: string): string {
-  const normalizedSlashes = value.trim().replace(/\\/g, "/");
-  const fileName = normalizedSlashes.slice(normalizedSlashes.lastIndexOf("/") + 1);
-  const safeFileName = fileName
-    .replace(/[<>:"/\\|?*\u0000-\u001f]+/g, "-")
-    .replace(/\s+/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^[-.]+|[-.]+$/g, "");
-
-  return safeFileName || "instruction.txt";
 }
 
 function getAzureOpenAIClient(
@@ -714,16 +538,6 @@ function readMessage(payload: unknown): string {
     return "";
   }
   return message.trim();
-}
-
-function readResponseMode(payload: unknown): ChatResponseMode {
-  if (!isRecord(payload)) {
-    return "text";
-  }
-
-  return payload.responseMode === "instruction_diff_patch"
-    ? "instruction_diff_patch"
-    : "text";
 }
 
 function readHistory(payload: unknown, contextWindowSize: number): ClientMessage[] {
@@ -1028,66 +842,6 @@ function readMcpServers(payload: unknown): ParseResult<ClientMcpServerConfig[]> 
   }
 
   return { ok: true, value: result };
-}
-
-function readInstructionDiffPatchOutput(
-  value: unknown,
-): InstructionDiffPatchOutput | null {
-  if (!isRecord(value)) {
-    return null;
-  }
-
-  if (typeof value.fileName !== "string" || !Array.isArray(value.hunks)) {
-    return null;
-  }
-
-  const hunks: InstructionDiffPatchHunkOutput[] = [];
-  for (const hunk of value.hunks) {
-    if (!isRecord(hunk) || !Array.isArray(hunk.lines)) {
-      return null;
-    }
-
-    const oldStart = hunk.oldStart;
-    const newStart = hunk.newStart;
-    if (
-      typeof oldStart !== "number" ||
-      !Number.isSafeInteger(oldStart) ||
-      oldStart < 0 ||
-      typeof newStart !== "number" ||
-      !Number.isSafeInteger(newStart) ||
-      newStart < 0
-    ) {
-      return null;
-    }
-
-    const lines: InstructionDiffPatchLineOutput[] = [];
-    for (const line of hunk.lines) {
-      if (!isRecord(line) || typeof line.text !== "string") {
-        return null;
-      }
-
-      const op = line.op;
-      if (op !== "context" && op !== "add" && op !== "remove") {
-        return null;
-      }
-
-      lines.push({
-        op,
-        text: line.text,
-      });
-    }
-
-    hunks.push({
-      oldStart,
-      newStart,
-      lines,
-    });
-  }
-
-  return {
-    fileName: value.fileName,
-    hunks,
-  };
 }
 
 async function createMcpServer(

@@ -4,7 +4,7 @@ import {
   normalizeRequestedPromptFileName,
   parseInstructionContent,
   parseRequestedPromptFileName,
-} from "./api.instruction-prompts";
+} from "./api.instruction";
 
 describe("parseInstructionContent", () => {
   it("accepts a non-empty instruction string", () => {

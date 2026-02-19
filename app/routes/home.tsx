@@ -1070,7 +1070,7 @@ export default function Home() {
     setIsEnhancingInstruction(true);
 
     try {
-      const response = await fetch("/api/chat", {
+      const response = await fetch("/api/instruction", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -1084,8 +1084,6 @@ export default function Home() {
             apiVersion: activeAzureConnection.apiVersion,
             deploymentName,
           },
-          responseMode: "instruction_diff_patch",
-          reasoningEffort: "none",
           agentInstruction: INSTRUCTION_ENHANCE_SYSTEM_PROMPT,
         }),
       });
