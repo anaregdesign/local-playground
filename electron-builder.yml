@@ -18,16 +18,21 @@ extraMetadata:
   main: desktop/electron/main.cjs
 
 mac:
+  icon: desktop/electron/assets/icon.icns
   target:
     - target: dmg
     - target: zip
   category: public.app-category.developer-tools
 
 win:
+  icon: desktop/electron/assets/icon.ico
   target:
     - target: nsis
 
 nsis:
+  installerIcon: desktop/electron/assets/icon.ico
+  uninstallerIcon: desktop/electron/assets/icon.ico
+  installerHeaderIcon: desktop/electron/assets/icon.ico
   oneClick: false
   perMachine: false
   allowElevation: true

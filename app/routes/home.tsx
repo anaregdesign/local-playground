@@ -5,7 +5,9 @@ import {
   useState,
   type CSSProperties,
   type Dispatch,
+  type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
+  type ReactNode,
   type SetStateAction,
 } from "react";
 import * as FluentUIComponents from "@fluentui/react-components";
@@ -35,10 +37,12 @@ const {
   PopoverSurface,
   PopoverTrigger,
   Select,
+  SpinButton,
   Spinner,
   Tab,
   TabList,
   Textarea,
+  Tooltip,
 } = FluentUI;
 
 type ChatRole = "user" | "assistant";
@@ -219,6 +223,8 @@ const MAX_MCP_TIMEOUT_SECONDS = 600;
 const MAX_MCP_HTTP_HEADERS = 64;
 const HTTP_HEADER_NAME_PATTERN = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/;
 const MAX_MCP_AZURE_AUTH_SCOPE_LENGTH = 512;
+const CHAT_INPUT_MIN_HEIGHT_PX = 44;
+const CHAT_INPUT_MAX_HEIGHT_PX = 220;
 
 export function meta({}: Route.MetaArgs) {
   return [
@@ -285,19 +291,17 @@ export default function Home() {
   const [lastErrorTurnId, setLastErrorTurnId] = useState<string | null>(null);
   const [isComposing, setIsComposing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [showAzureLoginButton, setShowAzureLoginButton] = useState(false);
   const [isStartingAzureLogin, setIsStartingAzureLogin] = useState(false);
   const [isStartingAzureLogout, setIsStartingAzureLogout] = useState(false);
   const [azureLoginError, setAzureLoginError] = useState<string | null>(null);
   const [azureLogoutError, setAzureLogoutError] = useState<string | null>(null);
   const [mcpRpcHistory, setMcpRpcHistory] = useState<McpRpcHistoryEntry[]>([]);
   const [rightPaneWidth, setRightPaneWidth] = useState(420);
-  const [sideTopPaneHeight, setSideTopPaneHeight] = useState(420);
-  const [activeResizeHandle, setActiveResizeHandle] = useState<"main" | "side" | null>(null);
+  const [activeResizeHandle, setActiveResizeHandle] = useState<"main" | null>(null);
   const endOfMessagesRef = useRef<HTMLDivElement | null>(null);
+  const chatInputRef = useRef<HTMLTextAreaElement | null>(null);
   const instructionFileInputRef = useRef<HTMLInputElement | null>(null);
   const layoutRef = useRef<HTMLDivElement | null>(null);
-  const sideBodyRef = useRef<HTMLDivElement | null>(null);
   const azureDeploymentRequestSeqRef = useRef(0);
   const activeAzureTenantIdRef = useRef("");
   const preferredAzureSelectionRef = useRef<AzureSelectionPreference | null>(null);
@@ -323,6 +327,15 @@ export default function Home() {
   }, [messages, isSending, sendProgressMessages]);
 
   useEffect(() => {
+    const input = chatInputRef.current;
+    if (!input) {
+      return;
+    }
+
+    resizeChatInput(input);
+  }, [draft]);
+
+  useEffect(() => {
     void loadSavedMcpServers();
     void loadAzureConnections();
   }, []);
@@ -340,7 +353,6 @@ export default function Home() {
       void (async () => {
         const stillAuthRequired = await loadAzureConnections();
         if (!stillAuthRequired) {
-          setShowAzureLoginButton(false);
           setAzureLoginError(null);
           setError(null);
         }
@@ -422,9 +434,6 @@ export default function Home() {
     if (activeResizeHandle === "main") {
       body.style.cursor = "col-resize";
       body.style.userSelect = "none";
-    } else if (activeResizeHandle === "side") {
-      body.style.cursor = "row-resize";
-      body.style.userSelect = "none";
     }
 
     return () => {
@@ -444,16 +453,6 @@ export default function Home() {
         setRightPaneWidth((current) => clampNumber(current, minRightWidth, maxRightWidth));
       }
 
-      const sideBodyElement = sideBodyRef.current;
-      if (sideBodyElement) {
-        const rect = sideBodyElement.getBoundingClientRect();
-        const minTopHeight = 220;
-        const minBottomHeight = 180;
-        const maxTopHeight = Math.max(minTopHeight, rect.height - minBottomHeight);
-        setSideTopPaneHeight((current) =>
-          clampNumber(current, minTopHeight, maxTopHeight),
-        );
-      }
     };
 
     handleResize();
@@ -734,17 +733,15 @@ export default function Home() {
     if (isChatLocked) {
       setActiveMainTab("settings");
       setError("Playground is unavailable while logged out. Open ⚙️ Settings and sign in.");
-      setShowAzureLoginButton(false);
       return;
     }
 
     if (!activeAzureConnection) {
       setError(
         isAzureAuthRequired
-          ? "Azure login is required. Click Azure Login and sign in."
+          ? "Azure login is required. Click Project or Deployment and sign in."
           : "No Azure project is available. Check your Azure account permissions.",
       );
-      setShowAzureLoginButton(isAzureAuthRequired);
       return;
     }
 
@@ -776,7 +773,6 @@ export default function Home() {
     setMessages((current) => [...current, userMessage]);
     setDraft("");
     setError(null);
-    setShowAzureLoginButton(false);
     setAzureLoginError(null);
     setLastErrorTurnId(null);
     setIsSending(true);
@@ -848,7 +844,6 @@ export default function Home() {
       }
 
       if (!response.ok || payload.error) {
-        setShowAzureLoginButton(payload.errorCode === "azure_login_required");
         throw new Error(payload.error || "Failed to send message.");
       }
 
@@ -857,7 +852,6 @@ export default function Home() {
       }
 
       setMessages((current) => [...current, createMessage("assistant", payload.message!, turnId)]);
-      setShowAzureLoginButton(false);
       setLastErrorTurnId(null);
     } catch (sendError) {
       setLastErrorTurnId(turnId);
@@ -879,7 +873,6 @@ export default function Home() {
     try {
       const stillAuthRequired = await loadAzureConnections();
       if (!stillAuthRequired) {
-        setShowAzureLoginButton(false);
         return;
       }
 
@@ -892,7 +885,6 @@ export default function Home() {
       }
 
       setError(payload.message || "Azure login started. Sign in and reload Azure connections.");
-      setShowAzureLoginButton(false);
       setAzureConnectionError(null);
     } catch (loginError) {
       setAzureLoginError(
@@ -920,7 +912,6 @@ export default function Home() {
       }
 
       setError(payload.message || "Azure logout completed.");
-      setShowAzureLoginButton(false);
       setAzureDeploymentError(null);
       await loadAzureConnections();
     } catch (logoutError) {
@@ -954,6 +945,16 @@ export default function Home() {
       }
       void sendMessage();
     }
+  }
+
+  function resizeChatInput(input: HTMLTextAreaElement) {
+    input.style.height = "auto";
+    const boundedHeight = Math.max(
+      CHAT_INPUT_MIN_HEIGHT_PX,
+      Math.min(input.scrollHeight, CHAT_INPUT_MAX_HEIGHT_PX),
+    );
+    input.style.height = `${boundedHeight}px`;
+    input.style.overflowY = input.scrollHeight > CHAT_INPUT_MAX_HEIGHT_PX ? "auto" : "hidden";
   }
 
   async function handleInstructionFileChange(
@@ -1137,7 +1138,6 @@ export default function Home() {
       if (!response.ok || payload.error) {
         if (payload.errorCode === "azure_login_required") {
           setIsAzureAuthRequired(true);
-          setShowAzureLoginButton(true);
         }
 
         throw new Error(payload.error || "Failed to enhance instruction.");
@@ -1475,90 +1475,166 @@ export default function Home() {
     window.addEventListener("pointercancel", stopResizing);
   }
 
-  function handleSideSplitterPointerDown(event: ReactPointerEvent<HTMLDivElement>) {
-    event.preventDefault();
-    const sideBodyElement = sideBodyRef.current;
-    if (!sideBodyElement) {
+  function renderUnifiedTooltipContent(title: string, lines: ReactNode[] = []) {
+    return (
+      <div className="app-tooltip-content">
+        <p className="app-tooltip-title">{title}</p>
+        {lines.map((line, index) => (
+          <p key={`${title}-${index}`} className="app-tooltip-line">
+            {line}
+          </p>
+        ))}
+      </div>
+    );
+  }
+
+  function renderUnifiedTooltip(
+    title: string,
+    lines: ReactNode[],
+    child: ReactNode,
+    className = "chat-tooltip-target",
+  ) {
+    return (
+      <Tooltip
+        relationship="description"
+        showDelay={0}
+        positioning="above-start"
+        content={renderUnifiedTooltipContent(title, lines)}
+      >
+        <div className={className}>{child}</div>
+      </Tooltip>
+    );
+  }
+
+  function handleChatAzureSelectorAction(target: "project" | "deployment") {
+    if (
+      isSending ||
+      isStartingAzureLogin ||
+      isStartingAzureLogout ||
+      isLoadingAzureConnections ||
+      isLoadingAzureDeployments
+    ) {
       return;
     }
 
-    const rect = sideBodyElement.getBoundingClientRect();
-    const minTopHeight = 220;
-    const minBottomHeight = 180;
-    const maxTopHeight = Math.max(minTopHeight, rect.height - minBottomHeight);
-    setActiveResizeHandle("side");
+    setError(null);
+    setAzureLoginError(null);
 
-    const handlePointerMove = (moveEvent: PointerEvent) => {
-      const nextTopHeight = moveEvent.clientY - rect.top;
-      setSideTopPaneHeight(clampNumber(nextTopHeight, minTopHeight, maxTopHeight));
-    };
+    if (isAzureAuthRequired) {
+      void handleAzureLogin();
+      return;
+    }
 
-    const stopResizing = () => {
-      setActiveResizeHandle(null);
-      window.removeEventListener("pointermove", handlePointerMove);
-      window.removeEventListener("pointerup", stopResizing);
-      window.removeEventListener("pointercancel", stopResizing);
-    };
+    const needsProjectReload = azureConnections.length === 0 || !activeAzureConnection;
+    const needsDeploymentReload =
+      target === "deployment" &&
+      (!activeAzureConnection || azureDeployments.length === 0 || !selectedAzureDeploymentName.trim());
 
-    window.addEventListener("pointermove", handlePointerMove);
-    window.addEventListener("pointerup", stopResizing);
-    window.addEventListener("pointercancel", stopResizing);
+    if (needsProjectReload || needsDeploymentReload) {
+      void loadAzureConnections();
+    }
   }
 
-  function renderAddedMcpServersPanel() {
+  function handleChatAzureSelectorActionKeyDown(
+    event: ReactKeyboardEvent<HTMLSelectElement>,
+    target: "project" | "deployment",
+  ) {
+    if (event.key !== "Enter" && event.key !== " ") {
+      return;
+    }
+
+    event.preventDefault();
+    handleChatAzureSelectorAction(target);
+  }
+
+  function renderChatAzureActionSelect(
+    target: "project" | "deployment",
+    label: string,
+    text: string,
+    title: string,
+  ) {
+    const elementId =
+      target === "project" ? "chat-azure-project-action" : "chat-azure-deployment-action";
+
     return (
-      <section className="setting-group mcp-added-section">
-        <div className="setting-group-header">
-          <h3>Added MCP Servers 📡</h3>
+      <Select
+        id={elementId}
+        aria-label={label}
+        value=""
+        onMouseDown={(event) => {
+          event.preventDefault();
+          handleChatAzureSelectorAction(target);
+        }}
+        onClick={(event) => {
+          event.preventDefault();
+          handleChatAzureSelectorAction(target);
+        }}
+        onKeyDown={(event) => {
+          handleChatAzureSelectorActionKeyDown(event, target);
+        }}
+        disabled={isSending || isStartingAzureLogin || isStartingAzureLogout}
+        title={title}
+      >
+        <option value="">{text}</option>
+      </Select>
+    );
+  }
+
+  function renderAddedMcpServersBubbles() {
+    if (mcpServers.length === 0) {
+      return null;
+    }
+
+    return (
+      <section className="chat-mcp-strip" aria-label="Added MCP Servers">
+        <div className="chat-mcp-bubbles">
+          {mcpServers.map((server) => (
+            <div key={server.id} className="chat-mcp-bubble-item">
+              <Tooltip
+                relationship="description"
+                showDelay={0}
+                positioning="above-start"
+                content={renderUnifiedTooltipContent(
+                  server.name,
+                  server.transport === "stdio"
+                    ? [
+                        "Transport: stdio",
+                        `Command: ${server.command}${server.args.length > 0 ? ` ${server.args.join(" ")}` : ""}`,
+                        ...(server.cwd ? [`Working directory: ${server.cwd}`] : []),
+                        `Environment variables: ${Object.keys(server.env).length}`,
+                      ]
+                    : [
+                        `Transport: ${server.transport}`,
+                        `URL: ${server.url}`,
+                        `Custom headers: ${Object.keys(server.headers).length}`,
+                        `Timeout: ${server.timeoutSeconds}s`,
+                        `Azure auth: ${
+                          server.useAzureAuth ? `enabled (${server.azureAuthScope})` : "disabled"
+                        }`,
+                      ],
+                )}
+              >
+                <span className="chat-tooltip-target">
+                  <span className="chat-mcp-bubble">
+                    <span className="chat-mcp-bubble-name">{server.name}</span>
+                    <Button
+                      type="button"
+                      appearance="subtle"
+                      size="small"
+                      className="chat-mcp-bubble-remove"
+                      onClick={() => handleRemoveMcpServer(server.id)}
+                      disabled={isSending}
+                      aria-label={`Remove MCP server ${server.name}`}
+                      title={`Remove ${server.name}`}
+                    >
+                      ×
+                    </Button>
+                  </span>
+                </span>
+              </Tooltip>
+            </div>
+          ))}
         </div>
-        {mcpServers.length === 0 ? (
-          <p className="field-hint">No MCP servers added.</p>
-        ) : (
-          <div className="mcp-list">
-            {mcpServers.map((server) => (
-              <article key={server.id} className="mcp-item">
-                <div className="mcp-item-body">
-                  <p className="mcp-item-name">{server.name}</p>
-                  {server.transport === "stdio" ? (
-                    <>
-                      <p className="mcp-item-url">
-                        {server.command}
-                        {server.args.length > 0 ? ` ${server.args.join(" ")}` : ""}
-                      </p>
-                      {server.cwd ? <p className="mcp-item-meta">cwd: {server.cwd}</p> : null}
-                      <p className="mcp-item-meta">
-                        {server.transport} ({Object.keys(server.env).length} env)
-                      </p>
-                    </>
-                  ) : (
-                    <>
-                      <p className="mcp-item-url">{server.url}</p>
-                      <p className="mcp-item-meta">
-                        {server.transport} ({Object.keys(server.headers).length} custom headers)
-                      </p>
-                      <p className="mcp-item-meta">timeout: {server.timeoutSeconds}s</p>
-                      {server.useAzureAuth ? (
-                        <p className="mcp-item-meta">
-                          Azure Authorization: enabled ({server.azureAuthScope})
-                        </p>
-                      ) : null}
-                    </>
-                  )}
-                </div>
-                <Button
-                  type="button"
-                  appearance="secondary"
-                  size="small"
-                  className="mcp-remove-btn"
-                  onClick={() => handleRemoveMcpServer(server.id)}
-                  disabled={isSending}
-                >
-                  🗑 Remove
-                </Button>
-              </article>
-            ))}
-          </div>
-        )}
       </section>
     );
   }
@@ -1578,7 +1654,15 @@ export default function Home() {
           <header className="chat-header">
             <div className="chat-header-row">
               <div className="chat-header-main">
-                <h1>Local Playground 💬</h1>
+                <div className="chat-header-title">
+                  <img
+                    className="chat-header-symbol"
+                    src="/foundry-symbol.svg"
+                    alt=""
+                    aria-hidden="true"
+                  />
+                  <h1>Local Playground</h1>
+                </div>
               </div>
               <Button
                 type="button"
@@ -1587,6 +1671,7 @@ export default function Home() {
                 className="chat-reset-btn"
                 onClick={handleResetThread}
                 disabled={isSending}
+                title="Clear all messages in the current thread."
               >
                 🧹 Reset Thread
               </Button>
@@ -1613,6 +1698,7 @@ export default function Home() {
                       size="small"
                       className="copy-symbol-btn message-copy-btn"
                       aria-label="Copy message"
+                      title="Copy this message."
                       onClick={() => {
                         void copyTextToClipboard(message.content).catch(() => {
                           setError("Failed to copy message to clipboard.");
@@ -1689,19 +1775,6 @@ export default function Home() {
                     {error}
                   </MessageBarBody>
                 </MessageBar>
-                {showAzureLoginButton ? (
-                  <Button
-                    type="button"
-                    appearance="primary"
-                    className="azure-login-btn chat-login-btn"
-                    onClick={() => {
-                      void handleAzureLogin();
-                    }}
-                    disabled={isSending || isStartingAzureLogin}
-                  >
-                    {isStartingAzureLogin ? "🔐 Starting Azure Login..." : "🔐 Azure Login"}
-                  </Button>
-                ) : null}
                 {azureLoginError ? (
                   <MessageBar intent="error">
                     <MessageBarBody>{azureLoginError}</MessageBarBody>
@@ -1713,35 +1786,233 @@ export default function Home() {
               <label className="sr-only" htmlFor="chat-input">
                 Message
               </label>
-              <Textarea
-                id="chat-input"
-                name="message"
-                rows={2}
-                placeholder="Type a message..."
-                value={draft}
-                onChange={(_, data) => setDraft(data.value)}
-                onKeyDown={handleInputKeyDown}
-                onCompositionStart={() => setIsComposing(true)}
-                onCompositionEnd={() => setIsComposing(false)}
-                disabled={isSending || isChatLocked}
-              />
-              <Button
-                type="submit"
-                appearance="primary"
-                disabled={
-                  isSending ||
-                  isChatLocked ||
-                  isLoadingAzureConnections ||
-                  isLoadingAzureDeployments ||
-                  !activeAzureConnection ||
-                  !selectedAzureDeploymentName.trim() ||
-                  draft.trim().length === 0 ||
-                  !contextWindowValidation.isValid
-                }
-              >
-                ✉️ Send
-              </Button>
+              <div className="chat-composer">
+                <Textarea
+                  id="chat-input"
+                  name="message"
+                  rows={2}
+                  resize="none"
+                  ref={chatInputRef}
+                  className="chat-composer-input"
+                  placeholder="Type a message..."
+                  title="Message input. Enter sends, Shift+Enter inserts a new line."
+                  value={draft}
+                  onChange={(event, data) => {
+                    setDraft(data.value);
+                    resizeChatInput(event.currentTarget);
+                  }}
+                  onKeyDown={handleInputKeyDown}
+                  onCompositionStart={() => setIsComposing(true)}
+                  onCompositionEnd={() => setIsComposing(false)}
+                  disabled={isSending || isChatLocked}
+                />
+                <div className="chat-composer-actions">
+                  <div className="chat-quick-controls">
+                    {renderUnifiedTooltip(
+                      "Project",
+                      [
+                        isLoadingAzureConnections
+                          ? "Loading project names from Azure..."
+                          : isAzureAuthRequired
+                            ? "Click the selector to start Azure login."
+                            : azureConnections.length === 0
+                              ? "No projects loaded. Click the selector to reload."
+                              : "Used for this chat request.",
+                      ],
+                      <div className="chat-quick-control">
+                        {isLoadingAzureConnections ? (
+                          <span
+                            className="chat-control-loader chat-control-loader-project"
+                            role="status"
+                            aria-live="polite"
+                          >
+                            <Spinner size="tiny" />
+                            Loading projects...
+                          </span>
+                        ) : isAzureAuthRequired || azureConnections.length === 0 ? (
+                          renderChatAzureActionSelect(
+                            "project",
+                            "Project",
+                            isAzureAuthRequired ? "Project" : "Reload projects",
+                            isAzureAuthRequired
+                              ? "Click to sign in with Azure and load projects."
+                              : "Click to reload Azure projects.",
+                          )
+                        ) : (
+                          <Select
+                            id="chat-azure-project"
+                            aria-label="Project"
+                            title="Azure project used for this chat."
+                            value={activeAzureConnection?.id ?? ""}
+                            onChange={(event) => {
+                              setSelectedAzureConnectionId(event.target.value);
+                              setSelectedAzureDeploymentName("");
+                              setAzureDeploymentError(null);
+                              setError(null);
+                            }}
+                            disabled={isSending}
+                          >
+                            <optgroup label="Project name">
+                              {azureConnections.map((connection) => (
+                                <option key={connection.id} value={connection.id}>
+                                  {connection.projectName}
+                                </option>
+                              ))}
+                            </optgroup>
+                          </Select>
+                        )}
+                      </div>,
+                    )}
+                    {renderUnifiedTooltip(
+                      "Deployment",
+                      [
+                        isLoadingAzureConnections || isLoadingAzureDeployments
+                          ? "Loading deployment names for the selected project..."
+                          : isAzureAuthRequired
+                            ? "Click the selector to start Azure login."
+                            : !activeAzureConnection || azureDeployments.length === 0
+                              ? "No deployments loaded. Click the selector to reload."
+                              : "Used to run the model.",
+                      ],
+                      <div className="chat-quick-control">
+                        {isLoadingAzureConnections || isLoadingAzureDeployments ? (
+                          <span
+                            className="chat-control-loader chat-control-loader-deployment"
+                            role="status"
+                            aria-live="polite"
+                          >
+                            <Spinner size="tiny" />
+                            Loading deployments...
+                          </span>
+                        ) : isAzureAuthRequired || !activeAzureConnection || azureDeployments.length === 0 ? (
+                          renderChatAzureActionSelect(
+                            "deployment",
+                            "Deployment",
+                            isAzureAuthRequired ? "Deployment" : "Reload deployments",
+                            isAzureAuthRequired
+                              ? "Click to sign in with Azure and load deployments."
+                              : "Click to reload deployments for the selected project.",
+                          )
+                        ) : (
+                          <Select
+                            id="chat-azure-deployment"
+                            aria-label="Deployment"
+                            title="Azure deployment used to run the model."
+                            value={selectedAzureDeploymentName}
+                            onChange={(event) => {
+                              const nextDeploymentName = event.target.value.trim();
+                              setSelectedAzureDeploymentName(nextDeploymentName);
+                              setError(null);
+
+                              const tenantId = activeAzureTenantIdRef.current.trim();
+                              const projectId = (activeAzureConnection?.id ?? "").trim();
+                              if (!tenantId || !projectId || !nextDeploymentName) {
+                                return;
+                              }
+
+                              if (!azureDeployments.includes(nextDeploymentName)) {
+                                return;
+                              }
+
+                              void saveAzureSelectionPreference({
+                                tenantId,
+                                projectId,
+                                deploymentName: nextDeploymentName,
+                              });
+                            }}
+                            disabled={isSending}
+                          >
+                            <optgroup label="Deployment name">
+                              {azureDeployments.map((deployment) => (
+                                <option key={deployment} value={deployment}>
+                                  {deployment}
+                                </option>
+                              ))}
+                            </optgroup>
+                          </Select>
+                        )}
+                      </div>,
+                    )}
+                    {renderUnifiedTooltip(
+                      "Reasoning Effort",
+                      ["Controls how much internal reasoning the model uses."],
+                      <div className="chat-quick-control">
+                        <Select
+                          id="chat-reasoning-effort"
+                          aria-label="Reasoning Effort"
+                          title="Reasoning effort level for the model."
+                          value={reasoningEffort}
+                          onChange={(event) => setReasoningEffort(event.target.value as ReasoningEffort)}
+                          disabled={isSending}
+                        >
+                          <optgroup label="Reasoning effort">
+                            {REASONING_EFFORT_OPTIONS.map((option) => (
+                              <option key={option} value={option}>
+                                {option}
+                              </option>
+                            ))}
+                          </optgroup>
+                        </Select>
+                      </div>,
+                    )}
+                    {renderUnifiedTooltip(
+                      "Context Window",
+                      ["Number of recent messages included in the request."],
+                      <div className="chat-quick-control chat-quick-control-context">
+                        <SpinButton
+                          id="chat-context-window-size"
+                          aria-label="Context Window"
+                          title="Number of recent messages included in the request."
+                          min={MIN_CONTEXT_WINDOW_SIZE}
+                          max={MAX_CONTEXT_WINDOW_SIZE}
+                          step={1}
+                          value={contextWindowValidation.value}
+                          displayValue={contextWindowInput}
+                          onChange={(_, data) => {
+                            if (typeof data.displayValue === "string") {
+                              setContextWindowInput(data.displayValue);
+                              return;
+                            }
+                            if (typeof data.value === "number" && Number.isFinite(data.value)) {
+                              setContextWindowInput(String(Math.trunc(data.value)));
+                              return;
+                            }
+                            setContextWindowInput("");
+                          }}
+                          disabled={isSending}
+                          aria-invalid={!contextWindowValidation.isValid}
+                        />
+                      </div>,
+                    )}
+                  </div>
+                  {renderUnifiedTooltip(
+                    "Send",
+                    ["Send current message."],
+                    <Button
+                      type="submit"
+                      appearance="subtle"
+                      className="chat-send-btn"
+                      aria-label="Send message"
+                      title="Send current message."
+                      disabled={
+                        isSending ||
+                        isChatLocked ||
+                        isLoadingAzureConnections ||
+                        isLoadingAzureDeployments ||
+                        !activeAzureConnection ||
+                        !selectedAzureDeploymentName.trim() ||
+                        draft.trim().length === 0 ||
+                        !contextWindowValidation.isValid
+                      }
+                    >
+                      ↑
+                    </Button>,
+                    "chat-tooltip-target chat-send-tooltip-target",
+                  )}
+                </div>
+              </div>
             </form>
+            {renderAddedMcpServersBubbles()}
           </footer>
         </section>
 
@@ -1752,6 +2023,7 @@ export default function Home() {
           role="separator"
           aria-orientation="vertical"
           aria-label="Resize panels"
+          title="Drag to resize Playground and side panels."
           onPointerDown={handleMainSplitterPointerDown}
         />
 
@@ -1762,6 +2034,7 @@ export default function Home() {
               aria-label="Side panels"
               appearance="subtle"
               size="small"
+              title="Switch side panel content."
               selectedValue={activeMainTab}
               onTabSelect={(_, data) => {
                 const nextTab = String(data.value);
@@ -1777,6 +2050,7 @@ export default function Home() {
                   id={`tab-${tab.id}`}
                   aria-controls={`panel-${tab.id}`}
                   className="main-tab-btn"
+                  title={tab.id === "settings" ? "Open Settings panel." : "Open MCP Servers panel."}
                 >
                   {tab.label}
                 </Tab>
@@ -1790,15 +2064,7 @@ export default function Home() {
               </MessageBar>
             ) : null}
           </div>
-          <div
-            className="side-shell-body"
-            ref={sideBodyRef}
-            style={
-              {
-                "--side-top-pane-height": `${sideTopPaneHeight}px`,
-              } as CSSProperties
-            }
-          >
+          <div className="side-shell-body">
             <div className="side-top-panel">
             <section
               className="settings-shell"
@@ -1808,21 +2074,18 @@ export default function Home() {
               aria-labelledby="tab-settings"
               hidden={activeMainTab !== "settings"}
             >
-          <header className="settings-header">
-            <h2>Settings ⚙️</h2>
-            <p>Model behavior options</p>
-          </header>
           <div className="settings-content">
-            <section className="setting-group">
+            <section className="setting-group setting-group-azure-connection">
               <div className="setting-group-header">
                 <h3>Azure Connection 🔐</h3>
-                <p>Select project and deployment for chat requests.</p>
+                <p>Sign in/out for Playground access.</p>
               </div>
               {isAzureAuthRequired ? (
                 <Button
                   type="button"
                   appearance="primary"
                   className="azure-login-btn"
+                  title="Start Azure login in your browser."
                   onClick={() => {
                     void handleAzureLogin();
                   }}
@@ -1840,124 +2103,34 @@ export default function Home() {
                         : "Loading deployments for the selected project..."}
                     </p>
                   ) : null}
-                  <div className="setting-label-row">
-                    <label className="setting-label" htmlFor="azure-project">
-                      Project 🗂️
-                    </label>
-                    <div className="setting-label-actions">
-                      {isLoadingAzureConnections ? (
-                        <span className="loading-pill" role="status" aria-live="polite">
-                          Loading...
-                        </span>
-                      ) : null}
-                      <Button
-                        type="button"
-                        appearance="secondary"
-                        size="small"
-                        className="project-reload-btn"
-                        aria-label="Reload projects"
-                        title="Reload projects"
-                        onClick={() => {
-                          void loadAzureConnections();
-                        }}
-                        disabled={isSending || isLoadingAzureConnections || isStartingAzureLogout}
-                      >
-                        <span
-                          className={`project-reload-icon ${
-                            isLoadingAzureConnections ? "spinning" : ""
-                          }`}
-                          aria-hidden="true"
-                        >
-                          ↻
-                        </span>
-                        {isLoadingAzureConnections ? "Reloading..." : "Reload"}
-                      </Button>
-                    </div>
-                  </div>
-                  <Select
-                    id="azure-project"
-                    value={activeAzureConnection?.id ?? ""}
-                    onChange={(event) => {
-                      setSelectedAzureConnectionId(event.target.value);
-                      setSelectedAzureDeploymentName("");
-                      setAzureDeploymentError(null);
-                      setError(null);
-                    }}
-                    disabled={isSending || isLoadingAzureConnections || azureConnections.length === 0}
-                  >
-                    {azureConnections.length === 0 ? (
-                      <option value="">
-                        {isLoadingAzureConnections ? "Loading projects..." : "No projects found"}
-                      </option>
-                    ) : null}
-                    {azureConnections.map((connection) => (
-                      <option key={connection.id} value={connection.id}>
-                        {connection.projectName}
-                      </option>
-                    ))}
-                  </Select>
-                  <div className="setting-label-row">
-                    <label className="setting-label" htmlFor="azure-deployment">
-                      Deployment 🚀
-                    </label>
-                    {isLoadingAzureDeployments ? (
-                      <span className="loading-pill" role="status" aria-live="polite">
-                        Loading...
-                      </span>
-                    ) : null}
-                  </div>
-                  <Select
-                    id="azure-deployment"
-                    value={selectedAzureDeploymentName}
-                    onChange={(event) => {
-                      const nextDeploymentName = event.target.value.trim();
-                      setSelectedAzureDeploymentName(nextDeploymentName);
-                      setError(null);
-
-                      const tenantId = activeAzureTenantIdRef.current.trim();
-                      const projectId = (activeAzureConnection?.id ?? "").trim();
-                      if (!tenantId || !projectId || !nextDeploymentName) {
-                        return;
-                      }
-
-                      if (!azureDeployments.includes(nextDeploymentName)) {
-                        return;
-                      }
-
-                      void saveAzureSelectionPreference({
-                        tenantId,
-                        projectId,
-                        deploymentName: nextDeploymentName,
-                      });
-                    }}
-                    disabled={
-                      isSending ||
-                      isLoadingAzureConnections ||
-                      isLoadingAzureDeployments ||
-                      !activeAzureConnection
-                    }
-                  >
-                    {activeAzureConnection ? (
-                      azureDeployments.length > 0 ? (
-                        azureDeployments.map((deployment) => (
-                          <option key={deployment} value={deployment}>
-                            {deployment}
-                          </option>
-                        ))
-                      ) : (
-                        <option value="">
-                          {isLoadingAzureDeployments ? "Loading deployments..." : "No deployments found"}
-                        </option>
-                      )
-                    ) : (
-                      <option value="">No deployments found</option>
-                    )}
-                  </Select>
+                  {activeAzureConnection ? (
+                    <dl className="azure-connection-summary" aria-label="Active Azure connection details">
+                      <div className="azure-connection-summary-row">
+                        <dt>Project</dt>
+                        <dd>{activeAzureConnection.projectName}</dd>
+                      </div>
+                      <div className="azure-connection-summary-row">
+                        <dt>Deployment</dt>
+                        <dd>{selectedAzureDeploymentName || "Not selected"}</dd>
+                      </div>
+                      <div className="azure-connection-summary-row">
+                        <dt>Endpoint</dt>
+                        <dd>{activeAzureConnection.baseUrl}</dd>
+                      </div>
+                      <div className="azure-connection-summary-row">
+                        <dt>API version</dt>
+                        <dd>{activeAzureConnection.apiVersion}</dd>
+                      </div>
+                    </dl>
+                  ) : (
+                    <p className="field-hint">No active Azure project.</p>
+                  )}
                   <div className="azure-connection-actions">
                     <Button
                       type="button"
                       appearance="outline"
                       className="azure-logout-btn"
+                      title="Sign out from Azure for this app."
                       onClick={() => {
                         void handleAzureLogout();
                       }}
@@ -1966,12 +2139,6 @@ export default function Home() {
                       {isStartingAzureLogout ? "🚪 Logging Out..." : "🚪 Logout"}
                     </Button>
                   </div>
-                  {activeAzureConnection ? (
-                    <>
-                      <p className="field-hint">Endpoint: {activeAzureConnection.baseUrl}</p>
-                      <p className="field-hint">API version: {activeAzureConnection.apiVersion}</p>
-                    </>
-                  ) : null}
                   {azureDeploymentError ? (
                     <MessageBar intent="error" className="setting-message-bar">
                       <MessageBarBody>{azureDeploymentError}</MessageBarBody>
@@ -1991,7 +2158,7 @@ export default function Home() {
               )}
             </section>
 
-            <section className="setting-group">
+            <section className="setting-group setting-group-agent-instruction">
               <div className="setting-group-header">
                 <h3>Agent Instruction 🧾</h3>
                 <p>System instruction used for the agent.</p>
@@ -2005,6 +2172,7 @@ export default function Home() {
                         type="button"
                         appearance="primary"
                         size="small"
+                        title="Use the enhanced instruction text."
                         onClick={handleAdoptEnhancedInstruction}
                         disabled={isSending || isEnhancingInstruction}
                       >
@@ -2014,6 +2182,7 @@ export default function Home() {
                         type="button"
                         appearance="secondary"
                         size="small"
+                        title="Keep the original instruction text."
                         onClick={handleAdoptOriginalInstruction}
                         disabled={isSending || isEnhancingInstruction}
                       >
@@ -2053,6 +2222,7 @@ export default function Home() {
                   <Textarea
                     id="agent-instruction"
                     rows={6}
+                    title="System instruction text sent to the agent."
                     value={agentInstruction}
                     onChange={(_, data) => {
                       setAgentInstruction(data.value);
@@ -2080,6 +2250,7 @@ export default function Home() {
                     <Input
                       id="agent-instruction-save-file-name"
                       placeholder="instruction.md"
+                      title="Optional file name used when saving the instruction."
                       value={instructionSaveFileNameInput}
                       onChange={(_, data) => {
                         setInstructionSaveFileNameInput(data.value);
@@ -2107,6 +2278,7 @@ export default function Home() {
                       type="button"
                       appearance="secondary"
                       size="small"
+                      title="Load instruction content from a local file."
                       onClick={() => instructionFileInputRef.current?.click()}
                       disabled={isSending || isEnhancingInstruction}
                     >
@@ -2116,6 +2288,7 @@ export default function Home() {
                       type="button"
                       appearance="secondary"
                       size="small"
+                      title="Save current instruction to the prompt directory."
                       onClick={() => {
                         void handleSaveInstructionPrompt();
                       }}
@@ -2132,6 +2305,7 @@ export default function Home() {
                       type="button"
                       appearance="primary"
                       size="small"
+                      title="Enhance the instruction using the selected Azure model."
                       onClick={() => {
                         void handleEnhanceInstruction();
                       }}
@@ -2143,6 +2317,7 @@ export default function Home() {
                       type="button"
                       appearance="secondary"
                       size="small"
+                      title="Clear instruction text and related form values."
                       onClick={() => {
                         setAgentInstruction("");
                         setInstructionSaveFileNameInput("");
@@ -2163,12 +2338,6 @@ export default function Home() {
                     </span>
                   </div>
                   <p className="field-hint">Supported: .md, .txt, .xml, .json (max 1MB)</p>
-                  <p className="field-hint">
-                    Enhance uses the currently selected Azure project + deployment in Azure Connection.
-                  </p>
-                  <p className="field-hint">
-                    Save destination: `~/.foundry_local_playground/prompts` (leave file name empty to auto-generate).
-                  </p>
                 </>
               )}
               {instructionFileError ? (
@@ -2197,48 +2366,6 @@ export default function Home() {
                 </MessageBar>
               ) : null}
             </section>
-
-            <section className="setting-group mcp-saved-section">
-              <div className="setting-group-header">
-                <h3>Reasoning Effort 🧠</h3>
-                <p>How much internal reasoning the model should use.</p>
-              </div>
-              <Select
-                id="reasoning-effort"
-                value={reasoningEffort}
-                onChange={(event) => setReasoningEffort(event.target.value as ReasoningEffort)}
-                disabled={isSending}
-              >
-                {REASONING_EFFORT_OPTIONS.map((option) => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))}
-              </Select>
-            </section>
-
-            <section className="setting-group mcp-add-section">
-              <div className="setting-group-header">
-                <h3>Context Window 🧵</h3>
-                <p>Number of recent messages to include as context.</p>
-              </div>
-              <Input
-                id="context-window-size"
-                inputMode="numeric"
-                placeholder="10"
-                value={contextWindowInput}
-                onChange={(_, data) => setContextWindowInput(data.value)}
-                disabled={isSending}
-                aria-invalid={!contextWindowValidation.isValid}
-                aria-describedby="context-window-size-error"
-              />
-              <p className="field-hint">Integer from 1 to 200.</p>
-              {contextWindowValidation.message ? (
-                <p id="context-window-size-error" className="field-error">
-                  {contextWindowValidation.message}
-                </p>
-              ) : null}
-            </section>
           </div>
             </section>
 
@@ -2250,9 +2377,6 @@ export default function Home() {
               aria-labelledby="tab-mcp"
               hidden={activeMainTab !== "mcp"}
             >
-          <header className="mcp-header">
-            <h2>MCP Servers 🧩</h2>
-          </header>
           <div className="mcp-content">
             <section className="setting-group">
               <div className="setting-group-header">
@@ -2261,6 +2385,7 @@ export default function Home() {
               <Field label="💾 Saved config">
                 <Select
                   id="mcp-saved-config"
+                  title="Choose a saved MCP server configuration."
                   value={selectedSavedMcpServerId}
                   onChange={(event) => {
                     setSelectedSavedMcpServerId(event.target.value);
@@ -2282,6 +2407,7 @@ export default function Home() {
                 <Button
                   type="button"
                   appearance="secondary"
+                  title="Load the selected saved MCP config into the form."
                   onClick={handleLoadSavedMcpServerToForm}
                   disabled={
                     isSending ||
@@ -2295,6 +2421,7 @@ export default function Home() {
                 <Button
                   type="button"
                   appearance="secondary"
+                  title="Reload saved MCP configs from disk."
                   onClick={() => {
                     void loadSavedMcpServers();
                   }}
@@ -2318,6 +2445,7 @@ export default function Home() {
                 <Input
                   id="mcp-server-name"
                   placeholder="Server name (optional)"
+                  title="Optional display name for this MCP server."
                   value={mcpNameInput}
                   onChange={(_, data) => setMcpNameInput(data.value)}
                   disabled={isSending}
@@ -2326,6 +2454,7 @@ export default function Home() {
               <Field label="🚚 Transport">
                 <Select
                   id="mcp-transport"
+                  title="Select MCP transport type."
                   value={mcpTransport}
                   onChange={(event) => {
                     setMcpTransport(event.target.value as McpTransport);
@@ -2344,6 +2473,7 @@ export default function Home() {
                     <Input
                       id="mcp-command"
                       placeholder="Command (e.g. npx)"
+                      title="Command used to start the stdio MCP server."
                       value={mcpCommandInput}
                       onChange={(_, data) => setMcpCommandInput(data.value)}
                       disabled={isSending}
@@ -2353,6 +2483,7 @@ export default function Home() {
                     <Input
                       id="mcp-args"
                       placeholder='Args (space-separated or JSON array)'
+                      title="Arguments passed to the MCP command."
                       value={mcpArgsInput}
                       onChange={(_, data) => setMcpArgsInput(data.value)}
                       disabled={isSending}
@@ -2362,6 +2493,7 @@ export default function Home() {
                     <Input
                       id="mcp-cwd"
                       placeholder="Working directory (optional)"
+                      title="Optional working directory for the command."
                       value={mcpCwdInput}
                       onChange={(_, data) => setMcpCwdInput(data.value)}
                       disabled={isSending}
@@ -2372,6 +2504,7 @@ export default function Home() {
                       id="mcp-env"
                       rows={3}
                       placeholder={"Environment variables (optional)\nKEY=value"}
+                      title="Environment variables for stdio MCP (KEY=value)."
                       value={mcpEnvInput}
                       onChange={(_, data) => setMcpEnvInput(data.value)}
                       disabled={isSending}
@@ -2384,6 +2517,7 @@ export default function Home() {
                     <Input
                       id="mcp-url"
                       placeholder="https://example.com/mcp"
+                      title="HTTP/SSE endpoint URL for the MCP server."
                       value={mcpUrlInput}
                       onChange={(_, data) => setMcpUrlInput(data.value)}
                       disabled={isSending}
@@ -2394,6 +2528,7 @@ export default function Home() {
                       id="mcp-headers"
                       rows={3}
                       placeholder={"Additional HTTP headers (optional)\nAuthorization=Bearer <token>\nX-Api-Key=<key>"}
+                      title="Additional HTTP headers (one per line: Name=Value)."
                       value={mcpHeadersInput}
                       onChange={(_, data) => setMcpHeadersInput(data.value)}
                       disabled={isSending}
@@ -2403,6 +2538,7 @@ export default function Home() {
                     <div className="field-with-info">
                       <Checkbox
                         className="field-checkbox"
+                        title="Attach Azure Bearer token from DefaultAzureCredential."
                         checked={mcpUseAzureAuthInput}
                         onChange={(_, data) => {
                           const checked = data.checked === true;
@@ -2422,7 +2558,7 @@ export default function Home() {
                             size="small"
                             className="field-info-btn"
                             aria-label="Show Azure authentication behavior details"
-                            title="Show technical details"
+                            title="Show Azure authentication behavior details."
                           >
                             ⓘ
                           </Button>
@@ -2463,6 +2599,7 @@ export default function Home() {
                       <Input
                         id="mcp-azure-auth-scope"
                         placeholder={DEFAULT_MCP_AZURE_AUTH_SCOPE}
+                        title="Azure token scope used to acquire Bearer token."
                         value={mcpAzureAuthScopeInput}
                         onChange={(_, data) => setMcpAzureAuthScopeInput(data.value)}
                         disabled={isSending}
@@ -2473,6 +2610,7 @@ export default function Home() {
                     <Input
                       id="mcp-timeout-seconds"
                       placeholder={String(DEFAULT_MCP_TIMEOUT_SECONDS)}
+                      title="Request timeout in seconds (1-600)."
                       value={mcpTimeoutSecondsInput}
                       onChange={(_, data) => setMcpTimeoutSecondsInput(data.value)}
                       disabled={isSending}
@@ -2487,6 +2625,7 @@ export default function Home() {
               <Button
                 type="button"
                 appearance="primary"
+                title="Add this MCP server to the active chat session."
                 onClick={() => {
                   void handleAddMcpServer();
                 }}
@@ -2510,19 +2649,6 @@ export default function Home() {
             </section>
             </div>
 
-            <div
-              className={`layout-splitter side-splitter ${
-                activeResizeHandle === "side" ? "resizing" : ""
-              }`}
-              role="separator"
-              aria-orientation="horizontal"
-              aria-label="Resize side panels"
-              onPointerDown={handleSideSplitterPointerDown}
-            />
-
-            <div className="side-bottom-panel">
-              {renderAddedMcpServersPanel()}
-            </div>
           </div>
         </aside>
       </div>
@@ -2795,6 +2921,7 @@ function renderTurnMcpLog(
           size="small"
           className="copy-symbol-btn mcp-log-copy-btn"
           aria-label="Copy MCP operation log"
+          title="Copy all MCP operation logs in this turn."
           onClick={(event) => {
             event.preventDefault();
             event.stopPropagation();
@@ -2829,6 +2956,7 @@ function renderTurnMcpLog(
                   size="small"
                   className="copy-symbol-btn mcp-history-copy-btn"
                   aria-label="Copy MCP operation entry"
+                  title="Copy this MCP operation entry."
                   onClick={(event) => {
                     event.preventDefault();
                     event.stopPropagation();
@@ -2852,6 +2980,7 @@ function renderTurnMcpLog(
                     size="small"
                     className="copy-symbol-btn mcp-part-copy-btn"
                     aria-label="Copy MCP request payload"
+                    title="Copy MCP request payload."
                     onClick={() => {
                       onCopyText(
                         formatJsonForDisplay({
@@ -2872,6 +3001,7 @@ function renderTurnMcpLog(
                     size="small"
                     className="copy-symbol-btn mcp-part-copy-btn"
                     aria-label="Copy MCP response payload"
+                    title="Copy MCP response payload."
                     onClick={() => {
                       onCopyText(
                         formatJsonForDisplay({

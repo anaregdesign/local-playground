@@ -7,6 +7,7 @@ const DESKTOP_MODE = process.env.DESKTOP_MODE === 'development' ? 'development' 
 const BACKEND_DEV_URL = process.env.DESKTOP_BACKEND_URL || 'http://localhost:5173';
 const BACKEND_PORT = Number.parseInt(process.env.DESKTOP_BACKEND_PORT || '5180', 10);
 const BACKEND_URL = `http://localhost:${BACKEND_PORT}`;
+const APP_ICON_PATH = path.resolve(__dirname, 'assets', 'icon.png');
 
 /** @type {BrowserWindow | null} */
 let mainWindow = null;
@@ -42,7 +43,7 @@ function configureContentSecurityPolicy() {
 }
 
 function createMainWindow() {
-  mainWindow = new BrowserWindow({
+  const browserWindowOptions = {
     width: 1600,
     height: 980,
     minWidth: 1200,
@@ -55,7 +56,13 @@ function createMainWindow() {
       nodeIntegration: false,
       sandbox: true,
     },
-  });
+  };
+
+  if (existsSync(APP_ICON_PATH)) {
+    browserWindowOptions.icon = APP_ICON_PATH;
+  }
+
+  mainWindow = new BrowserWindow(browserWindowOptions);
 
   mainWindow.once('ready-to-show', () => {
     mainWindow?.show();
@@ -226,8 +233,17 @@ function readErrorMessage(error) {
   return error instanceof Error ? error.message : 'Unknown error.';
 }
 
+function setDockIconIfAvailable() {
+  if (process.platform !== 'darwin' || !app.dock || !existsSync(APP_ICON_PATH)) {
+    return;
+  }
+
+  app.dock.setIcon(APP_ICON_PATH);
+}
+
 app.whenReady().then(async () => {
   configureContentSecurityPolicy();
+  setDockIconIfAvailable();
 
   if (DESKTOP_MODE === 'production') {
     try {
