@@ -59,13 +59,14 @@ import {
 } from "~/lib/home/chat/stream";
 import type { InstructionDiffLine, InstructionLanguage } from "~/lib/home/instruction/helpers";
 import {
+  applyInstructionUnifiedDiffPatch,
   buildInstructionDiffLines,
   buildInstructionEnhanceMessage,
   buildInstructionSuggestedFileName,
   describeInstructionLanguage,
   detectInstructionLanguage,
   isInstructionSaveCanceled,
-  normalizeEnhancedInstructionResponse,
+  normalizeInstructionDiffPatchResponse,
   resolveInstructionFormatExtension,
   resolveInstructionSourceFileName,
   saveInstructionToClientFile,
@@ -1077,17 +1078,15 @@ export default function Home() {
         },
         body: JSON.stringify({
           message: enhanceRequestMessage,
-          history: [],
           azureConfig: {
             projectName: activeAzureConnection.projectName,
             baseUrl: activeAzureConnection.baseUrl,
             apiVersion: activeAzureConnection.apiVersion,
             deploymentName,
           },
+          responseMode: "instruction_diff_patch",
           reasoningEffort: "none",
-          contextWindowSize: 1,
           agentInstruction: INSTRUCTION_ENHANCE_SYSTEM_PROMPT,
-          mcpServers: [],
         }),
       });
 
@@ -1100,15 +1099,24 @@ export default function Home() {
         throw new Error(payload.error || "Failed to enhance instruction.");
       }
 
-      const rawEnhancedInstruction =
-        typeof payload.message === "string" ? payload.message.trim() : "";
-      if (!rawEnhancedInstruction) {
-        throw new Error("Enhancement response is empty.");
+      const rawInstructionPatch =
+        typeof payload.message === "string" ? payload.message : "";
+      const normalizedInstructionPatch = normalizeInstructionDiffPatchResponse(
+        rawInstructionPatch,
+      );
+      if (!normalizedInstructionPatch) {
+        setInstructionEnhanceSuccess("No changes were suggested.");
+        return;
       }
 
-      const normalizedEnhancedInstruction = normalizeEnhancedInstructionResponse(
-        rawEnhancedInstruction,
+      const patchApplyResult = applyInstructionUnifiedDiffPatch(
+        currentInstruction,
+        normalizedInstructionPatch,
       );
+      if (!patchApplyResult.ok) {
+        throw new Error(patchApplyResult.error);
+      }
+      const normalizedEnhancedInstruction = patchApplyResult.value;
       const formatValidation = validateEnhancedInstructionFormat(
         normalizedEnhancedInstruction,
         instructionExtension,

@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+  applyInstructionUnifiedDiffPatch,
   buildInstructionDiffLines,
   buildInstructionEnhanceMessage,
   buildInstructionSuggestedFileName,
   detectInstructionLanguage,
-  normalizeEnhancedInstructionResponse,
+  normalizeInstructionDiffPatchResponse,
   resolveInstructionFormatExtension,
   resolveInstructionSourceFileName,
   validateEnhancedInstructionCompleteness,
@@ -83,14 +84,45 @@ describe("instruction enhance helpers", () => {
     expect(message).toContain(
       "Do not add placeholder comments/markers such as '省略', 'omitted', 'same as original', or equivalent.",
     );
+    expect(message).toContain(
+      "Correct clear typos and spelling mistakes without changing intended meaning.",
+    );
     expect(message).toContain("Preserve the original language (English).");
     expect(message).toContain("Preserve the original file format style for .md.");
+    expect(message).toContain("Set fileName to instruction.md.");
+    expect(message).toContain("Use hunk lines with op values: context, add, remove.");
     expect(message).toContain("<instruction>");
   });
 
-  it("unwraps top-level fenced output from model response", () => {
-    const normalized = normalizeEnhancedInstructionResponse("```markdown\n# title\n```");
-    expect(normalized).toBe("# title");
+  it("unwraps top-level fenced patch output from model response", () => {
+    const normalized = normalizeInstructionDiffPatchResponse("```diff\n@@ -1 +1 @@\n-a\n+b\n```");
+    expect(normalized).toBe("@@ -1 +1 @@\n-a\n+b");
+  });
+
+  it("applies unified diff patch to instruction text", () => {
+    const result = applyInstructionUnifiedDiffPatch(
+      "line-1\nline-2\nline-3",
+      ["--- a/instruction.txt", "+++ b/instruction.txt", "@@ -1,3 +1,4 @@", " line-1", "-line-2", "+line-2-updated", " line-3", "+line-4"].join("\n"),
+    );
+
+    expect(result).toEqual({
+      ok: true,
+      value: "line-1\nline-2-updated\nline-3\nline-4",
+    });
+  });
+
+  it("returns original instruction when patch is empty", () => {
+    expect(applyInstructionUnifiedDiffPatch("same\nlines", "   ")).toEqual({
+      ok: true,
+      value: "same\nlines",
+    });
+  });
+
+  it("rejects invalid unified diff patch hunks", () => {
+    expect(applyInstructionUnifiedDiffPatch("line-1", "line-1")).toEqual({
+      ok: false,
+      error: "Enhancement patch is not a valid unified diff hunk format.",
+    });
   });
 
   it("validates enhanced format and language preservation", () => {

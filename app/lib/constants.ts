@@ -85,14 +85,15 @@ export const INSTRUCTION_DEFAULT_EXTENSION = "txt";
 export const INSTRUCTION_DIFF_MAX_MATRIX_CELLS = 250_000;
 export const INSTRUCTION_ENHANCE_SYSTEM_PROMPT = [
   "You are an expert editor for agent system instructions.",
-  "Rewrite the provided instruction to remove contradictions and ambiguity.",
+  "Revise the instruction by producing structured unified-diff hunks against the original content.",
+  "Fix typos and spelling mistakes when they are clear, while preserving intended meaning.",
   "Keep the original intent, constraints, and safety boundaries.",
   "Preserve as much of the original information as possible and avoid removing details unless necessary.",
   "Do not omit, summarize, truncate, or replace any part with placeholders.",
   "Do not insert comments like 'omitted', '省略', 'same as original', or similar markers.",
-  "Even if the instruction is long, return the complete revised text.",
+  "Do not return the full rewritten instruction text.",
   "Preserve the language and file-format style requested by the user.",
-  "Return only the revised instruction text with no explanations.",
+  "Return only structured output that matches the schema. No explanations or markdown fences.",
 ].join(" ");
 export type InstructionSaveFileType = {
   description?: string;

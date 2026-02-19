@@ -154,10 +154,13 @@ export function buildInstructionEnhanceMessage(options: {
   language: InstructionLanguage;
 }): string {
   const languageLabel = describeInstructionLanguage(options.language);
+  const normalizedExtension = options.extension.trim().toLowerCase() || "txt";
+  const fileName = `instruction.${normalizedExtension}`;
   return [
-    "Improve the following agent instruction.",
+    "Improve the following agent instruction and return only structured diff hunks.",
     "Requirements:",
     "- Remove contradictions and ambiguity.",
+    "- Correct clear typos and spelling mistakes without changing intended meaning.",
     "- Keep original intent, guardrails, and constraints.",
     "- Preserve as much original information as possible; avoid deleting details unless necessary.",
     "- Do not omit, summarize, or truncate sections. Keep all important details and examples.",
@@ -165,7 +168,11 @@ export function buildInstructionEnhanceMessage(options: {
     "- Normalize and improve formatting for readability.",
     `- Preserve the original language (${languageLabel}).`,
     `- Preserve the original file format style for .${options.extension}.`,
-    "- Return only the revised instruction text.",
+    "- Return only schema-matching structured output. Do not return the full rewritten instruction.",
+    "- Do not include markdown code fences or explanations.",
+    `- Set fileName to ${fileName}.`,
+    "- Use hunk lines with op values: context, add, remove.",
+    "- If no changes are needed, return an empty hunks array.",
     "",
     "<instruction>",
     options.instruction,
@@ -173,8 +180,215 @@ export function buildInstructionEnhanceMessage(options: {
   ].join("\n");
 }
 
-export function normalizeEnhancedInstructionResponse(value: string): string {
-  return unwrapCodeFence(value).trim();
+export function normalizeInstructionDiffPatchResponse(value: string): string {
+  const unwrapped = unwrapCodeFence(value).replace(/\r\n/g, "\n");
+  if (!unwrapped.trim()) {
+    return "";
+  }
+
+  return unwrapped.replace(/^\n+/, "").replace(/\n+$/, "");
+}
+
+type UnifiedDiffHunkLine = {
+  type: "context" | "added" | "removed";
+  content: string;
+};
+
+type UnifiedDiffHunk = {
+  oldStart: number;
+  oldLength: number;
+  newStart: number;
+  newLength: number;
+  lines: UnifiedDiffHunkLine[];
+};
+
+export function applyInstructionUnifiedDiffPatch(
+  originalInstruction: string,
+  patch: string,
+): ParseResult<string> {
+  const parseResult = parseInstructionUnifiedDiffHunks(patch);
+  if (!parseResult.ok) {
+    return parseResult;
+  }
+
+  if (parseResult.value.length === 0) {
+    return {
+      ok: true,
+      value: originalInstruction.replace(/\r\n/g, "\n"),
+    };
+  }
+
+  const originalLines = splitInstructionLines(originalInstruction);
+  const nextLines: string[] = [];
+  let oldCursor = 0;
+
+  for (const [hunkIndex, hunk] of parseResult.value.entries()) {
+    const hunkStartIndex = Math.max(hunk.oldStart - 1, 0);
+    if (hunkStartIndex < oldCursor) {
+      return {
+        ok: false,
+        error: `Patch hunk #${hunkIndex + 1} overlaps with a previous hunk.`,
+      };
+    }
+    if (hunkStartIndex > originalLines.length) {
+      return {
+        ok: false,
+        error: `Patch hunk #${hunkIndex + 1} starts outside the original instruction.`,
+      };
+    }
+
+    nextLines.push(...originalLines.slice(oldCursor, hunkStartIndex));
+    oldCursor = hunkStartIndex;
+
+    for (const [lineIndex, line] of hunk.lines.entries()) {
+      if (line.type === "added") {
+        nextLines.push(line.content);
+        continue;
+      }
+
+      const currentOriginalLine = originalLines[oldCursor];
+      if (currentOriginalLine !== line.content) {
+        return {
+          ok: false,
+          error:
+            `Patch mismatch at hunk #${hunkIndex + 1}, line ${lineIndex + 1}. ` +
+            "Please retry enhancement.",
+        };
+      }
+
+      oldCursor += 1;
+      if (line.type === "context") {
+        nextLines.push(line.content);
+      }
+    }
+  }
+
+  nextLines.push(...originalLines.slice(oldCursor));
+  return {
+    ok: true,
+    value: nextLines.join("\n"),
+  };
+}
+
+function parseInstructionUnifiedDiffHunks(patch: string): ParseResult<UnifiedDiffHunk[]> {
+  const normalizedPatch = patch.replace(/\r\n/g, "\n");
+  if (!normalizedPatch.trim()) {
+    return { ok: true, value: [] };
+  }
+
+  const lines = normalizedPatch.replace(/^\n+/, "").replace(/\n+$/, "").split("\n");
+  const hunks: UnifiedDiffHunk[] = [];
+  let cursor = 0;
+
+  while (cursor < lines.length && isUnifiedDiffMetadataLine(lines[cursor])) {
+    cursor += 1;
+  }
+
+  while (cursor < lines.length) {
+    const headerLine = lines[cursor];
+    const headerMatch = headerLine.match(
+      /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@(?: .*)?$/,
+    );
+    if (!headerMatch) {
+      return {
+        ok: false,
+        error: "Enhancement patch is not a valid unified diff hunk format.",
+      };
+    }
+
+    const oldStart = Number(headerMatch[1]);
+    const oldLength = headerMatch[2] ? Number(headerMatch[2]) : 1;
+    const newStart = Number(headerMatch[3]);
+    const newLength = headerMatch[4] ? Number(headerMatch[4]) : 1;
+    if (
+      !Number.isSafeInteger(oldStart) ||
+      !Number.isSafeInteger(oldLength) ||
+      !Number.isSafeInteger(newStart) ||
+      !Number.isSafeInteger(newLength)
+    ) {
+      return {
+        ok: false,
+        error: "Enhancement patch includes invalid hunk line numbers.",
+      };
+    }
+
+    cursor += 1;
+    const hunkLines: UnifiedDiffHunkLine[] = [];
+    let oldCount = 0;
+    let newCount = 0;
+
+    while (cursor < lines.length) {
+      const currentLine = lines[cursor];
+      if (/^@@ -\d+(?:,\d+)? \+\d+(?:,\d+)? @@(?: .*)?$/.test(currentLine)) {
+        break;
+      }
+
+      if (currentLine === "\\ No newline at end of file") {
+        cursor += 1;
+        continue;
+      }
+
+      const linePrefix = currentLine[0];
+      const lineBody = currentLine.slice(1);
+      if (linePrefix === " ") {
+        oldCount += 1;
+        newCount += 1;
+        hunkLines.push({ type: "context", content: lineBody });
+      } else if (linePrefix === "-") {
+        oldCount += 1;
+        hunkLines.push({ type: "removed", content: lineBody });
+      } else if (linePrefix === "+") {
+        newCount += 1;
+        hunkLines.push({ type: "added", content: lineBody });
+      } else {
+        return {
+          ok: false,
+          error: "Enhancement patch contains unsupported hunk line markers.",
+        };
+      }
+
+      cursor += 1;
+    }
+
+    if (oldCount !== oldLength || newCount !== newLength) {
+      return {
+        ok: false,
+        error: "Enhancement patch hunk counts do not match header metadata.",
+      };
+    }
+
+    hunks.push({
+      oldStart,
+      oldLength,
+      newStart,
+      newLength,
+      lines: hunkLines,
+    });
+  }
+
+  if (hunks.length === 0) {
+    return {
+      ok: false,
+      error: "Enhancement patch does not include any @@ hunk blocks.",
+    };
+  }
+
+  return { ok: true, value: hunks };
+}
+
+function isUnifiedDiffMetadataLine(line: string): boolean {
+  if (!line) {
+    return true;
+  }
+
+  return (
+    line.startsWith("diff --git ") ||
+    line.startsWith("index ") ||
+    line.startsWith("--- ") ||
+    line.startsWith("+++ ") ||
+    line.startsWith("new file mode ") ||
+    line.startsWith("deleted file mode ")
+  );
 }
 
 export function validateEnhancedInstructionFormat(
