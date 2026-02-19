@@ -288,7 +288,6 @@ async function sendAttachment({ baseUrl, project, deploymentName, attachment }) 
           deploymentName,
         },
         reasoningEffort: "low",
-        contextWindowSize: 1,
         agentInstruction: AGENT_INSTRUCTION,
         mcpServers: [],
       }),

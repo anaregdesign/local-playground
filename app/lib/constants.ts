@@ -41,9 +41,6 @@ export const FOUNDRY_PROMPTS_SUBDIRECTORY_NAME = "prompts";
  * These constants are shared across chat runtime validation and home UI validation.
  * Changing them affects what requests are accepted and what values users can set.
  */
-export const CONTEXT_WINDOW_DEFAULT = 10;
-export const CONTEXT_WINDOW_MIN = 1;
-export const CONTEXT_WINDOW_MAX = 200;
 export const TEMPERATURE_MIN = 0;
 export const TEMPERATURE_MAX = 2;
 export const CHAT_MAX_MCP_SERVERS = 8;

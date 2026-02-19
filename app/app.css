@@ -1042,14 +1042,8 @@ body {
   min-width: 150px;
 }
 
-.chat-quick-control-context {
-  gap: 0.3rem;
-}
-
 .chat-quick-control .fui-Select select:hover,
-.chat-quick-control .fui-Select select:focus,
-.chat-quick-control .fui-SpinButton input:hover,
-.chat-quick-control .fui-SpinButton input:focus {
+.chat-quick-control .fui-Select select:focus {
   cursor: pointer;
 }
 
@@ -1081,46 +1075,6 @@ body {
   background: #ffffff;
 }
 
-.chat-quick-control .fui-SpinButton,
-.chat-quick-control .fui-SpinButton:hover,
-.chat-quick-control .fui-SpinButton:focus-within {
-  border: 0 !important;
-  outline: none;
-  box-shadow: none !important;
-  border-radius: 10px;
-  background: #f5f7fa !important;
-  transition: background-color 0.14s ease;
-}
-
-.chat-quick-control .fui-SpinButton:hover,
-.chat-quick-control .fui-SpinButton:focus-within {
-  background: #ffffff !important;
-}
-
-.chat-quick-control .fui-SpinButton::before,
-.chat-quick-control .fui-SpinButton::after {
-  border: 0 !important;
-  box-shadow: none !important;
-}
-
-.chat-quick-control .fui-SpinButton input,
-.chat-quick-control .fui-SpinButton input:hover,
-.chat-quick-control .fui-SpinButton input:focus {
-  border: 0 !important;
-  outline: none;
-  box-shadow: none !important;
-  background: transparent !important;
-}
-
-.chat-quick-control .fui-SpinButton button,
-.chat-quick-control .fui-SpinButton button:hover,
-.chat-quick-control .fui-SpinButton button:focus {
-  border: 0 !important;
-  outline: none;
-  box-shadow: none !important;
-  background: transparent !important;
-}
-
 #chat-azure-project,
 #chat-azure-project-action {
   min-width: 170px;
@@ -1129,14 +1083,6 @@ body {
 #chat-azure-deployment,
 #chat-azure-deployment-action {
   min-width: 150px;
-}
-
-.chat-quick-control .fui-SpinButton {
-  width: 92px;
-}
-
-.chat-quick-control .fui-SpinButton input {
-  text-align: right;
 }
 
 .chat-send-btn.fui-Button {
