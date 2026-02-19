@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import {
   ENV_KEY_PATTERN,
@@ -284,7 +283,7 @@ function upsertSavedMcpServer(
       ? currentProfiles[index].id
       : incoming.id && !currentProfiles.some((profile) => profile.id === incoming.id)
         ? incoming.id
-        : randomUUID();
+        : createRandomId();
 
   const profile: SavedMcpServerConfig =
     incoming.transport === "stdio"
@@ -333,7 +332,7 @@ function normalizeStoredMcpServer(entry: unknown): SavedMcpServerConfig | null {
   const id =
     isRecord(entry) && typeof entry.id === "string" && entry.id.trim()
       ? entry.id.trim()
-      : randomUUID();
+      : createRandomId();
 
   return parsed.value.transport === "stdio"
     ? {
@@ -568,3 +567,18 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function readErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Unknown error.";
 }
+
+function createRandomId(): string {
+  const maybeCrypto = globalThis.crypto;
+  if (maybeCrypto && typeof maybeCrypto.randomUUID === "function") {
+    return maybeCrypto.randomUUID();
+  }
+
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+export const mcpServersRouteTestUtils = {
+  parseIncomingMcpServer,
+  upsertSavedMcpServer,
+  buildIncomingProfileKey,
+};

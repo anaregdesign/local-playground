@@ -765,7 +765,11 @@ function readMcpServers(payload: unknown): ParseResult<ClientMcpServerConfig[]> 
         return { ok: false, error: `mcpServers[${index}].name is required.` };
       }
 
-      const dedupeKey = `${transport}:${command.toLowerCase()}:${argsResult.value.join("\u0000")}:${cwd.toLowerCase()}`;
+      const envKey = Object.entries(envResult.value)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([key, value]) => `${key}=${value}`)
+        .join("\u0000");
+      const dedupeKey = `${transport}:${command.toLowerCase()}:${argsResult.value.join("\u0000")}:${cwd.toLowerCase()}:${envKey}`;
       if (dedupeKeys.has(dedupeKey)) {
         continue;
       }
@@ -1665,3 +1669,13 @@ function isAzureCredentialError(error: unknown): boolean {
 function readErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Unknown error.";
 }
+
+export const chatRouteTestUtils = {
+  readTemperature,
+  readMcpServers,
+  buildMcpHttpRequestHeaders,
+  normalizeMcpMetaNulls,
+  normalizeMcpInitializeNullOptionals,
+  normalizeMcpListToolsNullOptionals,
+  readProgressEventFromRunStreamEvent,
+};
