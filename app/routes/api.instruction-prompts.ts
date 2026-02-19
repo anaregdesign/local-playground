@@ -1,17 +1,18 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
+import {
+  FOUNDRY_PROMPTS_SUBDIRECTORY_NAME,
+  PROMPT_ALLOWED_FILE_EXTENSIONS,
+  PROMPT_DEFAULT_FILE_EXTENSION,
+  PROMPT_DEFAULT_FILE_STEM,
+  PROMPT_MAX_CONTENT_BYTES,
+  PROMPT_MAX_FILE_NAME_LENGTH,
+  PROMPT_MAX_FILE_STEM_LENGTH,
+} from "~/lib/constants";
 import { resolveFoundryConfigDirectory } from "~/lib/foundry/config";
 import type { Route } from "./+types/api.instruction-prompts";
 
 type ParseResult<T> = { ok: true; value: T } | { ok: false; error: string };
-
-const PROMPTS_SUBDIRECTORY_NAME = "prompts";
-const DEFAULT_PROMPT_FILE_STEM = "instruction";
-const DEFAULT_PROMPT_FILE_EXTENSION = ".md";
-const MAX_PROMPT_FILE_STEM_LENGTH = 64;
-const MAX_PROMPT_FILE_NAME_LENGTH = 128;
-const MAX_PROMPT_CONTENT_BYTES = 1_000_000;
-const ALLOWED_PROMPT_FILE_EXTENSIONS = new Set([".md", ".txt", ".xml", ".json"]);
 
 export function loader({ request }: Route.LoaderArgs) {
   if (request.method !== "GET") {
@@ -50,7 +51,7 @@ export async function action({ request }: Route.ActionArgs) {
     requestedPromptFileNameResult.value ?? buildPromptFileName(sourceFileName);
   const promptsDirectoryPath = joinPathSegments(
     resolveFoundryConfigDirectory(),
-    PROMPTS_SUBDIRECTORY_NAME,
+    FOUNDRY_PROMPTS_SUBDIRECTORY_NAME,
   );
   const promptFilePath = joinPathSegments(promptsDirectoryPath, promptFileName);
 
@@ -87,10 +88,10 @@ export function parseInstructionContent(payload: unknown): ParseResult<string> {
   }
 
   const byteLength = Buffer.byteLength(instruction, "utf8");
-  if (byteLength > MAX_PROMPT_CONTENT_BYTES) {
+  if (byteLength > PROMPT_MAX_CONTENT_BYTES) {
     return {
       ok: false,
-      error: `Instruction is too large. Max ${MAX_PROMPT_CONTENT_BYTES} bytes.`,
+      error: `Instruction is too large. Max ${PROMPT_MAX_CONTENT_BYTES} bytes.`,
     };
   }
 
@@ -128,7 +129,7 @@ export function normalizeRequestedPromptFileName(fileName: string): ParseResult<
   }
 
   const extension = getFileExtension(baseName);
-  if (extension && !ALLOWED_PROMPT_FILE_EXTENSIONS.has(extension)) {
+  if (extension && !PROMPT_ALLOWED_FILE_EXTENSIONS.has(extension)) {
     return { ok: false, error: "File extension must be .md, .txt, .xml, or .json." };
   }
 
@@ -138,12 +139,12 @@ export function normalizeRequestedPromptFileName(fileName: string): ParseResult<
     return { ok: false, error: "File name is invalid." };
   }
 
-  const normalizedExtension = extension || DEFAULT_PROMPT_FILE_EXTENSION;
+  const normalizedExtension = extension || PROMPT_DEFAULT_FILE_EXTENSION;
   const normalizedFileName = `${normalizedStem}${normalizedExtension}`;
-  if (normalizedFileName.length > MAX_PROMPT_FILE_NAME_LENGTH) {
+  if (normalizedFileName.length > PROMPT_MAX_FILE_NAME_LENGTH) {
     return {
       ok: false,
-      error: `File name must be ${MAX_PROMPT_FILE_NAME_LENGTH} characters or fewer.`,
+      error: `File name must be ${PROMPT_MAX_FILE_NAME_LENGTH} characters or fewer.`,
     };
   }
 
@@ -172,21 +173,21 @@ function parseSourceFileName(sourceFileName: string | null): {
   const candidate = (sourceFileName ?? "").trim();
   if (!candidate) {
     return {
-      stem: DEFAULT_PROMPT_FILE_STEM,
-      extension: DEFAULT_PROMPT_FILE_EXTENSION,
+      stem: PROMPT_DEFAULT_FILE_STEM,
+      extension: PROMPT_DEFAULT_FILE_EXTENSION,
     };
   }
 
   const baseName = getBaseName(candidate);
   const extension = getFileExtension(baseName);
-  const normalizedExtension = ALLOWED_PROMPT_FILE_EXTENSIONS.has(extension)
+  const normalizedExtension = PROMPT_ALLOWED_FILE_EXTENSIONS.has(extension)
     ? extension
-    : DEFAULT_PROMPT_FILE_EXTENSION;
+    : PROMPT_DEFAULT_FILE_EXTENSION;
   const fileStem = extension ? baseName.slice(0, -extension.length) : baseName;
   const normalizedStem = normalizeFileStem(fileStem);
 
   return {
-    stem: normalizedStem || DEFAULT_PROMPT_FILE_STEM,
+    stem: normalizedStem || PROMPT_DEFAULT_FILE_STEM,
     extension: normalizedExtension,
   };
 }
@@ -202,7 +203,7 @@ function normalizeFileStem(rawStem: string): string {
     return "";
   }
 
-  return normalized.slice(0, MAX_PROMPT_FILE_STEM_LENGTH);
+  return normalized.slice(0, PROMPT_MAX_FILE_STEM_LENGTH);
 }
 
 function normalizeRandomSuffix(source: string | undefined): string {

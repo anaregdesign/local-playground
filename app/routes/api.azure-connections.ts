@@ -2,6 +2,16 @@ import {
   getAzureDependencies,
   normalizeAzureOpenAIBaseURL,
 } from "~/lib/azure/dependencies";
+import {
+  AZURE_ARM_SCOPE,
+  AZURE_COGNITIVE_API_VERSION,
+  AZURE_MAX_ACCOUNTS_PER_SUBSCRIPTION,
+  AZURE_MAX_DEPLOYMENTS_PER_ACCOUNT,
+  AZURE_MAX_MODELS_PER_ACCOUNT,
+  AZURE_MAX_SUBSCRIPTIONS,
+  AZURE_OPENAI_DEFAULT_API_VERSION,
+  AZURE_SUBSCRIPTIONS_API_VERSION,
+} from "~/lib/constants";
 import type { AzureDependencies } from "~/lib/azure/dependencies";
 import type { Route } from "./+types/api.azure-connections";
 
@@ -56,15 +66,6 @@ type ArmAccountModel = {
   model?: ArmModelInfo;
 };
 
-const ARM_SCOPE = "https://management.azure.com/.default";
-const SUBSCRIPTIONS_API_VERSION = "2022-12-01";
-const COGNITIVE_API_VERSION = "2024-10-01";
-const DEFAULT_AZURE_API_VERSION = "v1";
-const MAX_SUBSCRIPTIONS = 64;
-const MAX_ACCOUNTS_PER_SUBSCRIPTION = 256;
-const MAX_DEPLOYMENTS_PER_ACCOUNT = 256;
-const MAX_MODELS_PER_ACCOUNT = 512;
-
 export async function loader({ request }: Route.LoaderArgs) {
   if (request.method !== "GET") {
     return Response.json({ error: "Method not allowed." }, { status: 405 });
@@ -109,9 +110,9 @@ export async function loader({ request }: Route.LoaderArgs) {
 
 async function listAzureProjects(accessToken: string): Promise<AzureProject[]> {
   const subscriptions = await fetchArmPaged<ArmSubscription>(
-    `https://management.azure.com/subscriptions?api-version=${SUBSCRIPTIONS_API_VERSION}`,
+    `https://management.azure.com/subscriptions?api-version=${AZURE_SUBSCRIPTIONS_API_VERSION}`,
     accessToken,
-    MAX_SUBSCRIPTIONS,
+    AZURE_MAX_SUBSCRIPTIONS,
   );
 
   const discovered: Array<AzureProject & { resourceGroup: string }> = [];
@@ -129,9 +130,9 @@ async function listAzureProjects(accessToken: string): Promise<AzureProject[]> {
     let accounts: ArmCognitiveAccount[];
     try {
       accounts = await fetchArmPaged<ArmCognitiveAccount>(
-        `https://management.azure.com/subscriptions/${encodeURIComponent(subscriptionId)}/providers/Microsoft.CognitiveServices/accounts?api-version=${COGNITIVE_API_VERSION}`,
+        `https://management.azure.com/subscriptions/${encodeURIComponent(subscriptionId)}/providers/Microsoft.CognitiveServices/accounts?api-version=${AZURE_COGNITIVE_API_VERSION}`,
         accessToken,
-        MAX_ACCOUNTS_PER_SUBSCRIPTION,
+        AZURE_MAX_ACCOUNTS_PER_SUBSCRIPTION,
       );
     } catch {
       continue;
@@ -177,7 +178,7 @@ async function listAzureProjects(accessToken: string): Promise<AzureProject[]> {
         id,
         projectName: accountName,
         baseUrl,
-        apiVersion: DEFAULT_AZURE_API_VERSION,
+        apiVersion: AZURE_OPENAI_DEFAULT_API_VERSION,
         resourceGroup,
       });
     }
@@ -208,9 +209,9 @@ async function listProjectDeployments(
 ): Promise<string[]> {
   const { subscriptionId, resourceGroup, accountName } = projectRef;
   const deployments = await fetchArmPaged<ArmCognitiveDeployment>(
-    `https://management.azure.com/subscriptions/${encodeURIComponent(subscriptionId)}/resourceGroups/${encodeURIComponent(resourceGroup)}/providers/Microsoft.CognitiveServices/accounts/${encodeURIComponent(accountName)}/deployments?api-version=${COGNITIVE_API_VERSION}`,
+    `https://management.azure.com/subscriptions/${encodeURIComponent(subscriptionId)}/resourceGroups/${encodeURIComponent(resourceGroup)}/providers/Microsoft.CognitiveServices/accounts/${encodeURIComponent(accountName)}/deployments?api-version=${AZURE_COGNITIVE_API_VERSION}`,
     accessToken,
-    MAX_DEPLOYMENTS_PER_ACCOUNT,
+    AZURE_MAX_DEPLOYMENTS_PER_ACCOUNT,
   );
 
   const accountModels = await listAccountModels(accessToken, projectRef);
@@ -252,9 +253,9 @@ async function listAccountModels(
   const { subscriptionId, resourceGroup, accountName } = projectRef;
   try {
     return await fetchArmPaged<ArmAccountModel>(
-      `https://management.azure.com/subscriptions/${encodeURIComponent(subscriptionId)}/resourceGroups/${encodeURIComponent(resourceGroup)}/providers/Microsoft.CognitiveServices/accounts/${encodeURIComponent(accountName)}/models?api-version=${COGNITIVE_API_VERSION}`,
+      `https://management.azure.com/subscriptions/${encodeURIComponent(subscriptionId)}/resourceGroups/${encodeURIComponent(resourceGroup)}/providers/Microsoft.CognitiveServices/accounts/${encodeURIComponent(accountName)}/models?api-version=${AZURE_COGNITIVE_API_VERSION}`,
       accessToken,
-      MAX_MODELS_PER_ACCOUNT,
+      AZURE_MAX_MODELS_PER_ACCOUNT,
     );
   } catch {
     return [];
@@ -463,7 +464,7 @@ async function getArmAccessToken(
   dependencies: AzureDependencies = getAzureDependencies(),
 ): Promise<{ ok: true; token: string; tenantId: string } | { ok: false }> {
   try {
-    const token = await dependencies.getAzureBearerToken(ARM_SCOPE);
+    const token = await dependencies.getAzureBearerToken(AZURE_ARM_SCOPE);
 
     return {
       ok: true,

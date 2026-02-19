@@ -1,13 +1,14 @@
 export type ParseResult<T> = { ok: true; value: T } | { ok: false; error: string };
 
-export const DEFAULT_MCP_AZURE_AUTH_SCOPE = "https://cognitiveservices.azure.com/.default";
-export const DEFAULT_MCP_TIMEOUT_SECONDS = 30;
-export const MIN_MCP_TIMEOUT_SECONDS = 1;
-export const MAX_MCP_TIMEOUT_SECONDS = 600;
-
-const MAX_MCP_HTTP_HEADERS = 64;
-const HTTP_HEADER_NAME_PATTERN = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/;
-const MAX_MCP_AZURE_AUTH_SCOPE_LENGTH = 512;
+import {
+  HTTP_HEADER_NAME_PATTERN,
+  MCP_AZURE_AUTH_SCOPE_MAX_LENGTH,
+  MCP_DEFAULT_AZURE_AUTH_SCOPE,
+  MCP_DEFAULT_TIMEOUT_SECONDS,
+  MCP_HTTP_HEADERS_MAX,
+  MCP_TIMEOUT_SECONDS_MAX,
+  MCP_TIMEOUT_SECONDS_MIN,
+} from "~/lib/constants";
 
 export function parseHttpHeadersInput(input: string): ParseResult<Record<string, string>> {
   const trimmed = input.trim();
@@ -51,10 +52,10 @@ export function parseHttpHeadersInput(input: string): ParseResult<Record<string,
 
     headers[key] = value;
     count += 1;
-    if (count > MAX_MCP_HTTP_HEADERS) {
+    if (count > MCP_HTTP_HEADERS_MAX) {
       return {
         ok: false,
-        error: `Headers can include up to ${MAX_MCP_HTTP_HEADERS} entries.`,
+        error: `Headers can include up to ${MCP_HTTP_HEADERS_MAX} entries.`,
       };
     }
   }
@@ -64,11 +65,11 @@ export function parseHttpHeadersInput(input: string): ParseResult<Record<string,
 
 export function parseAzureAuthScopeInput(input: string): ParseResult<string> {
   const trimmed = input.trim();
-  const scope = trimmed || DEFAULT_MCP_AZURE_AUTH_SCOPE;
-  if (scope.length > MAX_MCP_AZURE_AUTH_SCOPE_LENGTH) {
+  const scope = trimmed || MCP_DEFAULT_AZURE_AUTH_SCOPE;
+  if (scope.length > MCP_AZURE_AUTH_SCOPE_MAX_LENGTH) {
     return {
       ok: false,
-      error: `Azure auth scope must be ${MAX_MCP_AZURE_AUTH_SCOPE_LENGTH} characters or fewer.`,
+      error: `Azure auth scope must be ${MCP_AZURE_AUTH_SCOPE_MAX_LENGTH} characters or fewer.`,
     };
   }
 
@@ -85,7 +86,7 @@ export function parseAzureAuthScopeInput(input: string): ParseResult<string> {
 export function parseMcpTimeoutSecondsInput(input: string): ParseResult<number> {
   const trimmed = input.trim();
   if (!trimmed) {
-    return { ok: true, value: DEFAULT_MCP_TIMEOUT_SECONDS };
+    return { ok: true, value: MCP_DEFAULT_TIMEOUT_SECONDS };
   }
 
   const parsed = Number(trimmed);
@@ -96,10 +97,10 @@ export function parseMcpTimeoutSecondsInput(input: string): ParseResult<number> 
     };
   }
 
-  if (parsed < MIN_MCP_TIMEOUT_SECONDS || parsed > MAX_MCP_TIMEOUT_SECONDS) {
+  if (parsed < MCP_TIMEOUT_SECONDS_MIN || parsed > MCP_TIMEOUT_SECONDS_MAX) {
     return {
       ok: false,
-      error: `MCP timeout must be between ${MIN_MCP_TIMEOUT_SECONDS} and ${MAX_MCP_TIMEOUT_SECONDS} seconds.`,
+      error: `MCP timeout must be between ${MCP_TIMEOUT_SECONDS_MIN} and ${MCP_TIMEOUT_SECONDS_MAX} seconds.`,
     };
   }
 

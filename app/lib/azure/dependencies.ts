@@ -1,5 +1,9 @@
 import { DefaultAzureCredential } from "@azure/identity";
 import OpenAI from "openai";
+import {
+  AZURE_ACCESS_TOKEN_REFRESH_BUFFER_MS,
+  AZURE_COGNITIVE_SERVICES_SCOPE,
+} from "~/lib/constants";
 
 type AzureCredential = {
   getToken: DefaultAzureCredential["getToken"];
@@ -23,8 +27,7 @@ type CreateAzureDependenciesOptions = {
   createOpenAIClient?: (options: ConstructorParameters<typeof OpenAI>[0]) => OpenAI;
 };
 
-export const AZURE_COGNITIVE_SERVICES_SCOPE = "https://cognitiveservices.azure.com/.default";
-const ACCESS_TOKEN_REFRESH_BUFFER_MS = 30_000;
+export { AZURE_COGNITIVE_SERVICES_SCOPE };
 
 export function createAzureDependencies(
   options: CreateAzureDependenciesOptions = {},
@@ -147,5 +150,5 @@ function isAzureAccessTokenReusable(token: CachedAzureAccessToken): boolean {
   if (token.refreshAfterTimestamp && token.refreshAfterTimestamp <= now) {
     return false;
   }
-  return token.expiresOnTimestamp - ACCESS_TOKEN_REFRESH_BUFFER_MS > now;
+  return token.expiresOnTimestamp - AZURE_ACCESS_TOKEN_REFRESH_BUFFER_MS > now;
 }

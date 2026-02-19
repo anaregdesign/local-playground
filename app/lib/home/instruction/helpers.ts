@@ -16,14 +16,17 @@ export type SaveInstructionToClientFileResult = {
   mode: "picker" | "download";
 };
 
-type SaveFilePickerFileType = {
-  description?: string;
-  accept: Record<string, string[]>;
-};
+import {
+  INSTRUCTION_ALLOWED_EXTENSIONS,
+  INSTRUCTION_DEFAULT_EXTENSION,
+  INSTRUCTION_DIFF_MAX_MATRIX_CELLS,
+  INSTRUCTION_SAVE_FILE_TYPES,
+} from "~/lib/constants";
+import type { InstructionSaveFileType } from "~/lib/constants";
 
 type SaveFilePickerOptionsCompat = {
   suggestedName?: string;
-  types?: SaveFilePickerFileType[];
+  types?: InstructionSaveFileType[];
 };
 
 type SaveFileWritableStream = {
@@ -39,35 +42,6 @@ type SaveFileHandleCompat = {
 type WindowWithSaveFilePicker = Window & {
   showSaveFilePicker?: (options?: SaveFilePickerOptionsCompat) => Promise<SaveFileHandleCompat>;
 };
-
-export const ALLOWED_INSTRUCTION_EXTENSIONS = new Set(["md", "txt", "xml", "json"]);
-const INSTRUCTION_SAVE_FILE_TYPES: SaveFilePickerFileType[] = [
-  {
-    description: "Instruction files",
-    accept: {
-      "text/markdown": [".md"],
-      "text/plain": [".txt"],
-      "application/json": [".json"],
-      "application/xml": [".xml"],
-      "text/xml": [".xml"],
-    },
-  },
-];
-
-export const DEFAULT_INSTRUCTION_EXTENSION = "txt";
-const MAX_INSTRUCTION_DIFF_MATRIX_CELLS = 250_000;
-
-export const ENHANCE_INSTRUCTION_SYSTEM_PROMPT = [
-  "You are an expert editor for agent system instructions.",
-  "Rewrite the provided instruction to remove contradictions and ambiguity.",
-  "Keep the original intent, constraints, and safety boundaries.",
-  "Preserve as much of the original information as possible and avoid removing details unless necessary.",
-  "Do not omit, summarize, truncate, or replace any part with placeholders.",
-  "Do not insert comments like 'omitted', '省略', 'same as original', or similar markers.",
-  "Even if the instruction is long, return the complete revised text.",
-  "Preserve the language and file-format style requested by the user.",
-  "Return only the revised instruction text with no explanations.",
-].join(" ");
 
 export function resolveInstructionSourceFileName(loadedFileName: string | null): string | null {
   const loaded = (loadedFileName ?? "").trim();
@@ -85,7 +59,7 @@ export function buildInstructionSuggestedFileName(
   }
 
   const sourceExtension = getFileExtension(normalizedSource);
-  if (ALLOWED_INSTRUCTION_EXTENSIONS.has(sourceExtension)) {
+  if (INSTRUCTION_ALLOWED_EXTENSIONS.has(sourceExtension)) {
     return normalizedSource;
   }
 
@@ -132,13 +106,13 @@ export function resolveInstructionFormatExtension(
   instruction: string,
 ): string {
   const sourceExtension = getFileExtension(sourceFileName ?? "");
-  if (ALLOWED_INSTRUCTION_EXTENSIONS.has(sourceExtension)) {
+  if (INSTRUCTION_ALLOWED_EXTENSIONS.has(sourceExtension)) {
     return sourceExtension;
   }
 
   const trimmedInstruction = instruction.trim();
   if (!trimmedInstruction) {
-    return DEFAULT_INSTRUCTION_EXTENSION;
+    return INSTRUCTION_DEFAULT_EXTENSION;
   }
 
   if (
@@ -156,7 +130,7 @@ export function resolveInstructionFormatExtension(
     return "md";
   }
 
-  return DEFAULT_INSTRUCTION_EXTENSION;
+  return INSTRUCTION_DEFAULT_EXTENSION;
 }
 
 export function detectInstructionLanguage(value: string): InstructionLanguage {
@@ -303,7 +277,7 @@ export function buildInstructionDiffLines(
 ): InstructionDiffLine[] {
   const originalLines = splitInstructionLines(originalInstruction);
   const enhancedLines = splitInstructionLines(enhancedInstruction);
-  const maxMatrixCells = options.maxMatrixCells ?? MAX_INSTRUCTION_DIFF_MATRIX_CELLS;
+  const maxMatrixCells = options.maxMatrixCells ?? INSTRUCTION_DIFF_MAX_MATRIX_CELLS;
   const operations = computeInstructionDiffOperations(
     originalLines,
     enhancedLines,

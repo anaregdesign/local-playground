@@ -1,6 +1,5 @@
 import type { ParseResult } from "~/lib/home/mcp/http-inputs";
-
-export const ENV_KEY_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
+import { ENV_KEY_PATTERN } from "~/lib/constants";
 
 export function parseStdioArgsInput(input: string): ParseResult<string[]> {
   const trimmed = input.trim();

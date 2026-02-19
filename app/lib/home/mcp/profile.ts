@@ -1,10 +1,13 @@
 import {
-  DEFAULT_MCP_AZURE_AUTH_SCOPE,
-  DEFAULT_MCP_TIMEOUT_SECONDS,
-  MAX_MCP_TIMEOUT_SECONDS,
-  MIN_MCP_TIMEOUT_SECONDS,
-} from "~/lib/home/mcp/http-inputs";
-import { ENV_KEY_PATTERN } from "~/lib/home/mcp/stdio-inputs";
+  ENV_KEY_PATTERN,
+  HTTP_HEADER_NAME_PATTERN,
+  MCP_AZURE_AUTH_SCOPE_MAX_LENGTH,
+  MCP_DEFAULT_AZURE_AUTH_SCOPE,
+  MCP_DEFAULT_TIMEOUT_SECONDS,
+  MCP_HTTP_HEADERS_MAX,
+  MCP_TIMEOUT_SECONDS_MAX,
+  MCP_TIMEOUT_SECONDS_MIN,
+} from "~/lib/constants";
 
 export type McpHttpServerConfig = {
   id: string;
@@ -32,10 +35,6 @@ export type McpServerConfig = McpHttpServerConfig | McpStdioServerConfig;
 export type SaveMcpServerRequest =
   | Omit<McpHttpServerConfig, "id">
   | Omit<McpStdioServerConfig, "id">;
-
-const MAX_MCP_HTTP_HEADERS = 64;
-const HTTP_HEADER_NAME_PATTERN = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/;
-const MAX_MCP_AZURE_AUTH_SCOPE_LENGTH = 512;
 
 export function buildMcpServerKey(server: McpServerConfig): string {
   if (server.transport === "stdio") {
@@ -221,7 +220,7 @@ function readHttpHeadersFromUnknown(value: unknown): Record<string, string> | nu
 
     headers[key] = rawValue;
     count += 1;
-    if (count > MAX_MCP_HTTP_HEADERS) {
+    if (count > MCP_HTTP_HEADERS_MAX) {
       return null;
     }
   }
@@ -231,16 +230,16 @@ function readHttpHeadersFromUnknown(value: unknown): Record<string, string> | nu
 
 function readAzureAuthScopeFromUnknown(value: unknown): string {
   if (typeof value !== "string") {
-    return DEFAULT_MCP_AZURE_AUTH_SCOPE;
+    return MCP_DEFAULT_AZURE_AUTH_SCOPE;
   }
 
   const trimmed = value.trim();
   if (!trimmed || /\s/.test(trimmed)) {
-    return DEFAULT_MCP_AZURE_AUTH_SCOPE;
+    return MCP_DEFAULT_AZURE_AUTH_SCOPE;
   }
 
-  if (trimmed.length > MAX_MCP_AZURE_AUTH_SCOPE_LENGTH) {
-    return DEFAULT_MCP_AZURE_AUTH_SCOPE;
+  if (trimmed.length > MCP_AZURE_AUTH_SCOPE_MAX_LENGTH) {
+    return MCP_DEFAULT_AZURE_AUTH_SCOPE;
   }
 
   return trimmed;
@@ -248,11 +247,11 @@ function readAzureAuthScopeFromUnknown(value: unknown): string {
 
 function readMcpTimeoutSecondsFromUnknown(value: unknown): number {
   if (typeof value !== "number" || !Number.isSafeInteger(value)) {
-    return DEFAULT_MCP_TIMEOUT_SECONDS;
+    return MCP_DEFAULT_TIMEOUT_SECONDS;
   }
 
-  if (value < MIN_MCP_TIMEOUT_SECONDS || value > MAX_MCP_TIMEOUT_SECONDS) {
-    return DEFAULT_MCP_TIMEOUT_SECONDS;
+  if (value < MCP_TIMEOUT_SECONDS_MIN || value > MCP_TIMEOUT_SECONDS_MAX) {
+    return MCP_DEFAULT_TIMEOUT_SECONDS;
   }
 
   return value;

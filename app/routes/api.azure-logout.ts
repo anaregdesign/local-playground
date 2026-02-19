@@ -1,10 +1,14 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import {
+  AZURE_CLI_COMMAND,
+  AZURE_LOGOUT_ARGS,
+  AZURE_LOGOUT_MAX_BUFFER_BYTES,
+  AZURE_LOGOUT_TIMEOUT_MS,
+} from "~/lib/constants";
 import type { Route } from "./+types/api.azure-logout";
 
 const execFileAsync = promisify(execFile);
-const AZURE_CLI_COMMAND = "az";
-const AZURE_LOGOUT_ARGS = ["logout"];
 
 export function loader({}: Route.LoaderArgs) {
   return Response.json(
@@ -19,11 +23,11 @@ export async function action({ request }: Route.ActionArgs) {
   }
 
   try {
-    await execFileAsync(AZURE_CLI_COMMAND, AZURE_LOGOUT_ARGS, {
+    await execFileAsync(AZURE_CLI_COMMAND, [...AZURE_LOGOUT_ARGS], {
       env: process.env,
       windowsHide: true,
-      timeout: 30_000,
-      maxBuffer: 1024 * 1024,
+      timeout: AZURE_LOGOUT_TIMEOUT_MS,
+      maxBuffer: AZURE_LOGOUT_MAX_BUFFER_BYTES,
     });
 
     return Response.json({
@@ -61,4 +65,3 @@ function isNoActiveAccountError(error: unknown): boolean {
 function readErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Unknown error.";
 }
-

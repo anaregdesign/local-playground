@@ -1,5 +1,19 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
+import {
+  ENV_KEY_PATTERN,
+  FOUNDRY_MCP_SERVERS_FILE_NAME,
+  HTTP_HEADER_NAME_PATTERN,
+  MCP_AZURE_AUTH_SCOPE_MAX_LENGTH,
+  MCP_DEFAULT_AZURE_AUTH_SCOPE,
+  MCP_DEFAULT_TIMEOUT_SECONDS,
+  MCP_HTTP_HEADERS_MAX,
+  MCP_SERVER_NAME_MAX_LENGTH,
+  MCP_STDIO_ARGS_MAX,
+  MCP_STDIO_ENV_VARS_MAX,
+  MCP_TIMEOUT_SECONDS_MAX,
+  MCP_TIMEOUT_SECONDS_MIN,
+} from "~/lib/constants";
 import { getFoundryConfigFilePaths, readFoundryConfigTextFile } from "~/lib/foundry/config";
 import type { Route } from "./+types/api.mcp-servers";
 
@@ -31,19 +45,6 @@ type IncomingMcpHttpServerConfig = Omit<SavedMcpHttpServerConfig, "id"> & { id?:
 type IncomingMcpStdioServerConfig = Omit<SavedMcpStdioServerConfig, "id"> & { id?: string };
 type IncomingMcpServerConfig = IncomingMcpHttpServerConfig | IncomingMcpStdioServerConfig;
 type ParseResult<T> = { ok: true; value: T } | { ok: false; error: string };
-
-const MAX_MCP_SERVER_NAME_LENGTH = 80;
-const MAX_MCP_STDIO_ARGS = 64;
-const MAX_MCP_STDIO_ENV_VARS = 64;
-const MAX_MCP_HTTP_HEADERS = 64;
-const MAX_MCP_AZURE_AUTH_SCOPE_LENGTH = 512;
-const MIN_MCP_TIMEOUT_SECONDS = 1;
-const MAX_MCP_TIMEOUT_SECONDS = 600;
-const ENV_KEY_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
-const HTTP_HEADER_NAME_PATTERN = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/;
-const DEFAULT_MCP_AZURE_AUTH_SCOPE = "https://cognitiveservices.azure.com/.default";
-const DEFAULT_MCP_TIMEOUT_SECONDS = 30;
-const MCP_CONFIG_FILE_PATHS = getFoundryConfigFilePaths("mcp-servers.json");
 
 export async function loader({ request }: Route.LoaderArgs) {
   if (request.method !== "GET") {
@@ -100,7 +101,8 @@ export async function action({ request }: Route.ActionArgs) {
 }
 
 async function readSavedMcpServers(): Promise<SavedMcpServerConfig[]> {
-  const content = await readFoundryConfigTextFile(MCP_CONFIG_FILE_PATHS);
+  const configFilePaths = getFoundryConfigFilePaths(FOUNDRY_MCP_SERVERS_FILE_NAME);
+  const content = await readFoundryConfigTextFile(configFilePaths);
   if (content === null) {
     return [];
   }
@@ -138,8 +140,9 @@ async function readSavedMcpServers(): Promise<SavedMcpServerConfig[]> {
 }
 
 async function writeSavedMcpServers(profiles: SavedMcpServerConfig[]): Promise<void> {
-  await mkdir(MCP_CONFIG_FILE_PATHS.primaryDirectoryPath, { recursive: true });
-  await writeFile(MCP_CONFIG_FILE_PATHS.primaryFilePath, JSON.stringify(profiles, null, 2) + "\n", "utf8");
+  const configFilePaths = getFoundryConfigFilePaths(FOUNDRY_MCP_SERVERS_FILE_NAME);
+  await mkdir(configFilePaths.primaryDirectoryPath, { recursive: true });
+  await writeFile(configFilePaths.primaryFilePath, JSON.stringify(profiles, null, 2) + "\n", "utf8");
 }
 
 function parseIncomingMcpServer(payload: unknown): ParseResult<IncomingMcpServerConfig> {
@@ -363,10 +366,10 @@ function parseArgs(argsValue: unknown): ParseResult<string[]> {
     return { ok: false, error: "`args` must be an array of strings." };
   }
 
-  if (argsValue.length > MAX_MCP_STDIO_ARGS) {
+  if (argsValue.length > MCP_STDIO_ARGS_MAX) {
     return {
       ok: false,
-      error: `\`args\` can include up to ${MAX_MCP_STDIO_ARGS} entries.`,
+      error: `\`args\` can include up to ${MCP_STDIO_ARGS_MAX} entries.`,
     };
   }
 
@@ -397,10 +400,10 @@ function parseEnv(envValue: unknown): ParseResult<Record<string, string>> {
   }
 
   const entries = Object.entries(envValue);
-  if (entries.length > MAX_MCP_STDIO_ENV_VARS) {
+  if (entries.length > MCP_STDIO_ENV_VARS_MAX) {
     return {
       ok: false,
-      error: `\`env\` can include up to ${MAX_MCP_STDIO_ENV_VARS} entries.`,
+      error: `\`env\` can include up to ${MCP_STDIO_ENV_VARS_MAX} entries.`,
     };
   }
 
@@ -430,10 +433,10 @@ function parseHttpHeaders(
   }
 
   const entries = Object.entries(headersValue);
-  if (entries.length > MAX_MCP_HTTP_HEADERS) {
+  if (entries.length > MCP_HTTP_HEADERS_MAX) {
     return {
       ok: false,
-      error: `\`headers\` can include up to ${MAX_MCP_HTTP_HEADERS} entries.`,
+      error: `\`headers\` can include up to ${MCP_HTTP_HEADERS_MAX} entries.`,
     };
   }
 
@@ -465,18 +468,18 @@ function parseAzureAuthScope(
   useAzureAuth: boolean,
 ): ParseResult<string> {
   if (rawScope === undefined || rawScope === null) {
-    return { ok: true, value: DEFAULT_MCP_AZURE_AUTH_SCOPE };
+    return { ok: true, value: MCP_DEFAULT_AZURE_AUTH_SCOPE };
   }
 
   if (typeof rawScope !== "string") {
     return { ok: false, error: "`azureAuthScope` must be a string." };
   }
 
-  const trimmed = rawScope.trim() || DEFAULT_MCP_AZURE_AUTH_SCOPE;
-  if (trimmed.length > MAX_MCP_AZURE_AUTH_SCOPE_LENGTH) {
+  const trimmed = rawScope.trim() || MCP_DEFAULT_AZURE_AUTH_SCOPE;
+  if (trimmed.length > MCP_AZURE_AUTH_SCOPE_MAX_LENGTH) {
     return {
       ok: false,
-      error: `\`azureAuthScope\` must be ${MAX_MCP_AZURE_AUTH_SCOPE_LENGTH} characters or fewer.`,
+      error: `\`azureAuthScope\` must be ${MCP_AZURE_AUTH_SCOPE_MAX_LENGTH} characters or fewer.`,
     };
   }
 
@@ -495,17 +498,17 @@ function parseTimeoutSeconds(
   rawTimeout: unknown,
 ): ParseResult<number> {
   if (rawTimeout === undefined || rawTimeout === null) {
-    return { ok: true, value: DEFAULT_MCP_TIMEOUT_SECONDS };
+    return { ok: true, value: MCP_DEFAULT_TIMEOUT_SECONDS };
   }
 
   if (typeof rawTimeout !== "number" || !Number.isSafeInteger(rawTimeout)) {
     return { ok: false, error: "`timeoutSeconds` must be an integer." };
   }
 
-  if (rawTimeout < MIN_MCP_TIMEOUT_SECONDS || rawTimeout > MAX_MCP_TIMEOUT_SECONDS) {
+  if (rawTimeout < MCP_TIMEOUT_SECONDS_MIN || rawTimeout > MCP_TIMEOUT_SECONDS_MAX) {
     return {
       ok: false,
-      error: `\`timeoutSeconds\` must be between ${MIN_MCP_TIMEOUT_SECONDS} and ${MAX_MCP_TIMEOUT_SECONDS}.`,
+      error: `\`timeoutSeconds\` must be between ${MCP_TIMEOUT_SECONDS_MIN} and ${MCP_TIMEOUT_SECONDS_MAX}.`,
     };
   }
 
@@ -522,7 +525,7 @@ function readTransport(value: unknown): McpTransport | null {
 function normalizeName(rawName: unknown, fallback: string): string {
   const preferred = typeof rawName === "string" ? rawName.trim() : "";
   const normalized = (preferred || fallback).trim();
-  return normalized.slice(0, MAX_MCP_SERVER_NAME_LENGTH);
+  return normalized.slice(0, MCP_SERVER_NAME_MAX_LENGTH);
 }
 
 function normalizeOptionalId(rawId: unknown): string | null {

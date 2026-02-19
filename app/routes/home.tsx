@@ -11,6 +11,26 @@ import { ConfigPanel } from "~/components/home/config/ConfigPanel";
 import { PlaygroundPanel } from "~/components/home/playground/PlaygroundPanel";
 import { CopyIconButton } from "~/components/home/shared/CopyIconButton";
 import type { MainViewTab, McpTransport, ReasoningEffort } from "~/components/home/shared/types";
+import {
+  CONTEXT_WINDOW_DEFAULT,
+  CONTEXT_WINDOW_MAX,
+  CONTEXT_WINDOW_MIN,
+  DEFAULT_AGENT_INSTRUCTION,
+  HOME_CHAT_INPUT_MAX_HEIGHT_PX,
+  HOME_CHAT_INPUT_MIN_HEIGHT_PX,
+  HOME_DEFAULT_MCP_TRANSPORT,
+  HOME_INITIAL_MESSAGES,
+  HOME_MAIN_SPLITTER_MIN_RIGHT_WIDTH_PX,
+  HOME_REASONING_EFFORT_OPTIONS,
+  INSTRUCTION_ALLOWED_EXTENSIONS,
+  INSTRUCTION_ENHANCE_SYSTEM_PROMPT,
+  INSTRUCTION_MAX_FILE_SIZE_BYTES,
+  INSTRUCTION_MAX_FILE_SIZE_LABEL,
+  MCP_DEFAULT_AZURE_AUTH_SCOPE,
+  MCP_DEFAULT_TIMEOUT_SECONDS,
+  MCP_TIMEOUT_SECONDS_MAX,
+  MCP_TIMEOUT_SECONDS_MIN,
+} from "~/lib/constants";
 import type {
   AzureConnectionOption,
   AzureSelectionPreference,
@@ -37,15 +57,8 @@ import {
   readChatEventStreamPayload,
   upsertMcpRpcHistoryEntry,
 } from "~/lib/home/chat/stream";
-import {
-  DEFAULT_AGENT_INSTRUCTION,
-  MAX_INSTRUCTION_FILE_SIZE_BYTES,
-  MAX_INSTRUCTION_FILE_SIZE_LABEL,
-} from "~/lib/home/instruction/constants";
 import type { InstructionDiffLine, InstructionLanguage } from "~/lib/home/instruction/helpers";
 import {
-  ALLOWED_INSTRUCTION_EXTENSIONS,
-  ENHANCE_INSTRUCTION_SYSTEM_PROMPT,
   buildInstructionDiffLines,
   buildInstructionEnhanceMessage,
   buildInstructionSuggestedFileName,
@@ -60,16 +73,8 @@ import {
   validateEnhancedInstructionFormat,
   validateInstructionLanguagePreserved,
 } from "~/lib/home/instruction/helpers";
-import { CHAT_INPUT_MAX_HEIGHT_PX, CHAT_INPUT_MIN_HEIGHT_PX } from "~/lib/home/layout/chat-input";
+import { resolveMainSplitterMaxRightWidth } from "~/lib/home/layout/main-splitter";
 import {
-  MAIN_SPLITTER_MIN_RIGHT_WIDTH_PX,
-  resolveMainSplitterMaxRightWidth,
-} from "~/lib/home/layout/main-splitter";
-import {
-  DEFAULT_MCP_AZURE_AUTH_SCOPE,
-  DEFAULT_MCP_TIMEOUT_SECONDS,
-  MAX_MCP_TIMEOUT_SECONDS,
-  MIN_MCP_TIMEOUT_SECONDS,
   parseAzureAuthScopeInput,
   parseHttpHeadersInput,
   parseMcpTimeoutSecondsInput,
@@ -90,9 +95,6 @@ import {
   parseStdioEnvInput,
 } from "~/lib/home/mcp/stdio-inputs";
 import {
-  DEFAULT_CONTEXT_WINDOW_SIZE,
-  MAX_CONTEXT_WINDOW_SIZE,
-  MIN_CONTEXT_WINDOW_SIZE,
   validateContextWindowInput,
 } from "~/lib/home/settings/context-window";
 import { copyTextToClipboard } from "~/lib/home/shared/clipboard";
@@ -134,9 +136,6 @@ type McpServersApiResponse = {
   error?: string;
 };
 
-const INITIAL_MESSAGES: ChatMessage[] = [];
-const DEFAULT_MCP_TRANSPORT: McpTransport = "streamable_http";
-
 export function meta({}: Route.MetaArgs) {
   return [
     { title: "Local Playground" },
@@ -147,7 +146,7 @@ export function meta({}: Route.MetaArgs) {
 export default function Home() {
   const [azureConnections, setAzureConnections] = useState<AzureConnectionOption[]>([]);
   const [azureDeployments, setAzureDeployments] = useState<string[]>([]);
-  const [messages, setMessages] = useState<ChatMessage[]>(INITIAL_MESSAGES);
+  const [messages, setMessages] = useState<ChatMessage[]>([...HOME_INITIAL_MESSAGES]);
   const [draft, setDraft] = useState("");
   const [activeMainTab, setActiveMainTab] = useState<MainViewTab>("settings");
   const [selectedAzureConnectionId, setSelectedAzureConnectionId] = useState("");
@@ -181,19 +180,19 @@ export default function Home() {
   const [mcpHeadersInput, setMcpHeadersInput] = useState("");
   const [mcpUseAzureAuthInput, setMcpUseAzureAuthInput] = useState(false);
   const [mcpAzureAuthScopeInput, setMcpAzureAuthScopeInput] = useState(
-    DEFAULT_MCP_AZURE_AUTH_SCOPE,
+    MCP_DEFAULT_AZURE_AUTH_SCOPE,
   );
   const [mcpTimeoutSecondsInput, setMcpTimeoutSecondsInput] = useState(
-    String(DEFAULT_MCP_TIMEOUT_SECONDS),
+    String(MCP_DEFAULT_TIMEOUT_SECONDS),
   );
-  const [mcpTransport, setMcpTransport] = useState<McpTransport>(DEFAULT_MCP_TRANSPORT);
+  const [mcpTransport, setMcpTransport] = useState<McpTransport>(HOME_DEFAULT_MCP_TRANSPORT);
   const [mcpFormError, setMcpFormError] = useState<string | null>(null);
   const [mcpFormWarning, setMcpFormWarning] = useState<string | null>(null);
   const [savedMcpError, setSavedMcpError] = useState<string | null>(null);
   const [isLoadingSavedMcpServers, setIsLoadingSavedMcpServers] = useState(false);
   const [isSavingMcpServer, setIsSavingMcpServer] = useState(false);
   const [contextWindowInput, setContextWindowInput] = useState(
-    String(DEFAULT_CONTEXT_WINDOW_SIZE),
+    String(CONTEXT_WINDOW_DEFAULT),
   );
   const [isSending, setIsSending] = useState(false);
   const [sendProgressMessages, setSendProgressMessages] = useState<string[]>([]);
@@ -227,6 +226,7 @@ export default function Home() {
     instructionFileError !== null;
   const canSaveAgentInstructionPrompt = agentInstruction.trim().length > 0;
   const canEnhanceAgentInstruction = agentInstruction.trim().length > 0;
+  const reasoningEffortOptions: ReasoningEffort[] = [...HOME_REASONING_EFFORT_OPTIONS];
   const mcpHistoryByTurnId = buildMcpHistoryByTurnId(mcpRpcHistory);
   const activeTurnMcpHistory = activeTurnId ? (mcpHistoryByTurnId.get(activeTurnId) ?? []) : [];
   const errorTurnMcpHistory = lastErrorTurnId ? (mcpHistoryByTurnId.get(lastErrorTurnId) ?? []) : [];
@@ -371,7 +371,7 @@ export default function Home() {
         const rect = layoutElement.getBoundingClientRect();
         const maxRightWidth = resolveMainSplitterMaxRightWidth(rect.width);
         setRightPaneWidth((current) =>
-          clampNumber(current, MAIN_SPLITTER_MIN_RIGHT_WIDTH_PX, maxRightWidth),
+          clampNumber(current, HOME_MAIN_SPLITTER_MIN_RIGHT_WIDTH_PX, maxRightWidth),
         );
       }
 
@@ -877,11 +877,11 @@ export default function Home() {
   function resizeChatInput(input: HTMLTextAreaElement) {
     input.style.height = "auto";
     const boundedHeight = Math.max(
-      CHAT_INPUT_MIN_HEIGHT_PX,
-      Math.min(input.scrollHeight, CHAT_INPUT_MAX_HEIGHT_PX),
+      HOME_CHAT_INPUT_MIN_HEIGHT_PX,
+      Math.min(input.scrollHeight, HOME_CHAT_INPUT_MAX_HEIGHT_PX),
     );
     input.style.height = `${boundedHeight}px`;
-    input.style.overflowY = input.scrollHeight > CHAT_INPUT_MAX_HEIGHT_PX ? "auto" : "hidden";
+    input.style.overflowY = input.scrollHeight > HOME_CHAT_INPUT_MAX_HEIGHT_PX ? "auto" : "hidden";
   }
 
   function handleChatProjectChange(projectId: string) {
@@ -945,15 +945,15 @@ export default function Home() {
     setInstructionFileError(null);
 
     const extension = getFileExtension(file.name);
-    if (!ALLOWED_INSTRUCTION_EXTENSIONS.has(extension)) {
+    if (!INSTRUCTION_ALLOWED_EXTENSIONS.has(extension)) {
       setInstructionFileError("Only .md, .txt, .xml, and .json files are supported.");
       input.value = "";
       return;
     }
 
-    if (file.size > MAX_INSTRUCTION_FILE_SIZE_BYTES) {
+    if (file.size > INSTRUCTION_MAX_FILE_SIZE_BYTES) {
       setInstructionFileError(
-        `Instruction file is too large. Max ${MAX_INSTRUCTION_FILE_SIZE_LABEL}.`,
+        `Instruction file is too large. Max ${INSTRUCTION_MAX_FILE_SIZE_LABEL}.`,
       );
       input.value = "";
       return;
@@ -1086,7 +1086,7 @@ export default function Home() {
           },
           reasoningEffort: "none",
           contextWindowSize: 1,
-          agentInstruction: ENHANCE_INSTRUCTION_SYSTEM_PROMPT,
+          agentInstruction: INSTRUCTION_ENHANCE_SYSTEM_PROMPT,
           mcpServers: [],
         }),
       });
@@ -1259,7 +1259,7 @@ export default function Home() {
         return;
       }
 
-      let azureAuthScope = DEFAULT_MCP_AZURE_AUTH_SCOPE;
+      let azureAuthScope = MCP_DEFAULT_AZURE_AUTH_SCOPE;
       if (mcpUseAzureAuthInput) {
         const scopeResult = parseAzureAuthScopeInput(mcpAzureAuthScopeInput);
         if (!scopeResult.ok) {
@@ -1336,9 +1336,9 @@ export default function Home() {
     setMcpEnvInput("");
     setMcpHeadersInput("");
     setMcpUseAzureAuthInput(false);
-    setMcpAzureAuthScopeInput(DEFAULT_MCP_AZURE_AUTH_SCOPE);
-    setMcpTimeoutSecondsInput(String(DEFAULT_MCP_TIMEOUT_SECONDS));
-    setMcpTransport(DEFAULT_MCP_TRANSPORT);
+    setMcpAzureAuthScopeInput(MCP_DEFAULT_AZURE_AUTH_SCOPE);
+    setMcpTimeoutSecondsInput(String(MCP_DEFAULT_TIMEOUT_SECONDS));
+    setMcpTransport(HOME_DEFAULT_MCP_TRANSPORT);
   }
 
   function handleLoadSavedMcpServerToForm() {
@@ -1366,8 +1366,8 @@ export default function Home() {
       setMcpUrlInput("");
       setMcpHeadersInput("");
       setMcpUseAzureAuthInput(false);
-      setMcpAzureAuthScopeInput(DEFAULT_MCP_AZURE_AUTH_SCOPE);
-      setMcpTimeoutSecondsInput(String(DEFAULT_MCP_TIMEOUT_SECONDS));
+      setMcpAzureAuthScopeInput(MCP_DEFAULT_AZURE_AUTH_SCOPE);
+      setMcpTimeoutSecondsInput(String(MCP_DEFAULT_TIMEOUT_SECONDS));
     } else {
       setMcpUrlInput(selected.url);
       setMcpHeadersInput(formatKeyValueLines(selected.headers));
@@ -1392,7 +1392,7 @@ export default function Home() {
       return;
     }
 
-    setMessages(INITIAL_MESSAGES);
+    setMessages([...HOME_INITIAL_MESSAGES]);
     setMcpRpcHistory([]);
     setDraft("");
     setError(null);
@@ -1416,7 +1416,7 @@ export default function Home() {
     const handlePointerMove = (moveEvent: PointerEvent) => {
       const nextRightWidth = rect.right - moveEvent.clientX;
       setRightPaneWidth(
-        clampNumber(nextRightWidth, MAIN_SPLITTER_MIN_RIGHT_WIDTH_PX, maxRightWidth),
+        clampNumber(nextRightWidth, HOME_MAIN_SPLITTER_MIN_RIGHT_WIDTH_PX, maxRightWidth),
       );
     };
 
@@ -1551,17 +1551,17 @@ export default function Home() {
     onMcpUseAzureAuthInputChange: (checked: boolean) => {
       setMcpUseAzureAuthInput(checked);
       if (checked && !mcpAzureAuthScopeInput.trim()) {
-        setMcpAzureAuthScopeInput(DEFAULT_MCP_AZURE_AUTH_SCOPE);
+        setMcpAzureAuthScopeInput(MCP_DEFAULT_AZURE_AUTH_SCOPE);
       }
     },
     mcpAzureAuthScopeInput,
     onMcpAzureAuthScopeInputChange: setMcpAzureAuthScopeInput,
     mcpTimeoutSecondsInput,
     onMcpTimeoutSecondsInputChange: setMcpTimeoutSecondsInput,
-    defaultMcpAzureAuthScope: DEFAULT_MCP_AZURE_AUTH_SCOPE,
-    defaultMcpTimeoutSeconds: DEFAULT_MCP_TIMEOUT_SECONDS,
-    minMcpTimeoutSeconds: MIN_MCP_TIMEOUT_SECONDS,
-    maxMcpTimeoutSeconds: MAX_MCP_TIMEOUT_SECONDS,
+    defaultMcpAzureAuthScope: MCP_DEFAULT_AZURE_AUTH_SCOPE,
+    defaultMcpTimeoutSeconds: MCP_DEFAULT_TIMEOUT_SECONDS,
+    minMcpTimeoutSeconds: MCP_TIMEOUT_SECONDS_MIN,
+    maxMcpTimeoutSeconds: MCP_TIMEOUT_SECONDS_MAX,
     onAddMcpServer: handleAddMcpServer,
     isSavingMcpServer,
     mcpFormError,
@@ -1604,13 +1604,13 @@ export default function Home() {
     azureDeployments,
     onDeploymentChange: handleChatDeploymentChange,
     reasoningEffort,
-    reasoningEffortOptions: REASONING_EFFORT_OPTIONS,
+    reasoningEffortOptions,
     onReasoningEffortChange: setReasoningEffort,
     contextWindowValidation,
     contextWindowInput,
     onContextWindowInputChange: setContextWindowInput,
-    minContextWindowSize: MIN_CONTEXT_WINDOW_SIZE,
-    maxContextWindowSize: MAX_CONTEXT_WINDOW_SIZE,
+    minContextWindowSize: CONTEXT_WINDOW_MIN,
+    maxContextWindowSize: CONTEXT_WINDOW_MAX,
     canSendMessage,
     mcpServers,
     onRemoveMcpServer: handleRemoveMcpServer,
@@ -1758,8 +1758,6 @@ function renderHighlightedJson(
   const tokens = tokenizeJson(formatted);
   return renderJsonTokens(tokens, ariaLabel, style);
 }
-
-const REASONING_EFFORT_OPTIONS: ReasoningEffort[] = ["none", "low", "medium", "high"];
 
 function renderMessageContent(message: ChatMessage) {
   if (message.role !== "assistant") {

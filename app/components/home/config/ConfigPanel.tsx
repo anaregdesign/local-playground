@@ -3,13 +3,9 @@ import { FluentUI } from "~/components/home/shared/fluent";
 import { McpServersTab } from "~/components/home/config/mcp/McpServersTab";
 import { SettingsTab } from "~/components/home/config/settings/SettingsTab";
 import type { MainViewTab } from "~/components/home/shared/types";
+import { HOME_MAIN_VIEW_TAB_OPTIONS } from "~/lib/constants";
 
 const { MessageBar, MessageBarBody, Tab, TabList } = FluentUI;
-
-const MAIN_VIEW_TAB_OPTIONS: Array<{ id: MainViewTab; label: string }> = [
-  { id: "settings", label: "⚙️ Settings" },
-  { id: "mcp", label: "🧩 MCP Servers" },
-];
 
 type ConfigPanelProps = {
   activeMainTab: MainViewTab;
@@ -39,7 +35,7 @@ export function ConfigPanel(props: ConfigPanelProps) {
             }
           }}
         >
-          {MAIN_VIEW_TAB_OPTIONS.map((tab) => (
+          {HOME_MAIN_VIEW_TAB_OPTIONS.map((tab) => (
             <Tab
               key={tab.id}
               value={tab.id}

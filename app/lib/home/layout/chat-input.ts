@@ -1,2 +1,0 @@
-export const CHAT_INPUT_MIN_HEIGHT_PX = 44;
-export const CHAT_INPUT_MAX_HEIGHT_PX = 220;
