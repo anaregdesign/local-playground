@@ -11,6 +11,7 @@ import { FluentUI } from "~/components/home/shared/fluent";
 import { LabeledTooltip } from "~/components/home/shared/LabeledTooltip";
 import { StatusMessageList } from "~/components/home/shared/StatusMessageList";
 import type { ReasoningEffort } from "~/components/home/shared/types";
+import { formatChatAttachmentSize } from "~/lib/home/chat/attachments";
 
 const {
   Button,
@@ -26,6 +27,12 @@ type ChatMessageLike = {
   role: ChatRole;
   content: string;
   turnId: string;
+};
+
+type ChatAttachmentLike = {
+  id: string;
+  name: string;
+  sizeBytes: number;
 };
 
 type ContextWindowValidationLike = {
@@ -90,8 +97,16 @@ type PlaygroundPanelProps<
   azureLoginError: string | null;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
   chatInputRef: RefObject<HTMLTextAreaElement | null>;
+  chatAttachmentInputRef: RefObject<HTMLInputElement | null>;
+  chatAttachmentAccept: string;
+  chatAttachmentFormatHint: string;
   draft: string;
+  chatAttachments: ChatAttachmentLike[];
+  chatAttachmentError: string | null;
   onDraftChange: (event: ChangeEvent<HTMLTextAreaElement>, value: string) => void;
+  onOpenChatAttachmentPicker: () => void;
+  onChatAttachmentFileChange: (event: ChangeEvent<HTMLInputElement>) => void;
+  onRemoveChatAttachment: (id: string) => void;
   onInputKeyDown: (event: KeyboardEvent<HTMLTextAreaElement>) => void;
   onCompositionStart: () => void;
   onCompositionEnd: () => void;
@@ -116,6 +131,7 @@ type PlaygroundPanelProps<
   onContextWindowInputChange: (value: string) => void;
   minContextWindowSize: number;
   maxContextWindowSize: number;
+  maxChatAttachmentFiles: number;
   canSendMessage: boolean;
   mcpServers: TMcpServer[];
   onRemoveMcpServer: (id: string) => void;
@@ -143,8 +159,16 @@ export function PlaygroundPanel<
     azureLoginError,
     onSubmit,
     chatInputRef,
+    chatAttachmentInputRef,
+    chatAttachmentAccept,
+    chatAttachmentFormatHint,
     draft,
+    chatAttachments,
+    chatAttachmentError,
     onDraftChange,
+    onOpenChatAttachmentPicker,
+    onChatAttachmentFileChange,
+    onRemoveChatAttachment,
     onInputKeyDown,
     onCompositionStart,
     onCompositionEnd,
@@ -169,6 +193,7 @@ export function PlaygroundPanel<
     onContextWindowInputChange,
     minContextWindowSize,
     maxContextWindowSize,
+    maxChatAttachmentFiles,
     canSendMessage,
     mcpServers,
     onRemoveMcpServer,
@@ -284,6 +309,41 @@ export function PlaygroundPanel<
     );
   }
 
+  function renderDraftAttachmentBubbles() {
+    if (chatAttachments.length === 0) {
+      return null;
+    }
+
+    return (
+      <section className="chat-attachment-strip" aria-label="Attached files">
+        <div className="chat-attachment-bubbles">
+          {chatAttachments.map((attachment) => (
+            <div key={attachment.id} className="chat-attachment-bubble-item">
+              <span className="chat-attachment-bubble">
+                <span className="chat-attachment-bubble-name">{attachment.name}</span>
+                <span className="chat-attachment-bubble-size">
+                  {formatChatAttachmentSize(attachment.sizeBytes)}
+                </span>
+                <Button
+                  type="button"
+                  appearance="subtle"
+                  size="small"
+                  className="chat-attachment-bubble-remove"
+                  onClick={() => onRemoveChatAttachment(attachment.id)}
+                  disabled={isSending}
+                  aria-label={`Remove attachment ${attachment.name}`}
+                  title={`Remove ${attachment.name}`}
+                >
+                  ×
+                </Button>
+              </span>
+            </div>
+          ))}
+        </div>
+      </section>
+    );
+  }
+
   return (
     <section className="chat-shell main-panel" aria-label="Playground">
       <header className="chat-header">
@@ -372,12 +432,13 @@ export function PlaygroundPanel<
       </div>
 
       <footer className="chat-footer">
-        {error ? (
+        {error || azureLoginError || chatAttachmentError ? (
           <StatusMessageList
             className="chat-error-stack"
             messages={[
               { intent: "error", title: "Request failed", text: error },
               { intent: "error", text: azureLoginError },
+              { intent: "error", title: "Attachment", text: chatAttachmentError },
             ]}
           />
         ) : null}
@@ -385,6 +446,16 @@ export function PlaygroundPanel<
           <label className="sr-only" htmlFor="chat-input">
             Message
           </label>
+          <input
+            ref={chatAttachmentInputRef}
+            id="chat-attachment-input"
+            className="file-input-hidden"
+            type="file"
+            accept={chatAttachmentAccept}
+            multiple
+            onChange={onChatAttachmentFileChange}
+            disabled={isSending || isChatLocked}
+          />
           <div className="chat-composer">
             <Textarea
               id="chat-input"
@@ -406,6 +477,27 @@ export function PlaygroundPanel<
             />
             <div className="chat-composer-actions">
               <div className="chat-quick-controls">
+                {renderLabeledTooltip(
+                  "Attach Files",
+                  [
+                    `Attach local files for this turn (up to ${maxChatAttachmentFiles}).`,
+                    `Supported format: ${chatAttachmentFormatHint}.`,
+                    "Attachments are sent together with the current message.",
+                  ],
+                  <div className="chat-quick-control">
+                    <Button
+                      type="button"
+                      appearance="subtle"
+                      className="chat-attach-btn"
+                      aria-label="Attach files"
+                      title="Attach files"
+                      onClick={onOpenChatAttachmentPicker}
+                      disabled={isSending || isChatLocked}
+                    >
+                      📎
+                    </Button>
+                  </div>,
+                )}
                 {renderLabeledTooltip(
                   "Project",
                   [
@@ -572,6 +664,7 @@ export function PlaygroundPanel<
             </div>
           </div>
         </form>
+        {renderDraftAttachmentBubbles()}
         {renderAddedMcpServersBubbles()}
       </footer>
     </section>

@@ -19,7 +19,8 @@
     "desktop:package:win": "npm run build && electron-builder --config electron-builder.yml --win nsis --publish never",
     "typecheck": "react-router typegen && tsc",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "verify:chat-attachments": "node scripts/verify-chat-attachments.mjs"
   },
   "dependencies": {
     "@azure/identity": "^4.13.0",

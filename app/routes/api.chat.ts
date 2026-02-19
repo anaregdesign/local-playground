@@ -9,14 +9,26 @@ import {
   user,
   type MCPServer,
 } from "@openai/agents";
-import { OpenAIResponsesModel } from "@openai/agents-openai";
+import { OpenAIResponsesModel, codeInterpreterTool } from "@openai/agents-openai";
+import { toFile } from "openai";
 import {
   getAzureDependencies,
   normalizeAzureOpenAIBaseURL,
 } from "~/lib/azure/dependencies";
 import {
+  CHAT_ATTACHMENT_ALLOWED_EXTENSIONS,
+  CHAT_CLEANUP_TIMEOUT_MS,
+  CHAT_CODE_INTERPRETER_UPLOAD_TIMEOUT_MS,
+  CHAT_ATTACHMENT_MAX_FILE_NAME_LENGTH,
+  CHAT_ATTACHMENT_MAX_FILES,
+  CHAT_ATTACHMENT_MAX_NON_PDF_FILE_SIZE_BYTES,
+  CHAT_ATTACHMENT_MAX_PDF_FILE_SIZE_BYTES,
+  CHAT_ATTACHMENT_MAX_PDF_TOTAL_SIZE_BYTES,
+  CHAT_ATTACHMENT_MAX_TOTAL_SIZE_BYTES,
   CHAT_MAX_AGENT_INSTRUCTION_LENGTH,
+  CHAT_MAX_RUN_TURNS,
   CHAT_MAX_MCP_SERVERS,
+  CHAT_MODEL_RUN_TIMEOUT_MS,
   CONTEXT_WINDOW_DEFAULT,
   CONTEXT_WINDOW_MAX,
   CONTEXT_WINDOW_MIN,
@@ -40,9 +52,17 @@ import type { AzureDependencies } from "~/lib/azure/dependencies";
 
 type ChatRole = "user" | "assistant";
 
+type ClientAttachment = {
+  name: string;
+  mimeType: string;
+  sizeBytes: number;
+  dataUrl: string;
+};
+
 type ClientMessage = {
   role: ChatRole;
   content: string;
+  attachments: ClientAttachment[];
 };
 
 type ReasoningEffort = "none" | "low" | "medium" | "high";
@@ -79,6 +99,7 @@ type UpstreamErrorPayload = {
 };
 type ChatExecutionOptions = {
   message: string;
+  attachments: ClientAttachment[];
   history: ClientMessage[];
   reasoningEffort: ReasoningEffort;
   temperature: number | null;
@@ -130,6 +151,11 @@ type ChatProgressEvent = {
   message: string;
   isMcp?: boolean;
 };
+type CodeInterpreterAttachmentAvailabilityCache = {
+  supported: boolean;
+  checkedAt: number;
+  reason: string;
+};
 type ChatStreamPayload =
   | {
       type: "progress";
@@ -149,6 +175,10 @@ type ChatStreamPayload =
       error: string;
       errorCode?: "azure_login_required";
     };
+
+const CODE_INTERPRETER_ATTACHMENT_AVAILABILITY_CACHE_MS = 10 * 60 * 1000;
+let codeInterpreterAttachmentAvailabilityCache: CodeInterpreterAttachmentAvailabilityCache | null =
+  null;
 
 export function loader({}: Route.LoaderArgs) {
   return Response.json(
@@ -175,7 +205,15 @@ export async function action({ request }: Route.ActionArgs) {
   }
 
   const contextWindowSize = readContextWindowSize(payload);
-  const history = readHistory(payload, contextWindowSize);
+  const historyResult = readHistory(payload, contextWindowSize);
+  if (!historyResult.ok) {
+    return Response.json({ error: historyResult.error }, { status: 400 });
+  }
+  const history = historyResult.value;
+  const attachmentsResult = readAttachments(payload);
+  if (!attachmentsResult.ok) {
+    return Response.json({ error: attachmentsResult.error }, { status: 400 });
+  }
   const reasoningEffort = readReasoningEffort(payload);
   const temperatureResult = readTemperature(payload);
   if (!temperatureResult.ok) {
@@ -217,6 +255,7 @@ export async function action({ request }: Route.ActionArgs) {
 
   const executionOptions: ChatExecutionOptions = {
     message,
+    attachments: attachmentsResult.value,
     history,
     reasoningEffort,
     temperature: temperatureResult.value,
@@ -246,7 +285,9 @@ async function executeChat(
   onEvent?: (event: ChatExecutionEvent) => void,
 ): Promise<string> {
   const azureDependencies = getAzureDependencies();
+  const azureOpenAIClient = getAzureOpenAIClient(options.azureConfig.baseUrl, azureDependencies);
   const connectedMcpServers: MCPServer[] = [];
+  let codeInterpreterContainerId = "";
   const toolNameByCallId = new Map<string, string>();
   let mcpRpcSequence = 0;
   const hasMcpServers = options.mcpServers.length > 0;
@@ -372,9 +413,47 @@ async function executeChat(
     emitProgress({ message: "Initializing model and agent..." });
 
     const model = new OpenAIResponsesModel(
-      getAzureOpenAIClient(options.azureConfig.baseUrl, azureDependencies),
+      azureOpenAIClient,
       options.azureConfig.deploymentName,
     );
+    const useCodeInterpreter = shouldEnableCodeInterpreter(options);
+    let codeInterpreterEnabledForRun = false;
+    if (useCodeInterpreter) {
+      emitProgress({ message: "Enabling Code Interpreter for non-PDF attachments..." });
+      const nonPdfAttachments = collectNonPdfAttachments(options);
+      if (nonPdfAttachments.length > 0) {
+        const cachedAvailability = readCodeInterpreterAttachmentAvailabilityCache();
+        if (cachedAvailability && !cachedAvailability.supported) {
+          emitProgress({
+            message:
+              "Code Interpreter file upload is temporarily unavailable; continuing without non-PDF file access.",
+          });
+        } else {
+          emitProgress({
+            message: `Uploading attachments for Code Interpreter (${nonPdfAttachments.length})...`,
+          });
+          try {
+            codeInterpreterContainerId = await createCodeInterpreterContainerWithAttachments(
+              nonPdfAttachments,
+              azureOpenAIClient,
+            );
+            codeInterpreterEnabledForRun = true;
+            markCodeInterpreterAttachmentAvailabilitySupported();
+          } catch (error) {
+            const reason = readErrorMessage(error);
+            markCodeInterpreterAttachmentAvailabilityUnavailable(reason);
+            emitProgress({
+              message: `Code Interpreter file upload failed (${truncateProgressMessage(reason)}). Continuing without non-PDF file access.`,
+            });
+          }
+        }
+      } else {
+        codeInterpreterEnabledForRun = true;
+      }
+    }
+
+    const enableCodeInterpreterTool =
+      codeInterpreterEnabledForRun && codeInterpreterContainerId.length > 0;
 
     const agent = new Agent({
       name: "LocalPlaygroundAgent",
@@ -386,20 +465,46 @@ async function executeChat(
           effort: options.reasoningEffort,
         },
       },
+      tools: enableCodeInterpreterTool
+        ? [
+            codeInterpreterTool({
+              container: codeInterpreterContainerId,
+            }),
+          ]
+        : [],
       mcpServers: connectedMcpServers,
     });
 
     const runInput = [
       ...options.history.map((entry) =>
-        entry.role === "user" ? user(entry.content) : assistant(entry.content),
+        entry.role === "user"
+          ? buildUserMessageInput(entry.content, entry.attachments, {
+              useCodeInterpreter: enableCodeInterpreterTool,
+            })
+          : assistant(entry.content),
       ),
-      user(options.message),
+      buildUserMessageInput(options.message, options.attachments, {
+        useCodeInterpreter: enableCodeInterpreterTool,
+      }),
     ];
 
     emitProgress({ message: "Sending request to Azure OpenAI..." });
+    const runTimeoutSeconds = Math.ceil(CHAT_MODEL_RUN_TIMEOUT_MS / 1000);
+    const runTimeoutMessage = useCodeInterpreter
+      ? `Azure OpenAI request timed out after ${runTimeoutSeconds} seconds while processing file attachments. The selected deployment may not support Code Interpreter.`
+      : `Azure OpenAI request timed out after ${runTimeoutSeconds} seconds.`;
 
     if (onEvent) {
-      const streamedResult = await run(agent, runInput, { stream: true });
+      const streamedResult = await runAgentWithTimeout(
+        (signal) =>
+          run(agent, runInput, {
+            stream: true,
+            signal,
+            maxTurns: CHAT_MAX_RUN_TURNS,
+          }),
+        CHAT_MODEL_RUN_TIMEOUT_MS,
+        runTimeoutMessage,
+      );
       for await (const event of streamedResult) {
         const progress = readProgressEventFromRunStreamEvent(
           event,
@@ -411,7 +516,11 @@ async function executeChat(
         }
       }
 
-      await streamedResult.completed;
+      await awaitWithTimeout(
+        streamedResult.completed,
+        CHAT_MODEL_RUN_TIMEOUT_MS,
+        runTimeoutMessage,
+      );
 
       const assistantMessage = extractAgentFinalOutput(streamedResult.finalOutput);
       if (!assistantMessage) {
@@ -422,7 +531,15 @@ async function executeChat(
       return assistantMessage;
     }
 
-    const result = await run(agent, runInput);
+    const result = await runAgentWithTimeout(
+      (signal) =>
+        run(agent, runInput, {
+          signal,
+          maxTurns: CHAT_MAX_RUN_TURNS,
+        }),
+      CHAT_MODEL_RUN_TIMEOUT_MS,
+      runTimeoutMessage,
+    );
     const assistantMessage = extractAgentFinalOutput(result.finalOutput);
     if (!assistantMessage) {
       throw new Error("Azure OpenAI returned an empty message.");
@@ -430,7 +547,29 @@ async function executeChat(
 
     return assistantMessage;
   } finally {
-    await Promise.allSettled(connectedMcpServers.map((server) => server.close()));
+    await Promise.allSettled([
+      awaitWithTimeout(
+        (async () => {
+          if (!codeInterpreterContainerId) {
+            return;
+          }
+          try {
+            await azureOpenAIClient.containers.delete(codeInterpreterContainerId);
+          } catch {
+            // Best-effort cleanup for temporary Code Interpreter containers.
+          }
+        })(),
+        CHAT_CLEANUP_TIMEOUT_MS,
+        "Timed out while cleaning up the Code Interpreter container.",
+      ),
+      awaitWithTimeout(
+        Promise.allSettled(connectedMcpServers.map((server) => server.close())).then(
+          () => undefined,
+        ),
+        CHAT_CLEANUP_TIMEOUT_MS,
+        "Timed out while closing MCP server connections.",
+      ),
+    ]);
   }
 }
 
@@ -505,6 +644,207 @@ function wantsEventStream(request: Request): boolean {
   );
 }
 
+function shouldEnableCodeInterpreter(options: ChatExecutionOptions): boolean {
+  if (hasNonPdfAttachments(options.attachments)) {
+    return true;
+  }
+
+  return options.history.some(
+    (entry) => entry.role === "user" && hasNonPdfAttachments(entry.attachments),
+  );
+}
+
+function hasNonPdfAttachments(attachments: ClientAttachment[]): boolean {
+  return attachments.some((attachment) => readFileExtension(attachment.name) !== "pdf");
+}
+
+function collectNonPdfAttachments(options: ChatExecutionOptions): ClientAttachment[] {
+  const dedupedByKey = new Map<string, ClientAttachment>();
+
+  const register = (attachment: ClientAttachment) => {
+    if (readFileExtension(attachment.name) === "pdf") {
+      return;
+    }
+    dedupedByKey.set(buildAttachmentKey(attachment), attachment);
+  };
+
+  for (const attachment of options.attachments) {
+    register(attachment);
+  }
+  for (const historyEntry of options.history) {
+    if (historyEntry.role !== "user") {
+      continue;
+    }
+    for (const attachment of historyEntry.attachments) {
+      register(attachment);
+    }
+  }
+
+  return [...dedupedByKey.values()];
+}
+
+async function createCodeInterpreterContainerWithAttachments(
+  attachments: ClientAttachment[],
+  client: ReturnType<AzureDependencies["getAzureOpenAIClient"]>,
+): Promise<string> {
+  const container = await awaitWithTimeout(
+    client.containers.create({
+      name: "local-playground-chat",
+    }),
+    CHAT_CODE_INTERPRETER_UPLOAD_TIMEOUT_MS,
+    "Timed out while creating a Code Interpreter container.",
+  );
+  const containerId = typeof container.id === "string" ? container.id.trim() : "";
+  if (!containerId) {
+    throw new Error("Failed to initialize a Code Interpreter container.");
+  }
+
+  try {
+    for (const attachment of attachments) {
+      const parsedAttachmentDataUrl = parseAttachmentDataUrl(
+        attachment.dataUrl,
+        `attachments["${attachment.name}"].dataUrl`,
+      );
+      if (!parsedAttachmentDataUrl.ok) {
+        throw new Error(parsedAttachmentDataUrl.error);
+      }
+
+      const base64Payload = readDataUrlBase64Payload(parsedAttachmentDataUrl.value.dataUrl);
+      const attachmentBuffer = Buffer.from(base64Payload, "base64");
+      const normalizedMimeType =
+        attachment.mimeType ||
+        parsedAttachmentDataUrl.value.mimeType ||
+        "application/octet-stream";
+      const file = await toFile(attachmentBuffer, attachment.name, { type: normalizedMimeType });
+      try {
+        await awaitWithTimeout(
+          client.containers.files.create(containerId, { file }),
+          CHAT_CODE_INTERPRETER_UPLOAD_TIMEOUT_MS,
+          `Timed out while uploading "${attachment.name}" to Code Interpreter.`,
+        );
+      } catch (error) {
+        throw buildCodeInterpreterAttachmentUploadError(attachment.name, error);
+      }
+    }
+
+    return containerId;
+  } catch (error) {
+    try {
+      await client.containers.delete(containerId);
+    } catch {
+      // Best-effort cleanup when attachment upload fails.
+    }
+    throw error;
+  }
+}
+
+function buildCodeInterpreterAttachmentUploadError(
+  fileName: string,
+  error: unknown,
+): Error {
+  const message = readErrorMessage(error);
+  if (
+    /unsupported extension/i.test(message) ||
+    /invalid filename/i.test(message) ||
+    /filename contains an invalid filename/i.test(message)
+  ) {
+    return new Error(
+      `Code Interpreter rejected "${fileName}" on this deployment. ${message}`,
+    );
+  }
+
+  return new Error(`Failed to upload attachment "${fileName}" for Code Interpreter: ${message}`);
+}
+
+function readCodeInterpreterAttachmentAvailabilityCache():
+  | CodeInterpreterAttachmentAvailabilityCache
+  | null {
+  const cache = codeInterpreterAttachmentAvailabilityCache;
+  if (!cache) {
+    return null;
+  }
+
+  if (Date.now() - cache.checkedAt > CODE_INTERPRETER_ATTACHMENT_AVAILABILITY_CACHE_MS) {
+    codeInterpreterAttachmentAvailabilityCache = null;
+    return null;
+  }
+
+  return cache;
+}
+
+function markCodeInterpreterAttachmentAvailabilitySupported(): void {
+  codeInterpreterAttachmentAvailabilityCache = {
+    supported: true,
+    checkedAt: Date.now(),
+    reason: "",
+  };
+}
+
+function markCodeInterpreterAttachmentAvailabilityUnavailable(reason: string): void {
+  codeInterpreterAttachmentAvailabilityCache = {
+    supported: false,
+    checkedAt: Date.now(),
+    reason: reason.trim(),
+  };
+}
+
+function truncateProgressMessage(message: string): string {
+  const trimmed = message.trim();
+  if (!trimmed) {
+    return "unknown error";
+  }
+
+  const maxLength = 120;
+  return trimmed.length <= maxLength ? trimmed : `${trimmed.slice(0, maxLength - 1)}...`;
+}
+
+function buildUserMessageInput(
+  content: string,
+  attachments: ClientAttachment[],
+  options: {
+    useCodeInterpreter: boolean;
+  },
+) {
+  if (attachments.length === 0) {
+    return user(content);
+  }
+
+  const pdfAttachments = attachments.filter(
+    (attachment) => readFileExtension(attachment.name) === "pdf",
+  );
+  const codeInterpreterAttachmentNames = attachments
+    .filter((attachment) => readFileExtension(attachment.name) !== "pdf")
+    .filter(() => options.useCodeInterpreter)
+    .map((attachment) => attachment.name);
+
+  if (pdfAttachments.length === 0 && codeInterpreterAttachmentNames.length === 0) {
+    return user(content);
+  }
+
+  const textWithAttachmentHint =
+    codeInterpreterAttachmentNames.length > 0
+      ? [
+          content,
+          "",
+          "Files available in Code Interpreter:",
+          ...codeInterpreterAttachmentNames.map((name) => `- ${name}`),
+        ].join("\n")
+      : content;
+
+  const inputContent = [
+    {
+      type: "input_text" as const,
+      text: textWithAttachmentHint,
+    },
+    ...pdfAttachments.map((attachment) => ({
+      type: "input_file" as const,
+      file: attachment.dataUrl,
+      filename: attachment.name,
+    })),
+  ];
+  return user(inputContent);
+}
+
 function extractAgentFinalOutput(finalOutput: unknown): string {
   if (typeof finalOutput === "string") {
     return finalOutput.trim();
@@ -540,32 +880,285 @@ function readMessage(payload: unknown): string {
   return message.trim();
 }
 
-function readHistory(payload: unknown, contextWindowSize: number): ClientMessage[] {
+function readHistory(payload: unknown, contextWindowSize: number): ParseResult<ClientMessage[]> {
   if (!isRecord(payload) || !Array.isArray(payload.history)) {
-    return [];
+    return { ok: true, value: [] };
   }
 
-  return payload.history
-    .map((entry) => {
-      if (!isRecord(entry)) {
-        return null;
-      }
+  const parsedHistory: ClientMessage[] = [];
+  for (const [index, entry] of payload.history.entries()) {
+    if (!isRecord(entry)) {
+      continue;
+    }
 
-      const role = entry.role;
-      const content = entry.content;
-      if ((role !== "user" && role !== "assistant") || typeof content !== "string") {
-        return null;
-      }
+    const role = entry.role;
+    const content = entry.content;
+    if ((role !== "user" && role !== "assistant") || typeof content !== "string") {
+      continue;
+    }
 
-      const trimmedContent = content.trim();
-      if (!trimmedContent) {
-        return null;
-      }
+    const trimmedContent = content.trim();
+    if (!trimmedContent) {
+      continue;
+    }
 
-      return { role, content: trimmedContent };
-    })
-    .filter((entry): entry is ClientMessage => entry !== null)
-    .slice(-contextWindowSize);
+    const attachmentsResult =
+      role === "user"
+        ? parseAttachmentList(entry.attachments, `history[${index}].attachments`)
+        : { ok: true as const, value: [] as ClientAttachment[] };
+    if (!attachmentsResult.ok) {
+      return attachmentsResult;
+    }
+
+    parsedHistory.push({
+      role,
+      content: trimmedContent,
+      attachments: attachmentsResult.value,
+    });
+  }
+
+  return {
+    ok: true,
+    value: parsedHistory.slice(-contextWindowSize),
+  };
+}
+
+function readAttachments(payload: unknown): ParseResult<ClientAttachment[]> {
+  if (!isRecord(payload)) {
+    return { ok: true, value: [] };
+  }
+
+  return parseAttachmentList(payload.attachments, "attachments");
+}
+
+function parseAttachmentList(
+  rawValue: unknown,
+  pathLabel: string,
+): ParseResult<ClientAttachment[]> {
+  if (rawValue === undefined || rawValue === null) {
+    return { ok: true, value: [] };
+  }
+
+  if (!Array.isArray(rawValue)) {
+    return { ok: false, error: `\`${pathLabel}\` must be an array.` };
+  }
+
+  if (rawValue.length > CHAT_ATTACHMENT_MAX_FILES) {
+    return {
+      ok: false,
+      error: `You can attach up to ${CHAT_ATTACHMENT_MAX_FILES} files per message.`,
+    };
+  }
+
+  const attachments: ClientAttachment[] = [];
+  let totalSizeBytes = 0;
+  let pdfTotalSizeBytes = 0;
+
+  for (const [index, rawAttachment] of rawValue.entries()) {
+    if (!isRecord(rawAttachment)) {
+      return { ok: false, error: `\`${pathLabel}[${index}]\` is invalid.` };
+    }
+
+    const name = typeof rawAttachment.name === "string" ? rawAttachment.name.trim() : "";
+    if (!name) {
+      return { ok: false, error: `\`${pathLabel}[${index}].name\` is required.` };
+    }
+    if (name.length > CHAT_ATTACHMENT_MAX_FILE_NAME_LENGTH) {
+      return {
+        ok: false,
+        error: `\`${pathLabel}[${index}].name\` must be ${CHAT_ATTACHMENT_MAX_FILE_NAME_LENGTH} characters or fewer.`,
+      };
+    }
+    if (/[\r\n]/.test(name)) {
+      return {
+        ok: false,
+        error: `\`${pathLabel}[${index}].name\` must not include line breaks.`,
+      };
+    }
+
+    const extension = readFileExtension(name);
+    if (!CHAT_ATTACHMENT_ALLOWED_EXTENSIONS.has(extension)) {
+      return {
+        ok: false,
+        error: `\`${pathLabel}[${index}].name\` must use a supported extension (${Array.from(CHAT_ATTACHMENT_ALLOWED_EXTENSIONS, (value) => `.${value}`).join(", ")}).`,
+      };
+    }
+
+    const dataUrlResult = parseAttachmentDataUrl(
+      rawAttachment.dataUrl,
+      `${pathLabel}[${index}].dataUrl`,
+    );
+    if (!dataUrlResult.ok) {
+      return dataUrlResult;
+    }
+
+    const maxFileSizeBytes =
+      extension === "pdf"
+        ? CHAT_ATTACHMENT_MAX_PDF_FILE_SIZE_BYTES
+        : CHAT_ATTACHMENT_MAX_NON_PDF_FILE_SIZE_BYTES;
+    if (dataUrlResult.value.sizeBytes > maxFileSizeBytes) {
+      return {
+        ok: false,
+        error: `\`${pathLabel}[${index}]\` exceeds max file size for .${extension} (${maxFileSizeBytes} bytes).`,
+      };
+    }
+
+    if (rawAttachment.sizeBytes !== undefined) {
+      if (
+        typeof rawAttachment.sizeBytes !== "number" ||
+        !Number.isSafeInteger(rawAttachment.sizeBytes) ||
+        rawAttachment.sizeBytes < 0
+      ) {
+        return {
+          ok: false,
+          error: `\`${pathLabel}[${index}].sizeBytes\` must be a non-negative integer.`,
+        };
+      }
+      if (rawAttachment.sizeBytes !== dataUrlResult.value.sizeBytes) {
+        return {
+          ok: false,
+          error: `\`${pathLabel}[${index}].sizeBytes\` does not match file data size.`,
+        };
+      }
+    }
+
+    const rawMimeType = rawAttachment.mimeType;
+    let mimeType = dataUrlResult.value.mimeType;
+    if (rawMimeType !== undefined && rawMimeType !== null) {
+      if (typeof rawMimeType !== "string") {
+        return { ok: false, error: `\`${pathLabel}[${index}].mimeType\` must be a string.` };
+      }
+      const trimmed = rawMimeType.trim().toLowerCase();
+      if (trimmed) {
+        mimeType = trimmed;
+      }
+    }
+    if (mimeType.length > 128 || /[\r\n]/.test(mimeType)) {
+      return {
+        ok: false,
+        error: `\`${pathLabel}[${index}].mimeType\` is invalid.`,
+      };
+    }
+
+    totalSizeBytes += dataUrlResult.value.sizeBytes;
+    if (totalSizeBytes > CHAT_ATTACHMENT_MAX_TOTAL_SIZE_BYTES) {
+      return {
+        ok: false,
+        error: `Total attachment size cannot exceed ${CHAT_ATTACHMENT_MAX_TOTAL_SIZE_BYTES} bytes.`,
+      };
+    }
+    if (extension === "pdf") {
+      pdfTotalSizeBytes += dataUrlResult.value.sizeBytes;
+      if (pdfTotalSizeBytes > CHAT_ATTACHMENT_MAX_PDF_TOTAL_SIZE_BYTES) {
+        return {
+          ok: false,
+          error: `Total PDF attachment size cannot exceed ${CHAT_ATTACHMENT_MAX_PDF_TOTAL_SIZE_BYTES} bytes.`,
+        };
+      }
+    }
+
+    attachments.push({
+      name,
+      mimeType,
+      sizeBytes: dataUrlResult.value.sizeBytes,
+      dataUrl: dataUrlResult.value.dataUrl,
+    });
+  }
+
+  return { ok: true, value: attachments };
+}
+
+function parseAttachmentDataUrl(
+  rawDataUrl: unknown,
+  pathLabel: string,
+): ParseResult<{
+  dataUrl: string;
+  mimeType: string;
+  sizeBytes: number;
+}> {
+  if (typeof rawDataUrl !== "string") {
+    return { ok: false, error: `\`${pathLabel}\` must be a string.` };
+  }
+
+  const dataUrl = rawDataUrl.trim();
+  if (!dataUrl) {
+    return { ok: false, error: `\`${pathLabel}\` is required.` };
+  }
+
+  const dataUrlMatch = /^data:([^,]*),([\s\S]*)$/i.exec(dataUrl);
+  if (!dataUrlMatch) {
+    return {
+      ok: false,
+      error: `\`${pathLabel}\` must be a valid data URL.`,
+    };
+  }
+
+  const metadata = (dataUrlMatch[1] ?? "").trim();
+  const payload = (dataUrlMatch[2] ?? "").trim();
+  if (!payload) {
+    return { ok: false, error: `\`${pathLabel}\` must include data.` };
+  }
+
+  const metadataParts = metadata
+    .split(";")
+    .map((part) => part.trim())
+    .filter((part) => part.length > 0);
+  const hasBase64 = metadataParts.some((part) => part.toLowerCase() === "base64");
+  if (!hasBase64) {
+    return {
+      ok: false,
+      error: `\`${pathLabel}\` must use base64 encoding.`,
+    };
+  }
+
+  const normalizedBase64 = payload.replace(/\s+/g, "");
+  if (
+    normalizedBase64.length === 0 ||
+    normalizedBase64.length % 4 !== 0 ||
+    !/^[A-Za-z0-9+/]+={0,2}$/.test(normalizedBase64)
+  ) {
+    return {
+      ok: false,
+      error: `\`${pathLabel}\` contains invalid base64 data.`,
+    };
+  }
+
+  const sizeBytes = Buffer.from(normalizedBase64, "base64").byteLength;
+  if (!Number.isSafeInteger(sizeBytes) || sizeBytes <= 0) {
+    return {
+      ok: false,
+      error: `\`${pathLabel}\` is empty.`,
+    };
+  }
+
+  const rawMimeType = metadataParts[0]?.toLowerCase() ?? "";
+  const mimeType = rawMimeType && rawMimeType !== "base64" ? rawMimeType : "";
+  return {
+    ok: true,
+    value: {
+      dataUrl,
+      mimeType,
+      sizeBytes,
+    },
+  };
+}
+
+function readDataUrlBase64Payload(dataUrl: string): string {
+  const match = /^data:[^,]*,([\s\S]*)$/i.exec(dataUrl.trim());
+  if (!match) {
+    return "";
+  }
+
+  return (match[1] ?? "").replace(/\s+/g, "");
+}
+
+function buildAttachmentKey(attachment: ClientAttachment): string {
+  return `${attachment.name}\u0000${attachment.sizeBytes}\u0000${attachment.dataUrl}`;
+}
+
+function readFileExtension(fileName: string): string {
+  const parts = fileName.toLowerCase().split(".");
+  return parts.length > 1 ? parts[parts.length - 1] : "";
 }
 
 function readContextWindowSize(payload: unknown): number {
@@ -1608,6 +2201,41 @@ function clamp(value: number, min: number, max: number): number {
   return value;
 }
 
+async function awaitWithTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  timeoutMessage: string,
+): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const timeoutPromise = new Promise<T>((_resolve, reject) => {
+    timeoutId = setTimeout(() => {
+      reject(new Error(timeoutMessage));
+    }, timeoutMs);
+  });
+
+  try {
+    return await Promise.race([promise, timeoutPromise]);
+  } finally {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+  }
+}
+
+async function runAgentWithTimeout<T>(
+  runTask: (signal: AbortSignal) => Promise<T>,
+  timeoutMs: number,
+  timeoutMessage: string,
+): Promise<T> {
+  const controller = new AbortController();
+  try {
+    return await awaitWithTimeout(runTask(controller.signal), timeoutMs, timeoutMessage);
+  } catch (error) {
+    controller.abort();
+    throw error;
+  }
+}
+
 function buildUpstreamErrorPayload(error: unknown, deploymentName: string): {
   payload: UpstreamErrorPayload;
   status: number;
@@ -1672,6 +2300,8 @@ function readErrorMessage(error: unknown): string {
 
 export const chatRouteTestUtils = {
   readTemperature,
+  readAttachments,
+  hasNonPdfAttachments,
   readMcpServers,
   buildMcpHttpRequestHeaders,
   normalizeMcpMetaNulls,

@@ -48,6 +48,44 @@ export const TEMPERATURE_MIN = 0;
 export const TEMPERATURE_MAX = 2;
 export const CHAT_MAX_MCP_SERVERS = 8;
 export const CHAT_MAX_AGENT_INSTRUCTION_LENGTH = 4000;
+export const CHAT_ATTACHMENT_MAX_FILES = 5;
+export const CHAT_ATTACHMENT_MAX_PDF_FILE_SIZE_BYTES = 50 * 1024 * 1024;
+export const CHAT_ATTACHMENT_MAX_PDF_TOTAL_SIZE_BYTES = 50 * 1024 * 1024;
+export const CHAT_ATTACHMENT_MAX_NON_PDF_FILE_SIZE_BYTES = 512 * 1024 * 1024;
+export const CHAT_ATTACHMENT_MAX_TOTAL_SIZE_BYTES =
+  CHAT_ATTACHMENT_MAX_NON_PDF_FILE_SIZE_BYTES * CHAT_ATTACHMENT_MAX_FILES;
+export const CHAT_ATTACHMENT_MAX_FILE_NAME_LENGTH = 128;
+export const CHAT_MODEL_RUN_TIMEOUT_MS = 120_000;
+export const CHAT_CLEANUP_TIMEOUT_MS = 5_000;
+export const CHAT_MAX_RUN_TURNS = 16;
+export const CHAT_CODE_INTERPRETER_UPLOAD_TIMEOUT_MS = 30_000;
+export const CHAT_ATTACHMENT_ALLOWED_EXTENSIONS = new Set([
+  "c",
+  "cpp",
+  "csv",
+  "docx",
+  "gif",
+  "html",
+  "java",
+  "jpeg",
+  "jpg",
+  "js",
+  "json",
+  "md",
+  "pdf",
+  "php",
+  "pkl",
+  "png",
+  "pptx",
+  "py",
+  "rb",
+  "tar",
+  "tex",
+  "txt",
+  "xlsx",
+  "xml",
+  "zip",
+]);
 export const DEFAULT_AGENT_INSTRUCTION = "You are a concise assistant for a local playground app.";
 export const HOME_REASONING_EFFORT_OPTIONS = ["none", "low", "medium", "high"] as const;
 export const HOME_DEFAULT_MCP_TRANSPORT = "streamable_http" as const;
