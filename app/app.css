@@ -266,6 +266,19 @@ body {
   min-width: 0;
 }
 
+.chat-header-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.56rem;
+}
+
+.chat-header-symbol {
+  width: 1.45rem;
+  height: 1.45rem;
+  flex: 0 0 auto;
+  display: block;
+}
+
 .chat-header h1 {
   margin: 0;
   font-size: 1.2rem;

@@ -1654,7 +1654,15 @@ export default function Home() {
           <header className="chat-header">
             <div className="chat-header-row">
               <div className="chat-header-main">
-                <h1>Local Playground 💬</h1>
+                <div className="chat-header-title">
+                  <img
+                    className="chat-header-symbol"
+                    src="/foundry-symbol.svg"
+                    alt=""
+                    aria-hidden="true"
+                  />
+                  <h1>Local Playground</h1>
+                </div>
               </div>
               <Button
                 type="button"

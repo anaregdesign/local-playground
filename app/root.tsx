@@ -23,7 +23,11 @@ function resolveFluentUIExports<T extends object>(moduleExports: T): T {
 const FluentUI = resolveFluentUIExports(FluentUIComponents);
 const { FluentProvider, SSRProvider, webLightTheme } = FluentUI;
 
-export const links: Route.LinksFunction = () => [];
+export const links: Route.LinksFunction = () => [
+  { rel: "icon", href: "/favicon.ico", sizes: "any" },
+  { rel: "icon", href: "/foundry-symbol.svg", type: "image/svg+xml" },
+  { rel: "apple-touch-icon", href: "/apple-touch-icon.png" },
+];
 
 export function Layout({ children }: { children: React.ReactNode }) {
   return (
