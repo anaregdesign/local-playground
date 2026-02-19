@@ -13,6 +13,8 @@ import {
 import * as FluentUIComponents from "@fluentui/react-components";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { InstructionSettingsSection } from "~/components/home/InstructionSettingsSection";
+import { McpSettingsPanel } from "~/components/home/McpSettingsPanel";
 import type { Route } from "./+types/home";
 
 function resolveFluentUIExports<T extends object>(moduleExports: T): T {
@@ -27,15 +29,9 @@ function resolveFluentUIExports<T extends object>(moduleExports: T): T {
 const FluentUI = resolveFluentUIExports(FluentUIComponents);
 const {
   Button,
-  Checkbox,
-  Field,
-  Input,
   MessageBar,
   MessageBarBody,
   MessageBarTitle,
-  Popover,
-  PopoverSurface,
-  PopoverTrigger,
   Select,
   SpinButton,
   Spinner,
@@ -349,6 +345,10 @@ export default function Home() {
   const mcpHistoryByTurnId = buildMcpHistoryByTurnId(mcpRpcHistory);
   const activeTurnMcpHistory = activeTurnId ? (mcpHistoryByTurnId.get(activeTurnId) ?? []) : [];
   const errorTurnMcpHistory = lastErrorTurnId ? (mcpHistoryByTurnId.get(lastErrorTurnId) ?? []) : [];
+  const savedMcpServerOptions = savedMcpServers.map((server) => ({
+    id: server.id,
+    label: formatMcpServerOption(server),
+  }));
 
   useEffect(() => {
     endOfMessagesRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -983,6 +983,26 @@ export default function Home() {
     );
     input.style.height = `${boundedHeight}px`;
     input.style.overflowY = input.scrollHeight > CHAT_INPUT_MAX_HEIGHT_PX ? "auto" : "hidden";
+  }
+
+  function handleAgentInstructionChange(value: string) {
+    setAgentInstruction(value);
+    setInstructionSaveError(null);
+    setInstructionSaveSuccess(null);
+    setInstructionEnhanceError(null);
+    setInstructionEnhanceSuccess(null);
+    setInstructionEnhanceComparison(null);
+  }
+
+  function handleClearInstruction() {
+    setAgentInstruction("");
+    setLoadedInstructionFileName(null);
+    setInstructionFileError(null);
+    setInstructionSaveError(null);
+    setInstructionSaveSuccess(null);
+    setInstructionEnhanceError(null);
+    setInstructionEnhanceSuccess(null);
+    setInstructionEnhanceComparison(null);
   }
 
   async function handleInstructionFileChange(
@@ -2167,481 +2187,86 @@ export default function Home() {
               )}
             </section>
 
-            <section className="setting-group setting-group-agent-instruction">
-              <div className="setting-group-header">
-                <h3>Agent Instruction 🧾</h3>
-                <p>System instruction used for the agent.</p>
-              </div>
-              {instructionEnhanceComparison ? (
-                <section className="instruction-diff-panel" aria-label="Instruction diff review">
-                  <div className="instruction-diff-header">
-                    <p className="instruction-diff-title">🔀 Enhanced Diff Preview</p>
-                    <div className="instruction-diff-actions">
-                      <Button
-                        type="button"
-                        appearance="primary"
-                        size="small"
-                        title="Use the enhanced instruction text."
-                        onClick={handleAdoptEnhancedInstruction}
-                        disabled={isSending || isEnhancingInstruction}
-                      >
-                        ✅ Adopt Enhanced
-                      </Button>
-                      <Button
-                        type="button"
-                        appearance="secondary"
-                        size="small"
-                        title="Keep the original instruction text."
-                        onClick={handleAdoptOriginalInstruction}
-                        disabled={isSending || isEnhancingInstruction}
-                      >
-                        ↩️ Keep Original
-                      </Button>
-                    </div>
-                  </div>
-                  <p className="instruction-diff-meta">
-                    Format: .{instructionEnhanceComparison.extension} | Language:{" "}
-                    {describeInstructionLanguage(instructionEnhanceComparison.language)}
-                  </p>
-                  <div className="instruction-diff-table" role="table" aria-label="Instruction diff">
-                    {instructionEnhanceComparison.diffLines.map((line, index) => (
-                      <div
-                        key={`instruction-diff-${index}-${line.oldLineNumber ?? "n"}-${line.newLineNumber ?? "n"}`}
-                        className={`instruction-diff-row ${line.type}`}
-                        role="row"
-                      >
-                        <span className="instruction-diff-line-number old" aria-hidden="true">
-                          {line.oldLineNumber ?? ""}
-                        </span>
-                        <span className="instruction-diff-line-number new" aria-hidden="true">
-                          {line.newLineNumber ?? ""}
-                        </span>
-                        <span className={`instruction-diff-sign ${line.type}`} aria-hidden="true">
-                          {line.type === "added" ? "+" : line.type === "removed" ? "-" : " "}
-                        </span>
-                        <code className="instruction-diff-content">
-                          {line.content.length > 0 ? line.content : " "}
-                        </code>
-                      </div>
-                    ))}
-                  </div>
-                </section>
-              ) : (
-                <>
-                  <Textarea
-                    id="agent-instruction"
-                    rows={6}
-                    title="System instruction text sent to the agent."
-                    value={agentInstruction}
-                    onChange={(_, data) => {
-                      setAgentInstruction(data.value);
-                      setInstructionSaveError(null);
-                      setInstructionSaveSuccess(null);
-                      setInstructionEnhanceError(null);
-                      setInstructionEnhanceSuccess(null);
-                      setInstructionEnhanceComparison(null);
-                    }}
-                    disabled={isSending || isEnhancingInstruction}
-                    placeholder="System instruction for the agent"
-                  />
-                  {isEnhancingInstruction ? (
-                    <div className="instruction-enhancing-state" role="status" aria-live="polite">
-                      <div className="instruction-enhancing-head">
-                        <Spinner size="tiny" />
-                        <span>Enhancing instruction with the selected Azure model...</span>
-                      </div>
-                      <div className="instruction-enhancing-track" aria-hidden="true">
-                        <span className="instruction-enhancing-bar" />
-                      </div>
-                    </div>
-                  ) : null}
-                  <div className="file-picker-row">
-                    <input
-                      id="agent-instruction-file"
-                      ref={instructionFileInputRef}
-                      className="file-input-hidden"
-                      type="file"
-                      accept=".md,.txt,.xml,.json,text/plain,text/markdown,application/json,application/xml,text/xml"
-                      onChange={(event) => {
-                        void handleInstructionFileChange(event);
-                      }}
-                      disabled={isSending || isEnhancingInstruction}
-                    />
-                    <Button
-                      type="button"
-                      appearance="secondary"
-                      size="small"
-                      title="Load instruction content from a local file."
-                      onClick={() => instructionFileInputRef.current?.click()}
-                      disabled={isSending || isEnhancingInstruction}
-                    >
-                      📂 Load File
-                    </Button>
-                    <Button
-                      type="button"
-                      appearance="secondary"
-                      size="small"
-                      title="Save current instruction to a local file."
-                      onClick={() => {
-                        void handleSaveInstructionPrompt();
-                      }}
-                      disabled={
-                        isSending ||
-                        isSavingInstructionPrompt ||
-                        isEnhancingInstruction ||
-                        !canSaveAgentInstructionPrompt
-                      }
-                    >
-                      {isSavingInstructionPrompt ? "💾 Saving..." : "💾 Save"}
-                    </Button>
-                    <Button
-                      type="button"
-                      appearance="primary"
-                      size="small"
-                      title="Enhance the instruction using the selected Azure model."
-                      onClick={() => {
-                        void handleEnhanceInstruction();
-                      }}
-                      disabled={isSending || isEnhancingInstruction || !canEnhanceAgentInstruction}
-                    >
-                      {isEnhancingInstruction ? "✨ Enhancing..." : "✨ Enhance"}
-                    </Button>
-                    <Button
-                      type="button"
-                      appearance="secondary"
-                      size="small"
-                      title="Clear instruction text and related form values."
-                      onClick={() => {
-                        setAgentInstruction("");
-                        setLoadedInstructionFileName(null);
-                        setInstructionFileError(null);
-                        setInstructionSaveError(null);
-                        setInstructionSaveSuccess(null);
-                        setInstructionEnhanceError(null);
-                        setInstructionEnhanceSuccess(null);
-                        setInstructionEnhanceComparison(null);
-                      }}
-                      disabled={isSending || isEnhancingInstruction || !canClearAgentInstruction}
-                    >
-                      🧹 Clear
-                    </Button>
-                    <span className="file-picker-name">
-                      {loadedInstructionFileName ?? "No file loaded"}
-                    </span>
-                  </div>
-                  <p className="field-hint">
-                    Supported: .md, .txt, .xml, .json (max 1MB). Click Save to choose file name and
-                    destination.
-                  </p>
-                </>
-              )}
-              {instructionFileError ? (
-                <MessageBar intent="error" className="setting-message-bar">
-                  <MessageBarBody>{instructionFileError}</MessageBarBody>
-                </MessageBar>
-              ) : null}
-              {instructionSaveError ? (
-                <MessageBar intent="error" className="setting-message-bar">
-                  <MessageBarBody>{instructionSaveError}</MessageBarBody>
-                </MessageBar>
-              ) : null}
-              {instructionSaveSuccess ? (
-                <MessageBar intent="success" className="setting-message-bar">
-                  <MessageBarBody>{instructionSaveSuccess}</MessageBarBody>
-                </MessageBar>
-              ) : null}
-              {instructionEnhanceError ? (
-                <MessageBar intent="error" className="setting-message-bar">
-                  <MessageBarBody>{instructionEnhanceError}</MessageBarBody>
-                </MessageBar>
-              ) : null}
-              {instructionEnhanceSuccess ? (
-                <MessageBar intent="success" className="setting-message-bar">
-                  <MessageBarBody>{instructionEnhanceSuccess}</MessageBarBody>
-                </MessageBar>
-              ) : null}
-            </section>
+            <InstructionSettingsSection
+              agentInstruction={agentInstruction}
+              instructionEnhanceComparison={instructionEnhanceComparison}
+              describeInstructionLanguage={describeInstructionLanguage}
+              isSending={isSending}
+              isEnhancingInstruction={isEnhancingInstruction}
+              isSavingInstructionPrompt={isSavingInstructionPrompt}
+              canSaveAgentInstructionPrompt={canSaveAgentInstructionPrompt}
+              canEnhanceAgentInstruction={canEnhanceAgentInstruction}
+              canClearAgentInstruction={canClearAgentInstruction}
+              loadedInstructionFileName={loadedInstructionFileName}
+              instructionFileInputRef={instructionFileInputRef}
+              instructionFileError={instructionFileError}
+              instructionSaveError={instructionSaveError}
+              instructionSaveSuccess={instructionSaveSuccess}
+              instructionEnhanceError={instructionEnhanceError}
+              instructionEnhanceSuccess={instructionEnhanceSuccess}
+              onAgentInstructionChange={handleAgentInstructionChange}
+              onInstructionFileChange={handleInstructionFileChange}
+              onSaveInstructionPrompt={handleSaveInstructionPrompt}
+              onEnhanceInstruction={handleEnhanceInstruction}
+              onClearInstruction={handleClearInstruction}
+              onAdoptEnhancedInstruction={handleAdoptEnhancedInstruction}
+              onAdoptOriginalInstruction={handleAdoptOriginalInstruction}
+            />
           </div>
             </section>
 
-            <section
-              className="mcp-shell"
-              aria-label="MCP server settings"
-              id="panel-mcp"
-              role="tabpanel"
-              aria-labelledby="tab-mcp"
-              hidden={activeMainTab !== "mcp"}
-            >
-          <div className="mcp-content">
-            <section className="setting-group">
-              <div className="setting-group-header">
-                <h3>Saved Configs 💾</h3>
-              </div>
-              <Field label="💾 Saved config">
-                <Select
-                  id="mcp-saved-config"
-                  title="Choose a saved MCP server configuration."
-                  value={selectedSavedMcpServerId}
-                  onChange={(event) => {
-                    setSelectedSavedMcpServerId(event.target.value);
-                    setSavedMcpError(null);
-                  }}
-                  disabled={isSending || isLoadingSavedMcpServers || savedMcpServers.length === 0}
-                >
-                  {savedMcpServers.length === 0 ? (
-                    <option value="">No saved MCP servers</option>
-                  ) : null}
-                  {savedMcpServers.map((server) => (
-                    <option key={server.id} value={server.id}>
-                      {formatMcpServerOption(server)}
-                    </option>
-                  ))}
-                </Select>
-              </Field>
-              <div className="mcp-action-row">
-                <Button
-                  type="button"
-                  appearance="secondary"
-                  title="Load the selected saved MCP config into the form."
-                  onClick={handleLoadSavedMcpServerToForm}
-                  disabled={
-                    isSending ||
-                    isLoadingSavedMcpServers ||
-                    savedMcpServers.length === 0 ||
-                    !selectedSavedMcpServerId
-                  }
-                >
-                  📥 Load Selected
-                </Button>
-                <Button
-                  type="button"
-                  appearance="secondary"
-                  title="Reload saved MCP configs from disk."
-                  onClick={() => {
-                    void loadSavedMcpServers();
-                  }}
-                  disabled={isSending || isLoadingSavedMcpServers}
-                >
-                  {isLoadingSavedMcpServers ? "🔄 Loading..." : "🔄 Reload"}
-                </Button>
-              </div>
-              {savedMcpError ? (
-                <MessageBar intent="error" className="setting-message-bar">
-                  <MessageBarBody>{savedMcpError}</MessageBarBody>
-                </MessageBar>
-              ) : null}
-            </section>
-
-            <section className="setting-group">
-              <div className="setting-group-header">
-                <h3>Add MCP Server ➕</h3>
-              </div>
-              <Field label="🏷️ Server name (optional)">
-                <Input
-                  id="mcp-server-name"
-                  placeholder="Server name (optional)"
-                  title="Optional display name for this MCP server."
-                  value={mcpNameInput}
-                  onChange={(_, data) => setMcpNameInput(data.value)}
-                  disabled={isSending}
-                />
-              </Field>
-              <Field label="🚚 Transport">
-                <Select
-                  id="mcp-transport"
-                  title="Select MCP transport type."
-                  value={mcpTransport}
-                  onChange={(event) => {
-                    setMcpTransport(event.target.value as McpTransport);
-                    setMcpFormError(null);
-                  }}
-                  disabled={isSending}
-                >
-                  <option value="streamable_http">streamable_http</option>
-                  <option value="sse">sse</option>
-                  <option value="stdio">stdio</option>
-                </Select>
-              </Field>
-              {mcpTransport === "stdio" ? (
-                <>
-                  <Field label="⚙️ Command">
-                    <Input
-                      id="mcp-command"
-                      placeholder="Command (e.g. npx)"
-                      title="Command used to start the stdio MCP server."
-                      value={mcpCommandInput}
-                      onChange={(_, data) => setMcpCommandInput(data.value)}
-                      disabled={isSending}
-                    />
-                  </Field>
-                  <Field label="🧩 Arguments">
-                    <Input
-                      id="mcp-args"
-                      placeholder='Args (space-separated or JSON array)'
-                      title="Arguments passed to the MCP command."
-                      value={mcpArgsInput}
-                      onChange={(_, data) => setMcpArgsInput(data.value)}
-                      disabled={isSending}
-                    />
-                  </Field>
-                  <Field label="📂 Working directory (optional)">
-                    <Input
-                      id="mcp-cwd"
-                      placeholder="Working directory (optional)"
-                      title="Optional working directory for the command."
-                      value={mcpCwdInput}
-                      onChange={(_, data) => setMcpCwdInput(data.value)}
-                      disabled={isSending}
-                    />
-                  </Field>
-                  <Field label="🌿 Environment variables (optional)">
-                    <Textarea
-                      id="mcp-env"
-                      rows={3}
-                      placeholder={"Environment variables (optional)\nKEY=value"}
-                      title="Environment variables for stdio MCP (KEY=value)."
-                      value={mcpEnvInput}
-                      onChange={(_, data) => setMcpEnvInput(data.value)}
-                      disabled={isSending}
-                    />
-                  </Field>
-                </>
-              ) : (
-                <>
-                  <Field label="🔗 Endpoint URL">
-                    <Input
-                      id="mcp-url"
-                      placeholder="https://example.com/mcp"
-                      title="HTTP/SSE endpoint URL for the MCP server."
-                      value={mcpUrlInput}
-                      onChange={(_, data) => setMcpUrlInput(data.value)}
-                      disabled={isSending}
-                    />
-                  </Field>
-                  <Field label="🧾 Additional HTTP headers (optional)">
-                    <Textarea
-                      id="mcp-headers"
-                      rows={3}
-                      placeholder={"Additional HTTP headers (optional)\nAuthorization=Bearer <token>\nX-Api-Key=<key>"}
-                      title="Additional HTTP headers (one per line: Name=Value)."
-                      value={mcpHeadersInput}
-                      onChange={(_, data) => setMcpHeadersInput(data.value)}
-                      disabled={isSending}
-                    />
-                  </Field>
-                  <Field label="🔐 Azure authentication">
-                    <div className="field-with-info">
-                      <Checkbox
-                        className="field-checkbox"
-                        title="Attach Azure Bearer token from DefaultAzureCredential."
-                        checked={mcpUseAzureAuthInput}
-                        onChange={(_, data) => {
-                          const checked = data.checked === true;
-                          setMcpUseAzureAuthInput(checked);
-                          if (checked && !mcpAzureAuthScopeInput.trim()) {
-                            setMcpAzureAuthScopeInput(DEFAULT_MCP_AZURE_AUTH_SCOPE);
-                          }
-                        }}
-                        disabled={isSending}
-                        label="Use Azure Bearer token from DefaultAzureCredential"
-                      />
-                      <Popover withArrow positioning="below-end">
-                        <PopoverTrigger disableButtonEnhancement>
-                          <Button
-                            type="button"
-                            appearance="subtle"
-                            size="small"
-                            className="field-info-btn"
-                            aria-label="Show Azure authentication behavior details"
-                            title="Show Azure authentication behavior details."
-                          >
-                            ⓘ
-                          </Button>
-                        </PopoverTrigger>
-                        <PopoverSurface className="field-info-popover">
-                          <p className="field-info-title">Azure auth behavior</p>
-                          <ul className="field-info-list">
-                            <li>
-                              Applies to HTTP MCP transports (<code>streamable_http</code> and{" "}
-                              <code>sse</code>).
-                            </li>
-                            <li>
-                              <code>Content-Type: application/json</code> is always included.
-                            </li>
-                            <li>
-                              At connect time, the app calls{" "}
-                              <code>DefaultAzureCredential.getToken(scope)</code>.
-                            </li>
-                            <li>
-                              The resulting <code>Authorization: Bearer &lt;token&gt;</code> header
-                              is added after custom headers and takes precedence.
-                            </li>
-                            <li>
-                              Only <code>useAzureAuth</code> and <code>scope</code> are stored in
-                              config; token values are never persisted.
-                            </li>
-                            <li>
-                              If token acquisition fails, server connection fails and the error appears
-                              in MCP Operation Log.
-                            </li>
-                          </ul>
-                        </PopoverSurface>
-                      </Popover>
-                    </div>
-                  </Field>
-                  {mcpUseAzureAuthInput ? (
-                    <Field label="🎯 Token scope">
-                      <Input
-                        id="mcp-azure-auth-scope"
-                        placeholder={DEFAULT_MCP_AZURE_AUTH_SCOPE}
-                        title="Azure token scope used to acquire Bearer token."
-                        value={mcpAzureAuthScopeInput}
-                        onChange={(_, data) => setMcpAzureAuthScopeInput(data.value)}
-                        disabled={isSending}
-                      />
-                    </Field>
-                  ) : null}
-                  <Field label="⏱️ Timeout (seconds)">
-                    <Input
-                      id="mcp-timeout-seconds"
-                      placeholder={String(DEFAULT_MCP_TIMEOUT_SECONDS)}
-                      title="Request timeout in seconds (1-600)."
-                      value={mcpTimeoutSecondsInput}
-                      onChange={(_, data) => setMcpTimeoutSecondsInput(data.value)}
-                      disabled={isSending}
-                    />
-                  </Field>
-                  <p className="field-hint">
-                    Timeout (seconds): integer from {MIN_MCP_TIMEOUT_SECONDS} to {MAX_MCP_TIMEOUT_SECONDS}.
-                  </p>
-                  <p className="field-hint">Content-Type: application/json is always included.</p>
-                </>
-              )}
-              <Button
-                type="button"
-                appearance="primary"
-                title="Add this MCP server to the active chat session."
-                onClick={() => {
-                  void handleAddMcpServer();
-                }}
-                disabled={isSending || isSavingMcpServer}
-              >
-                ➕ Add Server
-              </Button>
-              {mcpFormError ? (
-                <MessageBar intent="error" className="setting-message-bar">
-                  <MessageBarBody>{mcpFormError}</MessageBarBody>
-                </MessageBar>
-              ) : null}
-              {mcpFormWarning ? (
-                <MessageBar intent="warning" className="setting-message-bar">
-                  <MessageBarBody>{mcpFormWarning}</MessageBarBody>
-                </MessageBar>
-              ) : null}
-            </section>
-
-          </div>
-            </section>
+            <McpSettingsPanel
+              activeMainTab={activeMainTab}
+              selectedSavedMcpServerId={selectedSavedMcpServerId}
+              savedMcpServerOptions={savedMcpServerOptions}
+              isSending={isSending}
+              isLoadingSavedMcpServers={isLoadingSavedMcpServers}
+              savedMcpError={savedMcpError}
+              onSelectedSavedMcpServerIdChange={(value) => {
+                setSelectedSavedMcpServerId(value);
+                setSavedMcpError(null);
+              }}
+              onLoadSavedMcpServerToForm={handleLoadSavedMcpServerToForm}
+              onReloadSavedMcpServers={loadSavedMcpServers}
+              mcpNameInput={mcpNameInput}
+              onMcpNameInputChange={setMcpNameInput}
+              mcpTransport={mcpTransport}
+              onMcpTransportChange={(value) => {
+                setMcpTransport(value);
+                setMcpFormError(null);
+              }}
+              mcpCommandInput={mcpCommandInput}
+              onMcpCommandInputChange={setMcpCommandInput}
+              mcpArgsInput={mcpArgsInput}
+              onMcpArgsInputChange={setMcpArgsInput}
+              mcpCwdInput={mcpCwdInput}
+              onMcpCwdInputChange={setMcpCwdInput}
+              mcpEnvInput={mcpEnvInput}
+              onMcpEnvInputChange={setMcpEnvInput}
+              mcpUrlInput={mcpUrlInput}
+              onMcpUrlInputChange={setMcpUrlInput}
+              mcpHeadersInput={mcpHeadersInput}
+              onMcpHeadersInputChange={setMcpHeadersInput}
+              mcpUseAzureAuthInput={mcpUseAzureAuthInput}
+              onMcpUseAzureAuthInputChange={(checked) => {
+                setMcpUseAzureAuthInput(checked);
+                if (checked && !mcpAzureAuthScopeInput.trim()) {
+                  setMcpAzureAuthScopeInput(DEFAULT_MCP_AZURE_AUTH_SCOPE);
+                }
+              }}
+              mcpAzureAuthScopeInput={mcpAzureAuthScopeInput}
+              onMcpAzureAuthScopeInputChange={setMcpAzureAuthScopeInput}
+              mcpTimeoutSecondsInput={mcpTimeoutSecondsInput}
+              onMcpTimeoutSecondsInputChange={setMcpTimeoutSecondsInput}
+              defaultMcpAzureAuthScope={DEFAULT_MCP_AZURE_AUTH_SCOPE}
+              defaultMcpTimeoutSeconds={DEFAULT_MCP_TIMEOUT_SECONDS}
+              minMcpTimeoutSeconds={MIN_MCP_TIMEOUT_SECONDS}
+              maxMcpTimeoutSeconds={MAX_MCP_TIMEOUT_SECONDS}
+              onAddMcpServer={handleAddMcpServer}
+              isSavingMcpServer={isSavingMcpServer}
+              mcpFormError={mcpFormError}
+              mcpFormWarning={mcpFormWarning}
+            />
             </div>
 
           </div>
