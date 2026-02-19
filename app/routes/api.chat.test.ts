@@ -4,6 +4,8 @@ import { chatRouteTestUtils } from "./api.chat";
 
 const {
   readTemperature,
+  readAttachments,
+  hasNonPdfAttachments,
   readMcpServers,
   buildMcpHttpRequestHeaders,
   normalizeMcpMetaNulls,
@@ -11,6 +13,108 @@ const {
   normalizeMcpListToolsNullOptionals,
   readProgressEventFromRunStreamEvent,
 } = chatRouteTestUtils;
+
+describe("attachment tool routing", () => {
+  it("treats non-pdf attachments as code-interpreter targets", () => {
+    expect(
+      hasNonPdfAttachments([
+        {
+          name: "notes.pdf",
+          mimeType: "application/pdf",
+          sizeBytes: 9,
+          dataUrl: "data:application/pdf;base64,JVBERi0xLjQK",
+        },
+      ]),
+    ).toBe(false);
+
+    expect(
+      hasNonPdfAttachments([
+        {
+          name: "sheet.xlsx",
+          mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          sizeBytes: 5,
+          dataUrl: "data:application/octet-stream;base64,YWJjZA==",
+        },
+      ]),
+    ).toBe(true);
+  });
+});
+
+describe("readAttachments", () => {
+  it("parses valid data-url attachments", () => {
+    const result = readAttachments({
+      attachments: [
+        {
+          name: "notes.pdf",
+          mimeType: "application/pdf",
+          sizeBytes: 9,
+          dataUrl: "data:application/pdf;base64,JVBERi0xLjQK",
+        },
+      ],
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      value: [
+        {
+          name: "notes.pdf",
+          mimeType: "application/pdf",
+          sizeBytes: 9,
+          dataUrl: "data:application/pdf;base64,JVBERi0xLjQK",
+        },
+      ],
+    });
+  });
+
+  it("rejects invalid attachment payloads", () => {
+    expect(
+      readAttachments({
+        attachments: [
+          {
+            name: "broken.pdf",
+            dataUrl: "data:application/octet-stream;base64,!!!",
+          },
+        ],
+      }),
+    ).toEqual({
+      ok: false,
+      error: "`attachments[0].dataUrl` contains invalid base64 data.",
+    });
+
+    expect(
+      readAttachments({
+        attachments: [
+          {
+            name: "mismatch.pdf",
+            mimeType: "application/pdf",
+            sizeBytes: 99,
+            dataUrl: "data:application/pdf;base64,JVBERi0xLjQK",
+          },
+        ],
+      }),
+    ).toEqual({
+      ok: false,
+      error: "`attachments[0].sizeBytes` does not match file data size.",
+    });
+  });
+
+  it("rejects unsupported formats", () => {
+    expect(
+      readAttachments({
+        attachments: [
+          {
+            name: "notes.exe",
+            dataUrl: "data:application/octet-stream;base64,aGVsbG8=",
+          },
+        ],
+      }),
+    ).toEqual({
+      ok: false,
+      error:
+        "`attachments[0].name` must use a supported extension (.c, .cpp, .csv, .docx, .gif, .html, .java, .jpeg, .jpg, .js, .json, .md, .pdf, .php, .pkl, .png, .pptx, .py, .rb, .tar, .tex, .txt, .xlsx, .xml, .zip).",
+    });
+  });
+});
 
 describe("readTemperature", () => {
   it("accepts omitted and numeric values", () => {

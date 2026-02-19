@@ -12,6 +12,13 @@ import { PlaygroundPanel } from "~/components/home/playground/PlaygroundPanel";
 import { CopyIconButton } from "~/components/home/shared/CopyIconButton";
 import type { MainViewTab, McpTransport, ReasoningEffort } from "~/components/home/shared/types";
 import {
+  CHAT_ATTACHMENT_ALLOWED_EXTENSIONS,
+  CHAT_ATTACHMENT_MAX_FILE_NAME_LENGTH,
+  CHAT_ATTACHMENT_MAX_FILES,
+  CHAT_ATTACHMENT_MAX_NON_PDF_FILE_SIZE_BYTES,
+  CHAT_ATTACHMENT_MAX_PDF_FILE_SIZE_BYTES,
+  CHAT_ATTACHMENT_MAX_PDF_TOTAL_SIZE_BYTES,
+  CHAT_ATTACHMENT_MAX_TOTAL_SIZE_BYTES,
   CONTEXT_WINDOW_DEFAULT,
   CONTEXT_WINDOW_MAX,
   CONTEXT_WINDOW_MIN,
@@ -42,6 +49,8 @@ import {
   readTenantIdFromUnknown,
 } from "~/lib/home/azure/parsers";
 import { buildMcpEntryCopyPayload, buildMcpHistoryByTurnId } from "~/lib/home/chat/history";
+import type { DraftChatAttachment } from "~/lib/home/chat/attachments";
+import { formatChatAttachmentSize, readFileAsDataUrl } from "~/lib/home/chat/attachments";
 import type { ChatMessage } from "~/lib/home/chat/messages";
 import { createMessage } from "~/lib/home/chat/messages";
 import type { JsonToken } from "~/lib/home/chat/json-highlighting";
@@ -149,6 +158,8 @@ export default function Home() {
   const [azureDeployments, setAzureDeployments] = useState<string[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([...HOME_INITIAL_MESSAGES]);
   const [draft, setDraft] = useState("");
+  const [draftAttachments, setDraftAttachments] = useState<DraftChatAttachment[]>([]);
+  const [chatAttachmentError, setChatAttachmentError] = useState<string | null>(null);
   const [activeMainTab, setActiveMainTab] = useState<MainViewTab>("settings");
   const [selectedAzureConnectionId, setSelectedAzureConnectionId] = useState("");
   const [selectedAzureDeploymentName, setSelectedAzureDeploymentName] = useState("");
@@ -210,6 +221,7 @@ export default function Home() {
   const [activeResizeHandle, setActiveResizeHandle] = useState<"main" | null>(null);
   const endOfMessagesRef = useRef<HTMLDivElement | null>(null);
   const chatInputRef = useRef<HTMLTextAreaElement | null>(null);
+  const chatAttachmentInputRef = useRef<HTMLInputElement | null>(null);
   const instructionFileInputRef = useRef<HTMLInputElement | null>(null);
   const layoutRef = useRef<HTMLDivElement | null>(null);
   const azureDeploymentRequestSeqRef = useRef(0);
@@ -235,6 +247,19 @@ export default function Home() {
     id: server.id,
     label: formatMcpServerOption(server),
   }));
+  const draftAttachmentTotalSizeBytes = draftAttachments.reduce(
+    (sum, attachment) => sum + attachment.sizeBytes,
+    0,
+  );
+  const draftPdfAttachmentTotalSizeBytes = draftAttachments.reduce(
+    (sum, attachment) =>
+      sum + (getFileExtension(attachment.name) === "pdf" ? attachment.sizeBytes : 0),
+    0,
+  );
+  const chatAttachmentAccept = [
+    ...Array.from(CHAT_ATTACHMENT_ALLOWED_EXTENSIONS, (extension) => `.${extension}`),
+  ].join(",");
+  const chatAttachmentFormatHint = "Code Interpreter supported files (.pdf, .csv, .xlsx, .docx, .png, ...)";
   const canSendMessage =
     !isSending &&
     !isChatLocked &&
@@ -680,7 +705,15 @@ export default function Home() {
     }
 
     const turnId = createId("turn");
-    const userMessage: ChatMessage = createMessage("user", content, turnId);
+    const requestAttachments = draftAttachments.map(
+      ({ id: _id, ...attachment }) => attachment,
+    );
+    const userMessage: ChatMessage = createMessage(
+      "user",
+      content,
+      turnId,
+      requestAttachments,
+    );
     const contextWindowSize = contextWindowValidation.value;
     if (contextWindowSize === null) {
       return;
@@ -688,13 +721,25 @@ export default function Home() {
 
     const history = messages
       .slice(-contextWindowSize)
-      .map(({ role, content: previousContent }) => ({
-        role,
-        content: previousContent,
-      }));
+      .map(({ role, content: previousContent, attachments }) => {
+        if (role === "user" && attachments.length > 0) {
+          return {
+            role,
+            content: previousContent,
+            attachments,
+          };
+        }
+
+        return {
+          role,
+          content: previousContent,
+        };
+      });
 
     setMessages((current) => [...current, userMessage]);
     setDraft("");
+    setDraftAttachments([]);
+    setChatAttachmentError(null);
     setError(null);
     setAzureLoginError(null);
     setLastErrorTurnId(null);
@@ -711,6 +756,7 @@ export default function Home() {
         },
         body: JSON.stringify({
           message: content,
+          attachments: requestAttachments,
           history,
           azureConfig: {
             projectName: activeAzureConnection.projectName,
@@ -872,7 +918,118 @@ export default function Home() {
 
   function handleDraftChange(event: React.ChangeEvent<HTMLTextAreaElement>, value: string) {
     setDraft(value);
+    setChatAttachmentError(null);
     resizeChatInput(event.currentTarget);
+  }
+
+  function handleOpenChatAttachmentPicker() {
+    if (isSending || isChatLocked) {
+      return;
+    }
+
+    chatAttachmentInputRef.current?.click();
+  }
+
+  async function handleChatAttachmentFileChange(
+    event: React.ChangeEvent<HTMLInputElement>,
+  ) {
+    const input = event.currentTarget;
+    const selectedFiles = input.files ? Array.from(input.files) : [];
+    if (selectedFiles.length === 0) {
+      input.value = "";
+      return;
+    }
+
+    setChatAttachmentError(null);
+
+    const availableSlots = CHAT_ATTACHMENT_MAX_FILES - draftAttachments.length;
+    if (availableSlots <= 0) {
+      setChatAttachmentError(`You can attach up to ${CHAT_ATTACHMENT_MAX_FILES} files.`);
+      input.value = "";
+      return;
+    }
+
+    const filesToProcess = selectedFiles.slice(0, availableSlots);
+    const nextAttachments: DraftChatAttachment[] = [];
+    let nextTotalSize = draftAttachmentTotalSizeBytes;
+    let nextPdfTotalSize = draftPdfAttachmentTotalSizeBytes;
+    let validationError: string | null = null;
+
+    for (const file of filesToProcess) {
+      const normalizedName = file.name.trim() || "attachment";
+      if (normalizedName.length > CHAT_ATTACHMENT_MAX_FILE_NAME_LENGTH) {
+        validationError = `Attachment file names must be ${CHAT_ATTACHMENT_MAX_FILE_NAME_LENGTH} characters or fewer.`;
+        break;
+      }
+
+      const extension = getFileExtension(normalizedName);
+      if (!CHAT_ATTACHMENT_ALLOWED_EXTENSIONS.has(extension)) {
+        validationError = `Attachment "${normalizedName}" is not supported. Only ${chatAttachmentFormatHint} files can be attached.`;
+        break;
+      }
+
+      const normalizedMimeType = file.type.trim().toLowerCase();
+
+      if (file.size <= 0) {
+        validationError = `Attachment "${normalizedName}" is empty.`;
+        break;
+      }
+
+      const maxFileSizeBytes =
+        extension === "pdf"
+          ? CHAT_ATTACHMENT_MAX_PDF_FILE_SIZE_BYTES
+          : CHAT_ATTACHMENT_MAX_NON_PDF_FILE_SIZE_BYTES;
+      if (file.size > maxFileSizeBytes) {
+        validationError = `Attachment "${normalizedName}" is too large. Max size is ${formatChatAttachmentSize(maxFileSizeBytes)} for .${extension} files.`;
+        break;
+      }
+
+      if (nextTotalSize + file.size > CHAT_ATTACHMENT_MAX_TOTAL_SIZE_BYTES) {
+        validationError = `Total attachment size cannot exceed ${formatChatAttachmentSize(CHAT_ATTACHMENT_MAX_TOTAL_SIZE_BYTES)}.`;
+        break;
+      }
+      if (
+        extension === "pdf" &&
+        nextPdfTotalSize + file.size > CHAT_ATTACHMENT_MAX_PDF_TOTAL_SIZE_BYTES
+      ) {
+        validationError = `Total PDF attachment size cannot exceed ${formatChatAttachmentSize(CHAT_ATTACHMENT_MAX_PDF_TOTAL_SIZE_BYTES)}.`;
+        break;
+      }
+
+      try {
+        const dataUrl = await readFileAsDataUrl(file);
+        nextAttachments.push({
+          id: createId("attachment"),
+          name: normalizedName,
+          mimeType: normalizedMimeType || "application/octet-stream",
+          sizeBytes: file.size,
+          dataUrl,
+        });
+        nextTotalSize += file.size;
+        if (extension === "pdf") {
+          nextPdfTotalSize += file.size;
+        }
+      } catch {
+        validationError = `Failed to read "${normalizedName}".`;
+        break;
+      }
+    }
+
+    if (!validationError && selectedFiles.length > filesToProcess.length) {
+      validationError = `You can attach up to ${CHAT_ATTACHMENT_MAX_FILES} files.`;
+    }
+
+    if (nextAttachments.length > 0) {
+      setDraftAttachments((current) => [...current, ...nextAttachments]);
+    }
+
+    setChatAttachmentError(validationError);
+    input.value = "";
+  }
+
+  function handleRemoveDraftAttachment(id: string) {
+    setDraftAttachments((current) => current.filter((attachment) => attachment.id !== id));
+    setChatAttachmentError(null);
   }
 
   function resizeChatInput(input: HTMLTextAreaElement) {
@@ -1401,6 +1558,8 @@ export default function Home() {
     setMessages([...HOME_INITIAL_MESSAGES]);
     setMcpRpcHistory([]);
     setDraft("");
+    setDraftAttachments([]);
+    setChatAttachmentError(null);
     setError(null);
     setActiveTurnId(null);
     setLastErrorTurnId(null);
@@ -1591,8 +1750,16 @@ export default function Home() {
     azureLoginError,
     onSubmit: handleSubmit,
     chatInputRef,
+    chatAttachmentInputRef,
+    chatAttachmentAccept,
+    chatAttachmentFormatHint,
     draft,
+    chatAttachments: draftAttachments,
+    chatAttachmentError,
     onDraftChange: handleDraftChange,
+    onOpenChatAttachmentPicker: handleOpenChatAttachmentPicker,
+    onChatAttachmentFileChange: handleChatAttachmentFileChange,
+    onRemoveChatAttachment: handleRemoveDraftAttachment,
     onInputKeyDown: handleInputKeyDown,
     onCompositionStart: () => setIsComposing(true),
     onCompositionEnd: () => setIsComposing(false),
@@ -1617,6 +1784,7 @@ export default function Home() {
     onContextWindowInputChange: setContextWindowInput,
     minContextWindowSize: CONTEXT_WINDOW_MIN,
     maxContextWindowSize: CONTEXT_WINDOW_MAX,
+    maxChatAttachmentFiles: CHAT_ATTACHMENT_MAX_FILES,
     canSendMessage,
     mcpServers,
     onRemoveMcpServer: handleRemoveMcpServer,
@@ -1767,7 +1935,23 @@ function renderHighlightedJson(
 
 function renderMessageContent(message: ChatMessage) {
   if (message.role !== "assistant") {
-    return <p>{message.content}</p>;
+    return (
+      <div className="user-message-body">
+        <p>{message.content}</p>
+        {message.attachments.length > 0 ? (
+          <ul className="user-message-attachments" aria-label="Attached files">
+            {message.attachments.map((attachment, index) => (
+              <li key={`${message.id}-attachment-${index}`}>
+                <span className="user-message-attachment-name">{attachment.name}</span>
+                <span className="user-message-attachment-size">
+                  {formatChatAttachmentSize(attachment.sizeBytes)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+      </div>
+    );
   }
 
   const jsonTokens = parseJsonMessageTokens(message.content);
