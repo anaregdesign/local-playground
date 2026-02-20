@@ -193,7 +193,7 @@ export const HOME_CHAT_INPUT_MAX_HEIGHT_PX = 220;
  * Changing them affects tab rendering and aria wiring in the config panel.
  */
 export const HOME_MAIN_VIEW_TAB_OPTIONS = [
-  { id: "settings", label: "⚙️ Settings" },
-  { id: "mcp", label: "🧩 MCP Servers" },
   { id: "threads", label: "🧵 Threads" },
+  { id: "mcp", label: "🧩 MCP Servers" },
+  { id: "settings", label: "⚙️ Settings" },
 ] as const;

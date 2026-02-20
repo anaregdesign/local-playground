@@ -165,7 +165,7 @@ export default function Home() {
   const [draft, setDraft] = useState("");
   const [draftAttachments, setDraftAttachments] = useState<DraftChatAttachment[]>([]);
   const [chatAttachmentError, setChatAttachmentError] = useState<string | null>(null);
-  const [activeMainTab, setActiveMainTab] = useState<MainViewTab>("settings");
+  const [activeMainTab, setActiveMainTab] = useState<MainViewTab>("threads");
   const [selectedAzureConnectionId, setSelectedAzureConnectionId] = useState("");
   const [selectedAzureDeploymentName, setSelectedAzureDeploymentName] = useState("");
   const [isLoadingAzureConnections, setIsLoadingAzureConnections] = useState(false);
