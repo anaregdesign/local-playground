@@ -9,14 +9,14 @@
 ## Product Identity
 
 - App name is `Local Playground`.
-- Keep terminology consistent in UI/docs: `Playground`, `Settings`, `MCP Servers`.
+- Keep terminology consistent in UI/docs: `Playground`, `Threads`, `MCP Servers`, `Settings`.
 - Keep a desktop-first UX while preserving responsive behavior.
 
 ## Layout / UX
 
 - Main layout is two-pane:
-  - Left pane: always-visible `Playground` chat area
-  - Right pane: `Settings` / `MCP Servers` tabs
+  - Left pane: always-visible `Playground` chat area.
+  - Right pane: tabbed side panel (`Threads`, `MCP Servers`, `Settings`).
 - Keep the vertical splitter between left/right panes resizable.
 - Keep right-pane width bounded for desktop usability:
   - right pane minimum: `320px`
@@ -26,23 +26,27 @@
   - bottom: side panel
   - hide vertical splitter
 - Keep `Added MCP Servers` visible in the chat footer as bubble chips under the composer (not in the right pane).
-- Right-pane horizontal splitter styles may exist in CSS, but the current implementation uses a single scrollable panel area.
+- Keep chat attachment bubbles visible under the composer while drafting.
+- Keep thread controls in the Playground header:
+  - editable active thread name
+  - new thread action
 - Use Fluent UI components and patterns as default. Apply custom CSS only where needed for layout clarity, splitter behavior, and compact desktop spacing.
 
 ## Frontend Component Architecture
 
 - Keep component boundaries aligned with the real DOM tree.
 - For `home` UI, preserve this directory structure:
-  - `app/components/home/playground/` for left-pane Playground panel
+  - `app/components/home/playground/` for left-pane Playground panel and renderers
   - `app/components/home/config/` for right-pane configuration panel
-  - `app/components/home/config/settings/` for Settings tab and its sections
+  - `app/components/home/config/threads/` for Threads tab and its sections
   - `app/components/home/config/mcp/` for MCP Servers tab and its sections
+  - `app/components/home/config/settings/` for Settings tab and its sections
   - `app/components/home/shared/` for reusable UI primitives and shared types
 - Naming conventions:
   - `*Panel`: top-level pane container (`PlaygroundPanel`, `ConfigPanel`)
-  - `*Tab`: tab content root under a panel (`SettingsTab`, `McpServersTab`)
-  - `*Section`: vertically segmented form/content block inside a tab
-  - Shared primitives should use purpose-based names (`ConfigSection`, `StatusMessageList`, `LabeledTooltip`, `CopyIconButton`)
+  - `*Tab`: tab content root under a panel (`ThreadsTab`, `McpServersTab`, `SettingsTab`)
+  - `*Section`: vertically segmented form/content block inside a tab (`InstructionSection`, `ThreadsManageSection`, `McpAddServerSection`)
+  - Shared primitives should use purpose-based names (`ConfigSection`, `StatusMessageList`, `AutoDismissStatusMessageList`, `LabeledTooltip`, `CopyIconButton`)
 - `app/routes/home.tsx` should stay as visual composition only (layout + panel wiring), not runtime state/effects.
 - Prefer one-directional dependencies:
   - panel -> tab -> section -> shared
@@ -57,6 +61,12 @@
   - `app/components/home/playground/PlaygroundRenderers.tsx`
 - `app/routes/home.tsx` must not re-grow into a large logic file; it should only compose `PlaygroundPanel`, splitter, and `ConfigPanel`.
 - Prefer extracting pure data transforms into `app/lib/home/*` modules (no React state there).
+- Keep per-thread state ownership in the controller:
+  - messages
+  - active MCP servers
+  - MCP RPC history
+  - agent instruction
+  - thread request status (send/progress/error)
 
 ## Constants / Imports
 
@@ -104,7 +114,7 @@
 - Show only Agents SDK-compatible deployments.
 - Use Azure OpenAI v1 endpoint format (`.../openai/v1/`).
 - Keep Playground locked while auth is unavailable and guide users to `Settings` login.
-- Persist last-used Azure project/deployment per `tenantId`:
+- Persist last-used Azure project/deployment per `tenantId` + `principalId`:
   - SQLite database: `local-playground.sqlite`
   - macOS/Linux default location: `~/.foundry_local_playground/local-playground.sqlite`
   - Windows default location: `%APPDATA%\\FoundryLocalPlayground\\local-playground.sqlite`
@@ -115,19 +125,27 @@
 - Implement chat execution with Agents SDK (`@openai/agents` + `@openai/agents-openai`).
 - Keep API error messages concise and in English.
 - Preserve IME safety: Enter during composition must not submit.
-- Do not expose `temperature` in Settings; omit it from requests.
+- Do not expose `temperature` in UI settings; keep it optional at API boundary only.
 - Render Markdown responses and apply syntax highlighting to JSON responses.
 - Show concrete streaming progress states (not only generic `Thinking...`).
+- Support chat attachments for Code Interpreter-compatible files with current validation limits from `app/lib/constants.ts`.
 
-## Settings Behavior
+## Threads / Instruction Behavior
 
-- `Reasoning Effort`: support `none`, `low`, `medium`, `high`.
-- `Context Window`: integer input with UI validation (`1` to `200`).
-- Agent instruction supports:
+- Keep `Threads` as the default right-pane tab.
+- Keep thread switching in `Threads` tab and quick new-thread flow in Playground header.
+- Persist each thread snapshot in SQLite with:
+  - thread metadata
+  - instruction
+  - messages
+  - connected MCP servers
+  - MCP RPC history
+- Save active thread changes from controller logic (debounced/autosave where implemented).
+- Agent instruction workflow lives in `Threads` tab and supports:
   - text edit
   - clear
   - load file (`.md`, `.txt`, `.xml`, `.json`, max `1MB`)
-  - save on the client side using save picker/download flow (user chooses destination and file name)
+  - save on client side using save picker/download flow
   - AI enhancement using currently selected Azure project/deployment
   - diff review (adopt enhanced vs keep original)
 
@@ -139,7 +157,11 @@
   - macOS/Linux default location: `~/.foundry_local_playground/local-playground.sqlite`
   - Windows default location: `%APPDATA%\\FoundryLocalPlayground\\local-playground.sqlite`
   - Windows fallback when `APPDATA` is unavailable: `%USERPROFILE%\\.foundry_local_playground\\local-playground.sqlite`
-- Saved configs must load into the Add form first, then be added explicitly.
+- Saved MCP profiles are selectable in `MCP Servers` tab and can be connected directly to the current thread.
+- Adding a new MCP server should:
+  - validate inputs by transport
+  - save/update profile in DB
+  - connect the resulting server to the active thread
 - Detect duplicate configurations when saving:
   - reuse existing config
   - emit warning
@@ -169,6 +191,7 @@
 - Reuse shared components in `app/components/home/shared/` instead of duplicating markup:
   - `ConfigSection` for section header/title/description shell
   - `StatusMessageList` for grouped status/error/success bars
+  - `AutoDismissStatusMessageList` for timed dismissible status bars
   - `LabeledTooltip` for titled multiline tooltips
   - `CopyIconButton` for copy icon action buttons
 - When adding new repeated UI patterns, extract to `shared` first if used in 2+ places.
