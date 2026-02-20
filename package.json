@@ -27,7 +27,7 @@
   "dependencies": {
     "@azure/identity": "^4.13.0",
     "@fluentui/react-components": "^9.73.0",
-    "@openai/agents": "^0.4.11",
+    "@openai/agents": "^0.4.14",
     "@prisma/client": "^6.16.3",
     "@react-router/node": "7.13.0",
     "@react-router/serve": "7.13.0",
