@@ -1,6 +1,7 @@
 import { FluentUI } from "~/components/home/shared/fluent";
 import { ConfigSection } from "~/components/home/shared/ConfigSection";
 import { AutoDismissStatusMessageList } from "~/components/home/shared/AutoDismissStatusMessageList";
+import { InfoIconButton } from "~/components/home/shared/InfoIconButton";
 import type { McpTransport } from "~/lib/home/shared/view-types";
 
 const {
@@ -197,16 +198,11 @@ export function McpAddServerSection(props: McpAddServerSectionProps) {
               />
               <Popover withArrow positioning="below-end">
                 <PopoverTrigger disableButtonEnhancement>
-                  <Button
-                    type="button"
-                    appearance="subtle"
-                    size="small"
+                  <InfoIconButton
                     className="field-info-btn"
-                    aria-label="Show Azure authentication behavior details"
+                    ariaLabel="Show Azure authentication behavior details"
                     title="Show Azure authentication behavior details."
-                  >
-                    ⓘ
-                  </Button>
+                  />
                 </PopoverTrigger>
                 <PopoverSurface className="field-info-popover">
                   <p className="field-info-title">Azure auth behavior</p>

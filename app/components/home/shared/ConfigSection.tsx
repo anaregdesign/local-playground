@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { InfoIconButton } from "~/components/home/shared/InfoIconButton";
 import { LabeledTooltip } from "~/components/home/shared/LabeledTooltip";
 
 type ConfigSectionProps = {
@@ -27,13 +28,11 @@ export function ConfigSection(props: ConfigSectionProps) {
               lines={[normalizedDescription]}
               className="setting-group-tooltip-target"
             >
-              <span
+              <InfoIconButton
                 className="setting-group-tooltip-icon"
-                aria-label={`${title} description`}
+                ariaLabel={`${title} description`}
                 title={`${title} description`}
-              >
-                ⓘ
-              </span>
+              />
             </LabeledTooltip>
           ) : null}
         </div>
