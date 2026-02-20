@@ -15,7 +15,6 @@ export type ThreadOption = {
 export type ThreadsManageSectionProps = {
   threadOptions: ThreadOption[];
   activeThreadId: string;
-  isSending: boolean;
   isLoadingThreads: boolean;
   isSwitchingThread: boolean;
   threadError: string | null;
@@ -26,7 +25,6 @@ export function ThreadsManageSection(props: ThreadsManageSectionProps) {
   const {
     threadOptions,
     activeThreadId,
-    isSending,
     isLoadingThreads,
     isSwitchingThread,
     threadError,
@@ -59,7 +57,6 @@ export function ThreadsManageSection(props: ThreadsManageSectionProps) {
           disabled={
             isLoadingThreads ||
             isSwitchingThread ||
-            isSending ||
             threadOptions.length === 0
           }
         >

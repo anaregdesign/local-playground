@@ -16,7 +16,6 @@ export function ThreadsTab(props: ThreadsTabProps) {
     activeMainTab,
     threadOptions,
     activeThreadId,
-    isSending,
     isLoadingThreads,
     isSwitchingThread,
     threadError,
@@ -38,7 +37,6 @@ export function ThreadsTab(props: ThreadsTabProps) {
         <ThreadsManageSection
           threadOptions={threadOptions}
           activeThreadId={activeThreadId}
-          isSending={isSending}
           isLoadingThreads={isLoadingThreads}
           isSwitchingThread={isSwitchingThread}
           threadError={threadError}

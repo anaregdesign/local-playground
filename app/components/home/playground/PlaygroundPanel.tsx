@@ -371,7 +371,7 @@ export function PlaygroundPanel<
                 size="small"
                 className="chat-new-thread-btn"
                 onClick={onCreateThread}
-                disabled={isSending || isUpdatingThread}
+                disabled={isUpdatingThread}
                 aria-label="Create and switch to a new thread"
                 title="Create and switch to a new thread."
               >

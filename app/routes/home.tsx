@@ -61,7 +61,6 @@ import {
 } from "~/lib/home/chat/json-highlighting";
 import type { ChatApiResponse, McpRpcHistoryEntry } from "~/lib/home/chat/stream";
 import {
-  appendProgressMessage,
   readChatEventStreamPayload,
   upsertMcpRpcHistoryEntry,
 } from "~/lib/home/chat/stream";
@@ -157,6 +156,22 @@ type ThreadsApiResponse = {
   error?: string;
 };
 
+type ThreadRequestState = {
+  isSending: boolean;
+  sendProgressMessages: string[];
+  activeTurnId: string | null;
+  lastErrorTurnId: string | null;
+  error: string | null;
+};
+
+const DEFAULT_THREAD_REQUEST_STATE: ThreadRequestState = {
+  isSending: false,
+  sendProgressMessages: [],
+  activeTurnId: null,
+  lastErrorTurnId: null,
+  error: null,
+};
+
 export function meta({}: Route.MetaArgs) {
   return [
     { title: "Local Playground" },
@@ -214,12 +229,11 @@ export default function Home() {
   const [savedMcpError, setSavedMcpError] = useState<string | null>(null);
   const [isLoadingSavedMcpServers, setIsLoadingSavedMcpServers] = useState(false);
   const [isSavingMcpServer, setIsSavingMcpServer] = useState(false);
-  const [isSending, setIsSending] = useState(false);
-  const [sendProgressMessages, setSendProgressMessages] = useState<string[]>([]);
-  const [activeTurnId, setActiveTurnId] = useState<string | null>(null);
-  const [lastErrorTurnId, setLastErrorTurnId] = useState<string | null>(null);
+  const [threadRequestStateById, setThreadRequestStateById] = useState<
+    Record<string, ThreadRequestState>
+  >({});
   const [isComposing, setIsComposing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [uiError, setUiError] = useState<string | null>(null);
   const [systemNotice, setSystemNotice] = useState<string | null>(null);
   const [isStartingAzureLogin, setIsStartingAzureLogin] = useState(false);
   const [isStartingAzureLogout, setIsStartingAzureLogout] = useState(false);
@@ -261,6 +275,8 @@ export default function Home() {
   const threadLoadRequestSeqRef = useRef(0);
   const threadSaveRequestSeqRef = useRef(0);
   const threadSaveSignatureByIdRef = useRef(new Map<string, string>());
+  const threadRequestStateByIdRef = useRef<Record<string, ThreadRequestState>>({});
+  const threadsRef = useRef<ThreadSnapshot[]>([]);
   const isChatLocked = isAzureAuthRequired;
   const activeAzureConnection =
     azureConnections.find((connection) => connection.id === selectedAzureConnectionId) ??
@@ -273,6 +289,13 @@ export default function Home() {
   const canSaveAgentInstructionPrompt = agentInstruction.trim().length > 0;
   const canEnhanceAgentInstruction = agentInstruction.trim().length > 0;
   const reasoningEffortOptions: ReasoningEffort[] = [...HOME_REASONING_EFFORT_OPTIONS];
+  const activeThreadRequestState =
+    threadRequestStateById[activeThreadId] ?? DEFAULT_THREAD_REQUEST_STATE;
+  const isSending = activeThreadRequestState.isSending;
+  const sendProgressMessages = activeThreadRequestState.sendProgressMessages;
+  const activeTurnId = activeThreadRequestState.activeTurnId;
+  const lastErrorTurnId = activeThreadRequestState.lastErrorTurnId;
+  const error = uiError ?? activeThreadRequestState.error;
   const mcpHistoryByTurnId = buildMcpHistoryByTurnId(mcpRpcHistory);
   const activeTurnMcpHistory = activeTurnId ? (mcpHistoryByTurnId.get(activeTurnId) ?? []) : [];
   const errorTurnMcpHistory = lastErrorTurnId ? (mcpHistoryByTurnId.get(lastErrorTurnId) ?? []) : [];
@@ -409,7 +432,7 @@ export default function Home() {
         const stillAuthRequired = await loadAzureConnections();
         if (!stillAuthRequired) {
           setAzureLoginError(null);
-          setError(null);
+          setUiError(null);
         }
       })();
     };
@@ -528,6 +551,14 @@ export default function Home() {
   useEffect(() => {
     activeThreadIdRef.current = activeThreadId;
   }, [activeThreadId]);
+
+  useEffect(() => {
+    threadRequestStateByIdRef.current = threadRequestStateById;
+  }, [threadRequestStateById]);
+
+  useEffect(() => {
+    threadsRef.current = threads;
+  }, [threads]);
 
   useEffect(() => {
     return () => {
@@ -765,11 +796,55 @@ export default function Home() {
     setDraft("");
     setDraftAttachments([]);
     setChatAttachmentError(null);
+    setUiError(null);
     setSystemNotice(null);
-    setActiveTurnId(null);
-    setLastErrorTurnId(null);
-    setSendProgressMessages([]);
+    setThreadRequestStateById({});
     setIsComposing(false);
+  }
+
+  function readThreadRequestState(threadId: string): ThreadRequestState {
+    if (!threadId) {
+      return DEFAULT_THREAD_REQUEST_STATE;
+    }
+
+    return threadRequestStateByIdRef.current[threadId] ?? DEFAULT_THREAD_REQUEST_STATE;
+  }
+
+  function updateThreadRequestState(
+    threadId: string,
+    updater: (current: ThreadRequestState) => ThreadRequestState,
+  ): void {
+    if (!threadId) {
+      return;
+    }
+
+    setThreadRequestStateById((current) => {
+      const base = current[threadId] ?? DEFAULT_THREAD_REQUEST_STATE;
+      const next = updater(base);
+      return {
+        ...current,
+        [threadId]: next,
+      };
+    });
+  }
+
+  function appendThreadProgressMessage(threadId: string, message: string): void {
+    const trimmed = message.trim();
+    if (!threadId || !trimmed) {
+      return;
+    }
+
+    updateThreadRequestState(threadId, (current) => {
+      if (current.sendProgressMessages[current.sendProgressMessages.length - 1] === trimmed) {
+        return current;
+      }
+
+      const nextMessages = [...current.sendProgressMessages, trimmed].slice(-8);
+      return {
+        ...current,
+        sendProgressMessages: nextMessages,
+      };
+    });
   }
 
   function cloneMessages(value: ChatMessage[]): ChatMessage[] {
@@ -862,6 +937,61 @@ export default function Home() {
     }
   }
 
+  function updateThreadSnapshotById(
+    threadId: string,
+    updater: (current: ThreadSnapshot) => ThreadSnapshot,
+  ): void {
+    if (!threadId) {
+      return;
+    }
+
+    setThreads((current) => {
+      const index = current.findIndex((thread) => thread.id === threadId);
+      if (index < 0) {
+        return current;
+      }
+
+      const base = current[index];
+      const updatedThread = updater(base);
+      const normalizedUpdatedThread = {
+        ...updatedThread,
+        updatedAt: updatedThread.updatedAt || new Date().toISOString(),
+      };
+      return upsertThreadSnapshot(current, normalizedUpdatedThread);
+    });
+  }
+
+  function appendMessageToThreadState(threadId: string, message: ChatMessage): void {
+    const clonedMessage: ChatMessage = {
+      ...message,
+      attachments: message.attachments.map((attachment) => ({ ...attachment })),
+    };
+
+    updateThreadSnapshotById(threadId, (thread) => ({
+      ...thread,
+      updatedAt: new Date().toISOString(),
+      messages: [...thread.messages, clonedMessage],
+    }));
+
+    if (activeThreadIdRef.current === threadId) {
+      setMessages((current) => [...current, clonedMessage]);
+    }
+  }
+
+  function appendMcpRpcLogToThreadState(threadId: string, entry: McpRpcHistoryEntry): void {
+    const clonedEntry: McpRpcHistoryEntry = { ...entry };
+
+    updateThreadSnapshotById(threadId, (thread) => ({
+      ...thread,
+      updatedAt: new Date().toISOString(),
+      mcpRpcHistory: upsertMcpRpcHistoryEntry(thread.mcpRpcHistory, clonedEntry),
+    }));
+
+    if (activeThreadIdRef.current === threadId) {
+      setMcpRpcHistory((current) => upsertMcpRpcHistoryEntry(current, clonedEntry));
+    }
+  }
+
   function applyThreadSnapshotToState(thread: ThreadSnapshot) {
     isApplyingThreadStateRef.current = true;
 
@@ -887,11 +1017,8 @@ export default function Home() {
     setDraft("");
     setDraftAttachments([]);
     setChatAttachmentError(null);
-    setError(null);
+    setUiError(null);
     setSystemNotice(null);
-    setActiveTurnId(null);
-    setLastErrorTurnId(null);
-    setSendProgressMessages([]);
     setIsComposing(false);
 
     window.setTimeout(() => {
@@ -924,7 +1051,13 @@ export default function Home() {
   async function saveThreadSnapshotToDatabase(
     snapshot: ThreadSnapshot,
     signature: string,
+    options: {
+      showBusy?: boolean;
+      reportError?: boolean;
+    } = {},
   ): Promise<boolean> {
+    const showBusy = options.showBusy !== false;
+    const reportError = options.reportError !== false;
     const expectedUserKey = activeThreadsUserKeyRef.current.trim();
     if (!expectedUserKey) {
       return false;
@@ -933,7 +1066,9 @@ export default function Home() {
     const expectedThreadId = snapshot.id;
     const requestSeq = threadSaveRequestSeqRef.current + 1;
     threadSaveRequestSeqRef.current = requestSeq;
-    setIsSavingThread(true);
+    if (showBusy) {
+      setIsSavingThread(true);
+    }
 
     try {
       const response = await fetch("/api/threads", {
@@ -952,7 +1087,9 @@ export default function Home() {
         const authRequired = payload.authRequired === true || response.status === 401;
         if (authRequired) {
           setIsAzureAuthRequired(true);
-          setThreadError("Azure login is required. Open Settings and sign in to continue.");
+          if (reportError) {
+            setThreadError("Azure login is required. Open Settings and sign in to continue.");
+          }
           return false;
         }
 
@@ -987,13 +1124,38 @@ export default function Home() {
           threadId: expectedThreadId,
         },
       });
-      setThreadError(saveError instanceof Error ? saveError.message : "Failed to save thread.");
+      if (reportError) {
+        setThreadError(saveError instanceof Error ? saveError.message : "Failed to save thread.");
+      }
       return false;
     } finally {
-      if (requestSeq === threadSaveRequestSeqRef.current) {
+      if (showBusy && requestSeq === threadSaveRequestSeqRef.current) {
         setIsSavingThread(false);
       }
     }
+  }
+
+  async function saveThreadSnapshotSilentlyIfNeeded(threadId: string): Promise<void> {
+    const normalizedThreadId = threadId.trim();
+    if (!normalizedThreadId) {
+      return;
+    }
+
+    const snapshot = threadsRef.current.find((thread) => thread.id === normalizedThreadId);
+    if (!snapshot) {
+      return;
+    }
+
+    const signature = buildThreadSaveSignature(snapshot);
+    const savedSignature = threadSaveSignatureByIdRef.current.get(normalizedThreadId);
+    if (savedSignature === signature) {
+      return;
+    }
+
+    await saveThreadSnapshotToDatabase(snapshot, signature, {
+      showBusy: false,
+      reportError: false,
+    });
   }
 
   async function flushActiveThreadSnapshot(): Promise<boolean> {
@@ -1096,6 +1258,16 @@ export default function Home() {
 
       setThreadSaveSignatures(parsedThreads);
       setThreads(parsedThreads);
+      setThreadRequestStateById((current) => {
+        const next: Record<string, ThreadRequestState> = {};
+        const validIds = new Set(parsedThreads.map((thread) => thread.id));
+        for (const [threadId, state] of Object.entries(current)) {
+          if (validIds.has(threadId)) {
+            next[threadId] = state;
+          }
+        }
+        return next;
+      });
       isThreadsReadyRef.current = true;
       setThreadError(null);
 
@@ -1130,7 +1302,7 @@ export default function Home() {
   async function createThreadAndSwitch(options: {
     name?: string;
   } = {}): Promise<boolean> {
-    if (isSending || isLoadingThreads || isSwitchingThread || isCreatingThread) {
+    if (isLoadingThreads || isSwitchingThread || isCreatingThread) {
       return false;
     }
 
@@ -1138,9 +1310,12 @@ export default function Home() {
     setIsCreatingThread(true);
 
     try {
-      const saved = await flushActiveThreadSnapshot();
-      if (!saved) {
-        return false;
+      const currentThreadId = activeThreadIdRef.current.trim();
+      if (!readThreadRequestState(currentThreadId).isSending) {
+        const saved = await flushActiveThreadSnapshot();
+        if (!saved) {
+          return false;
+        }
       }
 
       const response = await fetch("/api/threads", {
@@ -1209,12 +1384,6 @@ export default function Home() {
       return;
     }
 
-    if (isSending) {
-      setSelectedThreadId(activeThreadIdRef.current);
-      setThreadError("Cannot switch threads while a message is being sent.");
-      return;
-    }
-
     const nextThread = threads.find((thread) => thread.id === nextThreadId);
     if (!nextThread) {
       setSelectedThreadId(activeThreadIdRef.current);
@@ -1225,10 +1394,13 @@ export default function Home() {
     setSelectedThreadId(nextThreadId);
     setIsSwitchingThread(true);
     try {
-      const saved = await flushActiveThreadSnapshot();
-      if (!saved) {
-        setSelectedThreadId(activeThreadIdRef.current);
-        return;
+      const currentThreadId = activeThreadIdRef.current.trim();
+      if (!readThreadRequestState(currentThreadId).isSending) {
+        const saved = await flushActiveThreadSnapshot();
+        if (!saved) {
+          setSelectedThreadId(activeThreadIdRef.current);
+          return;
+        }
       }
 
       applyThreadSnapshotToState(nextThread);
@@ -1565,8 +1737,19 @@ export default function Home() {
   }
 
   async function sendMessage() {
+    const threadId = activeThreadIdRef.current.trim();
     const content = draft.trim();
-    if (!content || isSending) {
+    if (!content) {
+      return;
+    }
+
+    if (!threadId) {
+      setThreadError("Select or create a thread before sending.");
+      setActiveMainTab("threads");
+      return;
+    }
+
+    if (readThreadRequestState(threadId).isSending) {
       return;
     }
 
@@ -1576,20 +1759,14 @@ export default function Home() {
       return;
     }
 
-    if (!activeThreadIdRef.current.trim()) {
-      setThreadError("Select or create a thread before sending.");
-      setActiveMainTab("threads");
-      return;
-    }
-
     if (isChatLocked) {
       setActiveMainTab("settings");
-      setError("Playground is unavailable while logged out. Open ⚙️ Settings and sign in.");
+      setUiError("Playground is unavailable while logged out. Open ⚙️ Settings and sign in.");
       return;
     }
 
     if (!activeAzureConnection) {
-      setError(
+      setUiError(
         isAzureAuthRequired
           ? "Azure login is required. Click Project or Deployment and sign in."
           : "No Azure project is available. Check your Azure account permissions.",
@@ -1599,12 +1776,12 @@ export default function Home() {
 
     const deploymentName = selectedAzureDeploymentName.trim();
     if (isLoadingAzureDeployments) {
-      setError("Deployment list is loading. Please wait.");
+      setUiError("Deployment list is loading. Please wait.");
       return;
     }
 
     if (!deploymentName || !azureDeployments.includes(deploymentName)) {
-      setError("Select an Azure deployment before sending.");
+      setUiError("Select an Azure deployment before sending.");
       return;
     }
 
@@ -1612,6 +1789,8 @@ export default function Home() {
     const requestAttachments = draftAttachments.map(
       ({ id: _id, ...attachment }) => attachment,
     );
+    const requestMcpServers = cloneMcpServers(mcpServers);
+    const requestAgentInstruction = agentInstruction;
     const userMessage: ChatMessage = createMessage(
       "user",
       content,
@@ -1634,17 +1813,21 @@ export default function Home() {
         };
       });
 
-    setMessages((current) => [...current, userMessage]);
+    appendMessageToThreadState(threadId, userMessage);
     setDraft("");
     setDraftAttachments([]);
     setChatAttachmentError(null);
-    setError(null);
+    setUiError(null);
     setSystemNotice(null);
     setAzureLoginError(null);
-    setLastErrorTurnId(null);
-    setIsSending(true);
-    setActiveTurnId(turnId);
-    setSendProgressMessages(["Preparing request..."]);
+    updateThreadRequestState(threadId, (current) => ({
+      ...current,
+      isSending: true,
+      sendProgressMessages: ["Preparing request..."],
+      activeTurnId: turnId,
+      lastErrorTurnId: null,
+      error: null,
+    }));
 
     try {
       const response = await fetch("/api/chat", {
@@ -1664,8 +1847,8 @@ export default function Home() {
             deploymentName,
           },
           reasoningEffort,
-          agentInstruction,
-          mcpServers: mcpServers.map((server) =>
+          agentInstruction: requestAgentInstruction,
+          mcpServers: requestMcpServers.map((server) =>
             server.transport === "stdio"
               ? {
                   name: server.name,
@@ -1695,15 +1878,13 @@ export default function Home() {
       if (isEventStream) {
         payload = await readChatEventStreamPayload(response, {
           onProgress: (message) => {
-            appendProgressMessage(message, setSendProgressMessages);
+            appendThreadProgressMessage(threadId, message);
           },
           onMcpRpcRecord: (entry) => {
-            setMcpRpcHistory((current) =>
-              upsertMcpRpcHistoryEntry(current, {
-                ...entry,
-                turnId,
-              }),
-            );
+            appendMcpRpcLogToThreadState(threadId, {
+              ...entry,
+              turnId,
+            });
           },
         });
       } else {
@@ -1711,6 +1892,9 @@ export default function Home() {
       }
 
       if (!response.ok || payload.error) {
+        if (payload.errorCode === "azure_login_required") {
+          setIsAzureAuthRequired(true);
+        }
         throw new Error(payload.error || "Failed to send message.");
       }
 
@@ -1718,23 +1902,38 @@ export default function Home() {
         throw new Error("The server returned an empty message.");
       }
 
-      setMessages((current) => [...current, createMessage("assistant", payload.message!, turnId)]);
-      setLastErrorTurnId(null);
+      const assistantMessage = createMessage("assistant", payload.message, turnId);
+      appendMessageToThreadState(threadId, assistantMessage);
+      updateThreadRequestState(threadId, (current) => ({
+        ...current,
+        isSending: false,
+        sendProgressMessages: [],
+        activeTurnId: null,
+        lastErrorTurnId: null,
+        error: null,
+      }));
     } catch (sendError) {
       logHomeError("send_message_failed", sendError, {
         action: "send_message",
         context: {
+          threadId,
           turnId,
           messageLength: content.length,
           attachmentCount: requestAttachments.length,
         },
       });
-      setLastErrorTurnId(turnId);
-      setError(sendError instanceof Error ? sendError.message : "Could not reach the server.");
+      updateThreadRequestState(threadId, (current) => ({
+        ...current,
+        isSending: false,
+        sendProgressMessages: [],
+        activeTurnId: null,
+        lastErrorTurnId: turnId,
+        error: sendError instanceof Error ? sendError.message : "Could not reach the server.",
+      }));
     } finally {
-      setIsSending(false);
-      setActiveTurnId(null);
-      setSendProgressMessages([]);
+      window.setTimeout(() => {
+        void saveThreadSnapshotSilentlyIfNeeded(threadId);
+      }, 0);
     }
   }
 
@@ -1972,13 +2171,13 @@ export default function Home() {
     setSelectedAzureConnectionId(projectId);
     setSelectedAzureDeploymentName("");
     setAzureDeploymentError(null);
-    setError(null);
+    setUiError(null);
   }
 
   function handleChatDeploymentChange(nextDeploymentNameRaw: string) {
     const nextDeploymentName = nextDeploymentNameRaw.trim();
     setSelectedAzureDeploymentName(nextDeploymentName);
-    setError(null);
+    setUiError(null);
 
     const tenantId = activeAzureTenantIdRef.current.trim();
     const principalId = activeAzurePrincipalIdRef.current.trim();
@@ -2504,7 +2703,7 @@ export default function Home() {
       return;
     }
 
-    setError(null);
+    setUiError(null);
     setSystemNotice(null);
     setAzureLoginError(null);
 
@@ -2527,13 +2726,13 @@ export default function Home() {
 
   const handleCopyMessage = (content: string) => {
     void copyTextToClipboard(content).catch(() => {
-      setError("Failed to copy message to clipboard.");
+      setUiError("Failed to copy message to clipboard.");
     });
   };
 
   const handleCopyMcpLog = (text: string) => {
     void copyTextToClipboard(text).catch(() => {
-      setError("Failed to copy MCP log to clipboard.");
+      setUiError("Failed to copy MCP log to clipboard.");
     });
   };
 
@@ -2650,7 +2849,6 @@ export default function Home() {
       mcpServerCount: thread.mcpServerCount,
     })),
     activeThreadId: selectedThreadId || activeThreadId,
-    isSending: isSending || isSavingThread,
     isLoadingThreads,
     isSwitchingThread,
     threadError,
