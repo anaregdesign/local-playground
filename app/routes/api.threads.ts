@@ -6,7 +6,10 @@ import {
 } from "~/lib/server/persistence/prisma";
 import { getOrCreateUserByIdentity } from "~/lib/server/persistence/user";
 import { readThreadSnapshotFromUnknown } from "~/lib/home/thread/parsers";
-import { buildThreadMcpServerRowId } from "~/lib/home/thread/server-ids";
+import {
+  buildThreadMcpRpcLogRowId,
+  buildThreadMcpServerRowId,
+} from "~/lib/home/thread/server-ids";
 import type { ThreadSnapshot } from "~/lib/home/thread/types";
 import type { Route } from "./+types/api.threads";
 
@@ -349,7 +352,7 @@ async function saveThreadSnapshot(
     if (snapshot.mcpRpcHistory.length > 0) {
       await transaction.threadMcpRpcLog.createMany({
         data: snapshot.mcpRpcHistory.map((entry, index) => ({
-          id: entry.id,
+          id: buildThreadMcpRpcLogRowId(existing.id, entry.id, index),
           threadId: existing.id,
           sortOrder: index,
           sequence: entry.sequence,

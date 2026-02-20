@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildThreadMcpRpcLogRowId,
   buildThreadMcpServerRowId,
+  normalizeThreadMcpRpcLogSourceId,
   normalizeThreadMcpServerSourceId,
 } from "~/lib/home/thread/server-ids";
 
@@ -28,6 +30,34 @@ describe("buildThreadMcpServerRowId", () => {
     const second = buildThreadMcpServerRowId(threadId, first, 0);
 
     expect(first).toBe("thread:thread-1:mcp:0:mcp-profile-1");
+    expect(second).toBe(first);
+  });
+});
+
+describe("normalizeThreadMcpRpcLogSourceId", () => {
+  it("keeps plain source ids unchanged", () => {
+    expect(normalizeThreadMcpRpcLogSourceId("rpc-123", 0)).toBe("rpc-123");
+  });
+
+  it("unwraps persisted row-id prefixes recursively", () => {
+    const nested =
+      "thread:thread-1:rpc:0:thread:thread-1:rpc:0:thread:thread-1:rpc:0:rpc-origin";
+    expect(normalizeThreadMcpRpcLogSourceId(nested, 0)).toBe("rpc-origin");
+  });
+
+  it("falls back when source id is blank", () => {
+    expect(normalizeThreadMcpRpcLogSourceId("  ", 1)).toBe("rpc-2");
+  });
+});
+
+describe("buildThreadMcpRpcLogRowId", () => {
+  it("produces stable row ids even when source id already contains a row prefix", () => {
+    const threadId = "thread-1";
+    const sourceId = "rpc-origin";
+    const first = buildThreadMcpRpcLogRowId(threadId, sourceId, 0);
+    const second = buildThreadMcpRpcLogRowId(threadId, first, 0);
+
+    expect(first).toBe("thread:thread-1:rpc:0:rpc-origin");
     expect(second).toBe(first);
   });
 });
