@@ -1543,6 +1543,13 @@ body {
   flex: 1;
 }
 
+.mcp-action-row .mcp-refresh-btn.fui-Button {
+  flex: 0 0 auto;
+  min-width: 1.6rem;
+  width: 1.6rem;
+  padding-inline: 0;
+}
+
 .sr-only {
   position: absolute;
   width: 1px;

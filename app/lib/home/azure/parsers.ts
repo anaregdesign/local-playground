@@ -9,6 +9,7 @@ export type AzureConnectionOption = {
 
 export type AzureSelectionPreference = {
   tenantId: string;
+  principalId: string;
   projectId: string;
   deploymentName: string;
 };
@@ -17,18 +18,24 @@ export function readTenantIdFromUnknown(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
+export function readPrincipalIdFromUnknown(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
 export function readAzureSelectionFromUnknown(
   value: unknown,
   expectedTenantId: string,
+  expectedPrincipalId: string,
 ): AzureSelectionPreference | null {
   if (!isRecord(value)) {
     return null;
   }
 
   const tenantId = typeof value.tenantId === "string" ? value.tenantId.trim() : "";
+  const principalId = typeof value.principalId === "string" ? value.principalId.trim() : "";
   const projectId = typeof value.projectId === "string" ? value.projectId.trim() : "";
   const deploymentName = typeof value.deploymentName === "string" ? value.deploymentName.trim() : "";
-  if (!tenantId || !projectId || !deploymentName) {
+  if (!tenantId || !principalId || !projectId || !deploymentName) {
     return null;
   }
 
@@ -36,8 +43,13 @@ export function readAzureSelectionFromUnknown(
     return null;
   }
 
+  if (expectedPrincipalId && principalId !== expectedPrincipalId) {
+    return null;
+  }
+
   return {
     tenantId,
+    principalId,
     projectId,
     deploymentName,
   };

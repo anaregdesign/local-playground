@@ -41,6 +41,7 @@ import type {
 } from "~/lib/home/azure/parsers";
 import {
   readAzureDeploymentList,
+  readPrincipalIdFromUnknown,
   readAzureProjectList,
   readAzureSelectionFromUnknown,
   readTenantIdFromUnknown,
@@ -93,11 +94,13 @@ import {
   upsertMcpServer,
 } from "~/lib/home/mcp/profile";
 import {
-  formatKeyValueLines,
-  formatStdioArgsInput,
   parseStdioArgsInput,
   parseStdioEnvInput,
 } from "~/lib/home/mcp/stdio-inputs";
+import {
+  isMcpServersAuthRequired,
+  shouldScheduleSavedMcpLoginRetry,
+} from "~/lib/home/mcp/saved-profiles";
 import { copyTextToClipboard } from "~/lib/home/shared/clipboard";
 import { getFileExtension } from "~/lib/home/shared/files";
 import { createId } from "~/lib/home/shared/ids";
@@ -122,6 +125,7 @@ type AzureConnectionsApiResponse = {
   projects?: unknown;
   deployments?: unknown;
   tenantId?: unknown;
+  principalId?: unknown;
   authRequired?: boolean;
   error?: string;
 };
@@ -134,6 +138,7 @@ type McpServersApiResponse = {
   profile?: unknown;
   profiles?: unknown;
   warning?: string;
+  authRequired?: boolean;
   error?: string;
 };
 
@@ -214,6 +219,10 @@ export default function Home() {
   const layoutRef = useRef<HTMLDivElement | null>(null);
   const azureDeploymentRequestSeqRef = useRef(0);
   const activeAzureTenantIdRef = useRef("");
+  const activeAzurePrincipalIdRef = useRef("");
+  const activeSavedMcpUserKeyRef = useRef("");
+  const savedMcpLoginRetryTimeoutRef = useRef<number | null>(null);
+  const savedMcpRequestSeqRef = useRef(0);
   const preferredAzureSelectionRef = useRef<AzureSelectionPreference | null>(null);
   const isChatLocked = isAzureAuthRequired;
   const activeAzureConnection =
@@ -270,7 +279,6 @@ export default function Home() {
   }, [draft]);
 
   useEffect(() => {
-    void loadSavedMcpServers();
     void loadAzureConnections();
   }, []);
 
@@ -321,9 +329,10 @@ export default function Home() {
     }
 
     const tenantId = activeAzureTenantIdRef.current.trim();
+    const principalId = activeAzurePrincipalIdRef.current.trim();
     const projectId = selectedAzureConnectionId.trim();
     const deploymentName = selectedAzureDeploymentName.trim();
-    if (!tenantId || !projectId || !deploymentName) {
+    if (!tenantId || !principalId || !projectId || !deploymentName) {
       return;
     }
 
@@ -339,13 +348,14 @@ export default function Home() {
     if (
       preferred &&
       preferred.tenantId === tenantId &&
+      preferred.principalId === principalId &&
       preferred.projectId === projectId &&
       preferred.deploymentName === deploymentName
     ) {
       return;
     }
 
-    void saveAzureSelectionPreference({ tenantId, projectId, deploymentName });
+    void saveAzureSelectionPreference({ tenantId, principalId, projectId, deploymentName });
   }, [
     azureConnections,
     azureDeployments,
@@ -396,7 +406,21 @@ export default function Home() {
     };
   }, []);
 
+  useEffect(() => {
+    return () => {
+      clearSavedMcpLoginRetryTimeout();
+    };
+  }, []);
+
   async function loadSavedMcpServers() {
+    const expectedUserKey = activeSavedMcpUserKeyRef.current.trim();
+    if (!expectedUserKey) {
+      clearSavedMcpServersState();
+      return;
+    }
+
+    const requestSeq = savedMcpRequestSeqRef.current + 1;
+    savedMcpRequestSeqRef.current = requestSeq;
     setIsLoadingSavedMcpServers(true);
 
     try {
@@ -405,7 +429,22 @@ export default function Home() {
       });
 
       const payload = (await response.json()) as McpServersApiResponse;
+      if (requestSeq !== savedMcpRequestSeqRef.current) {
+        return;
+      }
+      if (expectedUserKey !== activeSavedMcpUserKeyRef.current.trim()) {
+        return;
+      }
+
       if (!response.ok) {
+        const authRequired = isMcpServersAuthRequired(response.status, payload);
+        if (authRequired) {
+          setIsAzureAuthRequired(true);
+          clearSavedMcpServersState(
+            "Azure login is required. Open Settings and sign in to load MCP servers.",
+          );
+          return;
+        }
         throw new Error(payload.error || "Failed to load saved MCP servers.");
       }
 
@@ -418,35 +457,75 @@ export default function Home() {
       );
       setSavedMcpError(null);
     } catch (loadError) {
+      if (requestSeq !== savedMcpRequestSeqRef.current) {
+        return;
+      }
+      if (expectedUserKey !== activeSavedMcpUserKeyRef.current.trim()) {
+        return;
+      }
       setSavedMcpError(
         loadError instanceof Error ? loadError.message : "Failed to load saved MCP servers.",
       );
     } finally {
-      setIsLoadingSavedMcpServers(false);
+      if (
+        requestSeq === savedMcpRequestSeqRef.current &&
+        expectedUserKey === activeSavedMcpUserKeyRef.current.trim()
+      ) {
+        setIsLoadingSavedMcpServers(false);
+      }
     }
+  }
+
+  function clearSavedMcpLoginRetryTimeout() {
+    const timeoutId = savedMcpLoginRetryTimeoutRef.current;
+    if (timeoutId !== null) {
+      window.clearTimeout(timeoutId);
+      savedMcpLoginRetryTimeoutRef.current = null;
+    }
+  }
+
+  function scheduleSavedMcpLoginRetry(expectedUserKey: string) {
+    clearSavedMcpLoginRetryTimeout();
+    savedMcpLoginRetryTimeoutRef.current = window.setTimeout(() => {
+      savedMcpLoginRetryTimeoutRef.current = null;
+      if (activeSavedMcpUserKeyRef.current === expectedUserKey) {
+        void loadSavedMcpServers();
+      }
+    }, 1200);
+  }
+
+  function clearSavedMcpServersState(nextError: string | null = null) {
+    clearSavedMcpLoginRetryTimeout();
+    setSavedMcpServers([]);
+    setSelectedSavedMcpServerId("");
+    setSavedMcpError(nextError);
+    setIsLoadingSavedMcpServers(false);
   }
 
   async function loadAzureSelectionPreference(
     tenantId: string,
+    principalId: string,
   ): Promise<AzureSelectionPreference | null> {
     const normalizedTenantId = tenantId.trim();
-    if (!normalizedTenantId) {
+    const normalizedPrincipalId = principalId.trim();
+    if (!normalizedTenantId || !normalizedPrincipalId) {
       return null;
     }
 
     try {
-      const response = await fetch(
-        `/api/azure-selection?tenantId=${encodeURIComponent(normalizedTenantId)}`,
-        {
-          method: "GET",
-        },
-      );
+      const response = await fetch("/api/azure-selection", {
+        method: "GET",
+      });
       const payload = (await response.json()) as AzureSelectionApiResponse;
       if (!response.ok) {
         return null;
       }
 
-      return readAzureSelectionFromUnknown(payload.selection, normalizedTenantId);
+      return readAzureSelectionFromUnknown(
+        payload.selection,
+        normalizedTenantId,
+        normalizedPrincipalId,
+      );
     } catch {
       return null;
     }
@@ -461,7 +540,10 @@ export default function Home() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(selection),
+        body: JSON.stringify({
+          projectId: selection.projectId,
+          deploymentName: selection.deploymentName,
+        }),
       });
       if (!response.ok) {
         return;
@@ -483,7 +565,10 @@ export default function Home() {
       if (!response.ok) {
         const authRequired = payload.authRequired === true || response.status === 401;
         activeAzureTenantIdRef.current = "";
+        activeAzurePrincipalIdRef.current = "";
+        activeSavedMcpUserKeyRef.current = "";
         preferredAzureSelectionRef.current = null;
+        clearSavedMcpServersState();
         setIsAzureAuthRequired(authRequired);
         setAzureConnections([]);
         setAzureDeployments([]);
@@ -496,8 +581,28 @@ export default function Home() {
 
       const parsedProjects = readAzureProjectList(payload.projects);
       const tenantId = readTenantIdFromUnknown(payload.tenantId);
+      const principalId = readPrincipalIdFromUnknown(payload.principalId);
       activeAzureTenantIdRef.current = tenantId;
-      const preferredSelection = tenantId ? await loadAzureSelectionPreference(tenantId) : null;
+      activeAzurePrincipalIdRef.current = principalId;
+      const nextSavedMcpUserKey =
+        tenantId && principalId ? `${tenantId}::${principalId}` : "";
+      if (!nextSavedMcpUserKey) {
+        activeSavedMcpUserKeyRef.current = "";
+        clearSavedMcpServersState();
+      } else if (activeSavedMcpUserKeyRef.current !== nextSavedMcpUserKey) {
+        activeSavedMcpUserKeyRef.current = nextSavedMcpUserKey;
+        void loadSavedMcpServers();
+      }
+      if (shouldScheduleSavedMcpLoginRetry(isAzureAuthRequired, nextSavedMcpUserKey)) {
+        // After login completes, token propagation can briefly lag for MCP route auth.
+        scheduleSavedMcpLoginRetry(nextSavedMcpUserKey);
+      } else {
+        clearSavedMcpLoginRetryTimeout();
+      }
+      const preferredSelection =
+        tenantId && principalId
+          ? await loadAzureSelectionPreference(tenantId, principalId)
+          : null;
       preferredAzureSelectionRef.current = preferredSelection;
       const preferredProjectId = preferredSelection?.projectId ?? "";
 
@@ -516,7 +621,10 @@ export default function Home() {
       return payload.authRequired === true;
     } catch (loadError) {
       activeAzureTenantIdRef.current = "";
+      activeAzurePrincipalIdRef.current = "";
+      activeSavedMcpUserKeyRef.current = "";
       preferredAzureSelectionRef.current = null;
+      clearSavedMcpServersState();
       setIsAzureAuthRequired(false);
       setAzureConnections([]);
       setAzureDeployments([]);
@@ -560,6 +668,13 @@ export default function Home() {
 
       if (!response.ok) {
         const authRequired = payload.authRequired === true || response.status === 401;
+        if (authRequired) {
+          activeAzureTenantIdRef.current = "";
+          activeAzurePrincipalIdRef.current = "";
+          activeSavedMcpUserKeyRef.current = "";
+          preferredAzureSelectionRef.current = null;
+          clearSavedMcpServersState();
+        }
         setIsAzureAuthRequired(authRequired);
         setAzureDeployments([]);
         setSelectedAzureDeploymentName("");
@@ -571,14 +686,19 @@ export default function Home() {
 
       const parsedDeployments = readAzureDeploymentList(payload.deployments);
       const tenantIdFromPayload = readTenantIdFromUnknown(payload.tenantId);
+      const principalIdFromPayload = readPrincipalIdFromUnknown(payload.principalId);
       if (tenantIdFromPayload) {
         activeAzureTenantIdRef.current = tenantIdFromPayload;
+      }
+      if (principalIdFromPayload) {
+        activeAzurePrincipalIdRef.current = principalIdFromPayload;
       }
 
       const preferredSelection = preferredAzureSelectionRef.current;
       const preferredDeploymentName =
         preferredSelection &&
         preferredSelection.tenantId === activeAzureTenantIdRef.current &&
+        preferredSelection.principalId === activeAzurePrincipalIdRef.current &&
         preferredSelection.projectId === projectId
           ? preferredSelection.deploymentName
           : "";
@@ -631,6 +751,11 @@ export default function Home() {
 
     const payload = (await response.json()) as McpServersApiResponse;
     if (!response.ok) {
+      const authRequired = isMcpServersAuthRequired(response.status, payload);
+      if (authRequired) {
+        setIsAzureAuthRequired(true);
+        throw new Error("Azure login is required. Open Settings and sign in to save MCP servers.");
+      }
       throw new Error(payload.error || "Failed to save MCP server.");
     }
 
@@ -652,6 +777,21 @@ export default function Home() {
       profile,
       warning: typeof payload.warning === "string" ? payload.warning : null,
     };
+  }
+
+  function connectMcpServerToAgent(serverToConnect: McpServerConfig) {
+    setMcpServers((current) => {
+      const existingIndex = current.findIndex(
+        (server) => buildMcpServerKey(server) === buildMcpServerKey(serverToConnect),
+      );
+      if (existingIndex >= 0) {
+        return current.map((server, index) =>
+          index === existingIndex ? { ...server, name: serverToConnect.name } : server,
+        );
+      }
+
+      return [...current, serverToConnect];
+    });
   }
 
   async function sendMessage() {
@@ -867,6 +1007,11 @@ export default function Home() {
     }
   }
 
+  function handleReloadSavedMcpServers() {
+    setSavedMcpError(null);
+    void loadSavedMcpServers();
+  }
+
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (isChatLocked) {
@@ -1030,8 +1175,9 @@ export default function Home() {
     setError(null);
 
     const tenantId = activeAzureTenantIdRef.current.trim();
+    const principalId = activeAzurePrincipalIdRef.current.trim();
     const projectId = (activeAzureConnection?.id ?? "").trim();
-    if (!tenantId || !projectId || !nextDeploymentName) {
+    if (!tenantId || !principalId || !projectId || !nextDeploymentName) {
       return;
     }
 
@@ -1041,6 +1187,7 @@ export default function Home() {
 
     void saveAzureSelectionPreference({
       tenantId,
+      principalId,
       projectId,
       deploymentName: nextDeploymentName,
     });
@@ -1423,15 +1570,7 @@ export default function Home() {
       saveWarning = saveResult.warning;
       savedProfileName = saveResult.profile.name;
 
-      if (existingServerIndex >= 0) {
-        setMcpServers((current) =>
-          current.map((server, index) =>
-            index === existingServerIndex ? { ...server, name: savedProfileName } : server,
-          ),
-        );
-      } else {
-        setMcpServers((current) => [...current, { ...serverToAdd, name: savedProfileName }]);
-      }
+      connectMcpServerToAgent({ ...serverToAdd, name: savedProfileName });
 
       setSavedMcpError(null);
     } catch (saveError) {
@@ -1464,9 +1603,9 @@ export default function Home() {
     setMcpTransport(HOME_DEFAULT_MCP_TRANSPORT);
   }
 
-  function handleLoadSavedMcpServerToForm() {
+  function handleConnectSelectedMcpServer() {
     if (!selectedSavedMcpServerId) {
-      setSavedMcpError("Select a saved MCP server first.");
+      setSavedMcpError("Select an MCP server first.");
       return;
     }
 
@@ -1476,33 +1615,7 @@ export default function Home() {
       return;
     }
 
-    setMcpNameInput(selected.name);
-    setMcpTransport(selected.transport);
-    setMcpFormError(null);
-    setMcpFormWarning(null);
-
-    if (selected.transport === "stdio") {
-      setMcpCommandInput(selected.command);
-      setMcpArgsInput(formatStdioArgsInput(selected.args));
-      setMcpCwdInput(selected.cwd ?? "");
-      setMcpEnvInput(formatKeyValueLines(selected.env));
-      setMcpUrlInput("");
-      setMcpHeadersInput("");
-      setMcpUseAzureAuthInput(false);
-      setMcpAzureAuthScopeInput(MCP_DEFAULT_AZURE_AUTH_SCOPE);
-      setMcpTimeoutSecondsInput(String(MCP_DEFAULT_TIMEOUT_SECONDS));
-    } else {
-      setMcpUrlInput(selected.url);
-      setMcpHeadersInput(formatKeyValueLines(selected.headers));
-      setMcpUseAzureAuthInput(selected.useAzureAuth);
-      setMcpAzureAuthScopeInput(selected.azureAuthScope);
-      setMcpTimeoutSecondsInput(String(selected.timeoutSeconds));
-      setMcpCommandInput("");
-      setMcpArgsInput("");
-      setMcpCwdInput("");
-      setMcpEnvInput("");
-    }
-
+    connectMcpServerToAgent(selected);
     setSavedMcpError(null);
   }
 
@@ -1571,7 +1684,9 @@ export default function Home() {
     setError(null);
     setAzureLoginError(null);
 
-    if (isAzureAuthRequired) {
+    if (isAzureAuthRequired || isLikelyChatAzureAuthError(azureConnectionError)) {
+      setIsAzureAuthRequired(true);
+      setActiveMainTab("settings");
       void handleAzureLogin();
       return;
     }
@@ -1651,8 +1766,8 @@ export default function Home() {
       setSelectedSavedMcpServerId(value);
       setSavedMcpError(null);
     },
-    onLoadSavedMcpServerToForm: handleLoadSavedMcpServerToForm,
-    onReloadSavedMcpServers: loadSavedMcpServers,
+    onConnectSelectedMcpServer: handleConnectSelectedMcpServer,
+    onReloadSavedMcpServers: handleReloadSavedMcpServers,
     mcpNameInput,
     onMcpNameInputChange: setMcpNameInput,
     mcpTransport,
@@ -1876,6 +1991,26 @@ function renderTurnMcpLog(
       )}
     </details>
   );
+}
+
+function isLikelyChatAzureAuthError(message: string | null): boolean {
+  if (!message) {
+    return false;
+  }
+
+  const normalizedMessage = message.toLowerCase();
+  return [
+    "azure login is required",
+    "az login",
+    "defaultazurecredential",
+    "credential",
+    "authentication",
+    "authorization",
+    "unauthorized",
+    "forbidden",
+    "access token",
+    "aadsts",
+  ].some((pattern) => normalizedMessage.includes(pattern));
 }
 
 function renderHighlightedJson(

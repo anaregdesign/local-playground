@@ -3,7 +3,6 @@ import {
   normalizeAzureOpenAIBaseURL,
 } from "~/lib/azure/dependencies";
 import {
-  AZURE_ARM_SCOPE,
   AZURE_COGNITIVE_API_VERSION,
   AZURE_MAX_ACCOUNTS_PER_SUBSCRIPTION,
   AZURE_MAX_DEPLOYMENTS_PER_ACCOUNT,
@@ -12,6 +11,9 @@ import {
   AZURE_OPENAI_DEFAULT_API_VERSION,
   AZURE_SUBSCRIPTIONS_API_VERSION,
 } from "~/lib/constants";
+import {
+  readAzureArmUserContext,
+} from "~/lib/server/auth/azure-user";
 import type { AzureDependencies } from "~/lib/azure/dependencies";
 import type { Route } from "./+types/api.azure-connections";
 
@@ -88,7 +90,12 @@ export async function loader({ request }: Route.LoaderArgs) {
   try {
     if (!projectId) {
       const projects = await listAzureProjects(tokenResult.token);
-      return Response.json({ projects, tenantId: tokenResult.tenantId, authRequired: false });
+      return Response.json({
+        projects,
+        tenantId: tokenResult.tenantId,
+        principalId: tokenResult.principalId,
+        authRequired: false,
+      });
     }
 
     const projectRef = parseProjectId(projectId);
@@ -97,8 +104,23 @@ export async function loader({ request }: Route.LoaderArgs) {
     }
 
     const deployments = await listProjectDeployments(tokenResult.token, projectRef);
-    return Response.json({ deployments, tenantId: tokenResult.tenantId, authRequired: false });
+    return Response.json({
+      deployments,
+      tenantId: tokenResult.tenantId,
+      principalId: tokenResult.principalId,
+      authRequired: false,
+    });
   } catch (error) {
+    if (isLikelyAzureAuthError(error)) {
+      return Response.json(
+        {
+          authRequired: true,
+          error: "Azure login is required. Click Azure Login to continue.",
+        },
+        { status: 401 },
+      );
+    }
+
     return Response.json(
       {
         error: `Failed to load Azure connection data: ${readErrorMessage(error)}`,
@@ -462,38 +484,18 @@ function parseResourceGroupFromResourceId(resourceId: string): string {
 
 async function getArmAccessToken(
   dependencies: AzureDependencies = getAzureDependencies(),
-): Promise<{ ok: true; token: string; tenantId: string } | { ok: false }> {
-  try {
-    const token = await dependencies.getAzureBearerToken(AZURE_ARM_SCOPE);
-
-    return {
-      ok: true,
-      token,
-      tenantId: readTenantIdFromAccessToken(token),
-    };
-  } catch {
+): Promise<{ ok: true; token: string; tenantId: string; principalId: string } | { ok: false }> {
+  const userContext = await readAzureArmUserContext(dependencies);
+  if (!userContext) {
     return { ok: false };
   }
-}
 
-export function readTenantIdFromAccessToken(accessToken: string): string {
-  const parts = accessToken.split(".");
-  if (parts.length < 2) {
-    return "";
-  }
-
-  try {
-    const payload = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8")) as unknown;
-    if (!isRecord(payload)) {
-      return "";
-    }
-
-    const tid = typeof payload.tid === "string" ? payload.tid.trim() : "";
-    const tenantId = typeof payload.tenantId === "string" ? payload.tenantId.trim() : "";
-    return tid || tenantId;
-  } catch {
-    return "";
-  }
+  return {
+    ok: true,
+    token: userContext.token,
+    tenantId: userContext.tenantId,
+    principalId: userContext.principalId,
+  };
 }
 
 async function fetchArmPaged<T>(
@@ -547,4 +549,27 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function readErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Unknown error.";
+}
+
+export function isLikelyAzureAuthError(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  const message = error.message.toLowerCase();
+  return [
+    "defaultazurecredential",
+    "chainedtokencredential",
+    "credentialunavailableerror",
+    "managedidentitycredential",
+    "azureclicredential",
+    "az login",
+    "run az login",
+    "authentication",
+    "authorization",
+    "unauthorized",
+    "forbidden",
+    "access token",
+    "aadsts",
+  ].some((pattern) => message.includes(pattern));
 }

@@ -16,8 +16,8 @@ export type McpSavedConfigsSectionProps = {
   isLoadingSavedMcpServers: boolean;
   savedMcpError: string | null;
   onSelectedSavedMcpServerIdChange: (value: string) => void;
-  onLoadSavedMcpServerToForm: () => void;
-  onReloadSavedMcpServers: () => void | Promise<void>;
+  onConnectSelectedMcpServer: () => void;
+  onReloadSavedMcpServers: () => void;
 };
 
 export function McpSavedConfigsSection(props: McpSavedConfigsSectionProps) {
@@ -28,16 +28,16 @@ export function McpSavedConfigsSection(props: McpSavedConfigsSectionProps) {
     isLoadingSavedMcpServers,
     savedMcpError,
     onSelectedSavedMcpServerIdChange,
-    onLoadSavedMcpServerToForm,
+    onConnectSelectedMcpServer,
     onReloadSavedMcpServers,
   } = props;
 
   return (
-    <ConfigSection title="Saved Configs 💾">
-      <Field label="💾 Saved config">
+    <ConfigSection title="MCP Servers 🧩">
+      <Field label="🧩 Saved MCP server">
         <Select
           id="mcp-saved-config"
-          title="Choose a saved MCP server configuration."
+          title="Choose a saved MCP server to connect to the current Agent."
           value={selectedSavedMcpServerId}
           onChange={(event) => {
             onSelectedSavedMcpServerIdChange(event.target.value);
@@ -56,8 +56,8 @@ export function McpSavedConfigsSection(props: McpSavedConfigsSectionProps) {
         <Button
           type="button"
           appearance="secondary"
-          title="Load the selected saved MCP config into the form."
-          onClick={onLoadSavedMcpServerToForm}
+          title="Connect the selected saved MCP server to the current Agent."
+          onClick={onConnectSelectedMcpServer}
           disabled={
             isSending ||
             isLoadingSavedMcpServers ||
@@ -65,18 +65,19 @@ export function McpSavedConfigsSection(props: McpSavedConfigsSectionProps) {
             !selectedSavedMcpServerId
           }
         >
-          📥 Load Selected
+          🔌 Connect Selected
         </Button>
         <Button
           type="button"
-          appearance="secondary"
-          title="Reload saved MCP configs from disk."
-          onClick={() => {
-            void onReloadSavedMcpServers();
-          }}
+          appearance="subtle"
+          size="small"
+          className="mcp-refresh-btn"
+          title="Reload saved MCP servers."
+          aria-label="Reload saved MCP servers"
+          onClick={onReloadSavedMcpServers}
           disabled={isSending || isLoadingSavedMcpServers}
         >
-          {isLoadingSavedMcpServers ? "🔄 Loading..." : "🔄 Reload"}
+          ↻
         </Button>
       </div>
       <StatusMessageList messages={[{ intent: "error", text: savedMcpError }]} />

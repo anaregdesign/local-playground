@@ -94,20 +94,22 @@ export function AzureConnectionSection(props: AzureConnectionSectionProps) {
           ) : (
             <p className="field-hint">No active Azure project.</p>
           )}
-          <div className="azure-connection-actions">
-            <Button
-              type="button"
-              appearance="outline"
-              className="azure-logout-btn"
-              title="Sign out from Azure for this app."
-              onClick={() => {
-                void onAzureLogout();
-              }}
-              disabled={isSending || isLoadingAzureConnections || isStartingAzureLogout}
-            >
-              {isStartingAzureLogout ? "🚪 Logging Out..." : "🚪 Logout"}
-            </Button>
-          </div>
+          {activeAzureConnection ? (
+            <div className="azure-connection-actions">
+              <Button
+                type="button"
+                appearance="outline"
+                className="azure-logout-btn"
+                title="Sign out from Azure for this app."
+                onClick={() => {
+                  void onAzureLogout();
+                }}
+                disabled={isSending || isLoadingAzureConnections || isStartingAzureLogout}
+              >
+                {isStartingAzureLogout ? "🚪 Logging Out..." : "🚪 Logout"}
+              </Button>
+            </div>
+          ) : null}
           <StatusMessageList
             messages={[
               { intent: "error", text: azureDeploymentError },

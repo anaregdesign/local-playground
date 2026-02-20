@@ -3,6 +3,7 @@ import {
   readAzureDeploymentList,
   readAzureProjectList,
   readAzureSelectionFromUnknown,
+  readPrincipalIdFromUnknown,
   readTenantIdFromUnknown,
 } from "./parsers";
 
@@ -17,19 +18,33 @@ describe("readTenantIdFromUnknown", () => {
   });
 });
 
+describe("readPrincipalIdFromUnknown", () => {
+  it("returns trimmed principalId for string values", () => {
+    expect(readPrincipalIdFromUnknown(" principal-a ")).toBe("principal-a");
+  });
+
+  it("returns empty string for non-string values", () => {
+    expect(readPrincipalIdFromUnknown(100)).toBe("");
+    expect(readPrincipalIdFromUnknown(null)).toBe("");
+  });
+});
+
 describe("readAzureSelectionFromUnknown", () => {
-  it("returns normalized selection when tenant matches", () => {
+  it("returns normalized selection when tenant and principal match", () => {
     expect(
       readAzureSelectionFromUnknown(
         {
           tenantId: " tenant-a ",
+          principalId: " principal-a ",
           projectId: " project-a ",
           deploymentName: " deploy-a ",
         },
         "tenant-a",
+        "principal-a",
       ),
     ).toEqual({
       tenantId: "tenant-a",
+      principalId: "principal-a",
       projectId: "project-a",
       deploymentName: "deploy-a",
     });
@@ -40,17 +55,34 @@ describe("readAzureSelectionFromUnknown", () => {
       readAzureSelectionFromUnknown(
         {
           tenantId: "tenant-a",
+          principalId: "principal-a",
           projectId: "project-a",
           deploymentName: "deploy-a",
         },
         "tenant-b",
+        "principal-a",
+      ),
+    ).toBeNull();
+  });
+
+  it("returns null when principal does not match expected principal", () => {
+    expect(
+      readAzureSelectionFromUnknown(
+        {
+          tenantId: "tenant-a",
+          principalId: "principal-a",
+          projectId: "project-a",
+          deploymentName: "deploy-a",
+        },
+        "tenant-a",
+        "principal-b",
       ),
     ).toBeNull();
   });
 
   it("returns null for invalid payload", () => {
-    expect(readAzureSelectionFromUnknown({}, "tenant-a")).toBeNull();
-    expect(readAzureSelectionFromUnknown("invalid", "tenant-a")).toBeNull();
+    expect(readAzureSelectionFromUnknown({}, "tenant-a", "principal-a")).toBeNull();
+    expect(readAzureSelectionFromUnknown("invalid", "tenant-a", "principal-a")).toBeNull();
   });
 });
 

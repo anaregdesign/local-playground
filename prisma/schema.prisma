@@ -1,0 +1,48 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id          Int                   @id @default(autoincrement())
+  tenantId    String
+  principalId String
+  azureSelection AzureSelectionPreference?
+  mcpServerProfiles McpServerProfile[]
+
+  @@unique([tenantId, principalId])
+}
+
+model AzureSelectionPreference {
+  id             Int    @id @default(autoincrement())
+  userId         Int    @unique
+  projectId      String
+  deploymentName String
+  user           User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model McpServerProfile {
+  id             String   @id
+  userId         Int
+  sortOrder      Int
+  configKey      String
+  name           String
+  transport      String
+  url            String?
+  headersJson    String?
+  useAzureAuth   Boolean  @default(false)
+  azureAuthScope String?
+  timeoutSeconds Int?
+  command        String?
+  argsJson       String?
+  cwd            String?
+  envJson        String?
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, configKey])
+  @@index([userId, sortOrder])
+}

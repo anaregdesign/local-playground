@@ -1,5 +1,3 @@
-import { mkdir, writeFile } from "node:fs/promises";
-import { homedir } from "node:os";
 import type { Route } from "./+types/api.instruction";
 import { Agent, run, user } from "@openai/agents";
 import { OpenAIResponsesModel } from "@openai/agents-openai";
@@ -7,10 +5,8 @@ import {
   getAzureDependencies,
   normalizeAzureOpenAIBaseURL,
 } from "~/lib/azure/dependencies";
-import { resolveFoundryConfigDirectory } from "~/lib/foundry/config";
 import {
   CHAT_MAX_AGENT_INSTRUCTION_LENGTH,
-  FOUNDRY_PROMPTS_SUBDIRECTORY_NAME,
   INSTRUCTION_ENHANCE_SYSTEM_PROMPT,
   PROMPT_ALLOWED_FILE_EXTENSIONS,
   PROMPT_DEFAULT_FILE_EXTENSION,
@@ -129,7 +125,7 @@ export function loader({}: Route.LoaderArgs) {
   return Response.json(
     {
       error:
-        "Use POST /api/instruction with either { instruction, ... } to save a prompt file or { message, azureConfig, ... } to enhance instructions.",
+        "Use POST /api/instruction with { message, azureConfig, ... } to enhance instructions.",
     },
     { status: 405 },
   );
@@ -148,7 +144,12 @@ export async function action({ request }: Route.ActionArgs) {
   }
 
   if (isInstructionPromptSavePayload(payload)) {
-    return saveInstructionPrompt(payload);
+    return Response.json(
+      {
+        error: "Instruction file save/load must be handled on the client side.",
+      },
+      { status: 400 },
+    );
   }
 
   const message = readMessage(payload);
@@ -469,44 +470,6 @@ function isInstructionPromptSavePayload(payload: unknown): boolean {
   return isRecord(payload) && typeof payload.instruction === "string";
 }
 
-async function saveInstructionPrompt(payload: unknown): Promise<Response> {
-  const instructionResult = parseInstructionContent(payload);
-  if (!instructionResult.ok) {
-    return Response.json({ error: instructionResult.error }, { status: 400 });
-  }
-
-  const requestedPromptFileNameResult = parseRequestedPromptFileName(payload);
-  if (!requestedPromptFileNameResult.ok) {
-    return Response.json({ error: requestedPromptFileNameResult.error }, { status: 400 });
-  }
-
-  const sourceFileName = readOptionalSourceFileName(payload);
-  const promptFileName =
-    requestedPromptFileNameResult.value ?? buildPromptFileName(sourceFileName);
-  const promptsDirectoryPath = joinPathSegments(
-    resolveFoundryConfigDirectory(),
-    FOUNDRY_PROMPTS_SUBDIRECTORY_NAME,
-  );
-  const promptFilePath = joinPathSegments(promptsDirectoryPath, promptFileName);
-
-  try {
-    await mkdir(promptsDirectoryPath, { recursive: true });
-    await writeFile(promptFilePath, instructionResult.value, "utf8");
-  } catch (error) {
-    return Response.json(
-      {
-        error: `Failed to save instruction file: ${readErrorMessage(error)}`,
-      },
-      { status: 500 },
-    );
-  }
-
-  return Response.json({
-    fileName: promptFileName,
-    savedPath: toDisplayPath(promptFilePath),
-  });
-}
-
 export function parseInstructionContent(payload: unknown): ParseResult<string> {
   if (!isRecord(payload)) {
     return { ok: false, error: "Invalid instruction payload." };
@@ -657,45 +620,6 @@ function formatTimestamp(date: Date): string {
   const minute = String(date.getMinutes()).padStart(2, "0");
   const second = String(date.getSeconds()).padStart(2, "0");
   return `${year}${month}${day}-${hour}${minute}${second}`;
-}
-
-function readOptionalSourceFileName(payload: unknown): string | null {
-  if (!isRecord(payload) || typeof payload.sourceFileName !== "string") {
-    return null;
-  }
-
-  const trimmed = payload.sourceFileName.trim();
-  return trimmed || null;
-}
-
-function toDisplayPath(fullPath: string): string {
-  const home = homedir();
-  if (!home) {
-    return fullPath;
-  }
-
-  if (fullPath === home) {
-    return "~";
-  }
-
-  const separator = determinePathSeparatorFromPath(home);
-  const homeWithSeparator = `${home}${separator}`;
-  if (fullPath.startsWith(homeWithSeparator)) {
-    return `~${separator}${fullPath.slice(homeWithSeparator.length)}`;
-  }
-
-  return fullPath;
-}
-
-function joinPathSegments(basePath: string, nextSegment: string): string {
-  const separator = determinePathSeparatorFromPath(basePath);
-  const normalizedBase = basePath.replace(/[\\/]+$/, "");
-  const normalizedSegment = nextSegment.replace(/^[\\/]+/, "");
-  return `${normalizedBase}${separator}${normalizedSegment}`;
-}
-
-function determinePathSeparatorFromPath(pathValue: string): "/" | "\\" {
-  return /\\/.test(pathValue) ? "\\" : "/";
 }
 
 function getBaseName(pathValue: string): string {

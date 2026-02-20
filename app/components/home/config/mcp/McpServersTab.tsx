@@ -21,7 +21,7 @@ export function McpServersTab(props: McpServersTabProps) {
     isLoadingSavedMcpServers,
     savedMcpError,
     onSelectedSavedMcpServerIdChange,
-    onLoadSavedMcpServerToForm,
+    onConnectSelectedMcpServer,
     onReloadSavedMcpServers,
     isSending,
     mcpNameInput,
@@ -73,7 +73,7 @@ export function McpServersTab(props: McpServersTabProps) {
           isLoadingSavedMcpServers={isLoadingSavedMcpServers}
           savedMcpError={savedMcpError}
           onSelectedSavedMcpServerIdChange={onSelectedSavedMcpServerIdChange}
-          onLoadSavedMcpServerToForm={onLoadSavedMcpServerToForm}
+          onConnectSelectedMcpServer={onConnectSelectedMcpServer}
           onReloadSavedMcpServers={onReloadSavedMcpServers}
         />
         <McpAddServerSection

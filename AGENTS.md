@@ -87,9 +87,10 @@
 - Use Azure OpenAI v1 endpoint format (`.../openai/v1/`).
 - Keep Playground locked while auth is unavailable and guide users to `Settings` login.
 - Persist last-used Azure project/deployment per `tenantId`:
-  - macOS/Linux: `~/.foundry_local_playground/azure-selection.json`
-  - Windows: `%APPDATA%\\FoundryLocalPlayground\\azure-selection.json`
-  - legacy read fallback: `%USERPROFILE%\\.foundry_local_playground\\azure-selection.json`
+  - SQLite database: `local-playground.sqlite`
+  - macOS/Linux default location: `~/.foundry_local_playground/local-playground.sqlite`
+  - Windows default location: `%APPDATA%\\FoundryLocalPlayground\\local-playground.sqlite`
+  - Windows fallback when `APPDATA` is unavailable: `%USERPROFILE%\\.foundry_local_playground\\local-playground.sqlite`
 
 ## Agents SDK / Chat Runtime
 
@@ -116,9 +117,10 @@
 
 - Support transports: `streamable_http`, `sse`, `stdio`.
 - Persist saved MCP profiles:
-  - macOS/Linux: `~/.foundry_local_playground/mcp-servers.json`
-  - Windows: `%APPDATA%\\FoundryLocalPlayground\\mcp-servers.json`
-  - legacy read fallback: `%USERPROFILE%\\.foundry_local_playground\\mcp-servers.json`
+  - SQLite database: `local-playground.sqlite`
+  - macOS/Linux default location: `~/.foundry_local_playground/local-playground.sqlite`
+  - Windows default location: `%APPDATA%\\FoundryLocalPlayground\\local-playground.sqlite`
+  - Windows fallback when `APPDATA` is unavailable: `%USERPROFILE%\\.foundry_local_playground\\local-playground.sqlite`
 - Saved configs must load into the Add form first, then be added explicitly.
 - Detect duplicate configurations when saving:
   - reuse existing config
