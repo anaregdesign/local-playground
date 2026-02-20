@@ -25,6 +25,7 @@ import {
   HOME_DEFAULT_MCP_TRANSPORT,
   HOME_INITIAL_MESSAGES,
   HOME_MAIN_SPLITTER_MIN_RIGHT_WIDTH_PX,
+  HOME_THREAD_NAME_MAX_LENGTH,
   HOME_REASONING_EFFORT_OPTIONS,
   INSTRUCTION_ALLOWED_EXTENSIONS,
   INSTRUCTION_ENHANCE_SYSTEM_PROMPT,
@@ -221,6 +222,7 @@ export default function Home() {
   const [mcpRpcHistory, setMcpRpcHistory] = useState<McpRpcHistoryEntry[]>([]);
   const [threads, setThreads] = useState<ThreadSnapshot[]>([]);
   const [activeThreadId, setActiveThreadId] = useState("");
+  const [activeThreadNameInput, setActiveThreadNameInput] = useState("");
   const [selectedThreadId, setSelectedThreadId] = useState("");
   const [newThreadNameInput, setNewThreadNameInput] = useState("");
   const [isLoadingThreads, setIsLoadingThreads] = useState(false);
@@ -246,6 +248,7 @@ export default function Home() {
   const activeThreadIdRef = useRef("");
   const isApplyingThreadStateRef = useRef(false);
   const isThreadsReadyRef = useRef(false);
+  const threadNameSaveTimeoutRef = useRef<number | null>(null);
   const threadSaveTimeoutRef = useRef<number | null>(null);
   const threadLoadRequestSeqRef = useRef(0);
   const threadSaveRequestSeqRef = useRef(0);
@@ -448,6 +451,7 @@ export default function Home() {
 
   useEffect(() => {
     return () => {
+      clearThreadNameSaveTimeout();
       clearThreadSaveTimeout();
     };
   }, []);
@@ -496,6 +500,49 @@ export default function Home() {
     isSending,
     isSwitchingThread,
     isLoadingThreads,
+  ]);
+
+  useEffect(() => {
+    if (!isThreadsReadyRef.current || isApplyingThreadStateRef.current) {
+      return;
+    }
+    if (isSending || isLoadingThreads || isSwitchingThread || isCreatingThread) {
+      return;
+    }
+
+    const currentThreadId = activeThreadIdRef.current.trim();
+    if (!currentThreadId) {
+      return;
+    }
+
+    const baseThread = threads.find((thread) => thread.id === currentThreadId);
+    if (!baseThread) {
+      return;
+    }
+
+    const trimmedName = activeThreadNameInput.trim().slice(0, HOME_THREAD_NAME_MAX_LENGTH);
+    const nextName = trimmedName || baseThread.name;
+    if (nextName === baseThread.name) {
+      return;
+    }
+
+    clearThreadNameSaveTimeout();
+    threadNameSaveTimeoutRef.current = window.setTimeout(() => {
+      threadNameSaveTimeoutRef.current = null;
+      void saveActiveThreadNameInBackground(currentThreadId, nextName);
+    }, 3000);
+
+    return () => {
+      clearThreadNameSaveTimeout();
+    };
+  }, [
+    activeThreadId,
+    activeThreadNameInput,
+    threads,
+    isSending,
+    isLoadingThreads,
+    isSwitchingThread,
+    isCreatingThread,
   ]);
 
   async function loadSavedMcpServers() {
@@ -588,6 +635,14 @@ export default function Home() {
     setIsLoadingSavedMcpServers(false);
   }
 
+  function clearThreadNameSaveTimeout() {
+    const timeoutId = threadNameSaveTimeoutRef.current;
+    if (timeoutId !== null) {
+      window.clearTimeout(timeoutId);
+      threadNameSaveTimeoutRef.current = null;
+    }
+  }
+
   function clearThreadSaveTimeout() {
     const timeoutId = threadSaveTimeoutRef.current;
     if (timeoutId !== null) {
@@ -597,6 +652,7 @@ export default function Home() {
   }
 
   function clearThreadsState(nextError: string | null = null) {
+    clearThreadNameSaveTimeout();
     clearThreadSaveTimeout();
     isThreadsReadyRef.current = false;
     activeThreadIdRef.current = "";
@@ -604,6 +660,7 @@ export default function Home() {
     threadSaveSignatureByIdRef.current.clear();
     setThreads([]);
     setActiveThreadId("");
+    setActiveThreadNameInput("");
     setSelectedThreadId("");
     setThreadError(nextError);
     setIsLoadingThreads(false);
@@ -658,9 +715,29 @@ export default function Home() {
     }));
   }
 
-  function buildThreadSnapshotFromCurrentState(base: ThreadSnapshot): ThreadSnapshot {
+  function resolveThreadNameForSave(baseName: string, includeDraftName: boolean): string {
+    if (!includeDraftName) {
+      return baseName;
+    }
+
+    const draftName = activeThreadNameInput.trim();
+    if (!draftName) {
+      return baseName;
+    }
+
+    return draftName.slice(0, HOME_THREAD_NAME_MAX_LENGTH);
+  }
+
+  function buildThreadSnapshotFromCurrentState(
+    base: ThreadSnapshot,
+    options: {
+      includeDraftName?: boolean;
+    } = {},
+  ): ThreadSnapshot {
+    const includeDraftName = options.includeDraftName === true;
     return {
       ...base,
+      name: resolveThreadNameForSave(base.name, includeDraftName),
       updatedAt: new Date().toISOString(),
       agentInstruction,
       messages: cloneMessages(messages),
@@ -709,6 +786,7 @@ export default function Home() {
 
     activeThreadIdRef.current = thread.id;
     setActiveThreadId(thread.id);
+    setActiveThreadNameInput(thread.name);
     setSelectedThreadId(thread.id);
     setMessages(clonedMessages);
     setMcpServers(clonedMcpServers);
@@ -811,6 +889,9 @@ export default function Home() {
 
       setThreads((current) => upsertThreadSnapshot(current, savedThread));
       threadSaveSignatureByIdRef.current.set(savedThread.id, signature);
+      if (savedThread.id === activeThreadIdRef.current) {
+        setActiveThreadNameInput(savedThread.name);
+      }
       return true;
     } catch (saveError) {
       setThreadError(saveError instanceof Error ? saveError.message : "Failed to save thread.");
@@ -828,12 +909,16 @@ export default function Home() {
       return true;
     }
 
+    clearThreadNameSaveTimeout();
+
     const baseThread = threads.find((thread) => thread.id === currentThreadId);
     if (!baseThread) {
       return true;
     }
 
-    const snapshot = buildThreadSnapshotFromCurrentState(baseThread);
+    const snapshot = buildThreadSnapshotFromCurrentState(baseThread, {
+      includeDraftName: true,
+    });
     const signature = buildThreadSaveSignature(snapshot);
     const savedSignature = threadSaveSignatureByIdRef.current.get(currentThreadId);
     if (savedSignature === signature) {
@@ -842,6 +927,38 @@ export default function Home() {
 
     clearThreadSaveTimeout();
     return await saveThreadSnapshotToDatabase(snapshot, signature);
+  }
+
+  async function saveActiveThreadNameInBackground(
+    threadId: string,
+    name: string,
+  ): Promise<void> {
+    const normalizedThreadId = threadId.trim();
+    const normalizedName = name.trim().slice(0, HOME_THREAD_NAME_MAX_LENGTH);
+    if (!normalizedThreadId || !normalizedName) {
+      return;
+    }
+    if (normalizedThreadId !== activeThreadIdRef.current.trim()) {
+      return;
+    }
+
+    const baseThread = threads.find((thread) => thread.id === normalizedThreadId);
+    if (!baseThread || baseThread.name === normalizedName) {
+      return;
+    }
+
+    const snapshot = buildThreadSnapshotFromCurrentState(baseThread, {
+      includeDraftName: true,
+    });
+    snapshot.name = normalizedName;
+
+    const signature = buildThreadSaveSignature(snapshot);
+    const savedSignature = threadSaveSignatureByIdRef.current.get(normalizedThreadId);
+    if (savedSignature === signature) {
+      return;
+    }
+
+    await saveThreadSnapshotToDatabase(snapshot, signature);
   }
 
   async function loadThreads(): Promise<void> {
@@ -993,6 +1110,12 @@ export default function Home() {
       openThreadsTab: false,
       clearNameInput: false,
     });
+  }
+
+  function handleActiveThreadNameInputChange(value: string) {
+    const normalized = value.slice(0, HOME_THREAD_NAME_MAX_LENGTH);
+    setActiveThreadNameInput(normalized);
+    setThreadError(null);
   }
 
   async function handleThreadChange(nextThreadIdRaw: string) {
@@ -2388,6 +2511,8 @@ export default function Home() {
     mcpHistoryByTurnId,
     isSending,
     isUpdatingThread: isCreatingThread || isSwitchingThread || isLoadingThreads,
+    activeThreadNameInput,
+    onActiveThreadNameChange: handleActiveThreadNameInputChange,
     onCreateThread: handleCreateThreadFromPlaygroundHeader,
     renderMessageContent,
     renderTurnMcpLog,

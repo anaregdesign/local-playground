@@ -186,6 +186,7 @@ export const HOME_MAIN_SPLITTER_MIN_RIGHT_WIDTH_PX = 320;
 export const HOME_MAIN_SPLITTER_MIN_LEFT_WIDTH_PX = 560;
 export const HOME_CHAT_INPUT_MIN_HEIGHT_PX = 44;
 export const HOME_CHAT_INPUT_MAX_HEIGHT_PX = 220;
+export const HOME_THREAD_NAME_MAX_LENGTH = 80;
 
 /**
  * Impact scope:

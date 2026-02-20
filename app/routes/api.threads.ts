@@ -10,7 +10,7 @@ import type { ThreadSnapshot } from "~/lib/home/thread/types";
 import type { Route } from "./+types/api.threads";
 
 const THREAD_NAME_MAX_LENGTH = 80;
-const THREAD_DEFAULT_NAME_PREFIX = "Thread";
+const THREAD_DEFAULT_NAME = "New Thread";
 
 type ThreadAction = "create" | "save";
 
@@ -111,16 +111,8 @@ export async function action({ request }: Route.ActionArgs) {
 async function createThread(userId: number, rawName = ""): Promise<ThreadSnapshot> {
   await ensurePersistenceDatabaseReady();
 
-  const threadCount = await prisma.thread.count({
-    where: {
-      userId,
-    },
-  });
-
   const now = new Date().toISOString();
-  const name =
-    normalizeThreadName(rawName) ||
-    `${THREAD_DEFAULT_NAME_PREFIX} ${Math.max(1, threadCount + 1)}`;
+  const name = normalizeThreadName(rawName) || THREAD_DEFAULT_NAME;
   const id = createRandomId();
 
   await prisma.$transaction(async (transaction) => {
@@ -312,7 +304,7 @@ async function saveThreadSnapshot(
         data: snapshot.mcpServers.map((server, index) =>
           server.transport === "stdio"
             ? {
-                id: server.id,
+                id: buildThreadMcpServerRowId(existing.id, server.id, index),
                 threadId: existing.id,
                 sortOrder: index,
                 name: server.name,
@@ -328,7 +320,7 @@ async function saveThreadSnapshot(
                 envJson: JSON.stringify(server.env),
               }
             : {
-                id: server.id,
+                id: buildThreadMcpServerRowId(existing.id, server.id, index),
                 threadId: existing.id,
                 sortOrder: index,
                 name: server.name,
@@ -520,6 +512,12 @@ function readOptionalThreadName(value: unknown): string {
 
 function normalizeThreadName(value: string): string {
   return value.trim().slice(0, THREAD_NAME_MAX_LENGTH);
+}
+
+function buildThreadMcpServerRowId(threadId: string, sourceId: string, index: number): string {
+  const normalizedThreadId = threadId.trim();
+  const normalizedSourceId = sourceId.trim() || `server-${index + 1}`;
+  return `thread:${normalizedThreadId}:mcp:${index}:${normalizedSourceId}`;
 }
 
 async function readAuthenticatedUser(): Promise<{ id: number } | null> {

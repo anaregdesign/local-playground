@@ -284,6 +284,19 @@ body {
   color: var(--text-subtle);
 }
 
+.chat-header-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-width: 0;
+}
+
+.chat-thread-name-input.fui-Input {
+  min-width: 180px;
+  width: 240px;
+  max-width: min(40vw, 340px);
+}
+
 .chat-header-action-tooltip {
   display: inline-flex;
   align-items: center;
@@ -301,9 +314,17 @@ body {
 }
 
 .chat-new-thread-btn.fui-Button .fui-Button__content {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   margin: 0;
-  font-size: 0.98rem;
-  line-height: 1;
+  line-height: 0;
+}
+
+.chat-new-thread-icon {
+  width: 0.95rem;
+  height: 0.95rem;
+  display: block;
 }
 
 .chat-log {
