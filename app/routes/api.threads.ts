@@ -6,6 +6,7 @@ import {
 } from "~/lib/server/persistence/prisma";
 import { getOrCreateUserByIdentity } from "~/lib/server/persistence/user";
 import { readThreadSnapshotFromUnknown } from "~/lib/home/thread/parsers";
+import { buildThreadMcpServerRowId } from "~/lib/home/thread/server-ids";
 import type { ThreadSnapshot } from "~/lib/home/thread/types";
 import type { Route } from "./+types/api.threads";
 
@@ -512,12 +513,6 @@ function readOptionalThreadName(value: unknown): string {
 
 function normalizeThreadName(value: string): string {
   return value.trim().slice(0, THREAD_NAME_MAX_LENGTH);
-}
-
-function buildThreadMcpServerRowId(threadId: string, sourceId: string, index: number): string {
-  const normalizedThreadId = threadId.trim();
-  const normalizedSourceId = sourceId.trim() || `server-${index + 1}`;
-  return `thread:${normalizedThreadId}:mcp:${index}:${normalizedSourceId}`;
 }
 
 async function readAuthenticatedUser(): Promise<{ id: number } | null> {
