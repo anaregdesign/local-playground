@@ -16,16 +16,11 @@ export function ThreadsTab(props: ThreadsTabProps) {
     activeMainTab,
     threadOptions,
     activeThreadId,
-    newThreadNameInput,
     isSending,
     isLoadingThreads,
     isSwitchingThread,
-    isCreatingThread,
     threadError,
     onActiveThreadChange,
-    onNewThreadNameInputChange,
-    onCreateThread,
-    onReloadThreads,
     instructionSectionProps,
   } = props;
 
@@ -43,16 +38,11 @@ export function ThreadsTab(props: ThreadsTabProps) {
         <ThreadsManageSection
           threadOptions={threadOptions}
           activeThreadId={activeThreadId}
-          newThreadNameInput={newThreadNameInput}
           isSending={isSending}
           isLoadingThreads={isLoadingThreads}
           isSwitchingThread={isSwitchingThread}
-          isCreatingThread={isCreatingThread}
           threadError={threadError}
           onActiveThreadChange={onActiveThreadChange}
-          onNewThreadNameInputChange={onNewThreadNameInputChange}
-          onCreateThread={onCreateThread}
-          onReloadThreads={onReloadThreads}
         />
       </div>
     </section>

@@ -2,7 +2,7 @@ import { FluentUI } from "~/components/home/shared/fluent";
 import { ConfigSection } from "~/components/home/shared/ConfigSection";
 import { StatusMessageList } from "~/components/home/shared/StatusMessageList";
 
-const { Button, Field, Input, Select, Spinner } = FluentUI;
+const { Field, Select, Spinner } = FluentUI;
 
 export type ThreadOption = {
   id: string;
@@ -15,32 +15,22 @@ export type ThreadOption = {
 export type ThreadsManageSectionProps = {
   threadOptions: ThreadOption[];
   activeThreadId: string;
-  newThreadNameInput: string;
   isSending: boolean;
   isLoadingThreads: boolean;
   isSwitchingThread: boolean;
-  isCreatingThread: boolean;
   threadError: string | null;
   onActiveThreadChange: (threadId: string) => void;
-  onNewThreadNameInputChange: (value: string) => void;
-  onCreateThread: () => void | Promise<void>;
-  onReloadThreads: () => void | Promise<void>;
 };
 
 export function ThreadsManageSection(props: ThreadsManageSectionProps) {
   const {
     threadOptions,
     activeThreadId,
-    newThreadNameInput,
     isSending,
     isLoadingThreads,
     isSwitchingThread,
-    isCreatingThread,
     threadError,
     onActiveThreadChange,
-    onNewThreadNameInputChange,
-    onCreateThread,
-    onReloadThreads,
   } = props;
 
   const selectedThread =
@@ -87,45 +77,6 @@ export function ThreadsManageSection(props: ThreadsManageSectionProps) {
           Connected MCP Servers: {selectedThread.mcpServerCount}
         </p>
       ) : null}
-      <Field label="New Thread Name (optional)">
-        <Input
-          id="thread-new-name"
-          title="Optional name for a new thread."
-          value={newThreadNameInput}
-          onChange={(_, data) => {
-            onNewThreadNameInputChange(data.value);
-          }}
-          placeholder="Thread name"
-          disabled={isLoadingThreads || isSwitchingThread || isSending || isCreatingThread}
-        />
-      </Field>
-      <div className="mcp-action-row">
-        <Button
-          type="button"
-          appearance="primary"
-          title="Create a new thread and switch to it."
-          onClick={() => {
-            void onCreateThread();
-          }}
-          disabled={isLoadingThreads || isSwitchingThread || isSending || isCreatingThread}
-        >
-          {isCreatingThread ? "🧵 Creating Thread..." : "🧵 Create Thread"}
-        </Button>
-        <Button
-          type="button"
-          appearance="subtle"
-          size="small"
-          className="mcp-refresh-btn"
-          title="Reload threads from database."
-          aria-label="Reload threads"
-          onClick={() => {
-            void onReloadThreads();
-          }}
-          disabled={isLoadingThreads || isSwitchingThread || isSending}
-        >
-          ↻
-        </Button>
-      </div>
       <StatusMessageList messages={[{ intent: "error", text: threadError }]} />
     </ConfigSection>
   );

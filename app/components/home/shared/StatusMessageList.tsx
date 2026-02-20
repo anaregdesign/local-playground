@@ -6,7 +6,7 @@ const { MessageBar, MessageBarBody, MessageBarTitle } = FluentUI;
 
 type StatusMessageIntent = NonNullable<ComponentProps<typeof MessageBar>["intent"]>;
 
-type StatusMessage = {
+export type StatusMessage = {
   intent: StatusMessageIntent;
   text: string | null | undefined;
   title?: string;

@@ -215,6 +215,7 @@ export default function Home() {
   const [lastErrorTurnId, setLastErrorTurnId] = useState<string | null>(null);
   const [isComposing, setIsComposing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [systemNotice, setSystemNotice] = useState<string | null>(null);
   const [isStartingAzureLogin, setIsStartingAzureLogin] = useState(false);
   const [isStartingAzureLogout, setIsStartingAzureLogout] = useState(false);
   const [azureLoginError, setAzureLoginError] = useState<string | null>(null);
@@ -224,7 +225,6 @@ export default function Home() {
   const [activeThreadId, setActiveThreadId] = useState("");
   const [activeThreadNameInput, setActiveThreadNameInput] = useState("");
   const [selectedThreadId, setSelectedThreadId] = useState("");
-  const [newThreadNameInput, setNewThreadNameInput] = useState("");
   const [isLoadingThreads, setIsLoadingThreads] = useState(false);
   const [isSavingThread, setIsSavingThread] = useState(false);
   const [isSwitchingThread, setIsSwitchingThread] = useState(false);
@@ -681,6 +681,7 @@ export default function Home() {
     setDraft("");
     setDraftAttachments([]);
     setChatAttachmentError(null);
+    setSystemNotice(null);
     setActiveTurnId(null);
     setLastErrorTurnId(null);
     setSendProgressMessages([]);
@@ -803,6 +804,7 @@ export default function Home() {
     setDraftAttachments([]);
     setChatAttachmentError(null);
     setError(null);
+    setSystemNotice(null);
     setActiveTurnId(null);
     setLastErrorTurnId(null);
     setSendProgressMessages([]);
@@ -1032,8 +1034,6 @@ export default function Home() {
 
   async function createThreadAndSwitch(options: {
     name?: string;
-    openThreadsTab?: boolean;
-    clearNameInput?: boolean;
   } = {}): Promise<boolean> {
     if (isSending || isLoadingThreads || isSwitchingThread || isCreatingThread) {
       return false;
@@ -1080,13 +1080,7 @@ export default function Home() {
       threadSaveSignatureByIdRef.current.set(createdThread.id, createdSignature);
       setThreads((current) => upsertThreadSnapshot(current, createdThread));
       isThreadsReadyRef.current = true;
-      if (options.clearNameInput === true) {
-        setNewThreadNameInput("");
-      }
       applyThreadSnapshotToState(createdThread);
-      if (options.openThreadsTab === true) {
-        setActiveMainTab("threads");
-      }
       return true;
     } catch (createError) {
       setThreadError(createError instanceof Error ? createError.message : "Failed to create thread.");
@@ -1096,19 +1090,9 @@ export default function Home() {
     }
   }
 
-  async function handleCreateThread() {
-    await createThreadAndSwitch({
-      name: newThreadNameInput,
-      openThreadsTab: true,
-      clearNameInput: true,
-    });
-  }
-
   async function handleCreateThreadFromPlaygroundHeader() {
     await createThreadAndSwitch({
       name: "",
-      openThreadsTab: false,
-      clearNameInput: false,
     });
   }
 
@@ -1152,14 +1136,6 @@ export default function Home() {
     } finally {
       setIsSwitchingThread(false);
     }
-  }
-
-  function handleReloadThreads() {
-    if (isSending || isSwitchingThread) {
-      return;
-    }
-
-    void loadThreads();
   }
 
   async function loadAzureSelectionPreference(
@@ -1549,6 +1525,7 @@ export default function Home() {
     setDraftAttachments([]);
     setChatAttachmentError(null);
     setError(null);
+    setSystemNotice(null);
     setAzureLoginError(null);
     setLastErrorTurnId(null);
     setIsSending(true);
@@ -1645,6 +1622,7 @@ export default function Home() {
     }
 
     setAzureLoginError(null);
+    setSystemNotice(null);
     setIsStartingAzureLogin(true);
     try {
       const stillAuthRequired = await loadAzureConnections();
@@ -1660,7 +1638,7 @@ export default function Home() {
         throw new Error(payload.error || "Failed to start Azure login.");
       }
 
-      setError(payload.message || "Azure login started. Sign in and reload Azure connections.");
+      setSystemNotice(payload.message || "Azure login started. Sign in and reload Azure connections.");
       setAzureConnectionError(null);
     } catch (loginError) {
       setAzureLoginError(
@@ -1677,6 +1655,7 @@ export default function Home() {
     }
 
     setAzureLogoutError(null);
+    setSystemNotice(null);
     setIsStartingAzureLogout(true);
     try {
       const response = await fetch("/api/azure-logout", {
@@ -1687,7 +1666,7 @@ export default function Home() {
         throw new Error(payload.error || "Failed to run Azure logout.");
       }
 
-      setError(payload.message || "Azure logout completed.");
+      setSystemNotice(payload.message || "Azure logout completed.");
       setAzureDeploymentError(null);
       await loadAzureConnections();
     } catch (logoutError) {
@@ -2357,6 +2336,7 @@ export default function Home() {
     }
 
     setError(null);
+    setSystemNotice(null);
     setAzureLoginError(null);
 
     if (isAzureAuthRequired || isLikelyChatAzureAuthError(azureConnectionError)) {
@@ -2456,6 +2436,9 @@ export default function Home() {
     isSavingMcpServer,
     mcpFormError,
     mcpFormWarning,
+    onClearMcpFormWarning: () => {
+      setMcpFormWarning(null);
+    },
   };
 
   const threadsTabProps = {
@@ -2476,6 +2459,12 @@ export default function Home() {
       instructionSaveSuccess,
       instructionEnhanceError,
       instructionEnhanceSuccess,
+      onClearInstructionSaveSuccess: () => {
+        setInstructionSaveSuccess(null);
+      },
+      onClearInstructionEnhanceSuccess: () => {
+        setInstructionEnhanceSuccess(null);
+      },
       onAgentInstructionChange: handleAgentInstructionChange,
       onInstructionFileChange: handleInstructionFileChange,
       onSaveInstructionPrompt: handleSaveInstructionPrompt,
@@ -2492,18 +2481,13 @@ export default function Home() {
       mcpServerCount: thread.mcpServerCount,
     })),
     activeThreadId: selectedThreadId || activeThreadId,
-    newThreadNameInput,
     isSending: isSending || isSavingThread,
     isLoadingThreads,
     isSwitchingThread,
-    isCreatingThread,
     threadError,
     onActiveThreadChange: (threadId: string) => {
       void handleThreadChange(threadId);
     },
-    onNewThreadNameInputChange: setNewThreadNameInput,
-    onCreateThread: handleCreateThread,
-    onReloadThreads: handleReloadThreads,
   };
 
   const playgroundPanelProps = {
@@ -2522,6 +2506,10 @@ export default function Home() {
     activeTurnMcpHistory,
     errorTurnMcpHistory,
     endOfMessagesRef,
+    systemNotice,
+    onClearSystemNotice: () => {
+      setSystemNotice(null);
+    },
     error,
     azureLoginError,
     onSubmit: handleSubmit,

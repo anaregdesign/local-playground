@@ -1,6 +1,6 @@
 import { FluentUI } from "~/components/home/shared/fluent";
 import { ConfigSection } from "~/components/home/shared/ConfigSection";
-import { StatusMessageList } from "~/components/home/shared/StatusMessageList";
+import { AutoDismissStatusMessageList } from "~/components/home/shared/AutoDismissStatusMessageList";
 import type { McpTransport } from "~/components/home/shared/types";
 
 const {
@@ -47,6 +47,7 @@ export type McpAddServerSectionProps = {
   isSavingMcpServer: boolean;
   mcpFormError: string | null;
   mcpFormWarning: string | null;
+  onClearMcpFormWarning: () => void;
 };
 
 export function McpAddServerSection(props: McpAddServerSectionProps) {
@@ -82,6 +83,7 @@ export function McpAddServerSection(props: McpAddServerSectionProps) {
     isSavingMcpServer,
     mcpFormError,
     mcpFormWarning,
+    onClearMcpFormWarning,
   } = props;
 
   return (
@@ -274,10 +276,14 @@ export function McpAddServerSection(props: McpAddServerSectionProps) {
       >
         ➕ Add Server
       </Button>
-      <StatusMessageList
+      <AutoDismissStatusMessageList
         messages={[
           { intent: "error", text: mcpFormError },
-          { intent: "warning", text: mcpFormWarning },
+          {
+            intent: "warning",
+            text: mcpFormWarning,
+            onClear: onClearMcpFormWarning,
+          },
         ]}
       />
     </ConfigSection>

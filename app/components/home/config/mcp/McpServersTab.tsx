@@ -54,6 +54,7 @@ export function McpServersTab(props: McpServersTabProps) {
     isSavingMcpServer,
     mcpFormError,
     mcpFormWarning,
+    onClearMcpFormWarning,
   } = props;
 
   return (
@@ -108,6 +109,7 @@ export function McpServersTab(props: McpServersTabProps) {
           isSavingMcpServer={isSavingMcpServer}
           mcpFormError={mcpFormError}
           mcpFormWarning={mcpFormWarning}
+          onClearMcpFormWarning={onClearMcpFormWarning}
         />
       </div>
     </section>

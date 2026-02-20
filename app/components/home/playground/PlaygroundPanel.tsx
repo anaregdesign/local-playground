@@ -9,6 +9,7 @@ import {
 import { CopyIconButton } from "~/components/home/shared/CopyIconButton";
 import { FluentUI } from "~/components/home/shared/fluent";
 import { LabeledTooltip } from "~/components/home/shared/LabeledTooltip";
+import { AutoDismissStatusMessageList } from "~/components/home/shared/AutoDismissStatusMessageList";
 import { StatusMessageList } from "~/components/home/shared/StatusMessageList";
 import type { ReasoningEffort } from "~/components/home/shared/types";
 import { formatChatAttachmentSize } from "~/lib/home/chat/attachments";
@@ -91,6 +92,8 @@ type PlaygroundPanelProps<
   activeTurnMcpHistory: TMcpRpcHistoryEntry[];
   errorTurnMcpHistory: TMcpRpcHistoryEntry[];
   endOfMessagesRef: RefObject<HTMLDivElement | null>;
+  systemNotice: string | null;
+  onClearSystemNotice: () => void;
   error: string | null;
   azureLoginError: string | null;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
@@ -151,6 +154,8 @@ export function PlaygroundPanel<
     activeTurnMcpHistory,
     errorTurnMcpHistory,
     endOfMessagesRef,
+    systemNotice,
+    onClearSystemNotice,
     error,
     azureLoginError,
     onSubmit,
@@ -452,6 +457,17 @@ export function PlaygroundPanel<
       </div>
 
       <footer className="chat-footer">
+        <AutoDismissStatusMessageList
+          className="chat-error-stack"
+          messages={[
+            {
+              intent: "success",
+              title: "System",
+              text: systemNotice,
+              onClear: onClearSystemNotice,
+            },
+          ]}
+        />
         {error || azureLoginError || chatAttachmentError ? (
           <StatusMessageList
             className="chat-error-stack"
