@@ -70,13 +70,13 @@ export function ThreadsManageSection(props: ThreadsManageSectionProps) {
                 >
                   <span className="threads-active-item-content">
                     <span className="threads-active-item-name">{thread.name}</span>
-                    <span
-                      className={`threads-active-item-status${
-                        thread.isAwaitingResponse ? " is-pending" : ""
-                      }`}
-                    >
-                      {thread.isAwaitingResponse ? "Awaiting response" : "Idle"}
-                    </span>
+                    {thread.isAwaitingResponse ? (
+                      <Spinner
+                        size="tiny"
+                        className="threads-active-item-pending-spinner"
+                        aria-label="Awaiting response"
+                      />
+                    ) : null}
                   </span>
                 </Button>
               );
@@ -86,9 +86,8 @@ export function ThreadsManageSection(props: ThreadsManageSectionProps) {
       </Field>
       {selectedThread ? (
         <p className="field-hint">
-          Status: {selectedThread.isAwaitingResponse ? "Awaiting response" : "Idle"} | Updated:{" "}
-          {formatUpdatedAt(selectedThread.updatedAt)} | Messages: {selectedThread.messageCount} | Connected MCP
-          Servers: {selectedThread.mcpServerCount}
+          Updated: {formatUpdatedAt(selectedThread.updatedAt)} | Messages: {selectedThread.messageCount} |
+          Connected MCP Servers: {selectedThread.mcpServerCount}
         </p>
       ) : null}
       <StatusMessageList messages={[{ intent: "error", text: threadError }]} />
