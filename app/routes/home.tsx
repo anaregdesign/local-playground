@@ -428,7 +428,10 @@ export default function Home() {
       if (!response.ok) {
         const authRequired = payload.authRequired === true || response.status === 401;
         if (authRequired) {
-          clearSavedMcpServersState();
+          setIsAzureAuthRequired(true);
+          clearSavedMcpServersState(
+            "Azure login is required. Open Settings and sign in to load MCP servers.",
+          );
           return;
         }
         throw new Error(payload.error || "Failed to load saved MCP servers.");
@@ -462,10 +465,10 @@ export default function Home() {
     }
   }
 
-  function clearSavedMcpServersState() {
+  function clearSavedMcpServersState(nextError: string | null = null) {
     setSavedMcpServers([]);
     setSelectedSavedMcpServerId("");
-    setSavedMcpError(null);
+    setSavedMcpError(nextError);
     setIsLoadingSavedMcpServers(false);
   }
 
@@ -720,6 +723,11 @@ export default function Home() {
 
     const payload = (await response.json()) as McpServersApiResponse;
     if (!response.ok) {
+      const authRequired = payload.authRequired === true || response.status === 401;
+      if (authRequired) {
+        setIsAzureAuthRequired(true);
+        throw new Error("Azure login is required. Open Settings and sign in to save MCP servers.");
+      }
       throw new Error(payload.error || "Failed to save MCP server.");
     }
 
