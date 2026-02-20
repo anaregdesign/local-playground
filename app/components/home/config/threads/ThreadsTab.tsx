@@ -1,11 +1,14 @@
-import type { MainViewTab } from "~/components/home/shared/types";
+import type { ComponentProps } from "react";
+import { InstructionSection } from "~/components/home/config/threads/InstructionSection";
 import {
   ThreadsManageSection,
   type ThreadsManageSectionProps,
 } from "~/components/home/config/threads/ThreadsManageSection";
+import type { MainViewTab } from "~/components/home/shared/types";
 
 type ThreadsTabProps = {
   activeMainTab: MainViewTab;
+  instructionSectionProps: ComponentProps<typeof InstructionSection>;
 } & ThreadsManageSectionProps;
 
 export function ThreadsTab(props: ThreadsTabProps) {
@@ -23,6 +26,7 @@ export function ThreadsTab(props: ThreadsTabProps) {
     onNewThreadNameInputChange,
     onCreateThread,
     onReloadThreads,
+    instructionSectionProps,
   } = props;
 
   return (
@@ -35,6 +39,7 @@ export function ThreadsTab(props: ThreadsTabProps) {
       hidden={activeMainTab !== "threads"}
     >
       <div className="threads-content">
+        <InstructionSection {...instructionSectionProps} />
         <ThreadsManageSection
           threadOptions={threadOptions}
           activeThreadId={activeThreadId}

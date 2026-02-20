@@ -1182,6 +1182,10 @@ body {
   border-top: 1px solid rgba(225, 223, 221, 0.82);
 }
 
+.setting-group-threads-manage {
+  order: 2;
+}
+
 .setting-group + .setting-group {
   border-top: 1px solid rgba(225, 223, 221, 0.82);
 }

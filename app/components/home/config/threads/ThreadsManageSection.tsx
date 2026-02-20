@@ -48,6 +48,7 @@ export function ThreadsManageSection(props: ThreadsManageSectionProps) {
 
   return (
     <ConfigSection
+      className="setting-group-threads-manage"
       title="Threads 🧵"
       description="Switch Playground context across conversation, MCP logs, instruction, and connected MCP Servers."
     >

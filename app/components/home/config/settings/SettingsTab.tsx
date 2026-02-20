@@ -1,16 +1,14 @@
 import type { ComponentProps } from "react";
 import { AzureConnectionSection } from "~/components/home/config/settings/AzureConnectionSection";
-import { InstructionSection } from "~/components/home/config/settings/InstructionSection";
 import type { MainViewTab } from "~/components/home/shared/types";
 
 type SettingsTabProps = {
   activeMainTab: MainViewTab;
   azureConnectionSectionProps: ComponentProps<typeof AzureConnectionSection>;
-  instructionSectionProps: ComponentProps<typeof InstructionSection>;
 };
 
 export function SettingsTab(props: SettingsTabProps) {
-  const { activeMainTab, azureConnectionSectionProps, instructionSectionProps } = props;
+  const { activeMainTab, azureConnectionSectionProps } = props;
 
   return (
     <section
@@ -23,7 +21,6 @@ export function SettingsTab(props: SettingsTabProps) {
     >
       <div className="settings-content">
         <AzureConnectionSection {...azureConnectionSectionProps} />
-        <InstructionSection {...instructionSectionProps} />
       </div>
     </section>
   );
