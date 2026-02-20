@@ -184,7 +184,6 @@ export function useWorkspaceController() {
   const [threads, setThreads] = useState<ThreadSnapshot[]>([]);
   const [activeThreadId, setActiveThreadId] = useState("");
   const [activeThreadNameInput, setActiveThreadNameInput] = useState("");
-  const [selectedThreadId, setSelectedThreadId] = useState("");
   const [isLoadingThreads, setIsLoadingThreads] = useState(false);
   const [isSavingThread, setIsSavingThread] = useState(false);
   const [isSwitchingThread, setIsSwitchingThread] = useState(false);
@@ -200,8 +199,7 @@ export function useWorkspaceController() {
   const azureDeploymentRequestSeqRef = useRef(0);
   const activeAzureTenantIdRef = useRef("");
   const activeAzurePrincipalIdRef = useRef("");
-  const activeSavedMcpUserKeyRef = useRef("");
-  const activeThreadsUserKeyRef = useRef("");
+  const activeWorkspaceUserKeyRef = useRef("");
   const savedMcpLoginRetryTimeoutRef = useRef<number | null>(null);
   const savedMcpRequestSeqRef = useRef(0);
   const preferredAzureSelectionRef = useRef<AzureSelectionPreference | null>(null);
@@ -598,7 +596,7 @@ export function useWorkspaceController() {
   ]);
 
   async function loadSavedMcpServers() {
-    const expectedUserKey = activeSavedMcpUserKeyRef.current.trim();
+    const expectedUserKey = activeWorkspaceUserKeyRef.current.trim();
     if (!expectedUserKey) {
       clearSavedMcpServersState();
       return;
@@ -617,7 +615,7 @@ export function useWorkspaceController() {
       if (requestSeq !== savedMcpRequestSeqRef.current) {
         return;
       }
-      if (expectedUserKey !== activeSavedMcpUserKeyRef.current.trim()) {
+      if (expectedUserKey !== activeWorkspaceUserKeyRef.current.trim()) {
         return;
       }
 
@@ -645,7 +643,7 @@ export function useWorkspaceController() {
       if (requestSeq !== savedMcpRequestSeqRef.current) {
         return;
       }
-      if (expectedUserKey !== activeSavedMcpUserKeyRef.current.trim()) {
+      if (expectedUserKey !== activeWorkspaceUserKeyRef.current.trim()) {
         return;
       }
       logHomeError("load_saved_mcp_servers_failed", loadError, {
@@ -658,7 +656,7 @@ export function useWorkspaceController() {
     } finally {
       if (
         requestSeq === savedMcpRequestSeqRef.current &&
-        expectedUserKey === activeSavedMcpUserKeyRef.current.trim()
+        expectedUserKey === activeWorkspaceUserKeyRef.current.trim()
       ) {
         setIsLoadingSavedMcpServers(false);
       }
@@ -677,7 +675,7 @@ export function useWorkspaceController() {
     clearSavedMcpLoginRetryTimeout();
     savedMcpLoginRetryTimeoutRef.current = window.setTimeout(() => {
       savedMcpLoginRetryTimeoutRef.current = null;
-      if (activeSavedMcpUserKeyRef.current === expectedUserKey) {
+      if (activeWorkspaceUserKeyRef.current === expectedUserKey) {
         void loadSavedMcpServers();
       }
     }, 1200);
@@ -731,7 +729,6 @@ export function useWorkspaceController() {
     setThreadsState([]);
     setActiveThreadId("");
     setActiveThreadNameInput("");
-    setSelectedThreadId("");
     setThreadError(nextError);
     setIsLoadingThreads(false);
     setIsSwitchingThread(false);
@@ -906,7 +903,6 @@ export function useWorkspaceController() {
     activeThreadIdRef.current = thread.id;
     setActiveThreadId(thread.id);
     setActiveThreadNameInput(thread.name);
-    setSelectedThreadId(thread.id);
     setMessages(clonedMessages);
     setMcpServers(clonedMcpServers);
     setMcpRpcHistory(clonedMcpRpcHistory);
@@ -940,7 +936,7 @@ export function useWorkspaceController() {
   ): Promise<boolean> {
     const showBusy = options.showBusy !== false;
     const reportError = options.reportError !== false;
-    const expectedUserKey = activeThreadsUserKeyRef.current.trim();
+    const expectedUserKey = activeWorkspaceUserKeyRef.current.trim();
     if (!expectedUserKey) {
       return false;
     }
@@ -984,7 +980,7 @@ export function useWorkspaceController() {
       if (!savedThread) {
         throw new Error("Saved thread payload is invalid.");
       }
-      if (expectedUserKey !== activeThreadsUserKeyRef.current.trim()) {
+      if (expectedUserKey !== activeWorkspaceUserKeyRef.current.trim()) {
         return false;
       }
 
@@ -1099,7 +1095,7 @@ export function useWorkspaceController() {
   }
 
   async function loadThreads(): Promise<void> {
-    const expectedUserKey = activeThreadsUserKeyRef.current.trim();
+    const expectedUserKey = activeWorkspaceUserKeyRef.current.trim();
     if (!expectedUserKey) {
       clearThreadsState();
       return;
@@ -1129,7 +1125,7 @@ export function useWorkspaceController() {
       if (requestSeq !== threadLoadRequestSeqRef.current) {
         return;
       }
-      if (expectedUserKey !== activeThreadsUserKeyRef.current.trim()) {
+      if (expectedUserKey !== activeWorkspaceUserKeyRef.current.trim()) {
         return;
       }
 
@@ -1167,7 +1163,7 @@ export function useWorkspaceController() {
       if (requestSeq !== threadLoadRequestSeqRef.current) {
         return;
       }
-      if (expectedUserKey !== activeThreadsUserKeyRef.current.trim()) {
+      if (expectedUserKey !== activeWorkspaceUserKeyRef.current.trim()) {
         return;
       }
 
@@ -1264,25 +1260,21 @@ export function useWorkspaceController() {
     const nextThreadId = nextThreadIdRaw.trim();
     setThreadError(null);
     if (!nextThreadId || nextThreadId === activeThreadIdRef.current) {
-      setSelectedThreadId(activeThreadIdRef.current);
       return;
     }
 
     const nextThread = threadsRef.current.find((thread) => thread.id === nextThreadId);
     if (!nextThread) {
-      setSelectedThreadId(activeThreadIdRef.current);
       setThreadError("Selected thread is not available.");
       return;
     }
 
-    setSelectedThreadId(nextThreadId);
     setIsSwitchingThread(true);
     try {
       const currentThreadId = activeThreadIdRef.current.trim();
       if (!readThreadRequestState(currentThreadId).isSending) {
         const saved = await flushActiveThreadSnapshot();
         if (!saved) {
-          setSelectedThreadId(activeThreadIdRef.current);
           return;
         }
       }
@@ -1350,6 +1342,21 @@ export function useWorkspaceController() {
     }
   }
 
+  function clearActiveAzureIdentity(): void {
+    activeAzureTenantIdRef.current = "";
+    activeAzurePrincipalIdRef.current = "";
+    activeWorkspaceUserKeyRef.current = "";
+    preferredAzureSelectionRef.current = null;
+  }
+
+  function updateActiveAzureIdentity(tenantId: string, principalId: string): string {
+    activeAzureTenantIdRef.current = tenantId;
+    activeAzurePrincipalIdRef.current = principalId;
+    const nextWorkspaceUserKey = tenantId && principalId ? `${tenantId}::${principalId}` : "";
+    activeWorkspaceUserKeyRef.current = nextWorkspaceUserKey;
+    return nextWorkspaceUserKey;
+  }
+
   async function loadAzureConnections(): Promise<boolean> {
     setIsLoadingAzureConnections(true);
 
@@ -1361,11 +1368,7 @@ export function useWorkspaceController() {
       const payload = (await response.json()) as AzureConnectionsApiResponse;
       if (!response.ok) {
         const authRequired = payload.authRequired === true || response.status === 401;
-        activeAzureTenantIdRef.current = "";
-        activeAzurePrincipalIdRef.current = "";
-        activeSavedMcpUserKeyRef.current = "";
-        activeThreadsUserKeyRef.current = "";
-        preferredAzureSelectionRef.current = null;
+        clearActiveAzureIdentity();
         clearSavedMcpServersState();
         clearThreadsState(
           authRequired
@@ -1385,30 +1388,20 @@ export function useWorkspaceController() {
       const parsedProjects = readAzureProjectList(payload.projects);
       const tenantId = readTenantIdFromUnknown(payload.tenantId);
       const principalId = readPrincipalIdFromUnknown(payload.principalId);
-      activeAzureTenantIdRef.current = tenantId;
-      activeAzurePrincipalIdRef.current = principalId;
-      const nextSavedMcpUserKey =
-        tenantId && principalId ? `${tenantId}::${principalId}` : "";
-      if (!nextSavedMcpUserKey) {
-        activeSavedMcpUserKeyRef.current = "";
-        activeThreadsUserKeyRef.current = "";
+      const previousWorkspaceUserKey = activeWorkspaceUserKeyRef.current;
+      const nextWorkspaceUserKey = updateActiveAzureIdentity(tenantId, principalId);
+      if (!nextWorkspaceUserKey) {
         clearSavedMcpServersState();
         clearThreadsState();
-      } else if (activeSavedMcpUserKeyRef.current !== nextSavedMcpUserKey) {
-        activeSavedMcpUserKeyRef.current = nextSavedMcpUserKey;
+      } else if (previousWorkspaceUserKey !== nextWorkspaceUserKey) {
         void loadSavedMcpServers();
-      }
-      if (!nextSavedMcpUserKey) {
-        activeThreadsUserKeyRef.current = "";
-      } else if (activeThreadsUserKeyRef.current !== nextSavedMcpUserKey) {
-        activeThreadsUserKeyRef.current = nextSavedMcpUserKey;
         void loadThreads();
       } else if (!isThreadsReadyRef.current && !isLoadingThreads) {
         void loadThreads();
       }
-      if (shouldScheduleSavedMcpLoginRetry(isAzureAuthRequired, nextSavedMcpUserKey)) {
+      if (shouldScheduleSavedMcpLoginRetry(isAzureAuthRequired, nextWorkspaceUserKey)) {
         // After login completes, token propagation can briefly lag for MCP route auth.
-        scheduleSavedMcpLoginRetry(nextSavedMcpUserKey);
+        scheduleSavedMcpLoginRetry(nextWorkspaceUserKey);
       } else {
         clearSavedMcpLoginRetryTimeout();
       }
@@ -1436,11 +1429,7 @@ export function useWorkspaceController() {
       logHomeError("load_azure_connections_failed", loadError, {
         action: "load_azure_connections",
       });
-      activeAzureTenantIdRef.current = "";
-      activeAzurePrincipalIdRef.current = "";
-      activeSavedMcpUserKeyRef.current = "";
-      activeThreadsUserKeyRef.current = "";
-      preferredAzureSelectionRef.current = null;
+      clearActiveAzureIdentity();
       clearSavedMcpServersState();
       clearThreadsState();
       setIsAzureAuthRequired(false);
@@ -1487,11 +1476,7 @@ export function useWorkspaceController() {
       if (!response.ok) {
         const authRequired = payload.authRequired === true || response.status === 401;
         if (authRequired) {
-          activeAzureTenantIdRef.current = "";
-          activeAzurePrincipalIdRef.current = "";
-          activeSavedMcpUserKeyRef.current = "";
-          activeThreadsUserKeyRef.current = "";
-          preferredAzureSelectionRef.current = null;
+          clearActiveAzureIdentity();
           clearSavedMcpServersState();
           clearThreadsState("Azure login is required. Open Settings and sign in to load threads.");
         }
@@ -2737,7 +2722,7 @@ export function useWorkspaceController() {
           (threadRequestStateById[thread.id] ?? HOME_DEFAULT_THREAD_REQUEST_STATE).isSending,
       };
     }),
-    activeThreadId: selectedThreadId || activeThreadId,
+    activeThreadId,
     isLoadingThreads,
     isSwitchingThread,
     threadError,
