@@ -2725,15 +2725,18 @@ export function useWorkspaceController() {
       onAdoptEnhancedInstruction: handleAdoptEnhancedInstruction,
       onAdoptOriginalInstruction: handleAdoptOriginalInstruction,
     },
-    threadOptions: threadSummaries.map((thread) => ({
-      id: thread.id,
-      name: thread.name,
-      updatedAt: thread.updatedAt,
-      messageCount: thread.messageCount,
-      mcpServerCount: thread.mcpServerCount,
-      isAwaitingResponse:
-        (threadRequestStateById[thread.id] ?? HOME_DEFAULT_THREAD_REQUEST_STATE).isSending,
-    })),
+    threadOptions: threadSummaries.map((thread) => {
+      const isActiveThread = thread.id === activeThreadId;
+      return {
+        id: thread.id,
+        name: isActiveThread ? activeThreadNameInput : thread.name,
+        updatedAt: thread.updatedAt,
+        messageCount: thread.messageCount,
+        mcpServerCount: thread.mcpServerCount,
+        isAwaitingResponse:
+          (threadRequestStateById[thread.id] ?? HOME_DEFAULT_THREAD_REQUEST_STATE).isSending,
+      };
+    }),
     activeThreadId: selectedThreadId || activeThreadId,
     isLoadingThreads,
     isSwitchingThread,
