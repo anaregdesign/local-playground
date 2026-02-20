@@ -94,8 +94,6 @@ import {
   upsertMcpServer,
 } from "~/lib/home/mcp/profile";
 import {
-  formatKeyValueLines,
-  formatStdioArgsInput,
   parseStdioArgsInput,
   parseStdioEnvInput,
 } from "~/lib/home/mcp/stdio-inputs";
@@ -562,6 +560,14 @@ export default function Home() {
         activeSavedMcpUserKeyRef.current = nextSavedMcpUserKey;
         void loadSavedMcpServers();
       }
+      if (isAzureAuthRequired && nextSavedMcpUserKey) {
+        // After login completes, token propagation can briefly lag for MCP route auth.
+        window.setTimeout(() => {
+          if (activeSavedMcpUserKeyRef.current === nextSavedMcpUserKey) {
+            void loadSavedMcpServers();
+          }
+        }, 1200);
+      }
       const preferredSelection =
         tenantId && principalId
           ? await loadAzureSelectionPreference(tenantId, principalId)
@@ -735,6 +741,21 @@ export default function Home() {
       profile,
       warning: typeof payload.warning === "string" ? payload.warning : null,
     };
+  }
+
+  function connectMcpServerToAgent(serverToConnect: McpServerConfig) {
+    setMcpServers((current) => {
+      const existingIndex = current.findIndex(
+        (server) => buildMcpServerKey(server) === buildMcpServerKey(serverToConnect),
+      );
+      if (existingIndex >= 0) {
+        return current.map((server, index) =>
+          index === existingIndex ? { ...server, name: serverToConnect.name } : server,
+        );
+      }
+
+      return [...current, serverToConnect];
+    });
   }
 
   async function sendMessage() {
@@ -948,6 +969,11 @@ export default function Home() {
     } finally {
       setIsStartingAzureLogout(false);
     }
+  }
+
+  function handleReloadSavedMcpServers() {
+    setSavedMcpError(null);
+    void loadSavedMcpServers();
   }
 
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -1508,15 +1534,7 @@ export default function Home() {
       saveWarning = saveResult.warning;
       savedProfileName = saveResult.profile.name;
 
-      if (existingServerIndex >= 0) {
-        setMcpServers((current) =>
-          current.map((server, index) =>
-            index === existingServerIndex ? { ...server, name: savedProfileName } : server,
-          ),
-        );
-      } else {
-        setMcpServers((current) => [...current, { ...serverToAdd, name: savedProfileName }]);
-      }
+      connectMcpServerToAgent({ ...serverToAdd, name: savedProfileName });
 
       setSavedMcpError(null);
     } catch (saveError) {
@@ -1549,9 +1567,9 @@ export default function Home() {
     setMcpTransport(HOME_DEFAULT_MCP_TRANSPORT);
   }
 
-  function handleLoadSavedMcpServerToForm() {
+  function handleConnectSelectedMcpServer() {
     if (!selectedSavedMcpServerId) {
-      setSavedMcpError("Select a saved MCP server first.");
+      setSavedMcpError("Select an MCP server first.");
       return;
     }
 
@@ -1561,33 +1579,7 @@ export default function Home() {
       return;
     }
 
-    setMcpNameInput(selected.name);
-    setMcpTransport(selected.transport);
-    setMcpFormError(null);
-    setMcpFormWarning(null);
-
-    if (selected.transport === "stdio") {
-      setMcpCommandInput(selected.command);
-      setMcpArgsInput(formatStdioArgsInput(selected.args));
-      setMcpCwdInput(selected.cwd ?? "");
-      setMcpEnvInput(formatKeyValueLines(selected.env));
-      setMcpUrlInput("");
-      setMcpHeadersInput("");
-      setMcpUseAzureAuthInput(false);
-      setMcpAzureAuthScopeInput(MCP_DEFAULT_AZURE_AUTH_SCOPE);
-      setMcpTimeoutSecondsInput(String(MCP_DEFAULT_TIMEOUT_SECONDS));
-    } else {
-      setMcpUrlInput(selected.url);
-      setMcpHeadersInput(formatKeyValueLines(selected.headers));
-      setMcpUseAzureAuthInput(selected.useAzureAuth);
-      setMcpAzureAuthScopeInput(selected.azureAuthScope);
-      setMcpTimeoutSecondsInput(String(selected.timeoutSeconds));
-      setMcpCommandInput("");
-      setMcpArgsInput("");
-      setMcpCwdInput("");
-      setMcpEnvInput("");
-    }
-
+    connectMcpServerToAgent(selected);
     setSavedMcpError(null);
   }
 
@@ -1738,7 +1730,8 @@ export default function Home() {
       setSelectedSavedMcpServerId(value);
       setSavedMcpError(null);
     },
-    onLoadSavedMcpServerToForm: handleLoadSavedMcpServerToForm,
+    onConnectSelectedMcpServer: handleConnectSelectedMcpServer,
+    onReloadSavedMcpServers: handleReloadSavedMcpServers,
     mcpNameInput,
     onMcpNameInputChange: setMcpNameInput,
     mcpTransport,

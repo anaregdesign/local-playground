@@ -263,7 +263,7 @@ export function McpAddServerSection(props: McpAddServerSectionProps) {
       <Button
         type="button"
         appearance="primary"
-        title="Add this MCP server to the active chat session."
+        title="Save this MCP server to the database and connect it to the current Agent."
         onClick={() => {
           void onAddMcpServer();
         }}
