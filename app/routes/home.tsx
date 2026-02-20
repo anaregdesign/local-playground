@@ -480,12 +480,9 @@ export default function Home() {
     }
 
     try {
-      const response = await fetch(
-        `/api/azure-selection?tenantId=${encodeURIComponent(normalizedTenantId)}&principalId=${encodeURIComponent(normalizedPrincipalId)}`,
-        {
-          method: "GET",
-        },
-      );
+      const response = await fetch("/api/azure-selection", {
+        method: "GET",
+      });
       const payload = (await response.json()) as AzureSelectionApiResponse;
       if (!response.ok) {
         return null;
@@ -510,7 +507,10 @@ export default function Home() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(selection),
+        body: JSON.stringify({
+          projectId: selection.projectId,
+          deploymentName: selection.deploymentName,
+        }),
       });
       if (!response.ok) {
         return;

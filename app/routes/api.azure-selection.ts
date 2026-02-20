@@ -2,7 +2,13 @@ import {
   ensurePersistenceDatabaseReady,
   prisma,
 } from "~/lib/server/persistence/prisma";
+import { readAzureArmUserContext } from "~/lib/server/auth/azure-user";
 import type { Route } from "./+types/api.azure-selection";
+
+type AzureSelectionPreferencePayload = {
+  projectId: string;
+  deploymentName: string;
+};
 
 type AzureSelectionPreference = {
   tenantId: string;
@@ -16,16 +22,19 @@ export async function loader({ request }: Route.LoaderArgs) {
     return Response.json({ error: "Method not allowed." }, { status: 405 });
   }
 
-  const query = readTenantAndPrincipalFromUrl(request.url);
-  if (!query) {
+  const identity = await readAuthenticatedIdentity();
+  if (!identity) {
     return Response.json(
-      { error: "`tenantId` and `principalId` query parameters are required." },
-      { status: 400 },
+      {
+        authRequired: true,
+        error: "Azure login is required. Click Azure Login to continue.",
+      },
+      { status: 401 },
     );
   }
 
   try {
-    const selection = await readStoredSelection(query.tenantId, query.principalId);
+    const selection = await readStoredSelection(identity);
     return Response.json({ selection });
   } catch (error) {
     return Response.json(
@@ -40,6 +49,17 @@ export async function action({ request }: Route.ActionArgs) {
     return Response.json({ error: "Method not allowed." }, { status: 405 });
   }
 
+  const identity = await readAuthenticatedIdentity();
+  if (!identity) {
+    return Response.json(
+      {
+        authRequired: true,
+        error: "Azure login is required. Click Azure Login to continue.",
+      },
+      { status: 401 },
+    );
+  }
+
   let payload: unknown;
   try {
     payload = await request.json();
@@ -50,13 +70,13 @@ export async function action({ request }: Route.ActionArgs) {
   const preference = parseAzureSelectionPreference(payload);
   if (!preference) {
     return Response.json(
-      { error: "`tenantId`, `principalId`, `projectId`, and `deploymentName` are required." },
+      { error: "`projectId` and `deploymentName` are required." },
       { status: 400 },
     );
   }
 
   try {
-    const selection = await saveStoredSelection(preference);
+    const selection = await saveStoredSelection(identity, preference);
     return Response.json({ selection });
   } catch (error) {
     return Response.json(
@@ -66,51 +86,35 @@ export async function action({ request }: Route.ActionArgs) {
   }
 }
 
-function readTenantAndPrincipalFromUrl(rawUrl: string):
-  | { tenantId: string; principalId: string }
-  | null {
-  const url = new URL(rawUrl);
-  const tenantId = (url.searchParams.get("tenantId") ?? "").trim();
-  const principalId = (url.searchParams.get("principalId") ?? "").trim();
-
-  if (!tenantId || !principalId) {
-    return null;
-  }
-
-  return { tenantId, principalId };
-}
-
-export function parseAzureSelectionPreference(value: unknown): AzureSelectionPreference | null {
+export function parseAzureSelectionPreference(value: unknown): AzureSelectionPreferencePayload | null {
   if (!isRecord(value)) {
     return null;
   }
 
-  const tenantId = typeof value.tenantId === "string" ? value.tenantId.trim() : "";
-  const principalId = typeof value.principalId === "string" ? value.principalId.trim() : "";
   const projectId = typeof value.projectId === "string" ? value.projectId.trim() : "";
   const deploymentName = typeof value.deploymentName === "string" ? value.deploymentName.trim() : "";
-  if (!tenantId || !principalId || !projectId || !deploymentName) {
+  if (!projectId || !deploymentName) {
     return null;
   }
 
   return {
-    tenantId,
-    principalId,
     projectId,
     deploymentName,
   };
 }
 
 async function readStoredSelection(
-  tenantId: string,
-  principalId: string,
+  identity: {
+    tenantId: string;
+    principalId: string;
+  },
 ): Promise<AzureSelectionPreference | null> {
   await ensurePersistenceDatabaseReady();
   const user = await prisma.user.findUnique({
     where: {
       tenantId_principalId: {
-        tenantId,
-        principalId,
+        tenantId: identity.tenantId,
+        principalId: identity.principalId,
       },
     },
     include: {
@@ -126,19 +130,23 @@ async function readStoredSelection(
 }
 
 async function saveStoredSelection(
-  preference: AzureSelectionPreference,
+  identity: {
+    tenantId: string;
+    principalId: string;
+  },
+  preference: AzureSelectionPreferencePayload,
 ): Promise<AzureSelectionPreference> {
   await ensurePersistenceDatabaseReady();
   const user = await prisma.user.upsert({
     where: {
       tenantId_principalId: {
-        tenantId: preference.tenantId,
-        principalId: preference.principalId,
+        tenantId: identity.tenantId,
+        principalId: identity.principalId,
       },
     },
     create: {
-      tenantId: preference.tenantId,
-      principalId: preference.principalId,
+      tenantId: identity.tenantId,
+      principalId: identity.principalId,
     },
     update: {},
   });
@@ -157,6 +165,18 @@ async function saveStoredSelection(
   });
 
   return mapSelectionRecord(user, saved);
+}
+
+async function readAuthenticatedIdentity(): Promise<{ tenantId: string; principalId: string } | null> {
+  const context = await readAzureArmUserContext();
+  if (!context) {
+    return null;
+  }
+
+  return {
+    tenantId: context.tenantId,
+    principalId: context.principalId,
+  };
 }
 
 function mapSelectionRecord(
