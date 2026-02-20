@@ -74,7 +74,8 @@ type PlaygroundPanelProps<
   messages: TMessage[];
   mcpHistoryByTurnId: Map<string, TMcpRpcHistoryEntry[]>;
   isSending: boolean;
-  onResetThread: () => void;
+  isUpdatingThread: boolean;
+  onCreateThread: () => void;
   renderMessageContent: (message: TMessage) => ReactNode;
   renderTurnMcpLog: (
     entries: TMcpRpcHistoryEntry[],
@@ -135,7 +136,8 @@ export function PlaygroundPanel<
     messages,
     mcpHistoryByTurnId,
     isSending,
-    onResetThread,
+    isUpdatingThread,
+    onCreateThread,
     renderMessageContent,
     renderTurnMcpLog,
     onCopyMessage,
@@ -338,17 +340,23 @@ export function PlaygroundPanel<
               <h1>Local Playground</h1>
             </div>
           </div>
-          <Button
-            type="button"
-            appearance="secondary"
-            size="small"
-            className="chat-reset-btn"
-            onClick={onResetThread}
-            disabled={isSending}
-            title="Clear all messages in the current thread."
-          >
-            🧹 Reset Thread
-          </Button>
+          {renderLabeledTooltip(
+            "New Thread",
+            ["Create a new thread and switch Playground to it."],
+            <Button
+              type="button"
+              appearance="secondary"
+              size="small"
+              className="chat-new-thread-btn"
+              onClick={onCreateThread}
+              disabled={isSending || isUpdatingThread}
+              aria-label="Create and switch to a new thread"
+              title="Create and switch to a new thread."
+            >
+              🧵
+            </Button>,
+            "chat-header-action-tooltip",
+          )}
         </div>
       </header>
 

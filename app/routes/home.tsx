@@ -913,9 +913,13 @@ export default function Home() {
     }
   }
 
-  async function handleCreateThread() {
+  async function createThreadAndSwitch(options: {
+    name?: string;
+    openThreadsTab?: boolean;
+    clearNameInput?: boolean;
+  } = {}): Promise<boolean> {
     if (isSending || isLoadingThreads || isSwitchingThread || isCreatingThread) {
-      return;
+      return false;
     }
 
     setThreadError(null);
@@ -924,7 +928,7 @@ export default function Home() {
     try {
       const saved = await flushActiveThreadSnapshot();
       if (!saved) {
-        return;
+        return false;
       }
 
       const response = await fetch("/api/threads", {
@@ -934,7 +938,7 @@ export default function Home() {
         },
         body: JSON.stringify({
           action: "create",
-          name: newThreadNameInput,
+          name: options.name ?? "",
         }),
       });
       const payload = (await response.json()) as ThreadsApiResponse;
@@ -959,14 +963,36 @@ export default function Home() {
       threadSaveSignatureByIdRef.current.set(createdThread.id, createdSignature);
       setThreads((current) => upsertThreadSnapshot(current, createdThread));
       isThreadsReadyRef.current = true;
-      setNewThreadNameInput("");
+      if (options.clearNameInput === true) {
+        setNewThreadNameInput("");
+      }
       applyThreadSnapshotToState(createdThread);
-      setActiveMainTab("threads");
+      if (options.openThreadsTab === true) {
+        setActiveMainTab("threads");
+      }
+      return true;
     } catch (createError) {
       setThreadError(createError instanceof Error ? createError.message : "Failed to create thread.");
+      return false;
     } finally {
       setIsCreatingThread(false);
     }
+  }
+
+  async function handleCreateThread() {
+    await createThreadAndSwitch({
+      name: newThreadNameInput,
+      openThreadsTab: true,
+      clearNameInput: true,
+    });
+  }
+
+  async function handleCreateThreadFromPlaygroundHeader() {
+    await createThreadAndSwitch({
+      name: "",
+      openThreadsTab: false,
+      clearNameInput: false,
+    });
   }
 
   async function handleThreadChange(nextThreadIdRaw: string) {
@@ -2166,24 +2192,6 @@ export default function Home() {
     setMcpServers((current) => current.filter((server) => server.id !== id));
   }
 
-  function handleResetThread() {
-    if (isSending || isSwitchingThread || !activeThreadIdRef.current.trim()) {
-      return;
-    }
-
-    setThreadError(null);
-    setMessages([...HOME_INITIAL_MESSAGES]);
-    setMcpRpcHistory([]);
-    setDraft("");
-    setDraftAttachments([]);
-    setChatAttachmentError(null);
-    setError(null);
-    setActiveTurnId(null);
-    setLastErrorTurnId(null);
-    setSendProgressMessages([]);
-    setIsComposing(false);
-  }
-
   function handleMainSplitterPointerDown(event: ReactPointerEvent<HTMLDivElement>) {
     event.preventDefault();
     const layoutElement = layoutRef.current;
@@ -2379,7 +2387,8 @@ export default function Home() {
     messages,
     mcpHistoryByTurnId,
     isSending,
-    onResetThread: handleResetThread,
+    isUpdatingThread: isCreatingThread || isSwitchingThread || isLoadingThreads,
+    onCreateThread: handleCreateThreadFromPlaygroundHeader,
     renderMessageContent,
     renderTurnMcpLog,
     onCopyMessage: handleCopyMessage,

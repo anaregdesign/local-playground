@@ -284,9 +284,26 @@ body {
   color: var(--text-subtle);
 }
 
-.chat-reset-btn {
+.chat-header-action-tooltip {
+  display: inline-flex;
+  align-items: center;
   flex-shrink: 0;
-  white-space: nowrap;
+}
+
+.chat-new-thread-btn.fui-Button {
+  min-width: 2.05rem !important;
+  width: 2.05rem !important;
+  min-height: 2.05rem !important;
+  height: 2.05rem !important;
+  border-radius: 999px;
+  padding: 0 !important;
+  border: 1px solid rgba(50, 49, 48, 0.14);
+}
+
+.chat-new-thread-btn.fui-Button .fui-Button__content {
+  margin: 0;
+  font-size: 0.98rem;
+  line-height: 1;
 }
 
 .chat-log {
