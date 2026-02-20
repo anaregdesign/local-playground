@@ -1,3 +1,14 @@
+import {
+  APP_EVENT_LOG_MAX_CATEGORY_LENGTH,
+  APP_EVENT_LOG_MAX_CONTEXT_ARRAY_ITEMS,
+  APP_EVENT_LOG_MAX_CONTEXT_DEPTH,
+  APP_EVENT_LOG_MAX_CONTEXT_KEYS,
+  APP_EVENT_LOG_MAX_EVENT_NAME_LENGTH,
+  APP_EVENT_LOG_MAX_MESSAGE_LENGTH,
+  APP_EVENT_LOG_MAX_PATH_LENGTH,
+  APP_EVENT_LOG_MAX_TEXT_LENGTH,
+} from "~/lib/constants";
+
 export type AppEventLogSource = "server" | "client";
 export type AppEventLogLevel = "error" | "warning" | "info";
 
@@ -37,15 +48,6 @@ export type ClientAppEventLogPayload = {
   context?: unknown;
 };
 
-const MAX_CATEGORY_LENGTH = 80;
-const MAX_EVENT_NAME_LENGTH = 120;
-const MAX_MESSAGE_LENGTH = 4_000;
-const MAX_TEXT_LENGTH = 8_000;
-const MAX_PATH_LENGTH = 1_024;
-const MAX_CONTEXT_DEPTH = 6;
-const MAX_CONTEXT_KEYS = 200;
-const MAX_CONTEXT_ARRAY_ITEMS = 200;
-
 export function normalizeAppEventLogLevel(value: unknown): AppEventLogLevel {
   return value === "error" || value === "warning" || value === "info" ? value : "error";
 }
@@ -59,20 +61,20 @@ export function readClientAppEventLogPayload(value: unknown): ClientAppEventLogP
     return null;
   }
 
-  const category = normalizeRequiredText(value.category, MAX_CATEGORY_LENGTH);
-  const eventName = normalizeRequiredText(value.eventName, MAX_EVENT_NAME_LENGTH);
-  const message = normalizeRequiredText(value.message, MAX_MESSAGE_LENGTH);
+  const category = normalizeRequiredText(value.category, APP_EVENT_LOG_MAX_CATEGORY_LENGTH);
+  const eventName = normalizeRequiredText(value.eventName, APP_EVENT_LOG_MAX_EVENT_NAME_LENGTH);
+  const message = normalizeRequiredText(value.message, APP_EVENT_LOG_MAX_MESSAGE_LENGTH);
   if (!category || !eventName || !message) {
     return null;
   }
 
   const level = normalizeAppEventLogLevel(value.level);
-  const errorName = normalizeOptionalText(value.errorName, MAX_EVENT_NAME_LENGTH);
-  const location = normalizeOptionalText(value.location, MAX_PATH_LENGTH);
-  const action = normalizeOptionalText(value.action, MAX_EVENT_NAME_LENGTH);
+  const errorName = normalizeOptionalText(value.errorName, APP_EVENT_LOG_MAX_EVENT_NAME_LENGTH);
+  const location = normalizeOptionalText(value.location, APP_EVENT_LOG_MAX_PATH_LENGTH);
+  const action = normalizeOptionalText(value.action, APP_EVENT_LOG_MAX_EVENT_NAME_LENGTH);
   const statusCode = normalizeOptionalSafeInteger(value.statusCode);
-  const threadId = normalizeOptionalText(value.threadId, MAX_EVENT_NAME_LENGTH);
-  const stack = normalizeOptionalText(value.stack, MAX_TEXT_LENGTH);
+  const threadId = normalizeOptionalText(value.threadId, APP_EVENT_LOG_MAX_EVENT_NAME_LENGTH);
+  const stack = normalizeOptionalText(value.stack, APP_EVENT_LOG_MAX_TEXT_LENGTH);
   const context = value.context;
 
   return {
@@ -96,9 +98,9 @@ export function readErrorDetails(error: unknown): {
   stack: string | null;
 } {
   if (error instanceof Error) {
-    const name = normalizeRequiredText(error.name, MAX_EVENT_NAME_LENGTH) || "Error";
-    const message = normalizeRequiredText(error.message, MAX_MESSAGE_LENGTH) || "Unknown error.";
-    const stack = normalizeOptionalText(error.stack, MAX_TEXT_LENGTH);
+    const name = normalizeRequiredText(error.name, APP_EVENT_LOG_MAX_EVENT_NAME_LENGTH) || "Error";
+    const message = normalizeRequiredText(error.message, APP_EVENT_LOG_MAX_MESSAGE_LENGTH) || "Unknown error.";
+    const stack = normalizeOptionalText(error.stack, APP_EVENT_LOG_MAX_TEXT_LENGTH);
     return {
       name,
       message,
@@ -108,8 +110,8 @@ export function readErrorDetails(error: unknown): {
 
   const message =
     typeof error === "string"
-      ? normalizeRequiredText(error, MAX_MESSAGE_LENGTH)
-      : normalizeRequiredText(safeStringify(error), MAX_MESSAGE_LENGTH);
+      ? normalizeRequiredText(error, APP_EVENT_LOG_MAX_MESSAGE_LENGTH)
+      : normalizeRequiredText(safeStringify(error), APP_EVENT_LOG_MAX_MESSAGE_LENGTH);
   return {
     name: "UnknownError",
     message: message || "Unknown error.",
@@ -128,15 +130,15 @@ export function normalizeCreatedAt(value: unknown): string {
 }
 
 export function normalizeCategory(value: unknown): string {
-  return normalizeRequiredText(value, MAX_CATEGORY_LENGTH) || "general";
+  return normalizeRequiredText(value, APP_EVENT_LOG_MAX_CATEGORY_LENGTH) || "general";
 }
 
 export function normalizeEventName(value: unknown): string {
-  return normalizeRequiredText(value, MAX_EVENT_NAME_LENGTH) || "unknown_event";
+  return normalizeRequiredText(value, APP_EVENT_LOG_MAX_EVENT_NAME_LENGTH) || "unknown_event";
 }
 
 export function normalizeMessage(value: unknown): string {
-  return normalizeRequiredText(value, MAX_MESSAGE_LENGTH) || "Unknown error.";
+  return normalizeRequiredText(value, APP_EVENT_LOG_MAX_MESSAGE_LENGTH) || "Unknown error.";
 }
 
 export function normalizeOptionalStatusCode(value: unknown): number | null {
@@ -144,15 +146,15 @@ export function normalizeOptionalStatusCode(value: unknown): number | null {
 }
 
 export function normalizeOptionalPath(value: unknown): string | null {
-  return normalizeOptionalText(value, MAX_PATH_LENGTH);
+  return normalizeOptionalText(value, APP_EVENT_LOG_MAX_PATH_LENGTH);
 }
 
 export function normalizeOptionalLabel(value: unknown): string | null {
-  return normalizeOptionalText(value, MAX_EVENT_NAME_LENGTH);
+  return normalizeOptionalText(value, APP_EVENT_LOG_MAX_EVENT_NAME_LENGTH);
 }
 
 export function normalizeOptionalTextValue(value: unknown): string | null {
-  return normalizeOptionalText(value, MAX_TEXT_LENGTH);
+  return normalizeOptionalText(value, APP_EVENT_LOG_MAX_TEXT_LENGTH);
 }
 
 export function normalizeOptionalUserId(value: unknown): number | null {
@@ -211,7 +213,7 @@ function sanitizeJsonValue(value: unknown, depth: number): unknown {
   }
 
   if (typeof value === "string") {
-    return value.slice(0, MAX_TEXT_LENGTH);
+    return value.slice(0, APP_EVENT_LOG_MAX_TEXT_LENGTH);
   }
 
   if (
@@ -225,13 +227,13 @@ function sanitizeJsonValue(value: unknown, depth: number): unknown {
     return value.toString();
   }
 
-  if (depth >= MAX_CONTEXT_DEPTH) {
+  if (depth >= APP_EVENT_LOG_MAX_CONTEXT_DEPTH) {
     return "[truncated]";
   }
 
   if (Array.isArray(value)) {
     return value
-      .slice(0, MAX_CONTEXT_ARRAY_ITEMS)
+      .slice(0, APP_EVENT_LOG_MAX_CONTEXT_ARRAY_ITEMS)
       .map((entry) => sanitizeJsonValue(entry, depth + 1));
   }
 
@@ -239,10 +241,10 @@ function sanitizeJsonValue(value: unknown, depth: number): unknown {
     return safeStringify(value);
   }
 
-  const entries = Object.entries(value).slice(0, MAX_CONTEXT_KEYS);
+  const entries = Object.entries(value).slice(0, APP_EVENT_LOG_MAX_CONTEXT_KEYS);
   const sanitized: Record<string, unknown> = {};
   for (const [rawKey, rawValue] of entries) {
-    const key = rawKey.trim().slice(0, MAX_EVENT_NAME_LENGTH);
+    const key = rawKey.trim().slice(0, APP_EVENT_LOG_MAX_EVENT_NAME_LENGTH);
     if (!key) {
       continue;
     }

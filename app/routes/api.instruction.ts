@@ -11,6 +11,11 @@ import {
 } from "~/lib/server/observability/app-event-log";
 import {
   CHAT_MAX_AGENT_INSTRUCTION_LENGTH,
+  INSTRUCTION_DIFF_PATCH_FILE_NAME_PATTERN,
+  INSTRUCTION_DIFF_PATCH_MAX_HUNK_LINES,
+  INSTRUCTION_DIFF_PATCH_MAX_HUNKS,
+  INSTRUCTION_DIFF_PATCH_MAX_LINE_TEXT_LENGTH,
+  INSTRUCTION_DIFF_PATCH_OUTPUT_TYPE,
   INSTRUCTION_ENHANCE_SYSTEM_PROMPT,
   PROMPT_ALLOWED_FILE_EXTENSIONS,
   PROMPT_DEFAULT_FILE_EXTENSION,
@@ -54,75 +59,6 @@ type InstructionDiffPatchHunkOutput = {
 type InstructionDiffPatchOutput = {
   fileName: string;
   hunks: InstructionDiffPatchHunkOutput[];
-};
-
-const INSTRUCTION_DIFF_PATCH_FILE_NAME_PATTERN = /^[A-Za-z0-9._-]+\.(?:md|txt|xml|json)$/;
-const INSTRUCTION_DIFF_PATCH_MAX_HUNKS = 256;
-const INSTRUCTION_DIFF_PATCH_MAX_HUNK_LINES = 512;
-const INSTRUCTION_DIFF_PATCH_MAX_LINE_TEXT_LENGTH = 4_000;
-
-const INSTRUCTION_DIFF_PATCH_OUTPUT_TYPE = {
-  type: "json_schema" as const,
-  name: "instruction_diff_patch",
-  strict: true,
-  schema: {
-    type: "object" as const,
-    description: "Structured patch hunks for instruction enhancement.",
-    properties: {
-      fileName: {
-        type: "string",
-        description: "Target file name for the instruction patch, e.g. instruction.md",
-        minLength: 1,
-        maxLength: 128,
-        pattern: "^[A-Za-z0-9._-]+\\.(?:md|txt|xml|json)$",
-      },
-      hunks: {
-        type: "array",
-        description: "Unified diff-style hunks.",
-        maxItems: INSTRUCTION_DIFF_PATCH_MAX_HUNKS,
-        items: {
-          type: "object",
-          properties: {
-            oldStart: {
-              type: "integer",
-              minimum: 0,
-              description:
-                "1-based start line in original text. Use 0 only for pure insertion at start.",
-            },
-            newStart: {
-              type: "integer",
-              minimum: 0,
-              description: "1-based start line in revised text.",
-            },
-            lines: {
-              type: "array",
-              minItems: 1,
-              maxItems: INSTRUCTION_DIFF_PATCH_MAX_HUNK_LINES,
-              items: {
-                type: "object",
-                properties: {
-                  op: {
-                    type: "string",
-                    enum: ["context", "add", "remove"],
-                  },
-                  text: {
-                    type: "string",
-                    maxLength: INSTRUCTION_DIFF_PATCH_MAX_LINE_TEXT_LENGTH,
-                  },
-                },
-                required: ["op", "text"],
-                additionalProperties: false,
-              },
-            },
-          },
-          required: ["oldStart", "newStart", "lines"],
-          additionalProperties: false,
-        },
-      },
-    },
-    required: ["fileName", "hunks"] as Array<"fileName" | "hunks">,
-    additionalProperties: false as const,
-  },
 };
 
 export function loader({}: Route.LoaderArgs) {

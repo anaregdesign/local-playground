@@ -3,7 +3,7 @@ import { FluentUI } from "~/components/home/shared/fluent";
 import { McpServersTab } from "~/components/home/config/mcp/McpServersTab";
 import { SettingsTab } from "~/components/home/config/settings/SettingsTab";
 import { ThreadsTab } from "~/components/home/config/threads/ThreadsTab";
-import type { MainViewTab } from "~/components/home/shared/types";
+import type { MainViewTab } from "~/lib/home/shared/view-types";
 import { HOME_MAIN_VIEW_TAB_OPTIONS } from "~/lib/constants";
 
 const { MessageBar, MessageBarBody, Tab, TabList } = FluentUI;

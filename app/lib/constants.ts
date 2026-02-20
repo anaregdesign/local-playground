@@ -198,3 +198,122 @@ export const HOME_MAIN_VIEW_TAB_OPTIONS = [
   { id: "mcp", label: "🧩 MCP Servers" },
   { id: "settings", label: "⚙️ Settings" },
 ] as const;
+
+/**
+ * Impact scope:
+ * These constants define instruction diff patch schema validation contracts.
+ * Changing them affects API /api/instruction output validation and patch parsing.
+ */
+export const INSTRUCTION_DIFF_PATCH_FILE_NAME_PATTERN =
+  /^[A-Za-z0-9._-]+\.(?:md|txt|xml|json)$/;
+export const INSTRUCTION_DIFF_PATCH_MAX_HUNKS = 256;
+export const INSTRUCTION_DIFF_PATCH_MAX_HUNK_LINES = 512;
+export const INSTRUCTION_DIFF_PATCH_MAX_LINE_TEXT_LENGTH = 4_000;
+export const INSTRUCTION_DIFF_PATCH_OUTPUT_TYPE = {
+  type: "json_schema" as const,
+  name: "instruction_diff_patch",
+  strict: true,
+  schema: {
+    type: "object" as const,
+    description: "Structured patch hunks for instruction enhancement.",
+    properties: {
+      fileName: {
+        type: "string",
+        description: "Target file name for the instruction patch, e.g. instruction.md",
+        minLength: 1,
+        maxLength: 128,
+        pattern: "^[A-Za-z0-9._-]+\\.(?:md|txt|xml|json)$",
+      },
+      hunks: {
+        type: "array",
+        description: "Unified diff-style hunks.",
+        maxItems: INSTRUCTION_DIFF_PATCH_MAX_HUNKS,
+        items: {
+          type: "object",
+          properties: {
+            oldStart: {
+              type: "integer",
+              minimum: 0,
+              description:
+                "1-based start line in original text. Use 0 only for pure insertion at start.",
+            },
+            newStart: {
+              type: "integer",
+              minimum: 0,
+              description: "1-based start line in revised text.",
+            },
+            lines: {
+              type: "array",
+              minItems: 1,
+              maxItems: INSTRUCTION_DIFF_PATCH_MAX_HUNK_LINES,
+              items: {
+                type: "object",
+                properties: {
+                  op: {
+                    type: "string",
+                    enum: ["context", "add", "remove"],
+                  },
+                  text: {
+                    type: "string",
+                    maxLength: INSTRUCTION_DIFF_PATCH_MAX_LINE_TEXT_LENGTH,
+                  },
+                },
+                required: ["op", "text"],
+                additionalProperties: false,
+              },
+            },
+          },
+          required: ["oldStart", "newStart", "lines"],
+          additionalProperties: false,
+        },
+      },
+    },
+    required: ["fileName", "hunks"] as Array<"fileName" | "hunks">,
+    additionalProperties: false as const,
+  },
+};
+
+/**
+ * Impact scope:
+ * These constants define thread API defaults and home thread request defaults.
+ * Changing them affects thread creation naming and in-memory request state resets.
+ */
+export const THREAD_DEFAULT_NAME = "New Thread";
+export const HOME_DEFAULT_THREAD_REQUEST_STATE = {
+  isSending: false,
+  sendProgressMessages: [] as string[],
+  activeTurnId: null as string | null,
+  lastErrorTurnId: null as string | null,
+  error: null as string | null,
+};
+
+/**
+ * Impact scope:
+ * These constants define API cache windows and client status UX timing.
+ * Changing them affects attachment availability cache freshness and auto-dismiss behavior.
+ */
+export const CODE_INTERPRETER_ATTACHMENT_AVAILABILITY_CACHE_MS = 10 * 60 * 1000;
+export const AUTO_DISMISS_STATUS_DEFAULT_MS = 5000;
+
+/**
+ * Impact scope:
+ * These constants define event-log normalization limits and dedupe behavior.
+ * Changing them affects accepted telemetry payload size and duplicate suppression windows.
+ */
+export const APP_EVENT_LOG_MAX_CATEGORY_LENGTH = 80;
+export const APP_EVENT_LOG_MAX_EVENT_NAME_LENGTH = 120;
+export const APP_EVENT_LOG_MAX_MESSAGE_LENGTH = 4_000;
+export const APP_EVENT_LOG_MAX_TEXT_LENGTH = 8_000;
+export const APP_EVENT_LOG_MAX_PATH_LENGTH = 1_024;
+export const APP_EVENT_LOG_MAX_CONTEXT_DEPTH = 6;
+export const APP_EVENT_LOG_MAX_CONTEXT_KEYS = 200;
+export const APP_EVENT_LOG_MAX_CONTEXT_ARRAY_ITEMS = 200;
+export const CLIENT_EVENT_LOG_DEDUPE_WINDOW_MS = 1_500;
+
+/**
+ * Impact scope:
+ * These constants define persisted row-id unwrap patterns for thread-linked MCP entries.
+ * Changing them affects how saved IDs are normalized and reconstructed.
+ */
+export const THREAD_MCP_SERVER_ROW_ID_PATTERN = /^thread:[^:]+:mcp:\d+:(.+)$/;
+export const THREAD_MCP_RPC_LOG_ROW_ID_PATTERN = /^thread:[^:]+:rpc:\d+:(.+)$/;

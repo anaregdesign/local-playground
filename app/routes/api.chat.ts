@@ -29,6 +29,7 @@ import {
   CHAT_ATTACHMENT_ALLOWED_EXTENSIONS,
   CHAT_CLEANUP_TIMEOUT_MS,
   CHAT_CODE_INTERPRETER_UPLOAD_TIMEOUT_MS,
+  CODE_INTERPRETER_ATTACHMENT_AVAILABILITY_CACHE_MS,
   CHAT_ATTACHMENT_MAX_FILE_NAME_LENGTH,
   CHAT_ATTACHMENT_MAX_FILES,
   CHAT_ATTACHMENT_MAX_NON_PDF_FILE_SIZE_BYTES,
@@ -183,7 +184,6 @@ type ChatStreamPayload =
       errorCode?: "azure_login_required";
     };
 
-const CODE_INTERPRETER_ATTACHMENT_AVAILABILITY_CACHE_MS = 10 * 60 * 1000;
 let codeInterpreterAttachmentAvailabilityCache: CodeInterpreterAttachmentAvailabilityCache | null =
   null;
 

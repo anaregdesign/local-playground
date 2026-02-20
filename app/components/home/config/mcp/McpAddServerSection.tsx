@@ -1,7 +1,7 @@
 import { FluentUI } from "~/components/home/shared/fluent";
 import { ConfigSection } from "~/components/home/shared/ConfigSection";
 import { AutoDismissStatusMessageList } from "~/components/home/shared/AutoDismissStatusMessageList";
-import type { McpTransport } from "~/components/home/shared/types";
+import type { McpTransport } from "~/lib/home/shared/view-types";
 
 const {
   Button,

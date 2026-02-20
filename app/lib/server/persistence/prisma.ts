@@ -4,12 +4,8 @@ import { fileURLToPath } from "node:url";
 import { PrismaClient } from "@prisma/client";
 import { resolveFoundryDatabaseUrl } from "~/lib/foundry/config";
 
-const DEFAULT_DATABASE_URL = resolveFoundryDatabaseUrl({
-  envDatabaseUrl: resolveConfiguredDatabaseUrlFromEnvironment(),
-});
-
 if (!process.env.DATABASE_URL) {
-  process.env.DATABASE_URL = DEFAULT_DATABASE_URL;
+  process.env.DATABASE_URL = resolveDatabaseUrl();
 }
 
 const globalForPrisma = globalThis as typeof globalThis & {
@@ -21,7 +17,7 @@ export const prisma =
   new PrismaClient({
     datasources: {
       db: {
-        url: DEFAULT_DATABASE_URL,
+        url: process.env.DATABASE_URL ?? resolveDatabaseUrl(),
       },
     },
   });
@@ -35,7 +31,7 @@ let ensureDatabaseReadyPromise: Promise<void> | null = null;
 export async function ensurePersistenceDatabaseReady(): Promise<void> {
   if (!ensureDatabaseReadyPromise) {
     ensureDatabaseReadyPromise = (async () => {
-      await ensureDatabaseParentDirectoryExists(DEFAULT_DATABASE_URL);
+      await ensureDatabaseParentDirectoryExists(process.env.DATABASE_URL ?? resolveDatabaseUrl());
       await ensureDatabaseSchema();
     })().catch((error) => {
       ensureDatabaseReadyPromise = null;
@@ -44,6 +40,12 @@ export async function ensurePersistenceDatabaseReady(): Promise<void> {
   }
 
   await ensureDatabaseReadyPromise;
+}
+
+function resolveDatabaseUrl(): string {
+  return resolveFoundryDatabaseUrl({
+    envDatabaseUrl: resolveConfiguredDatabaseUrlFromEnvironment(),
+  });
 }
 
 function resolveConfiguredDatabaseUrlFromEnvironment(): string {

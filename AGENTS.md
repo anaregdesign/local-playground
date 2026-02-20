@@ -43,10 +43,28 @@
   - `*Tab`: tab content root under a panel (`SettingsTab`, `McpServersTab`)
   - `*Section`: vertically segmented form/content block inside a tab
   - Shared primitives should use purpose-based names (`ConfigSection`, `StatusMessageList`, `LabeledTooltip`, `CopyIconButton`)
-- `app/routes/home.tsx` should focus on state orchestration and composition, not large inline UI markup.
+- `app/routes/home.tsx` should stay as visual composition only (layout + panel wiring), not runtime state/effects.
 - Prefer one-directional dependencies:
   - panel -> tab -> section -> shared
   - avoid cross-importing siblings when a shared primitive is appropriate.
+
+## Home Runtime Structure
+
+- Keep Home runtime state, effects, and API handlers centralized in one controller file:
+  - `app/lib/home/controller/use-workspace-controller.ts`
+- Do not split primary state ownership across multiple hooks/files unless there is a clear technical need.
+- Keep message/MCP renderer helpers outside the route file:
+  - `app/components/home/playground/PlaygroundRenderers.tsx`
+- `app/routes/home.tsx` must not re-grow into a large logic file; it should only compose `PlaygroundPanel`, splitter, and `ConfigPanel`.
+- Prefer extracting pure data transforms into `app/lib/home/*` modules (no React state there).
+
+## Constants / Imports
+
+- Define shared static constants in `app/lib/constants.ts`.
+- Do not add new `UPPER_SNAKE_CASE` constants in feature files unless they are truly file-local and non-shared.
+- Import constants directly from `~/lib/constants` with the same exported name.
+  - Avoid alias renaming (`as`) for constants.
+- Avoid re-export-only type/constant passthrough files; import from the source module directly.
 
 ## Visual Style Baseline (Current UI)
 

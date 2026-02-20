@@ -1,7 +1,6 @@
 import { useEffect, useMemo } from "react";
 import { StatusMessageList, type StatusMessage } from "~/components/home/shared/StatusMessageList";
-
-const DEFAULT_AUTO_DISMISS_MS = 5000;
+import { AUTO_DISMISS_STATUS_DEFAULT_MS } from "~/lib/constants";
 
 type AutoDismissStatusMessage = StatusMessage & {
   onClear?: () => void;
@@ -23,7 +22,7 @@ export function AutoDismissStatusMessageList(props: AutoDismissStatusMessageList
           index,
           intent: message.intent,
           text: (message.text ?? "").trim(),
-          dismissAfterMs: message.dismissAfterMs ?? DEFAULT_AUTO_DISMISS_MS,
+          dismissAfterMs: message.dismissAfterMs ?? AUTO_DISMISS_STATUS_DEFAULT_MS,
           onClear: message.onClear,
         }))
         .filter(

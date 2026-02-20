@@ -4,7 +4,7 @@ import {
   ThreadsManageSection,
   type ThreadsManageSectionProps,
 } from "~/components/home/config/threads/ThreadsManageSection";
-import type { MainViewTab } from "~/components/home/shared/types";
+import type { MainViewTab } from "~/lib/home/shared/view-types";
 
 type ThreadsTabProps = {
   activeMainTab: MainViewTab;

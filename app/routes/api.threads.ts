@@ -1,4 +1,8 @@
-import { DEFAULT_AGENT_INSTRUCTION } from "~/lib/constants";
+import {
+  DEFAULT_AGENT_INSTRUCTION,
+  HOME_THREAD_NAME_MAX_LENGTH,
+  THREAD_DEFAULT_NAME,
+} from "~/lib/constants";
 import { readAzureArmUserContext } from "~/lib/server/auth/azure-user";
 import {
   ensurePersistenceDatabaseReady,
@@ -16,9 +20,6 @@ import {
 } from "~/lib/home/thread/server-ids";
 import type { ThreadSnapshot } from "~/lib/home/thread/types";
 import type { Route } from "./+types/api.threads";
-
-const THREAD_NAME_MAX_LENGTH = 80;
-const THREAD_DEFAULT_NAME = "New Thread";
 
 type ThreadAction = "create" | "save";
 
@@ -588,7 +589,7 @@ function readOptionalThreadName(value: unknown): string {
 }
 
 function normalizeThreadName(value: string): string {
-  return value.trim().slice(0, THREAD_NAME_MAX_LENGTH);
+  return value.trim().slice(0, HOME_THREAD_NAME_MAX_LENGTH);
 }
 
 async function readAuthenticatedUser(): Promise<{ id: number } | null> {

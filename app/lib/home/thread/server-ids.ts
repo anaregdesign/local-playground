@@ -1,5 +1,7 @@
-const THREAD_MCP_SERVER_ROW_ID_PATTERN = /^thread:[^:]+:mcp:\d+:(.+)$/;
-const THREAD_MCP_RPC_LOG_ROW_ID_PATTERN = /^thread:[^:]+:rpc:\d+:(.+)$/;
+import {
+  THREAD_MCP_RPC_LOG_ROW_ID_PATTERN,
+  THREAD_MCP_SERVER_ROW_ID_PATTERN,
+} from "~/lib/constants";
 
 export function normalizeThreadMcpServerSourceId(sourceId: string, index: number): string {
   let normalized = sourceId.trim();

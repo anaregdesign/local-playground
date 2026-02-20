@@ -11,7 +11,7 @@ import { FluentUI } from "~/components/home/shared/fluent";
 import { LabeledTooltip } from "~/components/home/shared/LabeledTooltip";
 import { AutoDismissStatusMessageList } from "~/components/home/shared/AutoDismissStatusMessageList";
 import { StatusMessageList } from "~/components/home/shared/StatusMessageList";
-import type { ReasoningEffort } from "~/components/home/shared/types";
+import type { ReasoningEffort } from "~/lib/home/shared/view-types";
 import { formatChatAttachmentSize } from "~/lib/home/chat/attachments";
 
 const {

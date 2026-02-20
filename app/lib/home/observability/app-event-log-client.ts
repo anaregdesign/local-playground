@@ -1,3 +1,4 @@
+import { CLIENT_EVENT_LOG_DEDUPE_WINDOW_MS } from "~/lib/constants";
 import {
   readErrorDetails,
   type ClientAppEventLogPayload,
@@ -13,7 +14,6 @@ const globalForClientEventLog = globalThis as typeof globalThis & {
   __localPlaygroundClientErrorLoggerState?: GlobalClientLoggerState;
 };
 
-const DEDUPE_WINDOW_MS = 1_500;
 const lastSentAtBySignature = new Map<string, number>();
 
 export function reportClientEvent(payload: ClientAppEventLogPayload): void {
@@ -25,7 +25,7 @@ export function reportClientEvent(payload: ClientAppEventLogPayload): void {
   ].join("::");
   const now = Date.now();
   const lastSentAt = lastSentAtBySignature.get(signature);
-  if (lastSentAt !== undefined && now - lastSentAt < DEDUPE_WINDOW_MS) {
+  if (lastSentAt !== undefined && now - lastSentAt < CLIENT_EVENT_LOG_DEDUPE_WINDOW_MS) {
     return;
   }
   lastSentAtBySignature.set(signature, now);

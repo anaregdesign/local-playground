@@ -1,4 +1,4 @@
-import type { MainViewTab } from "~/components/home/shared/types";
+import type { MainViewTab } from "~/lib/home/shared/view-types";
 import {
   McpAddServerSection,
   type McpAddServerSectionProps,
