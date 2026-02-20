@@ -15,6 +15,8 @@ import {
   ensurePersistenceDatabaseReady,
   prisma,
 } from "~/lib/server/persistence/prisma";
+import { getOrCreateUserByIdentity } from "~/lib/server/persistence/user";
+import { readAzureArmUserContext } from "~/lib/server/auth/azure-user";
 import type { Route } from "./+types/api.mcp-servers";
 
 type McpTransport = "streamable_http" | "sse" | "stdio";
@@ -51,8 +53,19 @@ export async function loader({ request }: Route.LoaderArgs) {
     return Response.json({ error: "Method not allowed." }, { status: 405 });
   }
 
+  const user = await readAuthenticatedUser();
+  if (!user) {
+    return Response.json(
+      {
+        authRequired: true,
+        error: "Azure login is required. Click Azure Login to continue.",
+      },
+      { status: 401 },
+    );
+  }
+
   try {
-    const profiles = await readSavedMcpServers();
+    const profiles = await readSavedMcpServers(user.id);
     return Response.json({ profiles });
   } catch (error) {
     return Response.json(
@@ -69,6 +82,17 @@ export async function action({ request }: Route.ActionArgs) {
     return Response.json({ error: "Method not allowed." }, { status: 405 });
   }
 
+  const user = await readAuthenticatedUser();
+  if (!user) {
+    return Response.json(
+      {
+        authRequired: true,
+        error: "Azure login is required. Click Azure Login to continue.",
+      },
+      { status: 401 },
+    );
+  }
+
   let payload: unknown;
   try {
     payload = await request.json();
@@ -82,12 +106,12 @@ export async function action({ request }: Route.ActionArgs) {
   }
 
   try {
-    const currentProfiles = await readSavedMcpServers();
+    const currentProfiles = await readSavedMcpServers(user.id);
     const { profile, profiles, warning } = upsertSavedMcpServer(
       currentProfiles,
       incomingResult.value,
     );
-    await writeSavedMcpServers(profiles);
+    await writeSavedMcpServers(user.id, profiles);
 
     return Response.json({ profile, profiles, warning });
   } catch (error) {
@@ -100,9 +124,12 @@ export async function action({ request }: Route.ActionArgs) {
   }
 }
 
-async function readSavedMcpServers(): Promise<SavedMcpServerConfig[]> {
+async function readSavedMcpServers(userId: number): Promise<SavedMcpServerConfig[]> {
   await ensurePersistenceDatabaseReady();
   const records = await prisma.mcpServerProfile.findMany({
+    where: {
+      userId,
+    },
     orderBy: {
       sortOrder: "asc",
     },
@@ -129,16 +156,18 @@ async function readSavedMcpServers(): Promise<SavedMcpServerConfig[]> {
   return profiles;
 }
 
-async function writeSavedMcpServers(profiles: SavedMcpServerConfig[]): Promise<void> {
+async function writeSavedMcpServers(userId: number, profiles: SavedMcpServerConfig[]): Promise<void> {
   await ensurePersistenceDatabaseReady();
   await prisma.$transaction(async (transaction) => {
-    await transaction.mcpServerProfile.deleteMany();
+    await transaction.mcpServerProfile.deleteMany({
+      where: { userId },
+    });
     if (profiles.length === 0) {
       return;
     }
 
     await transaction.mcpServerProfile.createMany({
-      data: profiles.map((profile, index) => mapProfileToDatabaseRecord(profile, index)),
+      data: profiles.map((profile, index) => mapProfileToDatabaseRecord(userId, profile, index)),
     });
   });
 }
@@ -409,8 +438,9 @@ function normalizeStoredMcpServerRecord(entry: {
   });
 }
 
-function mapProfileToDatabaseRecord(profile: SavedMcpServerConfig, sortOrder: number): {
+function mapProfileToDatabaseRecord(userId: number, profile: SavedMcpServerConfig, sortOrder: number): {
   id: string;
+  userId: number;
   sortOrder: number;
   configKey: string;
   name: string;
@@ -428,6 +458,7 @@ function mapProfileToDatabaseRecord(profile: SavedMcpServerConfig, sortOrder: nu
   if (profile.transport === "stdio") {
     return {
       id: profile.id,
+      userId,
       sortOrder,
       configKey: buildProfileKey(profile),
       name: profile.name,
@@ -446,6 +477,7 @@ function mapProfileToDatabaseRecord(profile: SavedMcpServerConfig, sortOrder: nu
 
   return {
     id: profile.id,
+    userId,
     sortOrder,
     configKey: buildProfileKey(profile),
     name: profile.name,
@@ -710,6 +742,19 @@ function buildIncomingProfileKey(profile: IncomingMcpServerConfig): string {
   const authKey = profile.useAzureAuth ? "azure-auth:on" : "azure-auth:off";
   const scopeKey = profile.useAzureAuth ? profile.azureAuthScope.toLowerCase() : "";
   return `${profile.transport}:${profile.url.toLowerCase()}:${headersKey}:${authKey}:${scopeKey}:${profile.timeoutSeconds}`;
+}
+
+async function readAuthenticatedUser(): Promise<{ id: number } | null> {
+  const userContext = await readAzureArmUserContext();
+  if (!userContext) {
+    return null;
+  }
+
+  const user = await getOrCreateUserByIdentity({
+    tenantId: userContext.tenantId,
+    principalId: userContext.principalId,
+  });
+  return { id: user.id };
 }
 
 function buildProfileKey(profile: SavedMcpServerConfig): string {

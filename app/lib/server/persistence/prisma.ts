@@ -49,7 +49,6 @@ export async function ensurePersistenceDatabaseReady(): Promise<void> {
 function resolveConfiguredDatabaseUrlFromEnvironment(): string {
   const candidateKeys = [
     "LOCAL_PLAYGROUND_DATABASE_URL",
-    "FOUNDRY_LOCAL_PLAYGROUND_DATABASE_URL",
     "DATABASE_URL",
   ];
 
@@ -109,18 +108,47 @@ function resolveSqliteDatabaseFilePath(databaseUrl: string): string | null {
 }
 
 async function ensureDatabaseSchema(): Promise<void> {
+  await ensureUserSchema();
+  await ensureAzureSelectionSchema();
+  await ensureMcpServerProfileSchema();
+}
+
+async function ensureUserSchema(): Promise<void> {
+  await createUserTable();
+}
+
+async function createUserTable(): Promise<void> {
   await prisma.$executeRawUnsafe(`
-    CREATE TABLE IF NOT EXISTS "AzureSelectionPreference" (
-      "tenantId" TEXT NOT NULL PRIMARY KEY,
-      "projectId" TEXT NOT NULL,
-      "deploymentName" TEXT NOT NULL,
-      "updatedAt" DATETIME NOT NULL
+    CREATE TABLE IF NOT EXISTS "User" (
+      "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+      "tenantId" TEXT NOT NULL,
+      "principalId" TEXT NOT NULL
     )
   `);
 
   await prisma.$executeRawUnsafe(`
+    CREATE UNIQUE INDEX IF NOT EXISTS "User_tenantId_principalId_key"
+    ON "User" ("tenantId", "principalId")
+  `);
+}
+
+async function ensureAzureSelectionSchema(): Promise<void> {
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS "AzureSelectionPreference" (
+      "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+      "userId" INTEGER NOT NULL UNIQUE,
+      "projectId" TEXT NOT NULL,
+      "deploymentName" TEXT NOT NULL,
+      FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE CASCADE
+    )
+  `);
+}
+
+async function ensureMcpServerProfileSchema(): Promise<void> {
+  await prisma.$executeRawUnsafe(`
     CREATE TABLE IF NOT EXISTS "McpServerProfile" (
       "id" TEXT NOT NULL PRIMARY KEY,
+      "userId" INTEGER NOT NULL,
       "sortOrder" INTEGER NOT NULL,
       "configKey" TEXT NOT NULL,
       "name" TEXT NOT NULL,
@@ -134,18 +162,17 @@ async function ensureDatabaseSchema(): Promise<void> {
       "argsJson" TEXT,
       "cwd" TEXT,
       "envJson" TEXT,
-      "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+      FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE CASCADE
     )
   `);
 
   await prisma.$executeRawUnsafe(`
-    CREATE UNIQUE INDEX IF NOT EXISTS "McpServerProfile_configKey_key"
-    ON "McpServerProfile" ("configKey")
+    CREATE UNIQUE INDEX IF NOT EXISTS "McpServerProfile_userId_configKey_key"
+    ON "McpServerProfile" ("userId", "configKey")
   `);
 
   await prisma.$executeRawUnsafe(`
-    CREATE INDEX IF NOT EXISTS "McpServerProfile_sortOrder_idx"
-    ON "McpServerProfile" ("sortOrder")
+    CREATE INDEX IF NOT EXISTS "McpServerProfile_userId_sortOrder_idx"
+    ON "McpServerProfile" ("userId", "sortOrder")
   `);
 }

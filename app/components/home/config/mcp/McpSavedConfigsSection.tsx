@@ -17,7 +17,6 @@ export type McpSavedConfigsSectionProps = {
   savedMcpError: string | null;
   onSelectedSavedMcpServerIdChange: (value: string) => void;
   onLoadSavedMcpServerToForm: () => void;
-  onReloadSavedMcpServers: () => void | Promise<void>;
 };
 
 export function McpSavedConfigsSection(props: McpSavedConfigsSectionProps) {
@@ -29,7 +28,6 @@ export function McpSavedConfigsSection(props: McpSavedConfigsSectionProps) {
     savedMcpError,
     onSelectedSavedMcpServerIdChange,
     onLoadSavedMcpServerToForm,
-    onReloadSavedMcpServers,
   } = props;
 
   return (
@@ -66,17 +64,6 @@ export function McpSavedConfigsSection(props: McpSavedConfigsSectionProps) {
           }
         >
           📥 Load Selected
-        </Button>
-        <Button
-          type="button"
-          appearance="secondary"
-          title="Reload saved MCP configs from disk."
-          onClick={() => {
-            void onReloadSavedMcpServers();
-          }}
-          disabled={isSending || isLoadingSavedMcpServers}
-        >
-          {isLoadingSavedMcpServers ? "🔄 Loading..." : "🔄 Reload"}
         </Button>
       </div>
       <StatusMessageList messages={[{ intent: "error", text: savedMcpError }]} />

@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { isLikelyAzureAuthError, readTenantIdFromAccessToken } from "./api.azure-connections";
+import {
+  readPrincipalIdFromAccessToken,
+  readTenantIdFromAccessToken,
+} from "~/lib/server/auth/azure-user";
+import { isLikelyAzureAuthError } from "./api.azure-connections";
 
 function createAccessToken(payload: unknown): string {
   const encodedPayload = Buffer.from(JSON.stringify(payload)).toString("base64url");
@@ -12,14 +16,9 @@ describe("readTenantIdFromAccessToken", () => {
     expect(readTenantIdFromAccessToken(token)).toBe("tenant-a");
   });
 
-  it("falls back to tenantId when tid is not present", () => {
+  it("returns empty string when tid is not present", () => {
     const token = createAccessToken({ tenantId: "tenant-b" });
-    expect(readTenantIdFromAccessToken(token)).toBe("tenant-b");
-  });
-
-  it("prefers tid over tenantId when both are present", () => {
-    const token = createAccessToken({ tid: "tenant-priority", tenantId: "tenant-fallback" });
-    expect(readTenantIdFromAccessToken(token)).toBe("tenant-priority");
+    expect(readTenantIdFromAccessToken(token)).toBe("");
   });
 
   it("returns empty string for invalid token format", () => {
@@ -30,6 +29,25 @@ describe("readTenantIdFromAccessToken", () => {
     const encodedPayload = Buffer.from("not-json").toString("base64url");
     const token = `header.${encodedPayload}.signature`;
     expect(readTenantIdFromAccessToken(token)).toBe("");
+  });
+});
+
+describe("readPrincipalIdFromAccessToken", () => {
+  it("returns oid when present", () => {
+    const token = createAccessToken({ oid: " principal-oid " });
+    expect(readPrincipalIdFromAccessToken(token)).toBe("principal-oid");
+  });
+
+  it("returns empty string when oid is not present", () => {
+    const withSub = createAccessToken({ sub: "principal-sub" });
+    expect(readPrincipalIdFromAccessToken(withSub)).toBe("");
+
+    const withAppId = createAccessToken({ appid: "principal-app" });
+    expect(readPrincipalIdFromAccessToken(withAppId)).toBe("");
+  });
+
+  it("returns empty string for invalid token format", () => {
+    expect(readPrincipalIdFromAccessToken("invalid-token")).toBe("");
   });
 });
 
