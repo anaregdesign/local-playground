@@ -27,14 +27,12 @@ export const AZURE_MAX_MODELS_PER_ACCOUNT = 512;
 
 /**
  * Impact scope:
- * These constants control shared storage locations and filenames.
- * Changing them affects where user settings and MCP profiles are read/written.
+ * These constants control shared storage locations.
+ * Changing them affects where SQLite data is stored.
  */
 export const FOUNDRY_LEGACY_CONFIG_DIRECTORY_NAME = ".foundry_local_playground";
 export const FOUNDRY_WINDOWS_CONFIG_DIRECTORY_NAME = "FoundryLocalPlayground";
-export const FOUNDRY_AZURE_SELECTION_FILE_NAME = "azure-selection.json";
-export const FOUNDRY_MCP_SERVERS_FILE_NAME = "mcp-servers.json";
-export const FOUNDRY_PROMPTS_SUBDIRECTORY_NAME = "prompts";
+export const FOUNDRY_SQLITE_DATABASE_FILE_NAME = "local-playground.sqlite";
 
 /**
  * Impact scope:
@@ -169,8 +167,8 @@ export const INSTRUCTION_SAVE_FILE_TYPES: InstructionSaveFileType[] = [
 
 /**
  * Impact scope:
- * These constants define API-side prompt file naming and content limits.
- * Changing them affects saved filename normalization and size validation.
+ * These constants define prompt file naming and content limits.
+ * Changing them affects instruction filename normalization and size validation.
  */
 export const PROMPT_DEFAULT_FILE_STEM = "instruction";
 export const PROMPT_DEFAULT_FILE_EXTENSION = ".md";

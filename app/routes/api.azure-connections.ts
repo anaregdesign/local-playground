@@ -99,6 +99,16 @@ export async function loader({ request }: Route.LoaderArgs) {
     const deployments = await listProjectDeployments(tokenResult.token, projectRef);
     return Response.json({ deployments, tenantId: tokenResult.tenantId, authRequired: false });
   } catch (error) {
+    if (isLikelyAzureAuthError(error)) {
+      return Response.json(
+        {
+          authRequired: true,
+          error: "Azure login is required. Click Azure Login to continue.",
+        },
+        { status: 401 },
+      );
+    }
+
     return Response.json(
       {
         error: `Failed to load Azure connection data: ${readErrorMessage(error)}`,
@@ -547,4 +557,27 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function readErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Unknown error.";
+}
+
+export function isLikelyAzureAuthError(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  const message = error.message.toLowerCase();
+  return [
+    "defaultazurecredential",
+    "chainedtokencredential",
+    "credentialunavailableerror",
+    "managedidentitycredential",
+    "azureclicredential",
+    "az login",
+    "run az login",
+    "authentication",
+    "authorization",
+    "unauthorized",
+    "forbidden",
+    "access token",
+    "aadsts",
+  ].some((pattern) => message.includes(pattern));
 }

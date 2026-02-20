@@ -1571,7 +1571,9 @@ export default function Home() {
     setError(null);
     setAzureLoginError(null);
 
-    if (isAzureAuthRequired) {
+    if (isAzureAuthRequired || isLikelyChatAzureAuthError(azureConnectionError)) {
+      setIsAzureAuthRequired(true);
+      setActiveMainTab("settings");
       void handleAzureLogin();
       return;
     }
@@ -1876,6 +1878,26 @@ function renderTurnMcpLog(
       )}
     </details>
   );
+}
+
+function isLikelyChatAzureAuthError(message: string | null): boolean {
+  if (!message) {
+    return false;
+  }
+
+  const normalizedMessage = message.toLowerCase();
+  return [
+    "azure login is required",
+    "az login",
+    "defaultazurecredential",
+    "credential",
+    "authentication",
+    "authorization",
+    "unauthorized",
+    "forbidden",
+    "access token",
+    "aadsts",
+  ].some((pattern) => normalizedMessage.includes(pattern));
 }
 
 function renderHighlightedJson(

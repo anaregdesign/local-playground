@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { readTenantIdFromAccessToken } from "./api.azure-connections";
+import { isLikelyAzureAuthError, readTenantIdFromAccessToken } from "./api.azure-connections";
 
 function createAccessToken(payload: unknown): string {
   const encodedPayload = Buffer.from(JSON.stringify(payload)).toString("base64url");
@@ -30,5 +30,26 @@ describe("readTenantIdFromAccessToken", () => {
     const encodedPayload = Buffer.from("not-json").toString("base64url");
     const token = `header.${encodedPayload}.signature`;
     expect(readTenantIdFromAccessToken(token)).toBe("");
+  });
+});
+
+describe("isLikelyAzureAuthError", () => {
+  it("returns true for Azure login/authentication failures", () => {
+    expect(
+      isLikelyAzureAuthError(
+        new Error("DefaultAzureCredential failed. Please run 'az login' to setup account."),
+      ),
+    ).toBe(true);
+    expect(
+      isLikelyAzureAuthError(new Error("Request failed with status code 401 Unauthorized.")),
+    ).toBe(true);
+  });
+
+  it("returns false for non-auth errors", () => {
+    expect(
+      isLikelyAzureAuthError(new Error("Failed to load Azure connection data: Bad gateway.")),
+    ).toBe(false);
+    expect(isLikelyAzureAuthError(new Error("Network timeout"))).toBe(false);
+    expect(isLikelyAzureAuthError("invalid")).toBe(false);
   });
 });

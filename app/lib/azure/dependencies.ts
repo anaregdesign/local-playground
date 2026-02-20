@@ -117,6 +117,10 @@ export function getAzureDependencies(): AzureDependencies {
   return singletonAzureDependencies;
 }
 
+export function resetAzureDependencies(): void {
+  singletonAzureDependencies = null;
+}
+
 export function normalizeAzureOpenAIBaseURL(rawValue: string): string {
   const trimmed = rawValue.trim().replace(/\/+$/, "");
   if (!trimmed) {

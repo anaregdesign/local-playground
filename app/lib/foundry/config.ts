@@ -1,7 +1,8 @@
-import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import {
+  FOUNDRY_SQLITE_DATABASE_FILE_NAME,
   FOUNDRY_LEGACY_CONFIG_DIRECTORY_NAME,
   FOUNDRY_WINDOWS_CONFIG_DIRECTORY_NAME,
 } from "~/lib/constants";
@@ -12,10 +13,9 @@ type ResolveFoundryConfigDirectoryOptions = {
   appDataDirectory?: string | null;
 };
 
-export type FoundryConfigFilePaths = {
-  primaryDirectoryPath: string;
-  primaryFilePath: string;
-  legacyFilePath: string | null;
+type ResolveFoundryDatabaseUrlOptions = ResolveFoundryConfigDirectoryOptions & {
+  envDatabaseUrl?: string | null;
+  cwd?: string;
 };
 
 export function resolveLegacyFoundryConfigDirectory(
@@ -45,53 +45,26 @@ export function resolveFoundryConfigDirectory(
   return path.win32.join(appDataDirectory, FOUNDRY_WINDOWS_CONFIG_DIRECTORY_NAME);
 }
 
-export function resolveFoundryConfigFilePaths(
-  fileName: string,
+export function resolveFoundryDatabaseFilePath(
   options: ResolveFoundryConfigDirectoryOptions = {},
-): FoundryConfigFilePaths {
+): string {
+  const primaryDirectoryPath = resolveFoundryConfigDirectory(options);
   const platform = options.platform ?? process.platform;
   const pathModule = platform === "win32" ? path.win32 : path.posix;
-  const primaryDirectoryPath = resolveFoundryConfigDirectory(options);
-  const legacyDirectoryPath = resolveLegacyFoundryConfigDirectory(options);
-  const primaryFilePath = pathModule.join(primaryDirectoryPath, fileName);
-  const legacyFilePathCandidate = pathModule.join(legacyDirectoryPath, fileName);
-
-  return {
-    primaryDirectoryPath,
-    primaryFilePath,
-    legacyFilePath: primaryFilePath === legacyFilePathCandidate ? null : legacyFilePathCandidate,
-  };
+  return pathModule.join(primaryDirectoryPath, FOUNDRY_SQLITE_DATABASE_FILE_NAME);
 }
 
-export function getFoundryConfigFilePaths(fileName: string): FoundryConfigFilePaths {
-  return resolveFoundryConfigFilePaths(fileName);
-}
-
-export async function readFoundryConfigTextFile(
-  filePaths: FoundryConfigFilePaths,
-): Promise<string | null> {
-  try {
-    return await readFile(filePaths.primaryFilePath, "utf8");
-  } catch (error) {
-    if (!isNodeError(error) || error.code !== "ENOENT") {
-      throw error;
-    }
+export function resolveFoundryDatabaseUrl(
+  options: ResolveFoundryDatabaseUrlOptions = {},
+): string {
+  const configuredUrl =
+    typeof options.envDatabaseUrl === "string" ? options.envDatabaseUrl.trim() : "";
+  if (configuredUrl) {
+    return configuredUrl;
   }
 
-  if (!filePaths.legacyFilePath) {
-    return null;
-  }
-
-  try {
-    return await readFile(filePaths.legacyFilePath, "utf8");
-  } catch (error) {
-    if (isNodeError(error) && error.code === "ENOENT") {
-      return null;
-    }
-    throw error;
-  }
-}
-
-function isNodeError(error: unknown): error is NodeJS.ErrnoException {
-  return error instanceof Error;
+  const resolvedPath = resolveFoundryDatabaseFilePath(options);
+  const fallbackPath =
+    resolvedPath.trim() || path.resolve(options.cwd ?? process.cwd(), "local-playground.sqlite");
+  return pathToFileURL(fallbackPath).toString();
 }

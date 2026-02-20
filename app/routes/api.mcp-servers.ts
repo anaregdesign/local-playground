@@ -1,7 +1,5 @@
-import { mkdir, writeFile } from "node:fs/promises";
 import {
   ENV_KEY_PATTERN,
-  FOUNDRY_MCP_SERVERS_FILE_NAME,
   HTTP_HEADER_NAME_PATTERN,
   MCP_AZURE_AUTH_SCOPE_MAX_LENGTH,
   MCP_DEFAULT_AZURE_AUTH_SCOPE,
@@ -13,7 +11,10 @@ import {
   MCP_TIMEOUT_SECONDS_MAX,
   MCP_TIMEOUT_SECONDS_MIN,
 } from "~/lib/constants";
-import { getFoundryConfigFilePaths, readFoundryConfigTextFile } from "~/lib/foundry/config";
+import {
+  ensurePersistenceDatabaseReady,
+  prisma,
+} from "~/lib/server/persistence/prisma";
 import type { Route } from "./+types/api.mcp-servers";
 
 type McpTransport = "streamable_http" | "sse" | "stdio";
@@ -56,7 +57,7 @@ export async function loader({ request }: Route.LoaderArgs) {
   } catch (error) {
     return Response.json(
       {
-        error: `Failed to read MCP server config file: ${readErrorMessage(error)}`,
+        error: `Failed to read MCP servers from database: ${readErrorMessage(error)}`,
       },
       { status: 500 },
     );
@@ -92,7 +93,7 @@ export async function action({ request }: Route.ActionArgs) {
   } catch (error) {
     return Response.json(
       {
-        error: `Failed to update MCP server config file: ${readErrorMessage(error)}`,
+        error: `Failed to update MCP servers in database: ${readErrorMessage(error)}`,
       },
       { status: 500 },
     );
@@ -100,28 +101,18 @@ export async function action({ request }: Route.ActionArgs) {
 }
 
 async function readSavedMcpServers(): Promise<SavedMcpServerConfig[]> {
-  const configFilePaths = getFoundryConfigFilePaths(FOUNDRY_MCP_SERVERS_FILE_NAME);
-  const content = await readFoundryConfigTextFile(configFilePaths);
-  if (content === null) {
-    return [];
-  }
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(content);
-  } catch {
-    return [];
-  }
-
-  if (!Array.isArray(parsed)) {
-    return [];
-  }
+  await ensurePersistenceDatabaseReady();
+  const records = await prisma.mcpServerProfile.findMany({
+    orderBy: {
+      sortOrder: "asc",
+    },
+  });
 
   const profiles: SavedMcpServerConfig[] = [];
   const keys = new Set<string>();
 
-  for (const entry of parsed) {
-    const normalized = normalizeStoredMcpServer(entry);
+  for (const record of records) {
+    const normalized = normalizeStoredMcpServerRecord(record);
     if (!normalized) {
       continue;
     }
@@ -139,9 +130,17 @@ async function readSavedMcpServers(): Promise<SavedMcpServerConfig[]> {
 }
 
 async function writeSavedMcpServers(profiles: SavedMcpServerConfig[]): Promise<void> {
-  const configFilePaths = getFoundryConfigFilePaths(FOUNDRY_MCP_SERVERS_FILE_NAME);
-  await mkdir(configFilePaths.primaryDirectoryPath, { recursive: true });
-  await writeFile(configFilePaths.primaryFilePath, JSON.stringify(profiles, null, 2) + "\n", "utf8");
+  await ensurePersistenceDatabaseReady();
+  await prisma.$transaction(async (transaction) => {
+    await transaction.mcpServerProfile.deleteMany();
+    if (profiles.length === 0) {
+      return;
+    }
+
+    await transaction.mcpServerProfile.createMany({
+      data: profiles.map((profile, index) => mapProfileToDatabaseRecord(profile, index)),
+    });
+  });
 }
 
 function parseIncomingMcpServer(payload: unknown): ParseResult<IncomingMcpServerConfig> {
@@ -354,6 +353,163 @@ function normalizeStoredMcpServer(entry: unknown): SavedMcpServerConfig | null {
         azureAuthScope: parsed.value.azureAuthScope,
         timeoutSeconds: parsed.value.timeoutSeconds,
       };
+}
+
+function normalizeStoredMcpServerRecord(entry: {
+  id: string;
+  name: string;
+  transport: string;
+  url: string | null;
+  headersJson: string | null;
+  useAzureAuth: boolean;
+  azureAuthScope: string | null;
+  timeoutSeconds: number | null;
+  command: string | null;
+  argsJson: string | null;
+  cwd: string | null;
+  envJson: string | null;
+}): SavedMcpServerConfig | null {
+  const transport = readTransport(entry.transport);
+  if (!transport) {
+    return null;
+  }
+
+  if (transport === "stdio") {
+    const args = parseStringArrayJson(entry.argsJson);
+    const env = parseStringMapJson(entry.envJson);
+    if (!args || !env || !entry.command) {
+      return null;
+    }
+
+    return normalizeStoredMcpServer({
+      id: entry.id,
+      name: entry.name,
+      transport: "stdio",
+      command: entry.command,
+      args,
+      cwd: entry.cwd ?? undefined,
+      env,
+    });
+  }
+
+  const headers = parseStringMapJson(entry.headersJson);
+  if (!headers || !entry.url) {
+    return null;
+  }
+
+  return normalizeStoredMcpServer({
+    id: entry.id,
+    name: entry.name,
+    transport,
+    url: entry.url,
+    headers,
+    useAzureAuth: entry.useAzureAuth,
+    azureAuthScope: entry.azureAuthScope ?? MCP_DEFAULT_AZURE_AUTH_SCOPE,
+    timeoutSeconds: entry.timeoutSeconds ?? MCP_DEFAULT_TIMEOUT_SECONDS,
+  });
+}
+
+function mapProfileToDatabaseRecord(profile: SavedMcpServerConfig, sortOrder: number): {
+  id: string;
+  sortOrder: number;
+  configKey: string;
+  name: string;
+  transport: string;
+  url: string | null;
+  headersJson: string | null;
+  useAzureAuth: boolean;
+  azureAuthScope: string | null;
+  timeoutSeconds: number | null;
+  command: string | null;
+  argsJson: string | null;
+  cwd: string | null;
+  envJson: string | null;
+} {
+  if (profile.transport === "stdio") {
+    return {
+      id: profile.id,
+      sortOrder,
+      configKey: buildProfileKey(profile),
+      name: profile.name,
+      transport: profile.transport,
+      url: null,
+      headersJson: null,
+      useAzureAuth: false,
+      azureAuthScope: null,
+      timeoutSeconds: null,
+      command: profile.command,
+      argsJson: JSON.stringify(profile.args),
+      cwd: profile.cwd ?? null,
+      envJson: JSON.stringify(profile.env),
+    };
+  }
+
+  return {
+    id: profile.id,
+    sortOrder,
+    configKey: buildProfileKey(profile),
+    name: profile.name,
+    transport: profile.transport,
+    url: profile.url,
+    headersJson: JSON.stringify(profile.headers),
+    useAzureAuth: profile.useAzureAuth,
+    azureAuthScope: profile.azureAuthScope,
+    timeoutSeconds: profile.timeoutSeconds,
+    command: null,
+    argsJson: null,
+    cwd: null,
+    envJson: null,
+  };
+}
+
+function parseStringArrayJson(value: string | null): string[] | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    return null;
+  }
+
+  if (!Array.isArray(parsed)) {
+    return null;
+  }
+
+  if (parsed.some((entry) => typeof entry !== "string")) {
+    return null;
+  }
+
+  return [...parsed];
+}
+
+function parseStringMapJson(value: string | null): Record<string, string> | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    return null;
+  }
+
+  if (!isRecord(parsed)) {
+    return null;
+  }
+
+  const normalized: Record<string, string> = {};
+  for (const [key, entryValue] of Object.entries(parsed)) {
+    if (typeof entryValue !== "string") {
+      return null;
+    }
+    normalized[key] = entryValue;
+  }
+
+  return normalized;
 }
 
 function parseArgs(argsValue: unknown): ParseResult<string[]> {

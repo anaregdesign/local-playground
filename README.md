@@ -86,12 +86,12 @@ Configuration directory:
 - macOS/Linux: `~/.foundry_local_playground/`
 - Windows: `%APPDATA%\FoundryLocalPlayground\`
 
-Files:
+SQLite database:
 
-- Azure selection: `azure-selection.json`
-- MCP profiles: `mcp-servers.json`
+- `local-playground.sqlite`
+- Stores Azure selection preferences and saved MCP profiles
 
-Legacy Windows fallback is also read:
+If `APPDATA` is unavailable on Windows, path falls back to:
 
 - `%USERPROFILE%\.foundry_local_playground\`
 

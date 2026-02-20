@@ -1,6 +1,7 @@
-import { mkdir, writeFile } from "node:fs/promises";
-import { FOUNDRY_AZURE_SELECTION_FILE_NAME } from "~/lib/constants";
-import { getFoundryConfigFilePaths, readFoundryConfigTextFile } from "~/lib/foundry/config";
+import {
+  ensurePersistenceDatabaseReady,
+  prisma,
+} from "~/lib/server/persistence/prisma";
 import type { Route } from "./+types/api.azure-selection";
 
 type AzureSelectionPreference = {
@@ -8,10 +9,6 @@ type AzureSelectionPreference = {
   projectId: string;
   deploymentName: string;
   updatedAt: string;
-};
-
-type StoredAzureSelectionFile = {
-  tenants: Record<string, AzureSelectionPreference>;
 };
 
 export async function loader({ request }: Route.LoaderArgs) {
@@ -25,11 +22,11 @@ export async function loader({ request }: Route.LoaderArgs) {
   }
 
   try {
-    const file = await readStoredSelectionFile();
-    return Response.json({ selection: file.tenants[tenantId] ?? null });
+    const selection = await readStoredSelection(tenantId);
+    return Response.json({ selection });
   } catch (error) {
     return Response.json(
-      { error: `Failed to read Azure selection file: ${readErrorMessage(error)}` },
+      { error: `Failed to read Azure selection from database: ${readErrorMessage(error)}` },
       { status: 500 },
     );
   }
@@ -56,13 +53,11 @@ export async function action({ request }: Route.ActionArgs) {
   }
 
   try {
-    const file = await readStoredSelectionFile();
-    file.tenants[preference.tenantId] = preference;
-    await writeStoredSelectionFile(file);
-    return Response.json({ selection: preference });
+    const selection = await saveStoredSelection(preference);
+    return Response.json({ selection });
   } catch (error) {
     return Response.json(
-      { error: `Failed to save Azure selection file: ${readErrorMessage(error)}` },
+      { error: `Failed to save Azure selection to database: ${readErrorMessage(error)}` },
       { status: 500 },
     );
   }
@@ -94,49 +89,48 @@ export function parseAzureSelectionPreference(value: unknown): AzureSelectionPre
   };
 }
 
-async function readStoredSelectionFile(): Promise<StoredAzureSelectionFile> {
-  const selectionFilePaths = getFoundryConfigFilePaths(FOUNDRY_AZURE_SELECTION_FILE_NAME);
-  const content = await readFoundryConfigTextFile(selectionFilePaths);
-  if (content === null) {
-    return { tenants: {} };
-  }
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(content);
-  } catch {
-    return { tenants: {} };
-  }
-
-  if (!isRecord(parsed) || !isRecord(parsed.tenants)) {
-    return { tenants: {} };
-  }
-
-  const tenants: Record<string, AzureSelectionPreference> = {};
-  for (const [tenantId, entry] of Object.entries(parsed.tenants)) {
-    if (typeof tenantId !== "string" || !tenantId.trim()) {
-      continue;
-    }
-
-    const normalized = parseAzureSelectionPreference(entry);
-    if (!normalized) {
-      continue;
-    }
-
-    tenants[tenantId.trim()] = normalized;
-  }
-
-  return { tenants };
+async function readStoredSelection(tenantId: string): Promise<AzureSelectionPreference | null> {
+  await ensurePersistenceDatabaseReady();
+  const record = await prisma.azureSelectionPreference.findUnique({
+    where: { tenantId },
+  });
+  return record ? mapSelectionRecord(record) : null;
 }
 
-async function writeStoredSelectionFile(file: StoredAzureSelectionFile): Promise<void> {
-  const selectionFilePaths = getFoundryConfigFilePaths(FOUNDRY_AZURE_SELECTION_FILE_NAME);
-  await mkdir(selectionFilePaths.primaryDirectoryPath, { recursive: true });
-  await writeFile(
-    selectionFilePaths.primaryFilePath,
-    JSON.stringify(file, null, 2) + "\n",
-    "utf8",
-  );
+async function saveStoredSelection(
+  preference: AzureSelectionPreference,
+): Promise<AzureSelectionPreference> {
+  await ensurePersistenceDatabaseReady();
+  const saved = await prisma.azureSelectionPreference.upsert({
+    where: { tenantId: preference.tenantId },
+    create: {
+      tenantId: preference.tenantId,
+      projectId: preference.projectId,
+      deploymentName: preference.deploymentName,
+      updatedAt: new Date(preference.updatedAt),
+    },
+    update: {
+      projectId: preference.projectId,
+      deploymentName: preference.deploymentName,
+      updatedAt: new Date(preference.updatedAt),
+    },
+  });
+
+  return mapSelectionRecord(saved);
+}
+
+function mapSelectionRecord(record: {
+  tenantId: string;
+  projectId: string;
+  deploymentName: string;
+  updatedAt: Date;
+}): AzureSelectionPreference {
+  return {
+    tenantId: record.tenantId,
+    projectId: record.projectId,
+    deploymentName: record.deploymentName,
+    updatedAt: record.updatedAt.toISOString(),
+  };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
