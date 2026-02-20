@@ -1287,10 +1287,41 @@ body {
 .threads-active-item.fui-Button .fui-Button__content {
   width: 100%;
   justify-content: flex-start;
+  font-size: var(--home-font-size-label);
+}
+
+.threads-active-item-content {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.threads-active-item-name {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: var(--home-font-size-label);
+}
+
+.threads-active-item-status {
+  flex-shrink: 0;
+  padding: 0.08rem 0.4rem;
+  border-radius: var(--home-radius-pill);
+  border: 1px solid rgba(96, 94, 92, 0.28);
+  background: #f8f9fb;
+  color: var(--text-subtle);
+  font-size: 0.68rem;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.threads-active-item-status.is-pending {
+  border-color: #d8b562;
+  background: #fff4ce;
+  color: #8a5b00;
 }
 
 .threads-active-item.fui-Button:enabled:hover {

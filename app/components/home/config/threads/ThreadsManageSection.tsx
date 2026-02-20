@@ -10,6 +10,7 @@ export type ThreadOption = {
   updatedAt: string;
   messageCount: number;
   mcpServerCount: number;
+  isAwaitingResponse: boolean;
 };
 
 export type ThreadsManageSectionProps = {
@@ -67,7 +68,16 @@ export function ThreadsManageSection(props: ThreadsManageSectionProps) {
                   disabled={isThreadSelectionDisabled}
                   aria-pressed={isActive}
                 >
-                  {thread.name}
+                  <span className="threads-active-item-content">
+                    <span className="threads-active-item-name">{thread.name}</span>
+                    <span
+                      className={`threads-active-item-status${
+                        thread.isAwaitingResponse ? " is-pending" : ""
+                      }`}
+                    >
+                      {thread.isAwaitingResponse ? "Awaiting response" : "Idle"}
+                    </span>
+                  </span>
                 </Button>
               );
             })}
@@ -76,8 +86,9 @@ export function ThreadsManageSection(props: ThreadsManageSectionProps) {
       </Field>
       {selectedThread ? (
         <p className="field-hint">
-          Updated: {formatUpdatedAt(selectedThread.updatedAt)} | Messages: {selectedThread.messageCount} |
-          Connected MCP Servers: {selectedThread.mcpServerCount}
+          Status: {selectedThread.isAwaitingResponse ? "Awaiting response" : "Idle"} | Updated:{" "}
+          {formatUpdatedAt(selectedThread.updatedAt)} | Messages: {selectedThread.messageCount} | Connected MCP
+          Servers: {selectedThread.mcpServerCount}
         </p>
       ) : null}
       <StatusMessageList messages={[{ intent: "error", text: threadError }]} />

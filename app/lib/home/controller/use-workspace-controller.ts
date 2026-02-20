@@ -521,7 +521,7 @@ export function useWorkspaceController() {
       return;
     }
 
-    const baseThread = threads.find((thread) => thread.id === currentThreadId);
+    const baseThread = threadsRef.current.find((thread) => thread.id === currentThreadId);
     if (!baseThread) {
       return;
     }
@@ -567,7 +567,7 @@ export function useWorkspaceController() {
       return;
     }
 
-    const baseThread = threads.find((thread) => thread.id === currentThreadId);
+    const baseThread = threadsRef.current.find((thread) => thread.id === currentThreadId);
     if (!baseThread) {
       return;
     }
@@ -707,6 +707,20 @@ export function useWorkspaceController() {
     }
   }
 
+  function setThreadsState(nextThreads: ThreadSnapshot[]): void {
+    threadsRef.current = nextThreads;
+    setThreads(nextThreads);
+  }
+
+  function updateThreadsState(
+    updater: (current: ThreadSnapshot[]) => ThreadSnapshot[],
+  ): ThreadSnapshot[] {
+    const nextThreads = updater(threadsRef.current);
+    threadsRef.current = nextThreads;
+    setThreads(nextThreads);
+    return nextThreads;
+  }
+
   function clearThreadsState(nextError: string | null = null) {
     clearThreadNameSaveTimeout();
     clearThreadSaveTimeout();
@@ -714,7 +728,7 @@ export function useWorkspaceController() {
     activeThreadIdRef.current = "";
     isApplyingThreadStateRef.current = false;
     threadSaveSignatureByIdRef.current.clear();
-    setThreads([]);
+    setThreadsState([]);
     setActiveThreadId("");
     setActiveThreadNameInput("");
     setSelectedThreadId("");
@@ -835,7 +849,7 @@ export function useWorkspaceController() {
       return;
     }
 
-    setThreads((current) => {
+    updateThreadsState((current) => {
       const index = current.findIndex((thread) => thread.id === threadId);
       if (index < 0) {
         return current;
@@ -978,7 +992,7 @@ export function useWorkspaceController() {
         return false;
       }
 
-      setThreads((current) => upsertThreadSnapshot(current, savedThread));
+      updateThreadsState((current) => upsertThreadSnapshot(current, savedThread));
       threadSaveSignatureByIdRef.current.set(savedThread.id, signature);
       if (savedThread.id === activeThreadIdRef.current) {
         setActiveThreadNameInput(savedThread.name);
@@ -1034,7 +1048,7 @@ export function useWorkspaceController() {
 
     clearThreadNameSaveTimeout();
 
-    const baseThread = threads.find((thread) => thread.id === currentThreadId);
+    const baseThread = threadsRef.current.find((thread) => thread.id === currentThreadId);
     if (!baseThread) {
       return true;
     }
@@ -1065,7 +1079,7 @@ export function useWorkspaceController() {
       return;
     }
 
-    const baseThread = threads.find((thread) => thread.id === normalizedThreadId);
+    const baseThread = threadsRef.current.find((thread) => thread.id === normalizedThreadId);
     if (!baseThread || baseThread.name === normalizedName) {
       return;
     }
@@ -1127,7 +1141,7 @@ export function useWorkspaceController() {
       }
 
       setThreadSaveSignatures(parsedThreads);
-      setThreads(parsedThreads);
+      setThreadsState(parsedThreads);
       setThreadRequestStateById((current) => {
         const next: Record<string, ThreadRequestState> = {};
         const validIds = new Set(parsedThreads.map((thread) => thread.id));
@@ -1218,7 +1232,7 @@ export function useWorkspaceController() {
 
       const createdSignature = buildThreadSaveSignature(createdThread);
       threadSaveSignatureByIdRef.current.set(createdThread.id, createdSignature);
-      setThreads((current) => upsertThreadSnapshot(current, createdThread));
+      updateThreadsState((current) => upsertThreadSnapshot(current, createdThread));
       isThreadsReadyRef.current = true;
       applyThreadSnapshotToState(createdThread);
       return true;
@@ -1254,7 +1268,7 @@ export function useWorkspaceController() {
       return;
     }
 
-    const nextThread = threads.find((thread) => thread.id === nextThreadId);
+    const nextThread = threadsRef.current.find((thread) => thread.id === nextThreadId);
     if (!nextThread) {
       setSelectedThreadId(activeThreadIdRef.current);
       setThreadError("Selected thread is not available.");
@@ -2717,6 +2731,8 @@ export function useWorkspaceController() {
       updatedAt: thread.updatedAt,
       messageCount: thread.messageCount,
       mcpServerCount: thread.mcpServerCount,
+      isAwaitingResponse:
+        (threadRequestStateById[thread.id] ?? HOME_DEFAULT_THREAD_REQUEST_STATE).isSending,
     })),
     activeThreadId: selectedThreadId || activeThreadId,
     isLoadingThreads,
