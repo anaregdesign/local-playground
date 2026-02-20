@@ -5,6 +5,10 @@ import {
   prisma,
 } from "~/lib/server/persistence/prisma";
 import { getOrCreateUserByIdentity } from "~/lib/server/persistence/user";
+import {
+  installGlobalServerErrorLogging,
+  logServerRouteEvent,
+} from "~/lib/server/observability/app-event-log";
 import { readThreadSnapshotFromUnknown } from "~/lib/home/thread/parsers";
 import {
   buildThreadMcpRpcLogRowId,
@@ -19,6 +23,8 @@ const THREAD_DEFAULT_NAME = "New Thread";
 type ThreadAction = "create" | "save";
 
 export async function loader({ request }: Route.LoaderArgs) {
+  installGlobalServerErrorLogging();
+
   if (request.method !== "GET") {
     return Response.json({ error: "Method not allowed." }, { status: 405 });
   }
@@ -43,6 +49,16 @@ export async function loader({ request }: Route.LoaderArgs) {
     const created = await createThread(user.id);
     return Response.json({ threads: [created] });
   } catch (error) {
+    await logServerRouteEvent({
+      request,
+      route: "/api/threads",
+      eventName: "load_threads_failed",
+      action: "load_threads",
+      statusCode: 500,
+      error,
+      userId: user.id,
+    });
+
     return Response.json(
       {
         error: `Failed to load threads from database: ${readErrorMessage(error)}`,
@@ -53,6 +69,8 @@ export async function loader({ request }: Route.LoaderArgs) {
 }
 
 export async function action({ request }: Route.ActionArgs) {
+  installGlobalServerErrorLogging();
+
   if (request.method !== "POST") {
     return Response.json({ error: "Method not allowed." }, { status: 405 });
   }
@@ -72,11 +90,33 @@ export async function action({ request }: Route.ActionArgs) {
   try {
     payload = await request.json();
   } catch {
+    await logServerRouteEvent({
+      request,
+      route: "/api/threads",
+      eventName: "invalid_json_body",
+      action: "parse_request_body",
+      level: "warning",
+      statusCode: 400,
+      message: "Invalid JSON body.",
+      userId: user.id,
+    });
+
     return Response.json({ error: "Invalid JSON body." }, { status: 400 });
   }
 
   const actionType = readThreadAction(payload);
   if (!actionType) {
+    await logServerRouteEvent({
+      request,
+      route: "/api/threads",
+      eventName: "invalid_action_payload",
+      action: "read_action",
+      level: "warning",
+      statusCode: 400,
+      message: '`action` must be either "create" or "save".',
+      userId: user.id,
+    });
+
     return Response.json(
       {
         error: '`action` must be either "create" or "save".',
@@ -93,16 +133,49 @@ export async function action({ request }: Route.ActionArgs) {
 
     const thread = readThreadSnapshotFromSavePayload(payload);
     if (!thread) {
+      await logServerRouteEvent({
+        request,
+        route: "/api/threads",
+        eventName: "invalid_thread_payload",
+        action: "read_thread_snapshot",
+        level: "warning",
+        statusCode: 400,
+        message: "Invalid thread payload.",
+        userId: user.id,
+      });
+
       return Response.json({ error: "Invalid thread payload." }, { status: 400 });
     }
 
     const saved = await saveThreadSnapshot(user.id, thread);
     if (!saved) {
+      await logServerRouteEvent({
+        request,
+        route: "/api/threads",
+        eventName: "thread_not_found",
+        action: "save_thread",
+        level: "warning",
+        statusCode: 404,
+        message: "Thread is not available.",
+        userId: user.id,
+        threadId: thread.id,
+      });
+
       return Response.json({ error: "Thread is not available." }, { status: 404 });
     }
 
     return Response.json({ thread: saved });
   } catch (error) {
+    await logServerRouteEvent({
+      request,
+      route: "/api/threads",
+      eventName: actionType === "create" ? "create_thread_failed" : "save_thread_failed",
+      action: actionType === "create" ? "create_thread" : "save_thread",
+      statusCode: 500,
+      error,
+      userId: user.id,
+    });
+
     return Response.json(
       {
         error: `Failed to update thread in database: ${readErrorMessage(error)}`,

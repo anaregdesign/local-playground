@@ -6,6 +6,10 @@ import {
   normalizeAzureOpenAIBaseURL,
 } from "~/lib/azure/dependencies";
 import {
+  installGlobalServerErrorLogging,
+  logServerRouteEvent,
+} from "~/lib/server/observability/app-event-log";
+import {
   CHAT_MAX_AGENT_INSTRUCTION_LENGTH,
   INSTRUCTION_ENHANCE_SYSTEM_PROMPT,
   PROMPT_ALLOWED_FILE_EXTENSIONS,
@@ -122,6 +126,8 @@ const INSTRUCTION_DIFF_PATCH_OUTPUT_TYPE = {
 };
 
 export function loader({}: Route.LoaderArgs) {
+  installGlobalServerErrorLogging();
+
   return Response.json(
     {
       error:
@@ -132,6 +138,8 @@ export function loader({}: Route.LoaderArgs) {
 }
 
 export async function action({ request }: Route.ActionArgs) {
+  installGlobalServerErrorLogging();
+
   if (request.method !== "POST") {
     return Response.json({ error: "Method not allowed." }, { status: 405 });
   }
@@ -140,6 +148,16 @@ export async function action({ request }: Route.ActionArgs) {
   try {
     payload = await request.json();
   } catch {
+    await logServerRouteEvent({
+      request,
+      route: "/api/instruction",
+      eventName: "invalid_json_body",
+      action: "parse_request_body",
+      level: "warning",
+      statusCode: 400,
+      message: "Invalid JSON body.",
+    });
+
     return Response.json({ error: "Invalid JSON body." }, { status: 400 });
   }
 
@@ -154,12 +172,32 @@ export async function action({ request }: Route.ActionArgs) {
 
   const message = readMessage(payload);
   if (!message) {
+    await logServerRouteEvent({
+      request,
+      route: "/api/instruction",
+      eventName: "missing_message",
+      action: "validate_payload",
+      level: "warning",
+      statusCode: 400,
+      message: "`message` is required.",
+    });
+
     return Response.json({ error: "`message` is required." }, { status: 400 });
   }
 
   const enhanceAgentInstruction = readEnhanceAgentInstruction(payload);
   const azureConfigResult = readAzureConfig(payload);
   if (!azureConfigResult.ok) {
+    await logServerRouteEvent({
+      request,
+      route: "/api/instruction",
+      eventName: "invalid_azure_config",
+      action: "validate_payload",
+      level: "warning",
+      statusCode: 400,
+      message: azureConfigResult.error,
+    });
+
     return Response.json({ error: azureConfigResult.error }, { status: 400 });
   }
   const azureConfig = azureConfigResult.value;
@@ -196,6 +234,19 @@ export async function action({ request }: Route.ActionArgs) {
     return Response.json({ message: patch });
   } catch (error) {
     const upstreamError = buildUpstreamErrorPayload(error, azureConfig.deploymentName);
+    await logServerRouteEvent({
+      request,
+      route: "/api/instruction",
+      eventName: "enhance_instruction_failed",
+      action: "enhance_instruction",
+      statusCode: upstreamError.status,
+      error,
+      context: {
+        projectName: azureConfig.projectName,
+        deploymentName: azureConfig.deploymentName,
+      },
+    });
+
     return Response.json(upstreamError.payload, { status: upstreamError.status });
   }
 }

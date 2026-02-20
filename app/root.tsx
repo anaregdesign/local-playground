@@ -29,6 +29,14 @@ export const links: Route.LinksFunction = () => [
   { rel: "apple-touch-icon", href: "/apple-touch-icon.png" },
 ];
 
+export async function loader({}: Route.LoaderArgs) {
+  const { installGlobalServerErrorLogging } = await import(
+    "~/lib/server/observability/app-event-log"
+  );
+  installGlobalServerErrorLogging();
+  return null;
+}
+
 export function Layout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">

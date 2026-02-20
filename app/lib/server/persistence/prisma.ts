@@ -112,6 +112,7 @@ async function ensureDatabaseSchema(): Promise<void> {
   await ensureAzureSelectionSchema();
   await ensureMcpServerProfileSchema();
   await ensureThreadSchema();
+  await ensureAppEventLogSchema();
 }
 
 async function ensureUserSchema(): Promise<void> {
@@ -268,5 +269,46 @@ async function ensureThreadSchema(): Promise<void> {
   await prisma.$executeRawUnsafe(`
     CREATE INDEX IF NOT EXISTS "ThreadMcpRpcLog_threadId_sortOrder_idx"
     ON "ThreadMcpRpcLog" ("threadId", "sortOrder")
+  `);
+}
+
+async function ensureAppEventLogSchema(): Promise<void> {
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS "AppEventLog" (
+      "id" TEXT NOT NULL PRIMARY KEY,
+      "createdAt" TEXT NOT NULL,
+      "source" TEXT NOT NULL,
+      "level" TEXT NOT NULL,
+      "category" TEXT NOT NULL,
+      "eventName" TEXT NOT NULL,
+      "message" TEXT NOT NULL,
+      "errorName" TEXT,
+      "location" TEXT,
+      "action" TEXT,
+      "statusCode" INTEGER,
+      "httpMethod" TEXT,
+      "httpPath" TEXT,
+      "threadId" TEXT,
+      "tenantId" TEXT,
+      "principalId" TEXT,
+      "userId" INTEGER,
+      "stack" TEXT,
+      "context" TEXT NOT NULL
+    )
+  `);
+
+  await prisma.$executeRawUnsafe(`
+    CREATE INDEX IF NOT EXISTS "AppEventLog_createdAt_idx"
+    ON "AppEventLog" ("createdAt")
+  `);
+
+  await prisma.$executeRawUnsafe(`
+    CREATE INDEX IF NOT EXISTS "AppEventLog_level_createdAt_idx"
+    ON "AppEventLog" ("level", "createdAt")
+  `);
+
+  await prisma.$executeRawUnsafe(`
+    CREATE INDEX IF NOT EXISTS "AppEventLog_source_category_createdAt_idx"
+    ON "AppEventLog" ("source", "category", "createdAt")
   `);
 }

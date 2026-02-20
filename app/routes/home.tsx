@@ -102,6 +102,11 @@ import {
   isMcpServersAuthRequired,
   shouldScheduleSavedMcpLoginRetry,
 } from "~/lib/home/mcp/saved-profiles";
+import {
+  installGlobalClientErrorLogging,
+  reportClientError,
+  reportClientWarning,
+} from "~/lib/home/observability/app-event-log-client";
 import { buildThreadSummary, readThreadSnapshotFromUnknown } from "~/lib/home/thread/parsers";
 import type { ThreadSnapshot, ThreadSummary } from "~/lib/home/thread/types";
 import { copyTextToClipboard } from "~/lib/home/shared/clipboard";
@@ -246,6 +251,9 @@ export default function Home() {
   const savedMcpRequestSeqRef = useRef(0);
   const preferredAzureSelectionRef = useRef<AzureSelectionPreference | null>(null);
   const activeThreadIdRef = useRef("");
+  const activeMainTabRef = useRef<MainViewTab>("threads");
+  const selectedAzureConnectionIdRef = useRef("");
+  const selectedAzureDeploymentNameRef = useRef("");
   const isApplyingThreadStateRef = useRef(false);
   const isThreadsReadyRef = useRef(false);
   const threadNameSaveTimeoutRef = useRef<number | null>(null);
@@ -297,6 +305,78 @@ export default function Home() {
     !!activeAzureConnection &&
     !!selectedAzureDeploymentName.trim() &&
     draft.trim().length > 0;
+
+  function buildRuntimeLogContext(extra: Record<string, unknown> = {}): Record<string, unknown> {
+    return {
+      activeMainTab: activeMainTabRef.current,
+      activeThreadId: activeThreadIdRef.current,
+      selectedAzureConnectionId: selectedAzureConnectionIdRef.current,
+      selectedAzureDeploymentName: selectedAzureDeploymentNameRef.current,
+      tenantId: activeAzureTenantIdRef.current,
+      principalId: activeAzurePrincipalIdRef.current,
+      ...extra,
+    };
+  }
+
+  function logHomeError(
+    eventName: string,
+    error: unknown,
+    options: {
+      category?: string;
+      location?: string;
+      action?: string;
+      statusCode?: number;
+      context?: Record<string, unknown>;
+    } = {},
+  ): void {
+    reportClientError(eventName, error, {
+      category: options.category ?? "frontend",
+      location: options.location ?? "home",
+      action: options.action,
+      ...(options.statusCode !== undefined ? { statusCode: options.statusCode } : {}),
+      threadId: activeThreadIdRef.current || undefined,
+      context: buildRuntimeLogContext(options.context),
+    });
+  }
+
+  function logHomeWarning(
+    eventName: string,
+    message: string,
+    options: {
+      category?: string;
+      location?: string;
+      action?: string;
+      context?: Record<string, unknown>;
+    } = {},
+  ): void {
+    reportClientWarning(eventName, message, {
+      category: options.category ?? "frontend",
+      location: options.location ?? "home",
+      action: options.action,
+      threadId: activeThreadIdRef.current || undefined,
+      context: buildRuntimeLogContext(options.context),
+    });
+  }
+
+  useEffect(() => {
+    activeMainTabRef.current = activeMainTab;
+  }, [activeMainTab]);
+
+  useEffect(() => {
+    selectedAzureConnectionIdRef.current = selectedAzureConnectionId;
+  }, [selectedAzureConnectionId]);
+
+  useEffect(() => {
+    selectedAzureDeploymentNameRef.current = selectedAzureDeploymentName;
+  }, [selectedAzureDeploymentName]);
+
+  useEffect(() => {
+    return installGlobalClientErrorLogging(() =>
+      buildRuntimeLogContext({
+        source: "home",
+      }),
+    );
+  }, []);
 
   useEffect(() => {
     endOfMessagesRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -596,6 +676,10 @@ export default function Home() {
       if (expectedUserKey !== activeSavedMcpUserKeyRef.current.trim()) {
         return;
       }
+      logHomeError("load_saved_mcp_servers_failed", loadError, {
+        action: "load_saved_mcp_servers",
+        statusCode: 500,
+      });
       setSavedMcpError(
         loadError instanceof Error ? loadError.message : "Failed to load saved MCP servers.",
       );
@@ -896,6 +980,13 @@ export default function Home() {
       }
       return true;
     } catch (saveError) {
+      logHomeError("save_thread_snapshot_failed", saveError, {
+        action: "save_thread_snapshot",
+        statusCode: 500,
+        context: {
+          threadId: expectedThreadId,
+        },
+      });
       setThreadError(saveError instanceof Error ? saveError.message : "Failed to save thread.");
       return false;
     } finally {
@@ -1024,6 +1115,10 @@ export default function Home() {
         return;
       }
 
+      logHomeError("load_threads_failed", loadError, {
+        action: "load_threads",
+        statusCode: 500,
+      });
       setThreadError(loadError instanceof Error ? loadError.message : "Failed to load threads.");
     } finally {
       if (requestSeq === threadLoadRequestSeqRef.current) {
@@ -1083,6 +1178,10 @@ export default function Home() {
       applyThreadSnapshotToState(createdThread);
       return true;
     } catch (createError) {
+      logHomeError("create_thread_failed", createError, {
+        action: "create_thread",
+        statusCode: 500,
+      });
       setThreadError(createError instanceof Error ? createError.message : "Failed to create thread.");
       return false;
     } finally {
@@ -1162,7 +1261,10 @@ export default function Home() {
         normalizedTenantId,
         normalizedPrincipalId,
       );
-    } catch {
+    } catch (selectionError) {
+      logHomeError("load_azure_selection_failed", selectionError, {
+        action: "load_azure_selection",
+      });
       return null;
     }
   }
@@ -1184,7 +1286,10 @@ export default function Home() {
       if (!response.ok) {
         return;
       }
-    } catch {
+    } catch (selectionSaveError) {
+      logHomeError("save_azure_selection_failed", selectionSaveError, {
+        action: "save_azure_selection",
+      });
       // Ignore persistence failures and continue normal UI flow.
     }
   }
@@ -1272,6 +1377,9 @@ export default function Home() {
       );
       return payload.authRequired === true;
     } catch (loadError) {
+      logHomeError("load_azure_connections_failed", loadError, {
+        action: "load_azure_connections",
+      });
       activeAzureTenantIdRef.current = "";
       activeAzurePrincipalIdRef.current = "";
       activeSavedMcpUserKeyRef.current = "";
@@ -1378,6 +1486,12 @@ export default function Home() {
         return;
       }
 
+      logHomeError("load_azure_deployments_failed", loadError, {
+        action: "load_azure_deployments",
+        context: {
+          projectId,
+        },
+      });
       setIsAzureAuthRequired(false);
       setAzureDeployments([]);
       setSelectedAzureDeploymentName("");
@@ -1607,6 +1721,14 @@ export default function Home() {
       setMessages((current) => [...current, createMessage("assistant", payload.message!, turnId)]);
       setLastErrorTurnId(null);
     } catch (sendError) {
+      logHomeError("send_message_failed", sendError, {
+        action: "send_message",
+        context: {
+          turnId,
+          messageLength: content.length,
+          attachmentCount: requestAttachments.length,
+        },
+      });
       setLastErrorTurnId(turnId);
       setError(sendError instanceof Error ? sendError.message : "Could not reach the server.");
     } finally {
@@ -1641,6 +1763,9 @@ export default function Home() {
       setSystemNotice(payload.message || "Azure login started. Sign in and reload Azure connections.");
       setAzureConnectionError(null);
     } catch (loginError) {
+      logHomeError("azure_login_flow_failed", loginError, {
+        action: "azure_login",
+      });
       setAzureLoginError(
         loginError instanceof Error ? loginError.message : "Failed to start Azure login.",
       );
@@ -1670,6 +1795,9 @@ export default function Home() {
       setAzureDeploymentError(null);
       await loadAzureConnections();
     } catch (logoutError) {
+      logHomeError("azure_logout_flow_failed", logoutError, {
+        action: "azure_logout",
+      });
       setAzureLogoutError(
         logoutError instanceof Error ? logoutError.message : "Failed to run Azure logout.",
       );
@@ -1800,7 +1928,14 @@ export default function Home() {
         if (extension === "pdf") {
           nextPdfTotalSize += file.size;
         }
-      } catch {
+      } catch (readAttachmentError) {
+        logHomeError("read_attachment_failed", readAttachmentError, {
+          action: "read_chat_attachment",
+          context: {
+            fileName: normalizedName,
+            fileSize: file.size,
+          },
+        });
         validationError = `Failed to read "${normalizedName}".`;
         break;
       }
@@ -1919,7 +2054,14 @@ export default function Home() {
       setInstructionEnhanceError(null);
       setInstructionEnhanceSuccess(null);
       setInstructionEnhanceComparison(null);
-    } catch {
+    } catch (readInstructionError) {
+      logHomeError("read_instruction_file_failed", readInstructionError, {
+        action: "load_instruction_file",
+        context: {
+          fileName: file.name,
+          fileSize: file.size,
+        },
+      });
       setInstructionFileError("Failed to read the selected instruction file.");
     } finally {
       input.value = "";
@@ -1958,6 +2100,9 @@ export default function Home() {
       if (isInstructionSaveCanceled(saveError)) {
         return;
       }
+      logHomeError("save_instruction_file_failed", saveError, {
+        action: "save_instruction_file",
+      });
       setInstructionSaveError(
         saveError instanceof Error ? saveError.message : "Failed to save instruction prompt.",
       );
@@ -2090,6 +2235,9 @@ export default function Home() {
       setInstructionSaveSuccess(null);
       setInstructionEnhanceSuccess("Review the diff and choose which version to adopt.");
     } catch (enhanceError) {
+      logHomeError("enhance_instruction_failed", enhanceError, {
+        action: "enhance_instruction",
+      });
       setInstructionEnhanceError(
         enhanceError instanceof Error ? enhanceError.message : "Failed to enhance instruction.",
       );
@@ -2245,6 +2393,9 @@ export default function Home() {
 
       setSavedMcpError(null);
     } catch (saveError) {
+      logHomeError("save_mcp_server_failed", saveError, {
+        action: "save_mcp_server",
+      });
       setMcpFormError(saveError instanceof Error ? saveError.message : "Failed to save MCP server.");
       return;
     } finally {
@@ -2257,9 +2408,27 @@ export default function Home() {
         existingServerName && existingServerName !== savedProfileName
           ? `An MCP server with the same configuration already exists. Renamed it from "${existingServerName}" to "${savedProfileName}".`
           : "An MCP server with the same configuration already exists. Reused the existing entry.";
-      setMcpFormWarning(saveWarning ?? fallbackLocalWarning);
+      const warningToShow = saveWarning ?? fallbackLocalWarning;
+      setMcpFormWarning(warningToShow);
+      logHomeWarning("mcp_server_duplicate_warning", warningToShow, {
+        action: "save_mcp_server",
+        context: {
+          existingServerName,
+          savedProfileName,
+          transport: serverToAdd.transport,
+        },
+      });
     } else {
       setMcpFormWarning(saveWarning);
+      if (saveWarning) {
+        logHomeWarning("mcp_server_save_warning", saveWarning, {
+          action: "save_mcp_server",
+          context: {
+            savedProfileName,
+            transport: serverToAdd.transport,
+          },
+        });
+      }
     }
     setMcpNameInput("");
     setMcpUrlInput("");

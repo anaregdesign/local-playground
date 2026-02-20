@@ -120,3 +120,29 @@ model ThreadMcpRpcLog {
 
   @@index([threadId, sortOrder])
 }
+
+model AppEventLog {
+  id          String  @id
+  createdAt   String
+  source      String
+  level       String
+  category    String
+  eventName   String
+  message     String
+  errorName   String?
+  location    String?
+  action      String?
+  statusCode  Int?
+  httpMethod  String?
+  httpPath    String?
+  threadId    String?
+  tenantId    String?
+  principalId String?
+  userId      Int?
+  stack       String?
+  context     String
+
+  @@index([createdAt])
+  @@index([level, createdAt])
+  @@index([source, category, createdAt])
+}

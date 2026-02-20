@@ -17,6 +17,10 @@ import {
 } from "~/lib/server/persistence/prisma";
 import { getOrCreateUserByIdentity } from "~/lib/server/persistence/user";
 import { readAzureArmUserContext } from "~/lib/server/auth/azure-user";
+import {
+  installGlobalServerErrorLogging,
+  logServerRouteEvent,
+} from "~/lib/server/observability/app-event-log";
 import type { Route } from "./+types/api.mcp-servers";
 
 type McpTransport = "streamable_http" | "sse" | "stdio";
@@ -49,6 +53,8 @@ type IncomingMcpServerConfig = IncomingMcpHttpServerConfig | IncomingMcpStdioSer
 type ParseResult<T> = { ok: true; value: T } | { ok: false; error: string };
 
 export async function loader({ request }: Route.LoaderArgs) {
+  installGlobalServerErrorLogging();
+
   if (request.method !== "GET") {
     return Response.json({ error: "Method not allowed." }, { status: 405 });
   }
@@ -68,6 +74,16 @@ export async function loader({ request }: Route.LoaderArgs) {
     const profiles = await readSavedMcpServers(user.id);
     return Response.json({ profiles });
   } catch (error) {
+    await logServerRouteEvent({
+      request,
+      route: "/api/mcp-servers",
+      eventName: "read_mcp_servers_failed",
+      action: "read_saved_profiles",
+      statusCode: 500,
+      error,
+      userId: user.id,
+    });
+
     return Response.json(
       {
         error: `Failed to read MCP servers from database: ${readErrorMessage(error)}`,
@@ -78,6 +94,8 @@ export async function loader({ request }: Route.LoaderArgs) {
 }
 
 export async function action({ request }: Route.ActionArgs) {
+  installGlobalServerErrorLogging();
+
   if (request.method !== "POST") {
     return Response.json({ error: "Method not allowed." }, { status: 405 });
   }
@@ -97,11 +115,33 @@ export async function action({ request }: Route.ActionArgs) {
   try {
     payload = await request.json();
   } catch {
+    await logServerRouteEvent({
+      request,
+      route: "/api/mcp-servers",
+      eventName: "invalid_json_body",
+      action: "parse_request_body",
+      level: "warning",
+      statusCode: 400,
+      message: "Invalid JSON body.",
+      userId: user.id,
+    });
+
     return Response.json({ error: "Invalid JSON body." }, { status: 400 });
   }
 
   const incomingResult = parseIncomingMcpServer(payload);
   if (!incomingResult.ok) {
+    await logServerRouteEvent({
+      request,
+      route: "/api/mcp-servers",
+      eventName: "invalid_mcp_server_payload",
+      action: "validate_payload",
+      level: "warning",
+      statusCode: 400,
+      message: incomingResult.error,
+      userId: user.id,
+    });
+
     return Response.json({ error: incomingResult.error }, { status: 400 });
   }
 
@@ -113,8 +153,35 @@ export async function action({ request }: Route.ActionArgs) {
     );
     await writeSavedMcpServers(user.id, profiles);
 
+    if (warning) {
+      await logServerRouteEvent({
+        request,
+        route: "/api/mcp-servers",
+        eventName: "mcp_server_duplicate_reused",
+        action: "upsert_saved_profile",
+        level: "warning",
+        statusCode: 200,
+        message: warning,
+        userId: user.id,
+        context: {
+          profileId: profile.id,
+          transport: profile.transport,
+        },
+      });
+    }
+
     return Response.json({ profile, profiles, warning });
   } catch (error) {
+    await logServerRouteEvent({
+      request,
+      route: "/api/mcp-servers",
+      eventName: "save_mcp_servers_failed",
+      action: "write_saved_profiles",
+      statusCode: 500,
+      error,
+      userId: user.id,
+    });
+
     return Response.json(
       {
         error: `Failed to update MCP servers in database: ${readErrorMessage(error)}`,
