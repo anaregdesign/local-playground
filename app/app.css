@@ -1269,6 +1269,42 @@ body {
   margin: 0;
 }
 
+.threads-active-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.threads-active-item.fui-Button {
+  width: 100%;
+  justify-content: flex-start;
+  border: 1px solid rgba(50, 49, 48, 0.14);
+  border-radius: var(--home-radius-sm);
+  background: #ffffff;
+  min-height: 2rem;
+}
+
+.threads-active-item.fui-Button .fui-Button__content {
+  width: 100%;
+  justify-content: flex-start;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--home-font-size-label);
+}
+
+.threads-active-item.fui-Button:enabled:hover {
+  background: #f6f8fb;
+  border-color: rgba(31, 78, 103, 0.3);
+}
+
+.threads-active-item.fui-Button.is-active,
+.threads-active-item.fui-Button.is-active:enabled:hover {
+  background: #edf4fa;
+  border-color: #6f98b8;
+  color: #1f3f56;
+}
+
 .azure-loading-notice {
   margin: 0;
   display: inline-flex;

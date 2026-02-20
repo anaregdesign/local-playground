@@ -2,7 +2,7 @@ import { FluentUI } from "~/components/home/shared/fluent";
 import { ConfigSection } from "~/components/home/shared/ConfigSection";
 import { StatusMessageList } from "~/components/home/shared/StatusMessageList";
 
-const { Field, Select, Spinner } = FluentUI;
+const { Button, Field, Spinner } = FluentUI;
 
 export type ThreadOption = {
   id: string;
@@ -33,6 +33,7 @@ export function ThreadsManageSection(props: ThreadsManageSectionProps) {
 
   const selectedThread =
     threadOptions.find((thread) => thread.id === activeThreadId) ?? null;
+  const isThreadSelectionDisabled = isLoadingThreads || isSwitchingThread;
 
   return (
     <ConfigSection
@@ -47,26 +48,31 @@ export function ThreadsManageSection(props: ThreadsManageSectionProps) {
         </p>
       ) : null}
       <Field label="Active Thread">
-        <Select
-          id="thread-active-id"
-          title="Switch the active Playground thread."
-          value={activeThreadId}
-          onChange={(event) => {
-            onActiveThreadChange(event.target.value);
-          }}
-          disabled={
-            isLoadingThreads ||
-            isSwitchingThread ||
-            threadOptions.length === 0
-          }
-        >
-          {threadOptions.length === 0 ? <option value="">No threads</option> : null}
-          {threadOptions.map((thread) => (
-            <option key={thread.id} value={thread.id}>
-              {formatThreadOptionLabel(thread)}
-            </option>
-          ))}
-        </Select>
+        {threadOptions.length === 0 ? (
+          <p className="field-hint">No threads</p>
+        ) : (
+          <div className="threads-active-list" role="list" aria-label="Playground threads">
+            {threadOptions.map((thread) => {
+              const isActive = thread.id === activeThreadId;
+              return (
+                <Button
+                  key={thread.id}
+                  type="button"
+                  appearance={isActive ? "secondary" : "subtle"}
+                  className={`threads-active-item${isActive ? " is-active" : ""}`}
+                  title={`Switch to ${thread.name}`}
+                  onClick={() => {
+                    onActiveThreadChange(thread.id);
+                  }}
+                  disabled={isThreadSelectionDisabled}
+                  aria-pressed={isActive}
+                >
+                  {thread.name}
+                </Button>
+              );
+            })}
+          </div>
+        )}
       </Field>
       {selectedThread ? (
         <p className="field-hint">
@@ -77,10 +83,6 @@ export function ThreadsManageSection(props: ThreadsManageSectionProps) {
       <StatusMessageList messages={[{ intent: "error", text: threadError }]} />
     </ConfigSection>
   );
-}
-
-function formatThreadOptionLabel(thread: ThreadOption): string {
-  return `${thread.name} (${thread.messageCount} msgs, ${thread.mcpServerCount} MCP)`;
 }
 
 function formatUpdatedAt(value: string): string {
