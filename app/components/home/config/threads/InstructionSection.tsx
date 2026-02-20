@@ -217,9 +217,6 @@ export function InstructionSection(props: InstructionSectionProps) {
             </Button>
             <span className="file-picker-name">{loadedInstructionFileName ?? "No file loaded"}</span>
           </div>
-          <p className="field-hint">
-            Supported: .md, .txt, .xml, .json (max 1MB). Click Save to choose file name and destination.
-          </p>
         </>
       )}
       <StatusMessageList

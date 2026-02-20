@@ -85,7 +85,10 @@ export function McpAddServerSection(props: McpAddServerSectionProps) {
   } = props;
 
   return (
-    <ConfigSection title="Add MCP Server ➕">
+    <ConfigSection
+      title="Add MCP Server ➕"
+      description="Configure a new MCP server, save it to the database, and connect it to the current thread."
+    >
       <Field label="🏷️ Server name (optional)">
         <Input
           id="mcp-server-name"
