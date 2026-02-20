@@ -111,6 +111,7 @@ async function ensureDatabaseSchema(): Promise<void> {
   await ensureUserSchema();
   await ensureAzureSelectionSchema();
   await ensureMcpServerProfileSchema();
+  await ensureThreadSchema();
 }
 
 async function ensureUserSchema(): Promise<void> {
@@ -174,5 +175,98 @@ async function ensureMcpServerProfileSchema(): Promise<void> {
   await prisma.$executeRawUnsafe(`
     CREATE INDEX IF NOT EXISTS "McpServerProfile_userId_sortOrder_idx"
     ON "McpServerProfile" ("userId", "sortOrder")
+  `);
+}
+
+async function ensureThreadSchema(): Promise<void> {
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS "Thread" (
+      "id" TEXT NOT NULL PRIMARY KEY,
+      "userId" INTEGER NOT NULL,
+      "name" TEXT NOT NULL,
+      "createdAt" TEXT NOT NULL,
+      "updatedAt" TEXT NOT NULL,
+      FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE CASCADE
+    )
+  `);
+
+  await prisma.$executeRawUnsafe(`
+    CREATE INDEX IF NOT EXISTS "Thread_userId_updatedAt_idx"
+    ON "Thread" ("userId", "updatedAt")
+  `);
+
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS "ThreadInstruction" (
+      "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+      "threadId" TEXT NOT NULL UNIQUE,
+      "content" TEXT NOT NULL,
+      FOREIGN KEY ("threadId") REFERENCES "Thread" ("id") ON DELETE CASCADE
+    )
+  `);
+
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS "ThreadMessage" (
+      "id" TEXT NOT NULL PRIMARY KEY,
+      "threadId" TEXT NOT NULL,
+      "sortOrder" INTEGER NOT NULL,
+      "role" TEXT NOT NULL,
+      "content" TEXT NOT NULL,
+      "turnId" TEXT NOT NULL,
+      "attachmentsJson" TEXT NOT NULL,
+      FOREIGN KEY ("threadId") REFERENCES "Thread" ("id") ON DELETE CASCADE
+    )
+  `);
+
+  await prisma.$executeRawUnsafe(`
+    CREATE INDEX IF NOT EXISTS "ThreadMessage_threadId_sortOrder_idx"
+    ON "ThreadMessage" ("threadId", "sortOrder")
+  `);
+
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS "ThreadMcpServer" (
+      "id" TEXT NOT NULL PRIMARY KEY,
+      "threadId" TEXT NOT NULL,
+      "sortOrder" INTEGER NOT NULL,
+      "name" TEXT NOT NULL,
+      "transport" TEXT NOT NULL,
+      "url" TEXT,
+      "headersJson" TEXT,
+      "useAzureAuth" BOOLEAN NOT NULL DEFAULT false,
+      "azureAuthScope" TEXT,
+      "timeoutSeconds" INTEGER,
+      "command" TEXT,
+      "argsJson" TEXT,
+      "cwd" TEXT,
+      "envJson" TEXT,
+      FOREIGN KEY ("threadId") REFERENCES "Thread" ("id") ON DELETE CASCADE
+    )
+  `);
+
+  await prisma.$executeRawUnsafe(`
+    CREATE INDEX IF NOT EXISTS "ThreadMcpServer_threadId_sortOrder_idx"
+    ON "ThreadMcpServer" ("threadId", "sortOrder")
+  `);
+
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS "ThreadMcpRpcLog" (
+      "id" TEXT NOT NULL PRIMARY KEY,
+      "threadId" TEXT NOT NULL,
+      "sortOrder" INTEGER NOT NULL,
+      "sequence" INTEGER NOT NULL,
+      "serverName" TEXT NOT NULL,
+      "method" TEXT NOT NULL,
+      "startedAt" TEXT NOT NULL,
+      "completedAt" TEXT NOT NULL,
+      "requestJson" TEXT NOT NULL,
+      "responseJson" TEXT NOT NULL,
+      "isError" BOOLEAN NOT NULL DEFAULT false,
+      "turnId" TEXT NOT NULL,
+      FOREIGN KEY ("threadId") REFERENCES "Thread" ("id") ON DELETE CASCADE
+    )
+  `);
+
+  await prisma.$executeRawUnsafe(`
+    CREATE INDEX IF NOT EXISTS "ThreadMcpRpcLog_threadId_sortOrder_idx"
+    ON "ThreadMcpRpcLog" ("threadId", "sortOrder")
   `);
 }

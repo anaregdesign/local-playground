@@ -2,6 +2,7 @@ import type { ComponentProps } from "react";
 import { FluentUI } from "~/components/home/shared/fluent";
 import { McpServersTab } from "~/components/home/config/mcp/McpServersTab";
 import { SettingsTab } from "~/components/home/config/settings/SettingsTab";
+import { ThreadsTab } from "~/components/home/config/threads/ThreadsTab";
 import type { MainViewTab } from "~/components/home/shared/types";
 import { HOME_MAIN_VIEW_TAB_OPTIONS } from "~/lib/constants";
 
@@ -13,10 +14,18 @@ type ConfigPanelProps = {
   isChatLocked: boolean;
   settingsTabProps: Omit<ComponentProps<typeof SettingsTab>, "activeMainTab">;
   mcpServersTabProps: Omit<ComponentProps<typeof McpServersTab>, "activeMainTab">;
+  threadsTabProps: Omit<ComponentProps<typeof ThreadsTab>, "activeMainTab">;
 };
 
 export function ConfigPanel(props: ConfigPanelProps) {
-  const { activeMainTab, onMainTabChange, isChatLocked, settingsTabProps, mcpServersTabProps } = props;
+  const {
+    activeMainTab,
+    onMainTabChange,
+    isChatLocked,
+    settingsTabProps,
+    mcpServersTabProps,
+    threadsTabProps,
+  } = props;
 
   return (
     <aside className="side-shell main-panel" aria-label="Configuration panels">
@@ -30,7 +39,7 @@ export function ConfigPanel(props: ConfigPanelProps) {
           selectedValue={activeMainTab}
           onTabSelect={(_, data) => {
             const nextTab = String(data.value);
-            if (nextTab === "settings" || nextTab === "mcp") {
+            if (nextTab === "settings" || nextTab === "mcp" || nextTab === "threads") {
               onMainTabChange(nextTab);
             }
           }}
@@ -42,7 +51,13 @@ export function ConfigPanel(props: ConfigPanelProps) {
               id={`tab-${tab.id}`}
               aria-controls={`panel-${tab.id}`}
               className="main-tab-btn"
-              title={tab.id === "settings" ? "Open Settings panel." : "Open MCP Servers panel."}
+              title={
+                tab.id === "settings"
+                  ? "Open Settings panel."
+                  : tab.id === "mcp"
+                    ? "Open MCP Servers panel."
+                    : "Open Threads panel."
+              }
             >
               {tab.label}
             </Tab>
@@ -58,6 +73,7 @@ export function ConfigPanel(props: ConfigPanelProps) {
         <div className="side-top-panel">
           <SettingsTab activeMainTab={activeMainTab} {...settingsTabProps} />
           <McpServersTab activeMainTab={activeMainTab} {...mcpServersTabProps} />
+          <ThreadsTab activeMainTab={activeMainTab} {...threadsTabProps} />
         </div>
       </div>
     </aside>

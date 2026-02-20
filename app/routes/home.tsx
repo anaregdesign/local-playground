@@ -101,6 +101,8 @@ import {
   isMcpServersAuthRequired,
   shouldScheduleSavedMcpLoginRetry,
 } from "~/lib/home/mcp/saved-profiles";
+import { buildThreadSummary, readThreadSnapshotFromUnknown } from "~/lib/home/thread/parsers";
+import type { ThreadSnapshot, ThreadSummary } from "~/lib/home/thread/types";
 import { copyTextToClipboard } from "~/lib/home/shared/clipboard";
 import { getFileExtension } from "~/lib/home/shared/files";
 import { createId } from "~/lib/home/shared/ids";
@@ -138,6 +140,13 @@ type McpServersApiResponse = {
   profile?: unknown;
   profiles?: unknown;
   warning?: string;
+  authRequired?: boolean;
+  error?: string;
+};
+
+type ThreadsApiResponse = {
+  threads?: unknown;
+  thread?: unknown;
   authRequired?: boolean;
   error?: string;
 };
@@ -210,6 +219,15 @@ export default function Home() {
   const [azureLoginError, setAzureLoginError] = useState<string | null>(null);
   const [azureLogoutError, setAzureLogoutError] = useState<string | null>(null);
   const [mcpRpcHistory, setMcpRpcHistory] = useState<McpRpcHistoryEntry[]>([]);
+  const [threads, setThreads] = useState<ThreadSnapshot[]>([]);
+  const [activeThreadId, setActiveThreadId] = useState("");
+  const [selectedThreadId, setSelectedThreadId] = useState("");
+  const [newThreadNameInput, setNewThreadNameInput] = useState("");
+  const [isLoadingThreads, setIsLoadingThreads] = useState(false);
+  const [isSavingThread, setIsSavingThread] = useState(false);
+  const [isSwitchingThread, setIsSwitchingThread] = useState(false);
+  const [isCreatingThread, setIsCreatingThread] = useState(false);
+  const [threadError, setThreadError] = useState<string | null>(null);
   const [rightPaneWidth, setRightPaneWidth] = useState(420);
   const [activeResizeHandle, setActiveResizeHandle] = useState<"main" | null>(null);
   const endOfMessagesRef = useRef<HTMLDivElement | null>(null);
@@ -221,9 +239,17 @@ export default function Home() {
   const activeAzureTenantIdRef = useRef("");
   const activeAzurePrincipalIdRef = useRef("");
   const activeSavedMcpUserKeyRef = useRef("");
+  const activeThreadsUserKeyRef = useRef("");
   const savedMcpLoginRetryTimeoutRef = useRef<number | null>(null);
   const savedMcpRequestSeqRef = useRef(0);
   const preferredAzureSelectionRef = useRef<AzureSelectionPreference | null>(null);
+  const activeThreadIdRef = useRef("");
+  const isApplyingThreadStateRef = useRef(false);
+  const isThreadsReadyRef = useRef(false);
+  const threadSaveTimeoutRef = useRef<number | null>(null);
+  const threadLoadRequestSeqRef = useRef(0);
+  const threadSaveRequestSeqRef = useRef(0);
+  const threadSaveSignatureByIdRef = useRef(new Map<string, string>());
   const isChatLocked = isAzureAuthRequired;
   const activeAzureConnection =
     azureConnections.find((connection) => connection.id === selectedAzureConnectionId) ??
@@ -256,11 +282,15 @@ export default function Home() {
     ...Array.from(CHAT_ATTACHMENT_ALLOWED_EXTENSIONS, (extension) => `.${extension}`),
   ].join(",");
   const chatAttachmentFormatHint = "Code Interpreter supported files (.pdf, .csv, .xlsx, .docx, .png, ...)";
+  const threadSummaries: ThreadSummary[] = threads.map((thread) => buildThreadSummary(thread));
   const canSendMessage =
     !isSending &&
+    !isSwitchingThread &&
+    !isLoadingThreads &&
     !isChatLocked &&
     !isLoadingAzureConnections &&
     !isLoadingAzureDeployments &&
+    !!activeThreadId.trim() &&
     !!activeAzureConnection &&
     !!selectedAzureDeploymentName.trim() &&
     draft.trim().length > 0;
@@ -412,6 +442,62 @@ export default function Home() {
     };
   }, []);
 
+  useEffect(() => {
+    activeThreadIdRef.current = activeThreadId;
+  }, [activeThreadId]);
+
+  useEffect(() => {
+    return () => {
+      clearThreadSaveTimeout();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isThreadsReadyRef.current || isApplyingThreadStateRef.current) {
+      return;
+    }
+    if (isSending || isSwitchingThread || isLoadingThreads) {
+      return;
+    }
+
+    const currentThreadId = activeThreadIdRef.current.trim();
+    if (!currentThreadId) {
+      return;
+    }
+
+    const baseThread = threads.find((thread) => thread.id === currentThreadId);
+    if (!baseThread) {
+      return;
+    }
+
+    const snapshot = buildThreadSnapshotFromCurrentState(baseThread);
+    const signature = buildThreadSaveSignature(snapshot);
+    const savedSignature = threadSaveSignatureByIdRef.current.get(snapshot.id);
+    if (savedSignature === signature) {
+      return;
+    }
+
+    clearThreadSaveTimeout();
+    threadSaveTimeoutRef.current = window.setTimeout(() => {
+      threadSaveTimeoutRef.current = null;
+      void saveThreadSnapshotToDatabase(snapshot, signature);
+    }, 450);
+
+    return () => {
+      clearThreadSaveTimeout();
+    };
+  }, [
+    activeThreadId,
+    agentInstruction,
+    messages,
+    mcpServers,
+    mcpRpcHistory,
+    threads,
+    isSending,
+    isSwitchingThread,
+    isLoadingThreads,
+  ]);
+
   async function loadSavedMcpServers() {
     const expectedUserKey = activeSavedMcpUserKeyRef.current.trim();
     if (!expectedUserKey) {
@@ -502,6 +588,431 @@ export default function Home() {
     setIsLoadingSavedMcpServers(false);
   }
 
+  function clearThreadSaveTimeout() {
+    const timeoutId = threadSaveTimeoutRef.current;
+    if (timeoutId !== null) {
+      window.clearTimeout(timeoutId);
+      threadSaveTimeoutRef.current = null;
+    }
+  }
+
+  function clearThreadsState(nextError: string | null = null) {
+    clearThreadSaveTimeout();
+    isThreadsReadyRef.current = false;
+    activeThreadIdRef.current = "";
+    isApplyingThreadStateRef.current = false;
+    threadSaveSignatureByIdRef.current.clear();
+    setThreads([]);
+    setActiveThreadId("");
+    setSelectedThreadId("");
+    setThreadError(nextError);
+    setIsLoadingThreads(false);
+    setIsSwitchingThread(false);
+    setIsCreatingThread(false);
+    setIsSavingThread(false);
+    setMessages([...HOME_INITIAL_MESSAGES]);
+    setMcpRpcHistory([]);
+    setMcpServers([]);
+    setAgentInstruction(DEFAULT_AGENT_INSTRUCTION);
+    setLoadedInstructionFileName(null);
+    setInstructionFileError(null);
+    setInstructionSaveError(null);
+    setInstructionSaveSuccess(null);
+    setInstructionEnhanceError(null);
+    setInstructionEnhanceSuccess(null);
+    setInstructionEnhanceComparison(null);
+    setDraft("");
+    setDraftAttachments([]);
+    setChatAttachmentError(null);
+    setActiveTurnId(null);
+    setLastErrorTurnId(null);
+    setSendProgressMessages([]);
+    setIsComposing(false);
+  }
+
+  function cloneMessages(value: ChatMessage[]): ChatMessage[] {
+    return value.map((message) => ({
+      ...message,
+      attachments: message.attachments.map((attachment) => ({ ...attachment })),
+    }));
+  }
+
+  function cloneMcpServers(value: McpServerConfig[]): McpServerConfig[] {
+    return value.map((server) =>
+      server.transport === "stdio"
+        ? {
+            ...server,
+            args: [...server.args],
+            env: { ...server.env },
+          }
+        : {
+            ...server,
+            headers: { ...server.headers },
+          },
+    );
+  }
+
+  function cloneMcpRpcHistory(value: McpRpcHistoryEntry[]): McpRpcHistoryEntry[] {
+    return value.map((entry) => ({
+      ...entry,
+    }));
+  }
+
+  function buildThreadSnapshotFromCurrentState(base: ThreadSnapshot): ThreadSnapshot {
+    return {
+      ...base,
+      updatedAt: new Date().toISOString(),
+      agentInstruction,
+      messages: cloneMessages(messages),
+      mcpServers: cloneMcpServers(mcpServers),
+      mcpRpcHistory: cloneMcpRpcHistory(mcpRpcHistory),
+    };
+  }
+
+  function buildThreadSaveSignature(snapshot: ThreadSnapshot): string {
+    return JSON.stringify({
+      name: snapshot.name,
+      agentInstruction: snapshot.agentInstruction,
+      messages: snapshot.messages,
+      mcpServers: snapshot.mcpServers,
+      mcpRpcHistory: snapshot.mcpRpcHistory,
+    });
+  }
+
+  function upsertThreadSnapshot(
+    current: ThreadSnapshot[],
+    next: ThreadSnapshot,
+  ): ThreadSnapshot[] {
+    const existingIndex = current.findIndex((thread) => thread.id === next.id);
+    if (existingIndex < 0) {
+      return [next, ...current].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+    }
+
+    const updated = current.map((thread, index) => (index === existingIndex ? next : thread));
+    return updated.sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+  }
+
+  function setThreadSaveSignatures(nextThreads: ThreadSnapshot[]) {
+    const signatureMap = threadSaveSignatureByIdRef.current;
+    signatureMap.clear();
+    for (const thread of nextThreads) {
+      signatureMap.set(thread.id, buildThreadSaveSignature(thread));
+    }
+  }
+
+  function applyThreadSnapshotToState(thread: ThreadSnapshot) {
+    isApplyingThreadStateRef.current = true;
+
+    const clonedMessages = cloneMessages(thread.messages);
+    const clonedMcpServers = cloneMcpServers(thread.mcpServers);
+    const clonedMcpRpcHistory = cloneMcpRpcHistory(thread.mcpRpcHistory);
+
+    activeThreadIdRef.current = thread.id;
+    setActiveThreadId(thread.id);
+    setSelectedThreadId(thread.id);
+    setMessages(clonedMessages);
+    setMcpServers(clonedMcpServers);
+    setMcpRpcHistory(clonedMcpRpcHistory);
+    setAgentInstruction(thread.agentInstruction);
+    setLoadedInstructionFileName(null);
+    setInstructionFileError(null);
+    setInstructionSaveError(null);
+    setInstructionSaveSuccess(null);
+    setInstructionEnhanceError(null);
+    setInstructionEnhanceSuccess(null);
+    setInstructionEnhanceComparison(null);
+    setDraft("");
+    setDraftAttachments([]);
+    setChatAttachmentError(null);
+    setError(null);
+    setActiveTurnId(null);
+    setLastErrorTurnId(null);
+    setSendProgressMessages([]);
+    setIsComposing(false);
+
+    window.setTimeout(() => {
+      isApplyingThreadStateRef.current = false;
+    }, 0);
+  }
+
+  function readThreadListFromApiPayload(payload: ThreadsApiResponse): ThreadSnapshot[] {
+    if (!Array.isArray(payload.threads)) {
+      return [];
+    }
+
+    const result: ThreadSnapshot[] = [];
+    const seenIds = new Set<string>();
+    for (const entry of payload.threads) {
+      const parsed = readThreadSnapshotFromUnknown(entry, {
+        fallbackInstruction: DEFAULT_AGENT_INSTRUCTION,
+      });
+      if (!parsed || seenIds.has(parsed.id)) {
+        continue;
+      }
+
+      seenIds.add(parsed.id);
+      result.push(parsed);
+    }
+
+    return result;
+  }
+
+  async function saveThreadSnapshotToDatabase(
+    snapshot: ThreadSnapshot,
+    signature: string,
+  ): Promise<boolean> {
+    const expectedUserKey = activeThreadsUserKeyRef.current.trim();
+    if (!expectedUserKey) {
+      return false;
+    }
+
+    const expectedThreadId = snapshot.id;
+    const requestSeq = threadSaveRequestSeqRef.current + 1;
+    threadSaveRequestSeqRef.current = requestSeq;
+    setIsSavingThread(true);
+
+    try {
+      const response = await fetch("/api/threads", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          action: "save",
+          thread: snapshot,
+        }),
+      });
+
+      const payload = (await response.json()) as ThreadsApiResponse;
+      if (!response.ok) {
+        const authRequired = payload.authRequired === true || response.status === 401;
+        if (authRequired) {
+          setIsAzureAuthRequired(true);
+          setThreadError("Azure login is required. Open Settings and sign in to continue.");
+          return false;
+        }
+
+        throw new Error(payload.error || "Failed to save thread.");
+      }
+
+      const savedThread = readThreadSnapshotFromUnknown(payload.thread, {
+        fallbackInstruction: DEFAULT_AGENT_INSTRUCTION,
+      });
+      if (!savedThread) {
+        throw new Error("Saved thread payload is invalid.");
+      }
+      if (expectedUserKey !== activeThreadsUserKeyRef.current.trim()) {
+        return false;
+      }
+
+      if (expectedThreadId !== savedThread.id) {
+        return false;
+      }
+
+      setThreads((current) => upsertThreadSnapshot(current, savedThread));
+      threadSaveSignatureByIdRef.current.set(savedThread.id, signature);
+      return true;
+    } catch (saveError) {
+      setThreadError(saveError instanceof Error ? saveError.message : "Failed to save thread.");
+      return false;
+    } finally {
+      if (requestSeq === threadSaveRequestSeqRef.current) {
+        setIsSavingThread(false);
+      }
+    }
+  }
+
+  async function flushActiveThreadSnapshot(): Promise<boolean> {
+    const currentThreadId = activeThreadIdRef.current.trim();
+    if (!currentThreadId) {
+      return true;
+    }
+
+    const baseThread = threads.find((thread) => thread.id === currentThreadId);
+    if (!baseThread) {
+      return true;
+    }
+
+    const snapshot = buildThreadSnapshotFromCurrentState(baseThread);
+    const signature = buildThreadSaveSignature(snapshot);
+    const savedSignature = threadSaveSignatureByIdRef.current.get(currentThreadId);
+    if (savedSignature === signature) {
+      return true;
+    }
+
+    clearThreadSaveTimeout();
+    return await saveThreadSnapshotToDatabase(snapshot, signature);
+  }
+
+  async function loadThreads(): Promise<void> {
+    const expectedUserKey = activeThreadsUserKeyRef.current.trim();
+    if (!expectedUserKey) {
+      clearThreadsState();
+      return;
+    }
+
+    const requestSeq = threadLoadRequestSeqRef.current + 1;
+    threadLoadRequestSeqRef.current = requestSeq;
+    setIsLoadingThreads(true);
+    setThreadError(null);
+
+    try {
+      const response = await fetch("/api/threads", {
+        method: "GET",
+      });
+      const payload = (await response.json()) as ThreadsApiResponse;
+      if (!response.ok) {
+        const authRequired = payload.authRequired === true || response.status === 401;
+        if (authRequired) {
+          setIsAzureAuthRequired(true);
+          clearThreadsState("Azure login is required. Open Settings and sign in to load threads.");
+          return;
+        }
+
+        throw new Error(payload.error || "Failed to load threads.");
+      }
+
+      if (requestSeq !== threadLoadRequestSeqRef.current) {
+        return;
+      }
+      if (expectedUserKey !== activeThreadsUserKeyRef.current.trim()) {
+        return;
+      }
+
+      const parsedThreads = readThreadListFromApiPayload(payload);
+      if (parsedThreads.length === 0) {
+        throw new Error("No threads were returned from the server.");
+      }
+
+      setThreadSaveSignatures(parsedThreads);
+      setThreads(parsedThreads);
+      isThreadsReadyRef.current = true;
+      setThreadError(null);
+
+      const preferredThreadId = activeThreadIdRef.current.trim();
+      const nextThread =
+        parsedThreads.find((thread) => thread.id === preferredThreadId) ?? parsedThreads[0];
+      if (!nextThread) {
+        throw new Error("No thread is available.");
+      }
+
+      applyThreadSnapshotToState(nextThread);
+    } catch (loadError) {
+      if (requestSeq !== threadLoadRequestSeqRef.current) {
+        return;
+      }
+      if (expectedUserKey !== activeThreadsUserKeyRef.current.trim()) {
+        return;
+      }
+
+      setThreadError(loadError instanceof Error ? loadError.message : "Failed to load threads.");
+    } finally {
+      if (requestSeq === threadLoadRequestSeqRef.current) {
+        setIsLoadingThreads(false);
+      }
+    }
+  }
+
+  async function handleCreateThread() {
+    if (isSending || isLoadingThreads || isSwitchingThread || isCreatingThread) {
+      return;
+    }
+
+    setThreadError(null);
+    setIsCreatingThread(true);
+
+    try {
+      const saved = await flushActiveThreadSnapshot();
+      if (!saved) {
+        return;
+      }
+
+      const response = await fetch("/api/threads", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          action: "create",
+          name: newThreadNameInput,
+        }),
+      });
+      const payload = (await response.json()) as ThreadsApiResponse;
+      if (!response.ok) {
+        const authRequired = payload.authRequired === true || response.status === 401;
+        if (authRequired) {
+          setIsAzureAuthRequired(true);
+          throw new Error("Azure login is required. Open Settings and sign in to continue.");
+        }
+
+        throw new Error(payload.error || "Failed to create thread.");
+      }
+
+      const createdThread = readThreadSnapshotFromUnknown(payload.thread, {
+        fallbackInstruction: DEFAULT_AGENT_INSTRUCTION,
+      });
+      if (!createdThread) {
+        throw new Error("Created thread payload is invalid.");
+      }
+
+      const createdSignature = buildThreadSaveSignature(createdThread);
+      threadSaveSignatureByIdRef.current.set(createdThread.id, createdSignature);
+      setThreads((current) => upsertThreadSnapshot(current, createdThread));
+      isThreadsReadyRef.current = true;
+      setNewThreadNameInput("");
+      applyThreadSnapshotToState(createdThread);
+      setActiveMainTab("threads");
+    } catch (createError) {
+      setThreadError(createError instanceof Error ? createError.message : "Failed to create thread.");
+    } finally {
+      setIsCreatingThread(false);
+    }
+  }
+
+  async function handleThreadChange(nextThreadIdRaw: string) {
+    const nextThreadId = nextThreadIdRaw.trim();
+    setThreadError(null);
+    if (!nextThreadId || nextThreadId === activeThreadIdRef.current) {
+      setSelectedThreadId(activeThreadIdRef.current);
+      return;
+    }
+
+    if (isSending) {
+      setSelectedThreadId(activeThreadIdRef.current);
+      setThreadError("Cannot switch threads while a message is being sent.");
+      return;
+    }
+
+    const nextThread = threads.find((thread) => thread.id === nextThreadId);
+    if (!nextThread) {
+      setSelectedThreadId(activeThreadIdRef.current);
+      setThreadError("Selected thread is not available.");
+      return;
+    }
+
+    setSelectedThreadId(nextThreadId);
+    setIsSwitchingThread(true);
+    try {
+      const saved = await flushActiveThreadSnapshot();
+      if (!saved) {
+        setSelectedThreadId(activeThreadIdRef.current);
+        return;
+      }
+
+      applyThreadSnapshotToState(nextThread);
+    } finally {
+      setIsSwitchingThread(false);
+    }
+  }
+
+  function handleReloadThreads() {
+    if (isSending || isSwitchingThread) {
+      return;
+    }
+
+    void loadThreads();
+  }
+
   async function loadAzureSelectionPreference(
     tenantId: string,
     principalId: string,
@@ -567,8 +1078,14 @@ export default function Home() {
         activeAzureTenantIdRef.current = "";
         activeAzurePrincipalIdRef.current = "";
         activeSavedMcpUserKeyRef.current = "";
+        activeThreadsUserKeyRef.current = "";
         preferredAzureSelectionRef.current = null;
         clearSavedMcpServersState();
+        clearThreadsState(
+          authRequired
+            ? "Azure login is required. Open Settings and sign in to load threads."
+            : null,
+        );
         setIsAzureAuthRequired(authRequired);
         setAzureConnections([]);
         setAzureDeployments([]);
@@ -588,10 +1105,20 @@ export default function Home() {
         tenantId && principalId ? `${tenantId}::${principalId}` : "";
       if (!nextSavedMcpUserKey) {
         activeSavedMcpUserKeyRef.current = "";
+        activeThreadsUserKeyRef.current = "";
         clearSavedMcpServersState();
+        clearThreadsState();
       } else if (activeSavedMcpUserKeyRef.current !== nextSavedMcpUserKey) {
         activeSavedMcpUserKeyRef.current = nextSavedMcpUserKey;
         void loadSavedMcpServers();
+      }
+      if (!nextSavedMcpUserKey) {
+        activeThreadsUserKeyRef.current = "";
+      } else if (activeThreadsUserKeyRef.current !== nextSavedMcpUserKey) {
+        activeThreadsUserKeyRef.current = nextSavedMcpUserKey;
+        void loadThreads();
+      } else if (!isThreadsReadyRef.current && !isLoadingThreads) {
+        void loadThreads();
       }
       if (shouldScheduleSavedMcpLoginRetry(isAzureAuthRequired, nextSavedMcpUserKey)) {
         // After login completes, token propagation can briefly lag for MCP route auth.
@@ -623,8 +1150,10 @@ export default function Home() {
       activeAzureTenantIdRef.current = "";
       activeAzurePrincipalIdRef.current = "";
       activeSavedMcpUserKeyRef.current = "";
+      activeThreadsUserKeyRef.current = "";
       preferredAzureSelectionRef.current = null;
       clearSavedMcpServersState();
+      clearThreadsState();
       setIsAzureAuthRequired(false);
       setAzureConnections([]);
       setAzureDeployments([]);
@@ -672,8 +1201,10 @@ export default function Home() {
           activeAzureTenantIdRef.current = "";
           activeAzurePrincipalIdRef.current = "";
           activeSavedMcpUserKeyRef.current = "";
+          activeThreadsUserKeyRef.current = "";
           preferredAzureSelectionRef.current = null;
           clearSavedMcpServersState();
+          clearThreadsState("Azure login is required. Open Settings and sign in to load threads.");
         }
         setIsAzureAuthRequired(authRequired);
         setAzureDeployments([]);
@@ -797,6 +1328,18 @@ export default function Home() {
   async function sendMessage() {
     const content = draft.trim();
     if (!content || isSending) {
+      return;
+    }
+
+    if (isLoadingThreads || isSwitchingThread) {
+      setThreadError("Thread state is updating. Please wait.");
+      setActiveMainTab("threads");
+      return;
+    }
+
+    if (!activeThreadIdRef.current.trim()) {
+      setThreadError("Select or create a thread before sending.");
+      setActiveMainTab("threads");
       return;
     }
 
@@ -1624,10 +2167,11 @@ export default function Home() {
   }
 
   function handleResetThread() {
-    if (isSending) {
+    if (isSending || isSwitchingThread || !activeThreadIdRef.current.trim()) {
       return;
     }
 
+    setThreadError(null);
     setMessages([...HOME_INITIAL_MESSAGES]);
     setMcpRpcHistory([]);
     setDraft("");
@@ -1808,6 +2352,29 @@ export default function Home() {
     mcpFormWarning,
   };
 
+  const threadsTabProps = {
+    threadOptions: threadSummaries.map((thread) => ({
+      id: thread.id,
+      name: thread.name,
+      updatedAt: thread.updatedAt,
+      messageCount: thread.messageCount,
+      mcpServerCount: thread.mcpServerCount,
+    })),
+    activeThreadId: selectedThreadId || activeThreadId,
+    newThreadNameInput,
+    isSending: isSending || isSavingThread,
+    isLoadingThreads,
+    isSwitchingThread,
+    isCreatingThread,
+    threadError,
+    onActiveThreadChange: (threadId: string) => {
+      void handleThreadChange(threadId);
+    },
+    onNewThreadNameInputChange: setNewThreadNameInput,
+    onCreateThread: handleCreateThread,
+    onReloadThreads: handleReloadThreads,
+  };
+
   const playgroundPanelProps = {
     messages,
     mcpHistoryByTurnId,
@@ -1890,6 +2457,7 @@ export default function Home() {
           isChatLocked={isChatLocked}
           settingsTabProps={settingsTabProps}
           mcpServersTabProps={mcpServersTabProps}
+          threadsTabProps={threadsTabProps}
         />
       </div>
     </main>

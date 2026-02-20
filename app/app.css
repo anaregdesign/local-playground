@@ -1117,7 +1117,8 @@ body {
 }
 
 .settings-shell,
-.mcp-shell {
+.mcp-shell,
+.threads-shell {
   height: 100%;
   border: 0;
   border-radius: 0;
@@ -1135,8 +1136,13 @@ body {
   grid-template-rows: minmax(0, 1fr);
 }
 
+.threads-shell {
+  grid-template-rows: minmax(0, 1fr);
+}
+
 .settings-content,
-.mcp-content {
+.mcp-content,
+.threads-content {
   padding: 0.25rem 0.75rem 0.7rem;
   display: flex;
   flex-direction: column;
@@ -1145,6 +1151,12 @@ body {
 }
 
 .mcp-content {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.threads-content {
   display: flex;
   flex-direction: column;
   align-items: stretch;

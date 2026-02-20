@@ -9,4 +9,5 @@ export default [
   route("api/azure-logout", "routes/api.azure-logout.ts"),
   route("api/instruction", "routes/api.instruction.ts"),
   route("api/mcp-servers", "routes/api.mcp-servers.ts"),
+  route("api/threads", "routes/api.threads.ts"),
 ] satisfies RouteConfig;
