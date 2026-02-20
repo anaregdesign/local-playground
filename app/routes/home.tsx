@@ -97,6 +97,10 @@ import {
   parseStdioArgsInput,
   parseStdioEnvInput,
 } from "~/lib/home/mcp/stdio-inputs";
+import {
+  isMcpServersAuthRequired,
+  shouldScheduleSavedMcpLoginRetry,
+} from "~/lib/home/mcp/saved-profiles";
 import { copyTextToClipboard } from "~/lib/home/shared/clipboard";
 import { getFileExtension } from "~/lib/home/shared/files";
 import { createId } from "~/lib/home/shared/ids";
@@ -433,7 +437,7 @@ export default function Home() {
       }
 
       if (!response.ok) {
-        const authRequired = payload.authRequired === true || response.status === 401;
+        const authRequired = isMcpServersAuthRequired(response.status, payload);
         if (authRequired) {
           setIsAzureAuthRequired(true);
           clearSavedMcpServersState(
@@ -589,7 +593,7 @@ export default function Home() {
         activeSavedMcpUserKeyRef.current = nextSavedMcpUserKey;
         void loadSavedMcpServers();
       }
-      if (isAzureAuthRequired && nextSavedMcpUserKey) {
+      if (shouldScheduleSavedMcpLoginRetry(isAzureAuthRequired, nextSavedMcpUserKey)) {
         // After login completes, token propagation can briefly lag for MCP route auth.
         scheduleSavedMcpLoginRetry(nextSavedMcpUserKey);
       } else {
@@ -747,7 +751,7 @@ export default function Home() {
 
     const payload = (await response.json()) as McpServersApiResponse;
     if (!response.ok) {
-      const authRequired = payload.authRequired === true || response.status === 401;
+      const authRequired = isMcpServersAuthRequired(response.status, payload);
       if (authRequired) {
         setIsAzureAuthRequired(true);
         throw new Error("Azure login is required. Open Settings and sign in to save MCP servers.");
