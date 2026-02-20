@@ -217,6 +217,7 @@ export default function Home() {
   const activeAzureTenantIdRef = useRef("");
   const activeAzurePrincipalIdRef = useRef("");
   const activeSavedMcpUserKeyRef = useRef("");
+  const savedMcpLoginRetryTimeoutRef = useRef<number | null>(null);
   const savedMcpRequestSeqRef = useRef(0);
   const preferredAzureSelectionRef = useRef<AzureSelectionPreference | null>(null);
   const isChatLocked = isAzureAuthRequired;
@@ -401,6 +402,12 @@ export default function Home() {
     };
   }, []);
 
+  useEffect(() => {
+    return () => {
+      clearSavedMcpLoginRetryTimeout();
+    };
+  }, []);
+
   async function loadSavedMcpServers() {
     const expectedUserKey = activeSavedMcpUserKeyRef.current.trim();
     if (!expectedUserKey) {
@@ -465,7 +472,26 @@ export default function Home() {
     }
   }
 
+  function clearSavedMcpLoginRetryTimeout() {
+    const timeoutId = savedMcpLoginRetryTimeoutRef.current;
+    if (timeoutId !== null) {
+      window.clearTimeout(timeoutId);
+      savedMcpLoginRetryTimeoutRef.current = null;
+    }
+  }
+
+  function scheduleSavedMcpLoginRetry(expectedUserKey: string) {
+    clearSavedMcpLoginRetryTimeout();
+    savedMcpLoginRetryTimeoutRef.current = window.setTimeout(() => {
+      savedMcpLoginRetryTimeoutRef.current = null;
+      if (activeSavedMcpUserKeyRef.current === expectedUserKey) {
+        void loadSavedMcpServers();
+      }
+    }, 1200);
+  }
+
   function clearSavedMcpServersState(nextError: string | null = null) {
+    clearSavedMcpLoginRetryTimeout();
     setSavedMcpServers([]);
     setSelectedSavedMcpServerId("");
     setSavedMcpError(nextError);
@@ -565,11 +591,9 @@ export default function Home() {
       }
       if (isAzureAuthRequired && nextSavedMcpUserKey) {
         // After login completes, token propagation can briefly lag for MCP route auth.
-        window.setTimeout(() => {
-          if (activeSavedMcpUserKeyRef.current === nextSavedMcpUserKey) {
-            void loadSavedMcpServers();
-          }
-        }, 1200);
+        scheduleSavedMcpLoginRetry(nextSavedMcpUserKey);
+      } else {
+        clearSavedMcpLoginRetryTimeout();
       }
       const preferredSelection =
         tenantId && principalId
