@@ -9,7 +9,7 @@ files:
   - build/**
   - desktop/electron/**
 
-asar: false
+asar: true
 npmRebuild: false
 
 artifactName: "${productName}-${version}-${os}-${arch}.${ext}"
