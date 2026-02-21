@@ -135,9 +135,24 @@ export const MCP_DEFAULT_AZURE_AUTH_SCOPE = AZURE_COGNITIVE_SERVICES_SCOPE;
 export const MCP_DEFAULT_HTTP_HEADERS: Record<string, string> = {
   "Content-Type": "application/json",
 };
+export const MCP_DEFAULT_OPENAI_DOCS_SERVER_NAME = "openai-docs";
+export const MCP_DEFAULT_OPENAI_DOCS_SERVER_URL = "https://developers.openai.com/mcp";
+export const MCP_DEFAULT_MICROSOFT_LEARN_SERVER_NAME = "microsoft-learn";
+export const MCP_DEFAULT_MICROSOFT_LEARN_SERVER_URL = "https://learn.microsoft.com/api/mcp";
 export const MCP_DEFAULT_WORKIQ_SERVER_NAME = "workiq";
 export const MCP_DEFAULT_WORKIQ_SERVER_COMMAND = "npx";
 export const MCP_DEFAULT_WORKIQ_SERVER_ARGS = ["-y", "@microsoft/workiq", "mcp"] as const;
+export const MCP_DEFAULT_AZURE_MCP_SERVER_NAME = "azure-mcp";
+export const MCP_DEFAULT_AZURE_MCP_SERVER_COMMAND = "npx";
+export const MCP_DEFAULT_AZURE_MCP_SERVER_ARGS = [
+  "-y",
+  "@azure/mcp@latest",
+  "server",
+  "start",
+] as const;
+export const MCP_DEFAULT_PLAYWRIGHT_MCP_SERVER_NAME = "playwright";
+export const MCP_DEFAULT_PLAYWRIGHT_MCP_SERVER_COMMAND = "npx";
+export const MCP_DEFAULT_PLAYWRIGHT_MCP_SERVER_ARGS = ["-y", "@playwright/mcp@latest"] as const;
 export const ENV_KEY_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
 export const HTTP_HEADER_NAME_PATTERN = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/;
 
