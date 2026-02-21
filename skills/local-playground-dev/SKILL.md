@@ -31,6 +31,12 @@ Run this loop for every implementation task.
    - Report policy conformance status explicitly.
    - If a rule is intentionally violated, explain reason and scope.
 
+### Development Phase Override
+
+- This repository is currently in active development mode.
+- Do not introduce backward compatibility layers or fallback paths unless the user explicitly asks for them.
+- Prefer replacing old contracts and state shapes directly.
+
 ## 2) Enforce Core Architecture Constraints
 
 - Keep UI terminology consistent: `Playground`, `Threads`, `MCP Servers`, `Settings`.

@@ -14,6 +14,12 @@
 
 # Implementation Policy
 
+## Development Phase Rule
+
+- Current phase is active development.
+- Do not add backward compatibility shims or fallback behavior unless explicitly requested.
+- Prefer clean replacement of old contracts over dual-path support.
+
 ## Product Identity
 
 - App name is `Local Playground`.

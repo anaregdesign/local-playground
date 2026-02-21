@@ -1,3 +1,4 @@
+import type { ReasoningEffort } from "~/lib/home/shared/view-types";
 import { uniqueStringsCaseInsensitive } from "~/lib/home/shared/collections";
 
 export type AzureConnectionOption = {
@@ -18,8 +19,17 @@ export type AzurePrincipalProfile = {
 export type AzureSelectionPreference = {
   tenantId: string;
   principalId: string;
+  playground: AzureSelectionTargetPreference | null;
+  utility: AzureUtilitySelectionTargetPreference | null;
+};
+
+export type AzureSelectionTargetPreference = {
   projectId: string;
   deploymentName: string;
+};
+
+export type AzureUtilitySelectionTargetPreference = AzureSelectionTargetPreference & {
+  reasoningEffort: ReasoningEffort;
 };
 
 export function readTenantIdFromUnknown(value: unknown): string {
@@ -72,9 +82,7 @@ export function readAzureSelectionFromUnknown(
 
   const tenantId = typeof value.tenantId === "string" ? value.tenantId.trim() : "";
   const principalId = typeof value.principalId === "string" ? value.principalId.trim() : "";
-  const projectId = typeof value.projectId === "string" ? value.projectId.trim() : "";
-  const deploymentName = typeof value.deploymentName === "string" ? value.deploymentName.trim() : "";
-  if (!tenantId || !principalId || !projectId || !deploymentName) {
+  if (!tenantId || !principalId) {
     return null;
   }
 
@@ -86,11 +94,17 @@ export function readAzureSelectionFromUnknown(
     return null;
   }
 
+  const playground = readAzureSelectionTargetFromUnknown(value.playground);
+  const utility = readAzureUtilitySelectionTargetFromUnknown(value.utility);
+  if (!playground && !utility) {
+    return null;
+  }
+
   return {
     tenantId,
     principalId,
-    projectId,
-    deploymentName,
+    playground,
+    utility,
   };
 }
 
@@ -147,6 +161,48 @@ function readAzureProjectFromUnknown(value: unknown): AzureConnectionOption | nu
   };
 }
 
+function readAzureSelectionTargetFromUnknown(
+  value: unknown,
+): AzureSelectionTargetPreference | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const projectId = typeof value.projectId === "string" ? value.projectId.trim() : "";
+  const deploymentName = typeof value.deploymentName === "string" ? value.deploymentName.trim() : "";
+  if (!projectId || !deploymentName) {
+    return null;
+  }
+
+  return {
+    projectId,
+    deploymentName,
+  };
+}
+
+function readAzureUtilitySelectionTargetFromUnknown(
+  value: unknown,
+): AzureUtilitySelectionTargetPreference | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const base = readAzureSelectionTargetFromUnknown(value);
+  if (!base) {
+    return null;
+  }
+
+  const reasoningEffort = readReasoningEffortFromUnknown(value.reasoningEffort);
+  if (!reasoningEffort) {
+    return null;
+  }
+
+  return {
+    ...base,
+    reasoningEffort,
+  };
+}
+
 function readAzurePrincipalTypeFromUnknown(
   value: unknown,
 ): AzurePrincipalProfile["principalType"] {
@@ -158,4 +214,12 @@ function readAzurePrincipalTypeFromUnknown(
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object";
+}
+
+function readReasoningEffortFromUnknown(value: unknown): ReasoningEffort | null {
+  if (value === "none" || value === "low" || value === "medium" || value === "high") {
+    return value;
+  }
+
+  return null;
 }

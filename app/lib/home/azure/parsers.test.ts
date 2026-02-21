@@ -100,8 +100,15 @@ describe("readAzureSelectionFromUnknown", () => {
         {
           tenantId: " tenant-a ",
           principalId: " principal-a ",
-          projectId: " project-a ",
-          deploymentName: " deploy-a ",
+          playground: {
+            projectId: " project-a ",
+            deploymentName: " deploy-a ",
+          },
+          utility: {
+            projectId: " project-b ",
+            deploymentName: " deploy-b ",
+            reasoningEffort: "low",
+          },
         },
         "tenant-a",
         "principal-a",
@@ -109,9 +116,60 @@ describe("readAzureSelectionFromUnknown", () => {
     ).toEqual({
       tenantId: "tenant-a",
       principalId: "principal-a",
-      projectId: "project-a",
-      deploymentName: "deploy-a",
+      playground: {
+        projectId: "project-a",
+        deploymentName: "deploy-a",
+      },
+      utility: {
+        projectId: "project-b",
+        deploymentName: "deploy-b",
+        reasoningEffort: "low",
+      },
     });
+  });
+
+  it("allows one context to be unset", () => {
+    expect(
+      readAzureSelectionFromUnknown(
+        {
+          tenantId: "tenant-a",
+          principalId: "principal-a",
+          playground: {
+            projectId: "project-a",
+            deploymentName: "deploy-a",
+          },
+          utility: null,
+        },
+        "tenant-a",
+        "principal-a",
+      ),
+    ).toEqual({
+      tenantId: "tenant-a",
+      principalId: "principal-a",
+      playground: {
+        projectId: "project-a",
+        deploymentName: "deploy-a",
+      },
+      utility: null,
+    });
+  });
+
+  it("returns null when utility target has invalid reasoning effort", () => {
+    expect(
+      readAzureSelectionFromUnknown(
+        {
+          tenantId: "tenant-a",
+          principalId: "principal-a",
+          utility: {
+            projectId: "project-a",
+            deploymentName: "deploy-a",
+            reasoningEffort: "fast",
+          },
+        },
+        "tenant-a",
+        "principal-a",
+      ),
+    ).toBeNull();
   });
 
   it("returns null when tenant does not match expected tenant", () => {
@@ -120,8 +178,10 @@ describe("readAzureSelectionFromUnknown", () => {
         {
           tenantId: "tenant-a",
           principalId: "principal-a",
-          projectId: "project-a",
-          deploymentName: "deploy-a",
+          playground: {
+            projectId: "project-a",
+            deploymentName: "deploy-a",
+          },
         },
         "tenant-b",
         "principal-a",
@@ -135,8 +195,11 @@ describe("readAzureSelectionFromUnknown", () => {
         {
           tenantId: "tenant-a",
           principalId: "principal-a",
-          projectId: "project-a",
-          deploymentName: "deploy-a",
+          utility: {
+            projectId: "project-a",
+            deploymentName: "deploy-a",
+            reasoningEffort: "high",
+          },
         },
         "tenant-a",
         "principal-b",
@@ -147,6 +210,19 @@ describe("readAzureSelectionFromUnknown", () => {
   it("returns null for invalid payload", () => {
     expect(readAzureSelectionFromUnknown({}, "tenant-a", "principal-a")).toBeNull();
     expect(readAzureSelectionFromUnknown("invalid", "tenant-a", "principal-a")).toBeNull();
+  });
+
+  it("returns null when both playground and utility are missing", () => {
+    expect(
+      readAzureSelectionFromUnknown(
+        {
+          tenantId: "tenant-a",
+          principalId: "principal-a",
+        },
+        "tenant-a",
+        "principal-a",
+      ),
+    ).toBeNull();
   });
 });
 

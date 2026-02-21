@@ -151,7 +151,7 @@ export function InstructionSection(props: InstructionSectionProps) {
             <div className="instruction-enhancing-state" role="status" aria-live="polite">
               <div className="instruction-enhancing-head">
                 <Spinner size="tiny" />
-                <span>Enhancing instruction with the selected Azure model...</span>
+                <span>Enhancing instruction with the selected Utility Model...</span>
               </div>
               <div className="instruction-enhancing-track" aria-hidden="true">
                 <span className="instruction-enhancing-bar" />
@@ -201,7 +201,7 @@ export function InstructionSection(props: InstructionSectionProps) {
               type="button"
               appearance="primary"
               size="small"
-              title="Enhance the instruction using the selected Azure model."
+              title="Enhance the instruction using the selected Utility Model."
               onClick={() => {
                 void onEnhanceInstruction();
               }}

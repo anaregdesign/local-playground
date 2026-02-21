@@ -141,11 +141,61 @@ async function ensureAzureSelectionSchema(): Promise<void> {
     CREATE TABLE IF NOT EXISTS "AzureSelectionPreference" (
       "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
       "userId" INTEGER NOT NULL UNIQUE,
-      "projectId" TEXT NOT NULL,
-      "deploymentName" TEXT NOT NULL,
+      "projectId" TEXT NOT NULL DEFAULT '',
+      "deploymentName" TEXT NOT NULL DEFAULT '',
+      "utilityProjectId" TEXT NOT NULL DEFAULT '',
+      "utilityDeploymentName" TEXT NOT NULL DEFAULT '',
+      "utilityReasoningEffort" TEXT NOT NULL DEFAULT 'high',
       FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE CASCADE
     )
   `);
+
+  await ensureTableColumn(
+    "AzureSelectionPreference",
+    "utilityProjectId",
+    "TEXT NOT NULL DEFAULT ''",
+  );
+  await ensureTableColumn(
+    "AzureSelectionPreference",
+    "utilityDeploymentName",
+    "TEXT NOT NULL DEFAULT ''",
+  );
+  await ensureTableColumn(
+    "AzureSelectionPreference",
+    "utilityReasoningEffort",
+    "TEXT NOT NULL DEFAULT 'high'",
+  );
+}
+
+async function ensureTableColumn(
+  tableName: string,
+  columnName: string,
+  columnDefinition: string,
+): Promise<void> {
+  const columns = await readTableColumns(tableName);
+  if (columns.has(columnName)) {
+    return;
+  }
+
+  await prisma.$executeRawUnsafe(
+    `ALTER TABLE "${tableName}" ADD COLUMN "${columnName}" ${columnDefinition}`,
+  );
+}
+
+async function readTableColumns(tableName: string): Promise<Set<string>> {
+  const rows = await prisma.$queryRawUnsafe<Array<{ name?: string | null }>>(
+    `PRAGMA table_info("${tableName}")`,
+  );
+
+  const columns = new Set<string>();
+  for (const row of rows) {
+    const name = typeof row.name === "string" ? row.name.trim() : "";
+    if (name) {
+      columns.add(name);
+    }
+  }
+
+  return columns;
 }
 
 async function ensureMcpServerProfileSchema(): Promise<void> {

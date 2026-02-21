@@ -27,7 +27,7 @@ type AzureConnectionSectionProps = {
   isLoadingAzureDeployments: boolean;
   activeAzureConnection: AzureConnectionLike | null;
   activeAzurePrincipal: AzurePrincipalLike | null;
-  selectedAzureDeploymentName: string;
+  selectedPlaygroundAzureDeploymentName: string;
   isStartingAzureLogout: boolean;
   onAzureLogout: () => void | Promise<void>;
   azureDeploymentError: string | null;
@@ -45,7 +45,7 @@ export function AzureConnectionSection(props: AzureConnectionSectionProps) {
     isLoadingAzureDeployments,
     activeAzureConnection,
     activeAzurePrincipal,
-    selectedAzureDeploymentName,
+    selectedPlaygroundAzureDeploymentName,
     isStartingAzureLogout,
     onAzureLogout,
     azureDeploymentError,
@@ -57,7 +57,7 @@ export function AzureConnectionSection(props: AzureConnectionSectionProps) {
     <ConfigSection
       className="setting-group-azure-connection"
       title="Azure Connection 🔐"
-      description="Sign in/out for Playground access."
+      description="Sign in/out and review the active Playground model."
     >
       {isAzureAuthRequired ? (
         <Button
@@ -111,12 +111,12 @@ export function AzureConnectionSection(props: AzureConnectionSectionProps) {
                 </>
               ) : null}
               <div className="azure-connection-summary-row">
-                <dt>Project</dt>
+                <dt>Playground project</dt>
                 <dd>{activeAzureConnection?.projectName ?? "Not selected"}</dd>
               </div>
               <div className="azure-connection-summary-row">
-                <dt>Deployment</dt>
-                <dd>{selectedAzureDeploymentName || "Not selected"}</dd>
+                <dt>Playground deployment</dt>
+                <dd>{selectedPlaygroundAzureDeploymentName || "Not selected"}</dd>
               </div>
               <div className="azure-connection-summary-row">
                 <dt>Endpoint</dt>

@@ -7,18 +7,33 @@ import {
   installGlobalServerErrorLogging,
   logServerRouteEvent,
 } from "~/lib/server/observability/app-event-log";
+import { HOME_REASONING_EFFORT_OPTIONS } from "~/lib/constants";
+import type { ReasoningEffort } from "~/lib/home/shared/view-types";
 import type { Route } from "./+types/api.azure-selection";
 
 type AzureSelectionPreferencePayload = {
+  target: AzureSelectionTarget;
   projectId: string;
   deploymentName: string;
+  reasoningEffort: ReasoningEffort | null;
+};
+
+type AzureSelectionTarget = "playground" | "utility";
+
+type AzureSelectionTargetPreference = {
+  projectId: string;
+  deploymentName: string;
+};
+
+type AzureUtilitySelectionTargetPreference = AzureSelectionTargetPreference & {
+  reasoningEffort: ReasoningEffort;
 };
 
 type AzureSelectionPreference = {
   tenantId: string;
   principalId: string;
-  projectId: string;
-  deploymentName: string;
+  playground: AzureSelectionTargetPreference | null;
+  utility: AzureUtilitySelectionTargetPreference | null;
 };
 
 export async function loader({ request }: Route.LoaderArgs) {
@@ -107,11 +122,15 @@ export async function action({ request }: Route.ActionArgs) {
       action: "validate_payload",
       level: "warning",
       statusCode: 400,
-      message: "`projectId` and `deploymentName` are required.",
+      message:
+        "`target`, `projectId`, and `deploymentName` are required. `reasoningEffort` is required for `utility` target.",
     });
 
     return Response.json(
-      { error: "`projectId` and `deploymentName` are required." },
+      {
+        error:
+          "`target`, `projectId`, and `deploymentName` are required. `reasoningEffort` is required for `utility` target.",
+      },
       { status: 400 },
     );
   }
@@ -130,8 +149,10 @@ export async function action({ request }: Route.ActionArgs) {
       context: {
         tenantId: identity.tenantId,
         principalId: identity.principalId,
+        target: preference.target,
         projectId: preference.projectId,
         deploymentName: preference.deploymentName,
+        reasoningEffort: preference.reasoningEffort,
       },
     });
 
@@ -147,15 +168,27 @@ export function parseAzureSelectionPreference(value: unknown): AzureSelectionPre
     return null;
   }
 
+  const target = value.target;
   const projectId = typeof value.projectId === "string" ? value.projectId.trim() : "";
   const deploymentName = typeof value.deploymentName === "string" ? value.deploymentName.trim() : "";
-  if (!projectId || !deploymentName) {
+  const reasoningEffort =
+    typeof value.reasoningEffort === "string"
+      ? readReasoningEffortFromUnknown(value.reasoningEffort)
+      : null;
+  if (
+    (target !== "playground" && target !== "utility") ||
+    !projectId ||
+    !deploymentName ||
+    (target === "utility" && !reasoningEffort)
+  ) {
     return null;
   }
 
   return {
+    target,
     projectId,
     deploymentName,
+    reasoningEffort,
   };
 }
 
@@ -209,15 +242,35 @@ async function saveStoredSelection(
 
   const saved = await prisma.azureSelectionPreference.upsert({
     where: { userId: user.id },
-    create: {
-      userId: user.id,
-      projectId: preference.projectId,
-      deploymentName: preference.deploymentName,
-    },
-    update: {
-      projectId: preference.projectId,
-      deploymentName: preference.deploymentName,
-    },
+    create:
+      preference.target === "playground"
+        ? {
+            userId: user.id,
+            projectId: preference.projectId,
+            deploymentName: preference.deploymentName,
+            utilityProjectId: "",
+            utilityDeploymentName: "",
+            utilityReasoningEffort: "high",
+          }
+        : {
+            userId: user.id,
+            projectId: "",
+            deploymentName: "",
+            utilityProjectId: preference.projectId,
+            utilityDeploymentName: preference.deploymentName,
+            utilityReasoningEffort: preference.reasoningEffort ?? "high",
+          },
+    update:
+      preference.target === "playground"
+        ? {
+            projectId: preference.projectId,
+            deploymentName: preference.deploymentName,
+          }
+        : {
+            utilityProjectId: preference.projectId,
+            utilityDeploymentName: preference.deploymentName,
+            utilityReasoningEffort: preference.reasoningEffort ?? "high",
+          },
   });
 
   return mapSelectionRecord(user, saved);
@@ -243,13 +296,53 @@ function mapSelectionRecord(
   selection: {
     projectId: string;
     deploymentName: string;
+    utilityProjectId: string;
+    utilityDeploymentName: string;
+    utilityReasoningEffort: string;
   },
 ): AzureSelectionPreference {
   return {
     tenantId: user.tenantId,
     principalId: user.principalId,
-    projectId: selection.projectId,
-    deploymentName: selection.deploymentName,
+    playground: mapSelectionTarget(selection.projectId, selection.deploymentName),
+    utility: mapUtilitySelectionTarget(
+      selection.utilityProjectId,
+      selection.utilityDeploymentName,
+      selection.utilityReasoningEffort,
+    ),
+  };
+}
+
+function mapSelectionTarget(
+  projectId: string,
+  deploymentName: string,
+): AzureSelectionTargetPreference | null {
+  const normalizedProjectId = projectId.trim();
+  const normalizedDeploymentName = deploymentName.trim();
+  if (!normalizedProjectId || !normalizedDeploymentName) {
+    return null;
+  }
+
+  return {
+    projectId: normalizedProjectId,
+    deploymentName: normalizedDeploymentName,
+  };
+}
+
+function mapUtilitySelectionTarget(
+  projectId: string,
+  deploymentName: string,
+  reasoningEffort: string,
+): AzureUtilitySelectionTargetPreference | null {
+  const base = mapSelectionTarget(projectId, deploymentName);
+  if (!base) {
+    return null;
+  }
+
+  const normalizedReasoningEffort = readReasoningEffortFromUnknown(reasoningEffort) ?? "high";
+  return {
+    ...base,
+    reasoningEffort: normalizedReasoningEffort,
   };
 }
 
@@ -259,4 +352,15 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function readErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Unknown error.";
+}
+
+function readReasoningEffortFromUnknown(value: unknown): ReasoningEffort | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+  if (HOME_REASONING_EFFORT_OPTIONS.includes(value as ReasoningEffort)) {
+    return value as ReasoningEffort;
+  }
+
+  return null;
 }

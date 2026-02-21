@@ -3,6 +3,7 @@ import { PROMPT_MAX_CONTENT_BYTES } from "~/lib/constants";
 import {
   buildPromptFileName,
   extractInstructionDiffPatch,
+  parseInstructionReasoningEffort,
   normalizeRequestedPromptFileName,
   parseInstructionContent,
   parseRequestedPromptFileName,
@@ -36,6 +37,35 @@ describe("parseInstructionContent", () => {
     expect(result).toEqual({
       ok: false,
       error: `Instruction is too large. Max ${PROMPT_MAX_CONTENT_BYTES} bytes.`,
+    });
+  });
+});
+
+describe("parseInstructionReasoningEffort", () => {
+  it("defaults to high when omitted", () => {
+    expect(parseInstructionReasoningEffort({})).toEqual({ ok: true, value: "high" });
+    expect(parseInstructionReasoningEffort("invalid")).toEqual({ ok: true, value: "high" });
+  });
+
+  it("accepts valid values", () => {
+    expect(parseInstructionReasoningEffort({ reasoningEffort: "none" })).toEqual({
+      ok: true,
+      value: "none",
+    });
+    expect(parseInstructionReasoningEffort({ reasoningEffort: "medium" })).toEqual({
+      ok: true,
+      value: "medium",
+    });
+  });
+
+  it("rejects invalid values", () => {
+    expect(parseInstructionReasoningEffort({ reasoningEffort: "fast" })).toEqual({
+      ok: false,
+      error: "`reasoningEffort` must be one of: none, low, medium, high.",
+    });
+    expect(parseInstructionReasoningEffort({ reasoningEffort: 1 })).toEqual({
+      ok: false,
+      error: "`reasoningEffort` must be a string.",
     });
   });
 });

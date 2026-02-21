@@ -26,11 +26,13 @@ Ensure this skill is used only for this repository and used for every implementa
 1. Confirm current task is Local Playground development work in the `local-playground` repository.
 2. Confirm this skill was invoked before implementation and kept active during the task.
 3. If repository scope differs, stop and switch to an appropriate skill.
+4. Confirm the development-phase rule is applied: no backward compatibility/fallback implementation unless explicitly requested.
 
 ### Pass Criteria
 
 - Task scope is this repository.
 - Skill usage is explicit and continuous for the full implementation task.
+- No unnecessary compatibility/fallback paths were added.
 
 ## 1) Shared Component First (Highest Priority)
 
