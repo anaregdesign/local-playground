@@ -23,6 +23,7 @@ type InstructionSectionProps = {
   isSending: boolean;
   isThreadReadOnly: boolean;
   isEnhancingInstruction: boolean;
+  showEnhancingInstructionSpinner: boolean;
   isSavingInstructionPrompt: boolean;
   canSaveAgentInstructionPrompt: boolean;
   canEnhanceAgentInstruction: boolean;
@@ -53,6 +54,7 @@ export function InstructionSection(props: InstructionSectionProps) {
     isSending,
     isThreadReadOnly,
     isEnhancingInstruction,
+    showEnhancingInstructionSpinner,
     isSavingInstructionPrompt,
     canSaveAgentInstructionPrompt,
     canEnhanceAgentInstruction,
@@ -154,7 +156,7 @@ export function InstructionSection(props: InstructionSectionProps) {
             disabled={isSending || isEnhancingInstruction || isThreadReadOnly}
             placeholder="System instruction for the agent"
           />
-          {isEnhancingInstruction ? (
+          {showEnhancingInstructionSpinner ? (
             <div className="instruction-enhancing-state" role="status" aria-live="polite">
               <div className="instruction-enhancing-head">
                 <Spinner size="tiny" />

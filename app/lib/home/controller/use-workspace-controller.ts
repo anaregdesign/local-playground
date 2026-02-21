@@ -171,6 +171,7 @@ export function useWorkspaceController() {
   const [instructionEnhanceError, setInstructionEnhanceError] = useState<string | null>(null);
   const [instructionEnhanceSuccess, setInstructionEnhanceSuccess] = useState<string | null>(null);
   const [isEnhancingInstruction, setIsEnhancingInstruction] = useState(false);
+  const [instructionEnhancingThreadId, setInstructionEnhancingThreadId] = useState("");
   const [instructionEnhanceComparison, setInstructionEnhanceComparison] =
     useState<InstructionEnhanceComparison | null>(null);
   const [mcpServers, setMcpServers] = useState<McpServerConfig[]>([]);
@@ -297,6 +298,10 @@ export function useWorkspaceController() {
   const activeThreadSnapshot =
     threads.find((thread) => thread.id === activeThreadId) ?? null;
   const isActiveThreadArchived = activeThreadSnapshot?.deletedAt !== null;
+  const isEnhancingInstructionForActiveThread =
+    isEnhancingInstruction &&
+    instructionEnhancingThreadId.length > 0 &&
+    instructionEnhancingThreadId === activeThreadId;
   const activeThreadSummaries = threadSummaries.filter((thread) => thread.deletedAt === null);
   const archivedThreadSummaries = threadSummaries.filter((thread) => thread.deletedAt !== null);
   const canSendMessage =
@@ -960,6 +965,7 @@ export function useWorkspaceController() {
     setInstructionSaveSuccess(null);
     setInstructionEnhanceError(null);
     setInstructionEnhanceSuccess(null);
+    setInstructionEnhancingThreadId("");
     setInstructionEnhanceComparison(null);
     setDraft("");
     setDraftAttachments([]);
@@ -3004,7 +3010,8 @@ export function useWorkspaceController() {
   }
 
   async function handleEnhanceInstruction() {
-    if (isArchivedThread(activeThreadIdRef.current)) {
+    const enhanceThreadId = activeThreadIdRef.current.trim();
+    if (!enhanceThreadId || isArchivedThread(enhanceThreadId)) {
       return;
     }
 
@@ -3058,6 +3065,7 @@ export function useWorkspaceController() {
       language: instructionLanguage,
     });
 
+    setInstructionEnhancingThreadId(enhanceThreadId);
     setIsEnhancingInstruction(true);
 
     try {
@@ -3140,6 +3148,7 @@ export function useWorkspaceController() {
       );
     } finally {
       setIsEnhancingInstruction(false);
+      setInstructionEnhancingThreadId("");
     }
   }
 
@@ -3556,6 +3565,7 @@ export function useWorkspaceController() {
       isSending,
       isThreadReadOnly: isActiveThreadArchived,
       isEnhancingInstruction,
+      showEnhancingInstructionSpinner: isEnhancingInstructionForActiveThread,
       isSavingInstructionPrompt,
       canSaveAgentInstructionPrompt,
       canEnhanceAgentInstruction,
