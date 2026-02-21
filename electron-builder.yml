@@ -19,6 +19,11 @@ extraMetadata:
 
 mac:
   icon: desktop/electron/assets/icon.icns
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: desktop/electron/entitlements.mac.plist
+  entitlementsInherit: desktop/electron/entitlements.mac.inherit.plist
+  notarize: true
   target:
     - target: dmg
     - target: zip
@@ -28,6 +33,11 @@ win:
   icon: desktop/electron/assets/icon.ico
   target:
     - target: nsis
+  signtoolOptions:
+    signingHashAlgorithms:
+      - sha256
+    rfc3161TimeStampServer: http://timestamp.digicert.com
+    timeStampServer: http://timestamp.digicert.com
 
 nsis:
   installerIcon: desktop/electron/assets/icon.ico

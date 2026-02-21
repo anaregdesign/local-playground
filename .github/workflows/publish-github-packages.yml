@@ -68,20 +68,122 @@ jobs:
           VERSION="${TAG_NAME#v}"
           npm version "${VERSION}" --no-git-tag-version --allow-same-version
 
-      - name: Build installer (macOS)
+      - name: Prepare macOS signing credentials
         if: matrix.os == 'macos-latest'
         shell: bash
         env:
-          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+          MACOS_CERTIFICATE_P12_BASE64: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          APPLE_NOTARY_KEY_P8: ${{ secrets.APPLE_NOTARY_KEY_P8 }}
+          APPLE_NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
+          APPLE_NOTARY_ISSUER_ID: ${{ secrets.APPLE_NOTARY_ISSUER_ID }}
+        run: |
+          set -euo pipefail
+
+          for required_var in MACOS_CERTIFICATE_P12_BASE64 MACOS_CERTIFICATE_PASSWORD APPLE_NOTARY_KEY_P8 APPLE_NOTARY_KEY_ID APPLE_NOTARY_ISSUER_ID; do
+            if [ -z "${!required_var:-}" ]; then
+              echo "::error title=Missing secret::${required_var} is required for macOS signed release builds."
+              exit 1
+            fi
+          done
+
+          CERT_PATH="${RUNNER_TEMP}/macos-signing-cert.p12"
+          printf '%s' "${MACOS_CERTIFICATE_P12_BASE64}" | base64 -D > "${CERT_PATH}"
+
+          NOTARY_KEY_PATH="${RUNNER_TEMP}/AuthKey_${APPLE_NOTARY_KEY_ID}.p8"
+          printf '%s' "${APPLE_NOTARY_KEY_P8}" > "${NOTARY_KEY_PATH}"
+
+          chmod 600 "${CERT_PATH}" "${NOTARY_KEY_PATH}"
+
+          {
+            echo "CSC_LINK=${CERT_PATH}"
+            echo "CSC_KEY_PASSWORD=${MACOS_CERTIFICATE_PASSWORD}"
+            echo "APPLE_API_KEY=${NOTARY_KEY_PATH}"
+            echo "APPLE_API_KEY_ID=${APPLE_NOTARY_KEY_ID}"
+            echo "APPLE_API_ISSUER=${APPLE_NOTARY_ISSUER_ID}"
+            echo "CSC_IDENTITY_AUTO_DISCOVERY=false"
+          } >> "${GITHUB_ENV}"
+
+      - name: Prepare Windows signing credentials
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        env:
+          WINDOWS_CERTIFICATE_PFX_BASE64: ${{ secrets.WINDOWS_CERTIFICATE_PFX_BASE64 }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          if ([string]::IsNullOrWhiteSpace($env:WINDOWS_CERTIFICATE_PFX_BASE64)) {
+            throw "WINDOWS_CERTIFICATE_PFX_BASE64 is required for Windows signed release builds."
+          }
+
+          if ([string]::IsNullOrWhiteSpace($env:WINDOWS_CERTIFICATE_PASSWORD)) {
+            throw "WINDOWS_CERTIFICATE_PASSWORD is required for Windows signed release builds."
+          }
+
+          $certPath = Join-Path $env:RUNNER_TEMP "windows-signing-cert.pfx"
+          [System.IO.File]::WriteAllBytes($certPath, [System.Convert]::FromBase64String($env:WINDOWS_CERTIFICATE_PFX_BASE64))
+
+          @(
+            "WIN_CSC_LINK=$certPath"
+            "WIN_CSC_KEY_PASSWORD=$env:WINDOWS_CERTIFICATE_PASSWORD"
+            "CSC_LINK=$certPath"
+            "CSC_KEY_PASSWORD=$env:WINDOWS_CERTIFICATE_PASSWORD"
+            "CSC_IDENTITY_AUTO_DISCOVERY=false"
+          ) | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Build installer (macOS)
+        if: matrix.os == 'macos-latest'
+        shell: bash
         run: |
           ulimit -n 10240
           ${{ matrix.package_command }}
 
       - name: Build installer (Windows)
         if: matrix.os == 'windows-latest'
-        env:
-          CSC_IDENTITY_AUTO_DISCOVERY: "false"
-        run: ${{ matrix.package_command }}
+        shell: pwsh
+        run: |
+          ${{ matrix.package_command }}
+
+      - name: Verify macOS code signing and notarization
+        if: matrix.os == 'macos-latest'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          APP_PATH="$(find dist/installers -type d -name 'Local Playground.app' | head -n 1)"
+          if [ -z "${APP_PATH}" ]; then
+            echo "::error::Signed app bundle was not found under dist/installers."
+            exit 1
+          fi
+
+          DMG_PATH="$(find dist/installers -maxdepth 1 -type f -name '*.dmg' | head -n 1)"
+          if [ -z "${DMG_PATH}" ]; then
+            echo "::error::DMG installer was not found under dist/installers."
+            exit 1
+          fi
+
+          codesign --verify --deep --strict --verbose=2 "${APP_PATH}"
+          spctl --assess --type execute --verbose=4 "${APP_PATH}"
+          xcrun stapler validate "${APP_PATH}"
+          xcrun stapler validate "${DMG_PATH}"
+
+      - name: Verify Windows Authenticode signatures
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $targets = Get-ChildItem -Path "dist/installers" -Filter "*.exe" -File
+          if (-not $targets) {
+            throw "Windows installer (.exe) was not found under dist/installers."
+          }
+
+          foreach ($target in $targets) {
+            $signature = Get-AuthenticodeSignature -FilePath $target.FullName
+            if ($signature.Status -ne "Valid") {
+              throw "Invalid Authenticode signature: $($target.Name) status=$($signature.Status)"
+            }
+          }
 
       - name: Upload macOS installers
         if: matrix.os == 'macos-latest'
@@ -148,10 +250,9 @@ jobs:
 
           ### Installer Assets
 
-          ### macOS First Launch
-          If Gatekeeper blocks launch, right-click `Local Playground.app` and choose `Open` once.
-          If needed, clear quarantine with:
-          `xattr -dr com.apple.quarantine "/Applications/Local Playground.app"`
+          ### Platform Trust
+          - macOS artifacts are Developer ID signed and notarized.
+          - Windows installers are Authenticode signed and timestamped.
           EOF
 
           for asset in "${ASSETS[@]}"; do
