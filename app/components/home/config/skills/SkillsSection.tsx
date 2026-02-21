@@ -1,6 +1,7 @@
 import { AutoDismissStatusMessageList } from "~/components/home/shared/AutoDismissStatusMessageList";
 import { ConfigSection } from "~/components/home/shared/ConfigSection";
 import { FluentUI } from "~/components/home/shared/fluent";
+import { SelectableCardList } from "~/components/home/shared/SelectableCardList";
 import type { SkillCatalogSource } from "~/lib/home/skills/types";
 
 const { Button, Spinner } = FluentUI;
@@ -41,6 +42,16 @@ export function SkillsSection(props: SkillsSectionProps) {
     onClearSkillsWarning,
   } = props;
 
+  const selectableSkillItems = skillOptions.map((skill) => ({
+    id: skill.location,
+    name: skill.name,
+    badge: skill.source === "workspace" ? "Workspace" : "CODEX_HOME",
+    description: skill.description,
+    detail: skill.location,
+    isSelected: skill.isSelected,
+    isAvailable: skill.isAvailable,
+  }));
+
   return (
     <ConfigSection
       className="setting-group-thread-skills"
@@ -52,13 +63,13 @@ export function SkillsSection(props: SkillsSectionProps) {
           This thread is archived and read-only. Restore it from Archives to edit skill selections.
         </p>
       ) : null}
-      <div className="thread-skills-header-row">
-        <p className="thread-skills-count">Enabled: {selectedSkillCount}</p>
+      <div className="selectable-card-header-row">
+        <p className="selectable-card-count">Enabled: {selectedSkillCount}</p>
         <Button
           type="button"
           appearance="subtle"
           size="small"
-          className="thread-skills-reload-btn"
+          className="selectable-card-reload-btn"
           title="Reload skill list from local skills directories."
           onClick={onReloadSkills}
           disabled={isLoadingSkills || isSending}
@@ -72,48 +83,13 @@ export function SkillsSection(props: SkillsSectionProps) {
           Loading Skills...
         </p>
       ) : null}
-      {skillOptions.length === 0 ? (
-        <p className="field-hint">No Skills discovered in workspace/CODEX_HOME skills directories.</p>
-      ) : (
-        <div className="thread-skills-list" role="list" aria-label="Thread Skills">
-          {skillOptions.map((skill) => {
-            const sourceLabel = skill.source === "workspace" ? "Workspace" : "CODEX_HOME";
-            return (
-              <article
-                key={skill.location}
-                role="listitem"
-                className={`thread-skill-item${skill.isSelected ? " is-selected" : ""}${
-                  skill.isAvailable ? "" : " is-unavailable"
-                }`}
-              >
-                <div className="thread-skill-item-top-row">
-                  <div className="thread-skill-item-title-row">
-                    <p className="thread-skill-name">{skill.name}</p>
-                    <span className="thread-skill-source">{sourceLabel}</span>
-                  </div>
-                  <Button
-                    type="button"
-                    appearance={skill.isSelected ? "subtle" : "secondary"}
-                    size="small"
-                    className={`thread-skill-add-btn${skill.isSelected ? " is-selected" : ""}`}
-                    onClick={() => {
-                      onToggleSkill(skill.location);
-                    }}
-                    disabled={
-                      isSending || isThreadReadOnly || (!skill.isAvailable && !skill.isSelected)
-                    }
-                    title={skill.isSelected ? `Remove ${skill.name}` : `Add ${skill.name}`}
-                  >
-                    {skill.isSelected ? "Added" : "Add"}
-                  </Button>
-                </div>
-                <p className="thread-skill-description">{skill.description}</p>
-                <p className="thread-skill-location">{skill.location}</p>
-              </article>
-            );
-          })}
-        </div>
-      )}
+      <SelectableCardList
+        items={selectableSkillItems}
+        listAriaLabel="Thread Skills"
+        emptyHint="No Skills discovered in workspace/CODEX_HOME skills directories."
+        isActionDisabled={isSending || isThreadReadOnly}
+        onToggleItem={onToggleSkill}
+      />
       <AutoDismissStatusMessageList
         messages={[
           { intent: "error", text: skillsError },

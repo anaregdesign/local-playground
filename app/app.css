@@ -1299,30 +1299,30 @@ body {
   gap: 0.3rem;
 }
 
-.thread-skills-header-row {
+.selectable-card-header-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 0.45rem;
 }
 
-.thread-skills-count {
+.selectable-card-count {
   margin: 0;
   font-size: var(--home-font-size-caption);
   color: var(--text-subtle);
 }
 
-.thread-skills-reload-btn.fui-Button {
+.selectable-card-reload-btn.fui-Button {
   min-height: 1.75rem;
 }
 
-.thread-skills-list {
+.selectable-card-list {
   display: flex;
   flex-direction: column;
   gap: 0.42rem;
 }
 
-.thread-skill-item {
+.selectable-card-item {
   border: 1px solid rgba(31, 63, 86, 0.12);
   border-radius: var(--home-radius-sm);
   padding: 0.45rem 0.5rem;
@@ -1332,24 +1332,24 @@ body {
   gap: 0.26rem;
 }
 
-.thread-skill-item.is-selected {
+.selectable-card-item.is-selected {
   border-color: rgba(15, 108, 189, 0.35);
   background: #f5faff;
 }
 
-.thread-skill-item.is-unavailable {
+.selectable-card-item.is-unavailable {
   border-style: dashed;
   background: #fdfdfd;
 }
 
-.thread-skill-item-top-row {
+.selectable-card-item-top-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 0.42rem;
 }
 
-.thread-skill-item-title-row {
+.selectable-card-item-title-row {
   display: flex;
   align-items: center;
   gap: 0.34rem;
@@ -1357,7 +1357,7 @@ body {
   min-width: 0;
 }
 
-.thread-skill-name {
+.selectable-card-name {
   margin: 0;
   font-size: var(--home-font-size-caption);
   font-weight: 700;
@@ -1367,23 +1367,23 @@ body {
   white-space: nowrap;
 }
 
-.thread-skill-add-btn.fui-Button {
+.selectable-card-add-btn.fui-Button {
   min-width: 4.05rem;
   min-height: 1.75rem;
 }
 
-.thread-skill-add-btn.fui-Button .fui-Button__content {
+.selectable-card-add-btn.fui-Button .fui-Button__content {
   font-size: var(--home-font-size-note);
   font-weight: 700;
 }
 
-.thread-skill-add-btn.is-selected.fui-Button {
+.selectable-card-add-btn.is-selected.fui-Button {
   border: 1px solid rgba(25, 112, 171, 0.22) !important;
   background: #edf5ff !important;
   color: #1f4b67 !important;
 }
 
-.thread-skill-source {
+.selectable-card-badge {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1397,14 +1397,14 @@ body {
   font-weight: 600;
 }
 
-.thread-skill-description {
+.selectable-card-description {
   margin: 0;
   font-size: var(--home-font-size-caption);
   color: var(--text-main);
   line-height: var(--home-line-height-compact);
 }
 
-.thread-skill-location {
+.selectable-card-detail {
   margin: 0;
   font-size: var(--home-font-size-note);
   color: var(--text-subtle);
@@ -1876,23 +1876,6 @@ body {
 
 .fui-Button.azure-logout-btn:hover:enabled {
   background-color: #fde7e9;
-}
-
-.mcp-action-row {
-  display: flex;
-  gap: 0.45rem;
-  flex-wrap: wrap;
-}
-
-.mcp-action-row .fui-Button {
-  flex: 1;
-}
-
-.mcp-action-row .mcp-refresh-btn.fui-Button {
-  flex: 0 0 auto;
-  min-width: 1.6rem;
-  width: 1.6rem;
-  padding-inline: 0;
 }
 
 .context-action-item-danger {

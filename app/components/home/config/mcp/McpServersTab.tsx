@@ -16,14 +16,14 @@ type McpServersTabProps = {
 export function McpServersTab(props: McpServersTabProps) {
   const {
     activeMainTab,
-    selectedSavedMcpServerId,
     savedMcpServerOptions,
+    selectedSavedMcpServerCount,
     isLoadingSavedMcpServers,
     savedMcpError,
-    onSelectedSavedMcpServerIdChange,
-    onConnectSelectedMcpServer,
+    onToggleSavedMcpServer,
     onReloadSavedMcpServers,
     isSending,
+    isThreadReadOnly,
     mcpNameInput,
     onMcpNameInputChange,
     mcpTransport,
@@ -68,13 +68,13 @@ export function McpServersTab(props: McpServersTabProps) {
     >
       <div className="mcp-content">
         <McpSavedConfigsSection
-          selectedSavedMcpServerId={selectedSavedMcpServerId}
           savedMcpServerOptions={savedMcpServerOptions}
+          selectedSavedMcpServerCount={selectedSavedMcpServerCount}
           isSending={isSending}
+          isThreadReadOnly={isThreadReadOnly}
           isLoadingSavedMcpServers={isLoadingSavedMcpServers}
           savedMcpError={savedMcpError}
-          onSelectedSavedMcpServerIdChange={onSelectedSavedMcpServerIdChange}
-          onConnectSelectedMcpServer={onConnectSelectedMcpServer}
+          onToggleSavedMcpServer={onToggleSavedMcpServer}
           onReloadSavedMcpServers={onReloadSavedMcpServers}
         />
         <McpAddServerSection

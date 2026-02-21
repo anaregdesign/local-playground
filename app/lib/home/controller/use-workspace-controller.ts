@@ -78,7 +78,6 @@ import {
 import type { McpServerConfig } from "~/lib/home/mcp/profile";
 import {
   buildMcpServerKey,
-  formatMcpServerOption,
   readMcpServerFromUnknown,
   readMcpServerList,
   serializeMcpServerForSave,
@@ -180,7 +179,6 @@ export function useWorkspaceController() {
     useState<InstructionEnhanceComparison | null>(null);
   const [mcpServers, setMcpServers] = useState<McpServerConfig[]>([]);
   const [savedMcpServers, setSavedMcpServers] = useState<McpServerConfig[]>([]);
-  const [selectedSavedMcpServerId, setSelectedSavedMcpServerId] = useState("");
   const [mcpNameInput, setMcpNameInput] = useState("");
   const [mcpUrlInput, setMcpUrlInput] = useState("");
   const [mcpCommandInput, setMcpCommandInput] = useState("");
@@ -285,10 +283,28 @@ export function useWorkspaceController() {
   const mcpHistoryByTurnId = buildMcpHistoryByTurnId(mcpRpcHistory);
   const activeTurnMcpHistory = activeTurnId ? (mcpHistoryByTurnId.get(activeTurnId) ?? []) : [];
   const errorTurnMcpHistory = lastErrorTurnId ? (mcpHistoryByTurnId.get(lastErrorTurnId) ?? []) : [];
-  const savedMcpServerOptions = savedMcpServers.map((server) => ({
-    id: server.id,
-    label: formatMcpServerOption(server),
-  }));
+  const activeMcpServerKeySet = new Set(mcpServers.map((server) => buildMcpServerKey(server)));
+  const savedMcpServerOptions = savedMcpServers
+    .map((server) => {
+      const key = buildMcpServerKey(server);
+      return {
+        id: server.id,
+        name: server.name,
+        badge: resolveMcpTransportBadge(server),
+        description: describeSavedMcpServer(server),
+        detail: describeSavedMcpServerDetail(server),
+        isSelected: activeMcpServerKeySet.has(key),
+        isAvailable: true,
+      };
+    })
+    .sort((left, right) => {
+      if (left.isSelected !== right.isSelected) {
+        return left.isSelected ? -1 : 1;
+      }
+
+      return left.name.localeCompare(right.name);
+    });
+  const selectedSavedMcpServerCount = savedMcpServerOptions.filter((server) => server.isSelected).length;
   const draftAttachmentTotalSizeBytes = draftAttachments.reduce(
     (sum, attachment) => sum + attachment.sizeBytes,
     0,
@@ -882,11 +898,6 @@ export function useWorkspaceController() {
 
       const parsedServers = readMcpServerList(payload.profiles);
       setSavedMcpServers(parsedServers);
-      setSelectedSavedMcpServerId((current) =>
-        current && parsedServers.some((server) => server.id === current)
-          ? current
-          : parsedServers[0]?.id ?? "",
-      );
       setSavedMcpError(null);
     } catch (loadError) {
       if (requestSeq !== savedMcpRequestSeqRef.current) {
@@ -967,7 +978,6 @@ export function useWorkspaceController() {
   function clearSavedMcpServersState(nextError: string | null = null) {
     clearSavedMcpLoginRetryTimeout();
     setSavedMcpServers([]);
-    setSelectedSavedMcpServerId("");
     setSavedMcpError(nextError);
     setIsLoadingSavedMcpServers(false);
   }
@@ -2448,10 +2458,8 @@ export function useWorkspaceController() {
     const profiles = readMcpServerList(payload.profiles);
     if (profiles.length > 0) {
       setSavedMcpServers(profiles);
-      setSelectedSavedMcpServerId(profile.id);
     } else {
       setSavedMcpServers((current) => upsertMcpServer(current, profile));
-      setSelectedSavedMcpServerId(profile.id);
     }
 
     return {
@@ -3548,24 +3556,34 @@ export function useWorkspaceController() {
     setMcpTransport(HOME_DEFAULT_MCP_TRANSPORT);
   }
 
-  function handleConnectSelectedMcpServer() {
+  function handleToggleSavedMcpServer(serverIdRaw: string) {
     if (isArchivedThread(activeThreadIdRef.current)) {
       setSavedMcpError("Archived thread is read-only. Restore it from Archives to edit MCP servers.");
       return;
     }
 
-    if (!selectedSavedMcpServerId) {
-      setSavedMcpError("Select an MCP server first.");
+    const serverId = serverIdRaw.trim();
+    if (!serverId) {
       return;
     }
 
-    const selected = savedMcpServers.find((server) => server.id === selectedSavedMcpServerId);
+    const selected = savedMcpServers.find((server) => server.id === serverId);
     if (!selected) {
       setSavedMcpError("Selected MCP server is not available.");
       return;
     }
 
-    connectMcpServerToAgent(selected);
+    const selectedKey = buildMcpServerKey(selected);
+    setMcpServers((current) => {
+      const alreadyConnected = current.some(
+        (server) => buildMcpServerKey(server) === selectedKey,
+      );
+      if (alreadyConnected) {
+        return current.filter((server) => buildMcpServerKey(server) !== selectedKey);
+      }
+
+      return [...current, selected];
+    });
     setSavedMcpError(null);
   }
 
@@ -3689,16 +3707,13 @@ export function useWorkspaceController() {
   };
 
   const mcpServersTabProps = {
-    selectedSavedMcpServerId,
     savedMcpServerOptions,
+    selectedSavedMcpServerCount,
     isSending,
+    isThreadReadOnly: isActiveThreadArchived,
     isLoadingSavedMcpServers,
     savedMcpError,
-    onSelectedSavedMcpServerIdChange: (value: string) => {
-      setSelectedSavedMcpServerId(value);
-      setSavedMcpError(null);
-    },
-    onConnectSelectedMcpServer: handleConnectSelectedMcpServer,
+    onToggleSavedMcpServer: handleToggleSavedMcpServer,
     onReloadSavedMcpServers: handleReloadSavedMcpServers,
     mcpNameInput,
     onMcpNameInputChange: setMcpNameInput,
@@ -3935,6 +3950,40 @@ function readStringList(value: unknown): string[] {
   }
 
   return result;
+}
+
+function resolveMcpTransportBadge(server: McpServerConfig): string {
+  if (server.transport === "stdio") {
+    return "STDIO";
+  }
+
+  if (server.transport === "sse") {
+    return "SSE";
+  }
+
+  return "HTTP";
+}
+
+function describeSavedMcpServer(server: McpServerConfig): string {
+  if (server.transport === "stdio") {
+    const argsSuffix = server.args.length > 0 ? ` ${server.args.join(" ")}` : "";
+    const envCount = Object.keys(server.env).length;
+    return `Command: ${server.command}${argsSuffix}; Environment variables: ${envCount}`;
+  }
+
+  const headersCount = Object.keys(server.headers).length;
+  const azureAuthLabel = server.useAzureAuth
+    ? `Azure auth: enabled (${server.azureAuthScope})`
+    : "Azure auth: disabled";
+  return `Transport: ${server.transport}; Headers: ${headersCount}; Timeout: ${server.timeoutSeconds}s; ${azureAuthLabel}`;
+}
+
+function describeSavedMcpServerDetail(server: McpServerConfig): string {
+  if (server.transport === "stdio") {
+    return `Working directory: ${server.cwd ?? "(inherit current workspace)"}`;
+  }
+
+  return server.url;
 }
 
 function isLikelyChatAzureAuthError(message: string | null): boolean {

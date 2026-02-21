@@ -1,88 +1,81 @@
 import { FluentUI } from "~/components/home/shared/fluent";
 import { ConfigSection } from "~/components/home/shared/ConfigSection";
 import { StatusMessageList } from "~/components/home/shared/StatusMessageList";
+import { SelectableCardList } from "~/components/home/shared/SelectableCardList";
 
-const { Button, Field, Select } = FluentUI;
+const { Button, Spinner } = FluentUI;
 
 export type SavedMcpServerOption = {
   id: string;
-  label: string;
+  name: string;
+  badge?: string;
+  description: string;
+  detail: string;
+  isSelected: boolean;
+  isAvailable: boolean;
 };
 
 export type McpSavedConfigsSectionProps = {
-  selectedSavedMcpServerId: string;
   savedMcpServerOptions: SavedMcpServerOption[];
+  selectedSavedMcpServerCount: number;
   isSending: boolean;
+  isThreadReadOnly: boolean;
   isLoadingSavedMcpServers: boolean;
   savedMcpError: string | null;
-  onSelectedSavedMcpServerIdChange: (value: string) => void;
-  onConnectSelectedMcpServer: () => void;
+  onToggleSavedMcpServer: (id: string) => void;
   onReloadSavedMcpServers: () => void;
 };
 
 export function McpSavedConfigsSection(props: McpSavedConfigsSectionProps) {
   const {
-    selectedSavedMcpServerId,
     savedMcpServerOptions,
+    selectedSavedMcpServerCount,
     isSending,
+    isThreadReadOnly,
     isLoadingSavedMcpServers,
     savedMcpError,
-    onSelectedSavedMcpServerIdChange,
-    onConnectSelectedMcpServer,
+    onToggleSavedMcpServer,
     onReloadSavedMcpServers,
   } = props;
 
   return (
     <ConfigSection
       title="MCP Servers 🧩"
-      description="Select a saved MCP profile and connect it to the current thread."
+      description="Add saved MCP profiles to the current thread."
     >
-      <Field label="🧩 Saved MCP server">
-        <Select
-          id="mcp-saved-config"
-          title="Choose a saved MCP server to connect to the current Agent."
-          value={selectedSavedMcpServerId}
-          onChange={(event) => {
-            onSelectedSavedMcpServerIdChange(event.target.value);
-          }}
-          disabled={isSending || isLoadingSavedMcpServers || savedMcpServerOptions.length === 0}
-        >
-          {savedMcpServerOptions.length === 0 ? <option value="">No saved MCP servers</option> : null}
-          {savedMcpServerOptions.map((server) => (
-            <option key={server.id} value={server.id}>
-              {server.label}
-            </option>
-          ))}
-        </Select>
-      </Field>
-      <div className="mcp-action-row">
-        <Button
-          type="button"
-          appearance="secondary"
-          title="Connect the selected saved MCP server to the current Agent."
-          onClick={onConnectSelectedMcpServer}
-          disabled={
-            isSending ||
-            isLoadingSavedMcpServers ||
-            savedMcpServerOptions.length === 0 ||
-            !selectedSavedMcpServerId
-          }
-        >
-          🔌 Connect Selected
-        </Button>
+      {isThreadReadOnly ? (
+        <p className="field-hint">
+          This thread is archived and read-only. Restore it from Archives to edit MCP servers.
+        </p>
+      ) : null}
+      <div className="selectable-card-header-row">
+        <p className="selectable-card-count">Added: {selectedSavedMcpServerCount}</p>
         <Button
           type="button"
           appearance="subtle"
           size="small"
-          className="mcp-refresh-btn"
+          className="selectable-card-reload-btn"
           title="Reload saved MCP servers."
           aria-label="Reload saved MCP servers"
           onClick={onReloadSavedMcpServers}
           disabled={isSending || isLoadingSavedMcpServers}
         >
-          ↻
+          ↻ Reload
         </Button>
       </div>
+      {isLoadingSavedMcpServers ? (
+        <p className="azure-loading-notice" role="status" aria-live="polite">
+          <Spinner size="tiny" />
+          Loading MCP Servers...
+        </p>
+      ) : null}
+      <SelectableCardList
+        items={savedMcpServerOptions}
+        listAriaLabel="Saved MCP Servers"
+        emptyHint="No saved MCP servers."
+        isActionDisabled={isSending || isThreadReadOnly}
+        onToggleItem={onToggleSavedMcpServer}
+      />
       <StatusMessageList messages={[{ intent: "error", text: savedMcpError }]} />
     </ConfigSection>
   );
