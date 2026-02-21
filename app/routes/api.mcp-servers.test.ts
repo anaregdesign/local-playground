@@ -2,10 +2,14 @@ import { describe, expect, it } from "vitest";
 import {
   MCP_DEFAULT_AZURE_AUTH_SCOPE,
   MCP_DEFAULT_TIMEOUT_SECONDS,
+  MCP_DEFAULT_WORKIQ_SERVER_ARGS,
+  MCP_DEFAULT_WORKIQ_SERVER_COMMAND,
+  MCP_DEFAULT_WORKIQ_SERVER_NAME,
 } from "~/lib/constants";
 import { mcpServersRouteTestUtils } from "./api.mcp-servers";
 
-const { parseIncomingMcpServer, upsertSavedMcpServer } = mcpServersRouteTestUtils;
+const { parseIncomingMcpServer, upsertSavedMcpServer, mergeDefaultMcpServers } =
+  mcpServersRouteTestUtils;
 
 describe("parseIncomingMcpServer", () => {
   it("parses HTTP payload and applies defaults", () => {
@@ -199,5 +203,38 @@ describe("upsertSavedMcpServer", () => {
     expect(result.profiles).toHaveLength(2);
     expect(result.profile.id).toBe("profile-2");
     expect(result.warning).toBeNull();
+  });
+});
+
+describe("mergeDefaultMcpServers", () => {
+  it("adds the default workiq profile when missing", () => {
+    const result = mergeDefaultMcpServers([]);
+
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({
+      name: MCP_DEFAULT_WORKIQ_SERVER_NAME,
+      transport: "stdio",
+      command: MCP_DEFAULT_WORKIQ_SERVER_COMMAND,
+      args: [...MCP_DEFAULT_WORKIQ_SERVER_ARGS],
+      env: {},
+    });
+    expect(result[0]?.id).toEqual(expect.any(String));
+  });
+
+  it("does not duplicate workiq when matching profile already exists", () => {
+    const existing = [
+      {
+        id: "profile-workiq",
+        name: "Custom WorkIQ",
+        transport: "stdio" as const,
+        command: MCP_DEFAULT_WORKIQ_SERVER_COMMAND,
+        args: [...MCP_DEFAULT_WORKIQ_SERVER_ARGS],
+        env: {},
+      },
+    ];
+
+    const result = mergeDefaultMcpServers(existing);
+
+    expect(result).toEqual(existing);
   });
 });

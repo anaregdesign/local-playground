@@ -60,6 +60,7 @@ Open `http://localhost:5173`.
 - Skills panel in `Threads` tab for `agentskills`-compatible `SKILL.md` selection
 - Dedicated `Utility Model` selection (deployment + reasoning effort) for instruction enhancement workflows
 - Per-server MCP headers, Azure auth scope, and timeout controls
+- Default saved `workiq` MCP profile (`npx -y @microsoft/workiq mcp`) for quick Microsoft 365 Copilot integration
 
 ## Developer Details
 

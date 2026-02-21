@@ -135,6 +135,9 @@ export const MCP_DEFAULT_AZURE_AUTH_SCOPE = AZURE_COGNITIVE_SERVICES_SCOPE;
 export const MCP_DEFAULT_HTTP_HEADERS: Record<string, string> = {
   "Content-Type": "application/json",
 };
+export const MCP_DEFAULT_WORKIQ_SERVER_NAME = "workiq";
+export const MCP_DEFAULT_WORKIQ_SERVER_COMMAND = "npx";
+export const MCP_DEFAULT_WORKIQ_SERVER_ARGS = ["-y", "@microsoft/workiq", "mcp"] as const;
 export const ENV_KEY_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
 export const HTTP_HEADER_NAME_PATTERN = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/;
 
