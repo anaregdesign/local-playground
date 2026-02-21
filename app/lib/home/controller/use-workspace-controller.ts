@@ -1593,19 +1593,10 @@ export function useWorkspaceController() {
     }
   }
 
-  async function handleCreateThreadFromPlaygroundHeader() {
+  async function handleCreateThread() {
     await createThreadAndSwitch({
       name: "",
     });
-  }
-
-  function handleActiveThreadNameInputChange(value: string) {
-    if (isActiveThreadArchived) {
-      return;
-    }
-    const normalized = value.slice(0, HOME_THREAD_NAME_MAX_LENGTH);
-    setActiveThreadNameInput(normalized);
-    setThreadError(null);
   }
 
   async function handleThreadLogicalDelete(threadIdRaw: string): Promise<void> {
@@ -3630,11 +3621,15 @@ export function useWorkspaceController() {
     activeThreadId,
     isLoadingThreads,
     isSwitchingThread,
+    isCreatingThread,
     isDeletingThread,
     isRestoringThread,
     threadError,
     onActiveThreadChange: (threadId: string) => {
       void handleThreadChange(threadId);
+    },
+    onCreateThread: () => {
+      void handleCreateThread();
     },
     onThreadDelete: (threadId: string) => {
       void handleThreadLogicalDelete(threadId);
@@ -3649,11 +3644,6 @@ export function useWorkspaceController() {
     mcpHistoryByTurnId,
     isSending,
     isThreadReadOnly: isActiveThreadArchived,
-    isUpdatingThread:
-      isCreatingThread || isSwitchingThread || isDeletingThread || isRestoringThread || isLoadingThreads,
-    activeThreadNameInput,
-    onActiveThreadNameChange: handleActiveThreadNameInputChange,
-    onCreateThread: handleCreateThreadFromPlaygroundHeader,
     onCopyMessage: handleCopyMessage,
     onCopyMcpLog: handleCopyMcpLog,
     sendProgressMessages,

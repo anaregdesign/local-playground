@@ -19,10 +19,12 @@ export function ThreadsTab(props: ThreadsTabProps) {
     activeThreadId,
     isLoadingThreads,
     isSwitchingThread,
+    isCreatingThread,
     isDeletingThread,
     isRestoringThread,
     threadError,
     onActiveThreadChange,
+    onCreateThread,
     onThreadDelete,
     onThreadRestore,
     instructionSectionProps,
@@ -45,10 +47,12 @@ export function ThreadsTab(props: ThreadsTabProps) {
           activeThreadId={activeThreadId}
           isLoadingThreads={isLoadingThreads}
           isSwitchingThread={isSwitchingThread}
+          isCreatingThread={isCreatingThread}
           isDeletingThread={isDeletingThread}
           isRestoringThread={isRestoringThread}
           threadError={threadError}
           onActiveThreadChange={onActiveThreadChange}
+          onCreateThread={onCreateThread}
           onThreadDelete={onThreadDelete}
           onThreadRestore={onThreadRestore}
         />

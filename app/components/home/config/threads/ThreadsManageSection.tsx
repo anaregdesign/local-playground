@@ -22,10 +22,12 @@ export type ThreadsManageSectionProps = {
   activeThreadId: string;
   isLoadingThreads: boolean;
   isSwitchingThread: boolean;
+  isCreatingThread: boolean;
   isDeletingThread: boolean;
   isRestoringThread: boolean;
   threadError: string | null;
   onActiveThreadChange: (threadId: string) => void;
+  onCreateThread: () => void;
   onThreadDelete: (threadId: string) => void;
   onThreadRestore: (threadId: string) => void;
 };
@@ -37,16 +39,18 @@ export function ThreadsManageSection(props: ThreadsManageSectionProps) {
     activeThreadId,
     isLoadingThreads,
     isSwitchingThread,
+    isCreatingThread,
     isDeletingThread,
     isRestoringThread,
     threadError,
     onActiveThreadChange,
+    onCreateThread,
     onThreadDelete,
     onThreadRestore,
   } = props;
 
-  const isThreadSelectionDisabled =
-    isLoadingThreads || isSwitchingThread || isDeletingThread || isRestoringThread;
+  const isThreadOperationBusy =
+    isLoadingThreads || isSwitchingThread || isCreatingThread || isDeletingThread || isRestoringThread;
 
   return (
     <ConfigSection
@@ -60,6 +64,19 @@ export function ThreadsManageSection(props: ThreadsManageSectionProps) {
           Loading threads...
         </p>
       ) : null}
+      <div className="threads-action-row">
+        <Button
+          type="button"
+          appearance="secondary"
+          size="small"
+          className="threads-new-btn"
+          onClick={onCreateThread}
+          disabled={isThreadOperationBusy}
+          title="Create a new thread and switch Playground to it."
+        >
+          {isCreatingThread ? "Creating..." : "+ New Thread"}
+        </Button>
+      </div>
       {activeThreadOptions.length === 0 ? (
         <p className="field-hint">No active threads</p>
       ) : (
@@ -67,7 +84,7 @@ export function ThreadsManageSection(props: ThreadsManageSectionProps) {
           {activeThreadOptions.map((thread) => {
             const isActive = thread.id === activeThreadId;
             const isDeleteDisabled =
-              isThreadSelectionDisabled || thread.isAwaitingResponse || thread.messageCount === 0;
+              isThreadOperationBusy || thread.isAwaitingResponse || thread.messageCount === 0;
             const deleteButtonTitle =
               thread.messageCount === 0
                 ? `Cannot delete thread ${thread.name} because it has no messages`
@@ -86,7 +103,7 @@ export function ThreadsManageSection(props: ThreadsManageSectionProps) {
                     onClick={() => {
                       onActiveThreadChange(thread.id);
                     }}
-                    disabled={isThreadSelectionDisabled}
+                    disabled={isThreadOperationBusy}
                     aria-pressed={isActive}
                   >
                     <span className="threads-active-item-content">
@@ -124,7 +141,7 @@ export function ThreadsManageSection(props: ThreadsManageSectionProps) {
           <div className="threads-archived-items" role="list" aria-label="Archived Playground threads">
             {archivedThreadOptions.map((thread) => {
               const isActive = thread.id === activeThreadId;
-              const isRestoreDisabled = isThreadSelectionDisabled || thread.isAwaitingResponse;
+              const isRestoreDisabled = isThreadOperationBusy || thread.isAwaitingResponse;
               return (
                 <div key={thread.id} className="threads-archived-item-row" role="listitem">
                   <LabeledTooltip
@@ -139,7 +156,7 @@ export function ThreadsManageSection(props: ThreadsManageSectionProps) {
                       onClick={() => {
                         onActiveThreadChange(thread.id);
                       }}
-                      disabled={isThreadSelectionDisabled}
+                      disabled={isThreadOperationBusy}
                       aria-pressed={isActive}
                     >
                       <span className="threads-active-item-content">
