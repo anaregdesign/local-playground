@@ -245,7 +245,6 @@ export function useWorkspaceController() {
   const threadNameSaveTimeoutRef = useRef<number | null>(null);
   const threadSaveTimeoutRef = useRef<number | null>(null);
   const threadTitleRefreshTimeoutRef = useRef<number | null>(null);
-  const threadInstructionSignatureByIdRef = useRef(new Map<string, string>());
   const threadLoadRequestSeqRef = useRef(0);
   const threadSaveRequestSeqRef = useRef(0);
   const threadSaveSignatureByIdRef = useRef(new Map<string, string>());
@@ -771,15 +770,10 @@ export function useWorkspaceController() {
     }
 
     const currentInstruction = agentInstruction.trim();
-    const previousInstruction = threadInstructionSignatureByIdRef.current.get(currentThreadId);
-    if (previousInstruction === undefined) {
-      threadInstructionSignatureByIdRef.current.set(currentThreadId, currentInstruction);
+    const baseInstruction = baseThread.agentInstruction.trim();
+    if (currentInstruction === baseInstruction) {
       return;
     }
-    if (previousInstruction === currentInstruction) {
-      return;
-    }
-    threadInstructionSignatureByIdRef.current.set(currentThreadId, currentInstruction);
 
     clearThreadTitleRefreshTimeout();
     threadTitleRefreshTimeoutRef.current = window.setTimeout(() => {
@@ -944,7 +938,6 @@ export function useWorkspaceController() {
     activeThreadIdRef.current = "";
     isApplyingThreadStateRef.current = false;
     threadSaveSignatureByIdRef.current.clear();
-    threadInstructionSignatureByIdRef.current.clear();
     setThreadsState([]);
     setActiveThreadId("");
     setActiveThreadNameInput("");
@@ -1147,7 +1140,6 @@ export function useWorkspaceController() {
 
   function applyThreadSnapshotToState(thread: ThreadSnapshot) {
     isApplyingThreadStateRef.current = true;
-    threadInstructionSignatureByIdRef.current.set(thread.id, thread.agentInstruction.trim());
 
     const clonedMessages = cloneMessages(thread.messages);
     const clonedMcpServers = cloneMcpServers(thread.mcpServers);
@@ -1362,6 +1354,7 @@ export function useWorkspaceController() {
   async function refreshThreadTitleInBackground(options: {
     threadId: string;
     reason: "first_message" | "instruction_update";
+    instructionOverride?: string;
   }): Promise<void> {
     const normalizedThreadId = options.threadId.trim();
     if (!normalizedThreadId) {
@@ -1388,9 +1381,11 @@ export function useWorkspaceController() {
     }
 
     const instruction =
-      normalizedThreadId === activeThreadIdRef.current.trim()
-        ? agentInstruction
-        : baseThread.agentInstruction;
+      typeof options.instructionOverride === "string"
+        ? options.instructionOverride
+        : normalizedThreadId === activeThreadIdRef.current.trim()
+          ? agentInstruction
+          : baseThread.agentInstruction;
 
     try {
       const response = await fetch("/api/thread-title", {
@@ -3161,12 +3156,21 @@ export function useWorkspaceController() {
       return;
     }
 
-    setAgentInstruction(instructionEnhanceComparison.enhanced);
+    const enhancedInstruction = instructionEnhanceComparison.enhanced;
+    const currentThreadId = activeThreadIdRef.current.trim();
+    setAgentInstruction(enhancedInstruction);
     setInstructionEnhanceComparison(null);
     setInstructionEnhanceError(null);
     setInstructionSaveError(null);
     setInstructionSaveSuccess(null);
     setInstructionEnhanceSuccess("Enhanced instruction applied.");
+    if (currentThreadId) {
+      void refreshThreadTitleInBackground({
+        threadId: currentThreadId,
+        reason: "instruction_update",
+        instructionOverride: enhancedInstruction,
+      });
+    }
   }
 
   function handleAdoptOriginalInstruction() {
@@ -3178,12 +3182,21 @@ export function useWorkspaceController() {
       return;
     }
 
-    setAgentInstruction(instructionEnhanceComparison.original);
+    const originalInstruction = instructionEnhanceComparison.original;
+    const currentThreadId = activeThreadIdRef.current.trim();
+    setAgentInstruction(originalInstruction);
     setInstructionEnhanceComparison(null);
     setInstructionEnhanceError(null);
     setInstructionSaveError(null);
     setInstructionSaveSuccess(null);
     setInstructionEnhanceSuccess("Kept original instruction.");
+    if (currentThreadId) {
+      void refreshThreadTitleInBackground({
+        threadId: currentThreadId,
+        reason: "instruction_update",
+        instructionOverride: originalInstruction,
+      });
+    }
   }
 
   async function handleAddMcpServer() {
