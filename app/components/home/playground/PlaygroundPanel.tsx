@@ -16,7 +16,6 @@ import { formatChatAttachmentSize } from "~/lib/home/chat/attachments";
 
 const {
   Button,
-  Input,
   Select,
   Spinner,
   Textarea,
@@ -77,10 +76,6 @@ type PlaygroundPanelProps<
   mcpHistoryByTurnId: Map<string, TMcpRpcHistoryEntry[]>;
   isSending: boolean;
   isThreadReadOnly: boolean;
-  isUpdatingThread: boolean;
-  activeThreadNameInput: string;
-  onActiveThreadNameChange: (value: string) => void;
-  onCreateThread: () => void;
   renderMessageContent: (message: TMessage) => ReactNode;
   renderTurnMcpLog: (
     entries: TMcpRpcHistoryEntry[],
@@ -144,10 +139,6 @@ export function PlaygroundPanel<
     mcpHistoryByTurnId,
     isSending,
     isThreadReadOnly,
-    isUpdatingThread,
-    activeThreadNameInput,
-    onActiveThreadNameChange,
-    onCreateThread,
     renderMessageContent,
     renderTurnMcpLog,
     onCopyMessage,
@@ -351,50 +342,6 @@ export function PlaygroundPanel<
               <img className="chat-header-symbol" src="/foundry-symbol.svg" alt="" aria-hidden="true" />
               <h1>Local Playground</h1>
             </div>
-          </div>
-          <div className="chat-header-actions">
-            <Input
-              className="chat-thread-name-input"
-              aria-label="Active thread name"
-              title={
-                isThreadReadOnly
-                  ? "Archived threads are read-only. Restore from Archives to rename."
-                  : "Edit the active thread name."
-              }
-              value={activeThreadNameInput}
-              onChange={(_, data) => {
-                onActiveThreadNameChange(data.value);
-              }}
-              disabled={isUpdatingThread || isThreadReadOnly}
-              placeholder="Thread name"
-            />
-            {renderLabeledTooltip(
-              "New Thread",
-              ["Create a new thread and switch Playground to it."],
-              <Button
-                type="button"
-                appearance="secondary"
-                size="small"
-                className="chat-new-thread-btn"
-                onClick={onCreateThread}
-                disabled={isUpdatingThread}
-                aria-label="Create and switch to a new thread"
-                title="Create and switch to a new thread."
-              >
-                <svg
-                  className="chat-new-thread-icon"
-                  viewBox="0 0 20 20"
-                  aria-hidden="true"
-                  focusable="false"
-                >
-                  <path
-                    d="M10 4.5a.75.75 0 0 1 .75.75v4h4a.75.75 0 0 1 0 1.5h-4v4a.75.75 0 0 1-1.5 0v-4h-4a.75.75 0 0 1 0-1.5h4v-4A.75.75 0 0 1 10 4.5Z"
-                    fill="currentColor"
-                  />
-                </svg>
-              </Button>,
-              "chat-header-action-tooltip",
-            )}
           </div>
         </div>
       </header>

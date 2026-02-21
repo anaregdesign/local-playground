@@ -253,61 +253,6 @@ body {
   color: var(--text-subtle);
 }
 
-.chat-header-actions {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.45rem;
-  min-width: 0;
-}
-
-.chat-thread-name-input.fui-Input {
-  min-width: 180px;
-  width: 240px;
-  max-width: min(40vw, 340px);
-  border: 0 !important;
-  box-shadow: none !important;
-}
-
-.chat-thread-name-input.fui-Input::before,
-.chat-thread-name-input.fui-Input::after {
-  border: 0 !important;
-  box-shadow: none !important;
-}
-
-.chat-thread-name-input.fui-Input input {
-  border: 0 !important;
-}
-
-.chat-header-action-tooltip {
-  display: inline-flex;
-  align-items: center;
-  flex-shrink: 0;
-}
-
-.chat-new-thread-btn.fui-Button {
-  min-width: 2.05rem !important;
-  width: 2.05rem !important;
-  min-height: 2.05rem !important;
-  height: 2.05rem !important;
-  border-radius: 999px;
-  padding: 0 !important;
-  border: 1px solid rgba(50, 49, 48, 0.14);
-}
-
-.chat-new-thread-btn.fui-Button .fui-Button__content {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  margin: 0;
-  line-height: 0;
-}
-
-.chat-new-thread-icon {
-  width: 0.95rem;
-  height: 0.95rem;
-  display: block;
-}
-
 .chat-log {
   padding: 1.4rem;
   overflow-y: auto;
@@ -1286,6 +1231,15 @@ body {
   gap: 0.3rem;
 }
 
+.threads-action-row {
+  display: flex;
+  gap: 0.45rem;
+}
+
+.threads-action-row .threads-new-btn.fui-Button {
+  flex: 1;
+}
+
 .threads-active-item-row {
   display: flex;
   align-items: center;
@@ -1296,6 +1250,17 @@ body {
   display: block;
   flex: 1;
   min-width: 0;
+}
+
+.threads-rename-input.fui-Input {
+  flex: 1;
+  min-width: 0;
+  min-height: 2rem;
+  border-radius: var(--home-radius-sm);
+}
+
+.threads-rename-input.fui-Input input {
+  font-size: var(--home-font-size-label);
 }
 
 .threads-active-item.fui-Button {
@@ -1348,19 +1313,6 @@ body {
   color: #1f3f56;
 }
 
-.threads-delete-btn {
-  --home-symbol-btn-size: 1.55rem;
-  --home-symbol-glyph-size: 0.9rem;
-  color: #8a3b3b;
-  opacity: 0.72;
-}
-
-.threads-delete-btn:hover {
-  opacity: 1;
-  color: #7a2424;
-  background: rgba(174, 69, 69, 0.12) !important;
-}
-
 .threads-archived-list {
   margin-top: 0.15rem;
   border: 1px solid rgba(34, 48, 58, 0.12);
@@ -1406,19 +1358,6 @@ body {
 .threads-archived-item.fui-Button.is-active:enabled:hover {
   background: #eaf2fb;
   color: #1f3f56;
-}
-
-.threads-restore-btn {
-  --home-symbol-btn-size: 1.55rem;
-  --home-symbol-glyph-size: 0.84rem;
-  color: #1f4e67;
-  opacity: 0.76;
-}
-
-.threads-restore-btn:hover {
-  opacity: 1;
-  color: #0f4c75;
-  background: rgba(15, 108, 189, 0.12) !important;
 }
 
 .azure-loading-notice {
@@ -1772,6 +1711,10 @@ body {
   min-width: 1.6rem;
   width: 1.6rem;
   padding-inline: 0;
+}
+
+.context-action-item-danger {
+  color: #8a3b3b;
 }
 
 .sr-only {
