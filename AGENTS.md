@@ -4,6 +4,14 @@
 - Use this format: `<type>[optional scope]: <description>`
 - Common `type` examples: `feat`, `fix`, `docs`, `style`, `refactor`, `test`, `chore`
 
+# Skill Prerequisite
+
+- Before starting development, install the project skill with Codex standard setup by placing it under `$CODEX_HOME/skills/`.
+- If `CODEX_HOME` is not set, set it first (example: `export CODEX_HOME="$HOME/.codex"`).
+- Recommended setup command:
+  - `mkdir -p "$CODEX_HOME/skills" && ln -sfn "$(pwd)/skills/local-playground-dev" "$CODEX_HOME/skills/local-playground-dev"`
+- Restart Codex (or start a new session) after installing/updating the skill.
+
 # Implementation Policy
 
 ## Product Identity
@@ -47,19 +55,17 @@
   - `*Tab`: tab content root under a panel (`ThreadsTab`, `McpServersTab`, `SettingsTab`)
   - `*Section`: vertically segmented form/content block inside a tab (`InstructionSection`, `ThreadsManageSection`, `McpAddServerSection`)
   - Shared primitives should use purpose-based names (`ConfigSection`, `StatusMessageList`, `AutoDismissStatusMessageList`, `LabeledTooltip`, `CopyIconButton`)
-- `app/routes/home.tsx` should stay as visual composition only (layout + panel wiring), not runtime state/effects.
+- Home route modules under `app/routes/` should stay as visual composition only (layout + panel wiring), not runtime state/effects.
 - Prefer one-directional dependencies:
   - panel -> tab -> section -> shared
   - avoid cross-importing siblings when a shared primitive is appropriate.
 
 ## Home Runtime Structure
 
-- Keep Home runtime state, effects, and API handlers centralized in one controller file:
-  - `app/lib/home/controller/use-workspace-controller.ts`
+- Keep Home runtime state, effects, and API handlers centralized in `app/lib/home/controller/`.
 - Do not split primary state ownership across multiple hooks/files unless there is a clear technical need.
-- Keep message/MCP renderer helpers outside the route file:
-  - `app/components/home/playground/PlaygroundRenderers.tsx`
-- `app/routes/home.tsx` must not re-grow into a large logic file; it should only compose `PlaygroundPanel`, splitter, and `ConfigPanel`.
+- Keep message/MCP renderer helpers outside route modules, under `app/components/home/playground/`.
+- Home route modules under `app/routes/` must not re-grow into large logic files; they should compose layout and panel wiring only.
 - Prefer extracting pure data transforms into `app/lib/home/*` modules (no React state there).
 - Keep per-thread state ownership in the controller:
   - messages
@@ -67,12 +73,15 @@
   - MCP RPC history
   - agent instruction
   - thread request status (send/progress/error)
+- Keep persistent interactive state in React/controller runtime first.
+- Persist controller state to SQLite with delayed writes (debounced/autosave), not eager write-on-every-change.
+- Treat SQLite as durable snapshot storage; treat React/controller state as the immediate source of truth during interaction.
 
 ## Constants / Imports
 
-- Define shared static constants in `app/lib/constants.ts`.
+- Define shared static constants in constants modules under `app/lib/`.
 - Do not add new `UPPER_SNAKE_CASE` constants in feature files unless they are truly file-local and non-shared.
-- Import constants directly from `~/lib/constants` with the same exported name.
+- Import constants directly from the owning constants module under `~/lib/` with the same exported name.
   - Avoid alias renaming (`as`) for constants.
 - Avoid re-export-only type/constant passthrough files; import from the source module directly.
 
@@ -128,7 +137,7 @@
 - Do not expose `temperature` in UI settings; keep it optional at API boundary only.
 - Render Markdown responses and apply syntax highlighting to JSON responses.
 - Show concrete streaming progress states (not only generic `Thinking...`).
-- Support chat attachments for Code Interpreter-compatible files with current validation limits from `app/lib/constants.ts`.
+- Support chat attachments for Code Interpreter-compatible files with current validation limits from constants modules under `app/lib/`.
 
 ## Threads / Instruction Behavior
 

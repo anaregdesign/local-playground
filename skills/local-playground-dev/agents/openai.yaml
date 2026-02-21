@@ -1,0 +1,4 @@
+interface:
+  display_name: "Local Playground Dev Process"
+  short_description: "Mandatory for local-playground changes only"
+  default_prompt: "Use $local-playground-dev for every code change in this repository and enforce pre-change, in-change, and final AGENTS.md compliance gates."

@@ -39,6 +39,12 @@ Load saved configs, adjust transport/auth details, and add servers directly to t
 git clone https://github.com/anaregdesign/local-playground.git
 cd local-playground
 npm install
+# set if CODEX_HOME is not already set
+export CODEX_HOME="${CODEX_HOME:-$HOME/.codex}"
+# install Local Playground skill with Codex standard setup
+mkdir -p "$CODEX_HOME/skills"
+ln -sfn "$(pwd)/skills/local-playground-dev" "$CODEX_HOME/skills/local-playground-dev"
+# restart Codex or start a new session after installation
 az login
 npm run dev
 ```

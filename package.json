@@ -19,6 +19,7 @@
     "desktop:package:mac": "npm run build && electron-builder --config electron-builder.yml --mac dmg zip --publish never",
     "desktop:package:win": "npm run build && electron-builder --config electron-builder.yml --win nsis --publish never",
     "dev:db:init": "node scripts/dev-db-init.mjs",
+    "skill:enable": "node scripts/enable-local-playground-skill.mjs",
     "typecheck": "npm run prisma:generate && react-router typegen && tsc",
     "test": "npm run prisma:generate && vitest run",
     "test:watch": "vitest",
