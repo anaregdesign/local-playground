@@ -33,7 +33,10 @@ export function McpSavedConfigsSection(props: McpSavedConfigsSectionProps) {
   } = props;
 
   return (
-    <ConfigSection title="MCP Servers 🧩">
+    <ConfigSection
+      title="MCP Servers 🧩"
+      description="Select a saved MCP profile and connect it to the current thread."
+    >
       <Field label="🧩 Saved MCP server">
         <Select
           id="mcp-saved-config"

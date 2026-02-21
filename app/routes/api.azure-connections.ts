@@ -14,6 +14,10 @@ import {
 import {
   readAzureArmUserContext,
 } from "~/lib/server/auth/azure-user";
+import {
+  installGlobalServerErrorLogging,
+  logServerRouteEvent,
+} from "~/lib/server/observability/app-event-log";
 import type { AzureDependencies } from "~/lib/azure/dependencies";
 import type { Route } from "./+types/api.azure-connections";
 
@@ -69,6 +73,8 @@ type ArmAccountModel = {
 };
 
 export async function loader({ request }: Route.LoaderArgs) {
+  installGlobalServerErrorLogging();
+
   if (request.method !== "GET") {
     return Response.json({ error: "Method not allowed." }, { status: 405 });
   }
@@ -100,6 +106,19 @@ export async function loader({ request }: Route.LoaderArgs) {
 
     const projectRef = parseProjectId(projectId);
     if (!projectRef) {
+      await logServerRouteEvent({
+        request,
+        route: "/api/azure-connections",
+        eventName: "invalid_project_id",
+        action: "parse_project_id",
+        level: "warning",
+        statusCode: 400,
+        message: "Invalid projectId.",
+        context: {
+          projectId,
+        },
+      });
+
       return Response.json({ error: "Invalid projectId." }, { status: 400 });
     }
 
@@ -112,6 +131,19 @@ export async function loader({ request }: Route.LoaderArgs) {
     });
   } catch (error) {
     if (isLikelyAzureAuthError(error)) {
+      await logServerRouteEvent({
+        request,
+        route: "/api/azure-connections",
+        eventName: "azure_auth_required",
+        action: projectId ? "list_deployments" : "list_projects",
+        level: "warning",
+        statusCode: 401,
+        error,
+        context: {
+          projectId,
+        },
+      });
+
       return Response.json(
         {
           authRequired: true,
@@ -120,6 +152,18 @@ export async function loader({ request }: Route.LoaderArgs) {
         { status: 401 },
       );
     }
+
+    await logServerRouteEvent({
+      request,
+      route: "/api/azure-connections",
+      eventName: "load_azure_connections_failed",
+      action: projectId ? "list_deployments" : "list_projects",
+      statusCode: 502,
+      error,
+      context: {
+        projectId,
+      },
+    });
 
     return Response.json(
       {
@@ -156,7 +200,17 @@ async function listAzureProjects(accessToken: string): Promise<AzureProject[]> {
         accessToken,
         AZURE_MAX_ACCOUNTS_PER_SUBSCRIPTION,
       );
-    } catch {
+    } catch (error) {
+      await logServerRouteEvent({
+        route: "/api/azure-connections",
+        eventName: "list_accounts_failed",
+        action: "list_subscription_accounts",
+        level: "warning",
+        error,
+        context: {
+          subscriptionId,
+        },
+      });
       continue;
     }
 
@@ -279,7 +333,19 @@ async function listAccountModels(
       accessToken,
       AZURE_MAX_MODELS_PER_ACCOUNT,
     );
-  } catch {
+  } catch (error) {
+    await logServerRouteEvent({
+      route: "/api/azure-connections",
+      eventName: "list_account_models_failed",
+      action: "list_account_models",
+      level: "warning",
+      error,
+      context: {
+        subscriptionId,
+        resourceGroup,
+        accountName,
+      },
+    });
     return [];
   }
 }

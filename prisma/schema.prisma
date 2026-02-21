@@ -13,6 +13,7 @@ model User {
   principalId String
   azureSelection AzureSelectionPreference?
   mcpServerProfiles McpServerProfile[]
+  threads     Thread[]
 
   @@unique([tenantId, principalId])
 }
@@ -45,4 +46,103 @@ model McpServerProfile {
 
   @@unique([userId, configKey])
   @@index([userId, sortOrder])
+}
+
+model Thread {
+  id           String             @id
+  userId       Int
+  name         String
+  createdAt    String
+  updatedAt    String
+  user         User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  instruction  ThreadInstruction?
+  messages     ThreadMessage[]
+  mcpServers   ThreadMcpServer[]
+  mcpRpcLogs   ThreadMcpRpcLog[]
+
+  @@index([userId, updatedAt])
+}
+
+model ThreadInstruction {
+  id       Int    @id @default(autoincrement())
+  threadId String @unique
+  content  String
+  thread   Thread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+}
+
+model ThreadMessage {
+  id              String @id
+  threadId        String
+  sortOrder       Int
+  role            String
+  content         String
+  turnId          String
+  attachmentsJson String
+  thread          Thread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+
+  @@index([threadId, sortOrder])
+}
+
+model ThreadMcpServer {
+  id             String  @id
+  threadId       String
+  sortOrder      Int
+  name           String
+  transport      String
+  url            String?
+  headersJson    String?
+  useAzureAuth   Boolean @default(false)
+  azureAuthScope String?
+  timeoutSeconds Int?
+  command        String?
+  argsJson       String?
+  cwd            String?
+  envJson        String?
+  thread         Thread  @relation(fields: [threadId], references: [id], onDelete: Cascade)
+
+  @@index([threadId, sortOrder])
+}
+
+model ThreadMcpRpcLog {
+  id           String  @id
+  threadId     String
+  sortOrder    Int
+  sequence     Int
+  serverName   String
+  method       String
+  startedAt    String
+  completedAt  String
+  requestJson  String
+  responseJson String
+  isError      Boolean @default(false)
+  turnId       String
+  thread       Thread  @relation(fields: [threadId], references: [id], onDelete: Cascade)
+
+  @@index([threadId, sortOrder])
+}
+
+model AppEventLog {
+  id          String  @id
+  createdAt   String
+  source      String
+  level       String
+  category    String
+  eventName   String
+  message     String
+  errorName   String?
+  location    String?
+  action      String?
+  statusCode  Int?
+  httpMethod  String?
+  httpPath    String?
+  threadId    String?
+  tenantId    String?
+  principalId String?
+  userId      Int?
+  stack       String?
+  context     String
+
+  @@index([createdAt])
+  @@index([level, createdAt])
+  @@index([source, category, createdAt])
 }

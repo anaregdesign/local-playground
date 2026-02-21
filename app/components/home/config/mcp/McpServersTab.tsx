@@ -1,4 +1,4 @@
-import type { MainViewTab } from "~/components/home/shared/types";
+import type { MainViewTab } from "~/lib/home/shared/view-types";
 import {
   McpAddServerSection,
   type McpAddServerSectionProps,
@@ -54,6 +54,7 @@ export function McpServersTab(props: McpServersTabProps) {
     isSavingMcpServer,
     mcpFormError,
     mcpFormWarning,
+    onClearMcpFormWarning,
   } = props;
 
   return (
@@ -108,6 +109,7 @@ export function McpServersTab(props: McpServersTabProps) {
           isSavingMcpServer={isSavingMcpServer}
           mcpFormError={mcpFormError}
           mcpFormWarning={mcpFormWarning}
+          onClearMcpFormWarning={onClearMcpFormWarning}
         />
       </div>
     </section>

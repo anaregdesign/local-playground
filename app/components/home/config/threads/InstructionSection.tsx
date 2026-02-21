@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import type { ChangeEvent, RefObject } from "react";
 import { FluentUI } from "~/components/home/shared/fluent";
 import { ConfigSection } from "~/components/home/shared/ConfigSection";
-import { StatusMessageList } from "~/components/home/shared/StatusMessageList";
+import { AutoDismissStatusMessageList } from "~/components/home/shared/AutoDismissStatusMessageList";
 import { Diff, Hunk, parseDiff } from "react-diff-view";
 import "react-diff-view/style/index.css";
 
@@ -33,6 +33,8 @@ type InstructionSectionProps = {
   instructionSaveSuccess: string | null;
   instructionEnhanceError: string | null;
   instructionEnhanceSuccess: string | null;
+  onClearInstructionSaveSuccess: () => void;
+  onClearInstructionEnhanceSuccess: () => void;
   onAgentInstructionChange: (value: string) => void;
   onInstructionFileChange: (event: ChangeEvent<HTMLInputElement>) => void | Promise<void>;
   onSaveInstructionPrompt: () => void | Promise<void>;
@@ -60,6 +62,8 @@ export function InstructionSection(props: InstructionSectionProps) {
     instructionSaveSuccess,
     instructionEnhanceError,
     instructionEnhanceSuccess,
+    onClearInstructionSaveSuccess,
+    onClearInstructionEnhanceSuccess,
     onAgentInstructionChange,
     onInstructionFileChange,
     onSaveInstructionPrompt,
@@ -217,18 +221,23 @@ export function InstructionSection(props: InstructionSectionProps) {
             </Button>
             <span className="file-picker-name">{loadedInstructionFileName ?? "No file loaded"}</span>
           </div>
-          <p className="field-hint">
-            Supported: .md, .txt, .xml, .json (max 1MB). Click Save to choose file name and destination.
-          </p>
         </>
       )}
-      <StatusMessageList
+      <AutoDismissStatusMessageList
         messages={[
           { intent: "error", text: instructionFileError },
           { intent: "error", text: instructionSaveError },
-          { intent: "success", text: instructionSaveSuccess },
+          {
+            intent: "success",
+            text: instructionSaveSuccess,
+            onClear: onClearInstructionSaveSuccess,
+          },
           { intent: "error", text: instructionEnhanceError },
-          { intent: "success", text: instructionEnhanceSuccess },
+          {
+            intent: "success",
+            text: instructionEnhanceSuccess,
+            onClear: onClearInstructionEnhanceSuccess,
+          },
         ]}
       />
     </ConfigSection>

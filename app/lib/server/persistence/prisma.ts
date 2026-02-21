@@ -4,12 +4,8 @@ import { fileURLToPath } from "node:url";
 import { PrismaClient } from "@prisma/client";
 import { resolveFoundryDatabaseUrl } from "~/lib/foundry/config";
 
-const DEFAULT_DATABASE_URL = resolveFoundryDatabaseUrl({
-  envDatabaseUrl: resolveConfiguredDatabaseUrlFromEnvironment(),
-});
-
 if (!process.env.DATABASE_URL) {
-  process.env.DATABASE_URL = DEFAULT_DATABASE_URL;
+  process.env.DATABASE_URL = resolveDatabaseUrl();
 }
 
 const globalForPrisma = globalThis as typeof globalThis & {
@@ -21,7 +17,7 @@ export const prisma =
   new PrismaClient({
     datasources: {
       db: {
-        url: DEFAULT_DATABASE_URL,
+        url: process.env.DATABASE_URL ?? resolveDatabaseUrl(),
       },
     },
   });
@@ -35,7 +31,7 @@ let ensureDatabaseReadyPromise: Promise<void> | null = null;
 export async function ensurePersistenceDatabaseReady(): Promise<void> {
   if (!ensureDatabaseReadyPromise) {
     ensureDatabaseReadyPromise = (async () => {
-      await ensureDatabaseParentDirectoryExists(DEFAULT_DATABASE_URL);
+      await ensureDatabaseParentDirectoryExists(process.env.DATABASE_URL ?? resolveDatabaseUrl());
       await ensureDatabaseSchema();
     })().catch((error) => {
       ensureDatabaseReadyPromise = null;
@@ -44,6 +40,12 @@ export async function ensurePersistenceDatabaseReady(): Promise<void> {
   }
 
   await ensureDatabaseReadyPromise;
+}
+
+function resolveDatabaseUrl(): string {
+  return resolveFoundryDatabaseUrl({
+    envDatabaseUrl: resolveConfiguredDatabaseUrlFromEnvironment(),
+  });
 }
 
 function resolveConfiguredDatabaseUrlFromEnvironment(): string {
@@ -111,6 +113,8 @@ async function ensureDatabaseSchema(): Promise<void> {
   await ensureUserSchema();
   await ensureAzureSelectionSchema();
   await ensureMcpServerProfileSchema();
+  await ensureThreadSchema();
+  await ensureAppEventLogSchema();
 }
 
 async function ensureUserSchema(): Promise<void> {
@@ -174,5 +178,139 @@ async function ensureMcpServerProfileSchema(): Promise<void> {
   await prisma.$executeRawUnsafe(`
     CREATE INDEX IF NOT EXISTS "McpServerProfile_userId_sortOrder_idx"
     ON "McpServerProfile" ("userId", "sortOrder")
+  `);
+}
+
+async function ensureThreadSchema(): Promise<void> {
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS "Thread" (
+      "id" TEXT NOT NULL PRIMARY KEY,
+      "userId" INTEGER NOT NULL,
+      "name" TEXT NOT NULL,
+      "createdAt" TEXT NOT NULL,
+      "updatedAt" TEXT NOT NULL,
+      FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE CASCADE
+    )
+  `);
+
+  await prisma.$executeRawUnsafe(`
+    CREATE INDEX IF NOT EXISTS "Thread_userId_updatedAt_idx"
+    ON "Thread" ("userId", "updatedAt")
+  `);
+
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS "ThreadInstruction" (
+      "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+      "threadId" TEXT NOT NULL UNIQUE,
+      "content" TEXT NOT NULL,
+      FOREIGN KEY ("threadId") REFERENCES "Thread" ("id") ON DELETE CASCADE
+    )
+  `);
+
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS "ThreadMessage" (
+      "id" TEXT NOT NULL PRIMARY KEY,
+      "threadId" TEXT NOT NULL,
+      "sortOrder" INTEGER NOT NULL,
+      "role" TEXT NOT NULL,
+      "content" TEXT NOT NULL,
+      "turnId" TEXT NOT NULL,
+      "attachmentsJson" TEXT NOT NULL,
+      FOREIGN KEY ("threadId") REFERENCES "Thread" ("id") ON DELETE CASCADE
+    )
+  `);
+
+  await prisma.$executeRawUnsafe(`
+    CREATE INDEX IF NOT EXISTS "ThreadMessage_threadId_sortOrder_idx"
+    ON "ThreadMessage" ("threadId", "sortOrder")
+  `);
+
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS "ThreadMcpServer" (
+      "id" TEXT NOT NULL PRIMARY KEY,
+      "threadId" TEXT NOT NULL,
+      "sortOrder" INTEGER NOT NULL,
+      "name" TEXT NOT NULL,
+      "transport" TEXT NOT NULL,
+      "url" TEXT,
+      "headersJson" TEXT,
+      "useAzureAuth" BOOLEAN NOT NULL DEFAULT false,
+      "azureAuthScope" TEXT,
+      "timeoutSeconds" INTEGER,
+      "command" TEXT,
+      "argsJson" TEXT,
+      "cwd" TEXT,
+      "envJson" TEXT,
+      FOREIGN KEY ("threadId") REFERENCES "Thread" ("id") ON DELETE CASCADE
+    )
+  `);
+
+  await prisma.$executeRawUnsafe(`
+    CREATE INDEX IF NOT EXISTS "ThreadMcpServer_threadId_sortOrder_idx"
+    ON "ThreadMcpServer" ("threadId", "sortOrder")
+  `);
+
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS "ThreadMcpRpcLog" (
+      "id" TEXT NOT NULL PRIMARY KEY,
+      "threadId" TEXT NOT NULL,
+      "sortOrder" INTEGER NOT NULL,
+      "sequence" INTEGER NOT NULL,
+      "serverName" TEXT NOT NULL,
+      "method" TEXT NOT NULL,
+      "startedAt" TEXT NOT NULL,
+      "completedAt" TEXT NOT NULL,
+      "requestJson" TEXT NOT NULL,
+      "responseJson" TEXT NOT NULL,
+      "isError" BOOLEAN NOT NULL DEFAULT false,
+      "turnId" TEXT NOT NULL,
+      FOREIGN KEY ("threadId") REFERENCES "Thread" ("id") ON DELETE CASCADE
+    )
+  `);
+
+  await prisma.$executeRawUnsafe(`
+    CREATE INDEX IF NOT EXISTS "ThreadMcpRpcLog_threadId_sortOrder_idx"
+    ON "ThreadMcpRpcLog" ("threadId", "sortOrder")
+  `);
+}
+
+async function ensureAppEventLogSchema(): Promise<void> {
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS "AppEventLog" (
+      "id" TEXT NOT NULL PRIMARY KEY,
+      "createdAt" TEXT NOT NULL,
+      "source" TEXT NOT NULL,
+      "level" TEXT NOT NULL,
+      "category" TEXT NOT NULL,
+      "eventName" TEXT NOT NULL,
+      "message" TEXT NOT NULL,
+      "errorName" TEXT,
+      "location" TEXT,
+      "action" TEXT,
+      "statusCode" INTEGER,
+      "httpMethod" TEXT,
+      "httpPath" TEXT,
+      "threadId" TEXT,
+      "tenantId" TEXT,
+      "principalId" TEXT,
+      "userId" INTEGER,
+      "stack" TEXT,
+      "context" TEXT NOT NULL
+    )
+  `);
+
+  await prisma.$executeRawUnsafe(`
+    CREATE INDEX IF NOT EXISTS "AppEventLog_createdAt_idx"
+    ON "AppEventLog" ("createdAt")
+  `);
+
+  await prisma.$executeRawUnsafe(`
+    CREATE INDEX IF NOT EXISTS "AppEventLog_level_createdAt_idx"
+    ON "AppEventLog" ("level", "createdAt")
+  `);
+
+  await prisma.$executeRawUnsafe(`
+    CREATE INDEX IF NOT EXISTS "AppEventLog_source_category_createdAt_idx"
+    ON "AppEventLog" ("source", "category", "createdAt")
   `);
 }

@@ -1,7 +1,8 @@
 import { FluentUI } from "~/components/home/shared/fluent";
 import { ConfigSection } from "~/components/home/shared/ConfigSection";
-import { StatusMessageList } from "~/components/home/shared/StatusMessageList";
-import type { McpTransport } from "~/components/home/shared/types";
+import { AutoDismissStatusMessageList } from "~/components/home/shared/AutoDismissStatusMessageList";
+import { InfoIconButton } from "~/components/home/shared/InfoIconButton";
+import type { McpTransport } from "~/lib/home/shared/view-types";
 
 const {
   Button,
@@ -47,6 +48,7 @@ export type McpAddServerSectionProps = {
   isSavingMcpServer: boolean;
   mcpFormError: string | null;
   mcpFormWarning: string | null;
+  onClearMcpFormWarning: () => void;
 };
 
 export function McpAddServerSection(props: McpAddServerSectionProps) {
@@ -82,10 +84,14 @@ export function McpAddServerSection(props: McpAddServerSectionProps) {
     isSavingMcpServer,
     mcpFormError,
     mcpFormWarning,
+    onClearMcpFormWarning,
   } = props;
 
   return (
-    <ConfigSection title="Add MCP Server ➕">
+    <ConfigSection
+      title="Add MCP Server ➕"
+      description="Configure a new MCP server, save it to the database, and connect it to the current thread."
+    >
       <Field label="🏷️ Server name (optional)">
         <Input
           id="mcp-server-name"
@@ -192,16 +198,11 @@ export function McpAddServerSection(props: McpAddServerSectionProps) {
               />
               <Popover withArrow positioning="below-end">
                 <PopoverTrigger disableButtonEnhancement>
-                  <Button
-                    type="button"
-                    appearance="subtle"
-                    size="small"
-                    className="field-info-btn"
-                    aria-label="Show Azure authentication behavior details"
+                  <InfoIconButton
+                    className="setting-group-tooltip-icon field-info-btn"
+                    ariaLabel="Show Azure authentication behavior details"
                     title="Show Azure authentication behavior details."
-                  >
-                    ⓘ
-                  </Button>
+                  />
                 </PopoverTrigger>
                 <PopoverSurface className="field-info-popover">
                   <p className="field-info-title">Azure auth behavior</p>
@@ -271,10 +272,14 @@ export function McpAddServerSection(props: McpAddServerSectionProps) {
       >
         ➕ Add Server
       </Button>
-      <StatusMessageList
+      <AutoDismissStatusMessageList
         messages={[
           { intent: "error", text: mcpFormError },
-          { intent: "warning", text: mcpFormWarning },
+          {
+            intent: "warning",
+            text: mcpFormWarning,
+            onClear: onClearMcpFormWarning,
+          },
         ]}
       />
     </ConfigSection>

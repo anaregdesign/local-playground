@@ -9,12 +9,14 @@ import {
 import { CopyIconButton } from "~/components/home/shared/CopyIconButton";
 import { FluentUI } from "~/components/home/shared/fluent";
 import { LabeledTooltip } from "~/components/home/shared/LabeledTooltip";
+import { AutoDismissStatusMessageList } from "~/components/home/shared/AutoDismissStatusMessageList";
 import { StatusMessageList } from "~/components/home/shared/StatusMessageList";
-import type { ReasoningEffort } from "~/components/home/shared/types";
+import type { ReasoningEffort } from "~/lib/home/shared/view-types";
 import { formatChatAttachmentSize } from "~/lib/home/chat/attachments";
 
 const {
   Button,
+  Input,
   Select,
   Spinner,
   Textarea,
@@ -74,7 +76,10 @@ type PlaygroundPanelProps<
   messages: TMessage[];
   mcpHistoryByTurnId: Map<string, TMcpRpcHistoryEntry[]>;
   isSending: boolean;
-  onResetThread: () => void;
+  isUpdatingThread: boolean;
+  activeThreadNameInput: string;
+  onActiveThreadNameChange: (value: string) => void;
+  onCreateThread: () => void;
   renderMessageContent: (message: TMessage) => ReactNode;
   renderTurnMcpLog: (
     entries: TMcpRpcHistoryEntry[],
@@ -87,6 +92,8 @@ type PlaygroundPanelProps<
   activeTurnMcpHistory: TMcpRpcHistoryEntry[];
   errorTurnMcpHistory: TMcpRpcHistoryEntry[];
   endOfMessagesRef: RefObject<HTMLDivElement | null>;
+  systemNotice: string | null;
+  onClearSystemNotice: () => void;
   error: string | null;
   azureLoginError: string | null;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
@@ -135,7 +142,10 @@ export function PlaygroundPanel<
     messages,
     mcpHistoryByTurnId,
     isSending,
-    onResetThread,
+    isUpdatingThread,
+    activeThreadNameInput,
+    onActiveThreadNameChange,
+    onCreateThread,
     renderMessageContent,
     renderTurnMcpLog,
     onCopyMessage,
@@ -144,6 +154,8 @@ export function PlaygroundPanel<
     activeTurnMcpHistory,
     errorTurnMcpHistory,
     endOfMessagesRef,
+    systemNotice,
+    onClearSystemNotice,
     error,
     azureLoginError,
     onSubmit,
@@ -338,17 +350,46 @@ export function PlaygroundPanel<
               <h1>Local Playground</h1>
             </div>
           </div>
-          <Button
-            type="button"
-            appearance="secondary"
-            size="small"
-            className="chat-reset-btn"
-            onClick={onResetThread}
-            disabled={isSending}
-            title="Clear all messages in the current thread."
-          >
-            🧹 Reset Thread
-          </Button>
+          <div className="chat-header-actions">
+            <Input
+              className="chat-thread-name-input"
+              aria-label="Active thread name"
+              title="Edit the active thread name."
+              value={activeThreadNameInput}
+              onChange={(_, data) => {
+                onActiveThreadNameChange(data.value);
+              }}
+              disabled={isUpdatingThread}
+              placeholder="Thread name"
+            />
+            {renderLabeledTooltip(
+              "New Thread",
+              ["Create a new thread and switch Playground to it."],
+              <Button
+                type="button"
+                appearance="secondary"
+                size="small"
+                className="chat-new-thread-btn"
+                onClick={onCreateThread}
+                disabled={isUpdatingThread}
+                aria-label="Create and switch to a new thread"
+                title="Create and switch to a new thread."
+              >
+                <svg
+                  className="chat-new-thread-icon"
+                  viewBox="0 0 20 20"
+                  aria-hidden="true"
+                  focusable="false"
+                >
+                  <path
+                    d="M10 4.5a.75.75 0 0 1 .75.75v4h4a.75.75 0 0 1 0 1.5h-4v4a.75.75 0 0 1-1.5 0v-4h-4a.75.75 0 0 1 0-1.5h4v-4A.75.75 0 0 1 10 4.5Z"
+                    fill="currentColor"
+                  />
+                </svg>
+              </Button>,
+              "chat-header-action-tooltip",
+            )}
+          </div>
         </div>
       </header>
 
@@ -416,6 +457,17 @@ export function PlaygroundPanel<
       </div>
 
       <footer className="chat-footer">
+        <AutoDismissStatusMessageList
+          className="chat-error-stack"
+          messages={[
+            {
+              intent: "success",
+              title: "System",
+              text: systemNotice,
+              onClear: onClearSystemNotice,
+            },
+          ]}
+        />
         {error || azureLoginError || chatAttachmentError ? (
           <StatusMessageList
             className="chat-error-stack"

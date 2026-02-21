@@ -22,9 +22,14 @@ import {
   normalizeAzureOpenAIBaseURL,
 } from "~/lib/azure/dependencies";
 import {
+  installGlobalServerErrorLogging,
+  logServerRouteEvent,
+} from "~/lib/server/observability/app-event-log";
+import {
   CHAT_ATTACHMENT_ALLOWED_EXTENSIONS,
   CHAT_CLEANUP_TIMEOUT_MS,
   CHAT_CODE_INTERPRETER_UPLOAD_TIMEOUT_MS,
+  CODE_INTERPRETER_ATTACHMENT_AVAILABILITY_CACHE_MS,
   CHAT_ATTACHMENT_MAX_FILE_NAME_LENGTH,
   CHAT_ATTACHMENT_MAX_FILES,
   CHAT_ATTACHMENT_MAX_NON_PDF_FILE_SIZE_BYTES,
@@ -179,11 +184,12 @@ type ChatStreamPayload =
       errorCode?: "azure_login_required";
     };
 
-const CODE_INTERPRETER_ATTACHMENT_AVAILABILITY_CACHE_MS = 10 * 60 * 1000;
 let codeInterpreterAttachmentAvailabilityCache: CodeInterpreterAttachmentAvailabilityCache | null =
   null;
 
 export function loader({}: Route.LoaderArgs) {
+  installGlobalServerErrorLogging();
+
   return Response.json(
     { error: "Use POST /api/chat for this endpoint." },
     { status: 405 },
@@ -191,6 +197,8 @@ export function loader({}: Route.LoaderArgs) {
 }
 
 export async function action({ request }: Route.ActionArgs) {
+  installGlobalServerErrorLogging();
+
   if (request.method !== "POST") {
     return Response.json({ error: "Method not allowed." }, { status: 405 });
   }
@@ -199,36 +207,106 @@ export async function action({ request }: Route.ActionArgs) {
   try {
     payload = await request.json();
   } catch {
+    await logServerRouteEvent({
+      request,
+      route: "/api/chat",
+      eventName: "invalid_json_body",
+      action: "parse_request_body",
+      level: "warning",
+      statusCode: 400,
+      message: "Invalid JSON body.",
+    });
+
     return Response.json({ error: "Invalid JSON body." }, { status: 400 });
   }
 
   const message = readMessage(payload);
   if (!message) {
+    await logServerRouteEvent({
+      request,
+      route: "/api/chat",
+      eventName: "missing_message",
+      action: "validate_payload",
+      level: "warning",
+      statusCode: 400,
+      message: "`message` is required.",
+    });
+
     return Response.json({ error: "`message` is required." }, { status: 400 });
   }
 
   const historyResult = readHistory(payload);
   if (!historyResult.ok) {
+    await logServerRouteEvent({
+      request,
+      route: "/api/chat",
+      eventName: "invalid_history_payload",
+      action: "validate_payload",
+      level: "warning",
+      statusCode: 400,
+      message: historyResult.error,
+    });
+
     return Response.json({ error: historyResult.error }, { status: 400 });
   }
   const history = historyResult.value;
   const attachmentsResult = readAttachments(payload);
   if (!attachmentsResult.ok) {
+    await logServerRouteEvent({
+      request,
+      route: "/api/chat",
+      eventName: "invalid_attachments_payload",
+      action: "validate_payload",
+      level: "warning",
+      statusCode: 400,
+      message: attachmentsResult.error,
+    });
+
     return Response.json({ error: attachmentsResult.error }, { status: 400 });
   }
   const reasoningEffort = readReasoningEffort(payload);
   const temperatureResult = readTemperature(payload);
   if (!temperatureResult.ok) {
+    await logServerRouteEvent({
+      request,
+      route: "/api/chat",
+      eventName: "invalid_temperature_payload",
+      action: "validate_payload",
+      level: "warning",
+      statusCode: 400,
+      message: temperatureResult.error,
+    });
+
     return Response.json({ error: temperatureResult.error }, { status: 400 });
   }
   const agentInstruction = readAgentInstruction(payload);
   const azureConfigResult = readAzureConfig(payload);
   if (!azureConfigResult.ok) {
+    await logServerRouteEvent({
+      request,
+      route: "/api/chat",
+      eventName: "invalid_azure_config",
+      action: "validate_payload",
+      level: "warning",
+      statusCode: 400,
+      message: azureConfigResult.error,
+    });
+
     return Response.json({ error: azureConfigResult.error }, { status: 400 });
   }
   const azureConfig = azureConfigResult.value;
   const mcpServersResult = readMcpServers(payload);
   if (!mcpServersResult.ok) {
+    await logServerRouteEvent({
+      request,
+      route: "/api/chat",
+      eventName: "invalid_mcp_servers_payload",
+      action: "validate_payload",
+      level: "warning",
+      statusCode: 400,
+      message: mcpServersResult.error,
+    });
+
     return Response.json({ error: mcpServersResult.error }, { status: 400 });
   }
 
@@ -275,6 +353,19 @@ export async function action({ request }: Route.ActionArgs) {
     return Response.json({ message: assistantMessage });
   } catch (error) {
     const upstreamError = buildUpstreamErrorPayload(error, azureConfig.deploymentName);
+    await logServerRouteEvent({
+      request,
+      route: "/api/chat",
+      eventName: "chat_execution_failed",
+      action: "execute_chat",
+      statusCode: upstreamError.status,
+      error,
+      context: {
+        deploymentName: azureConfig.deploymentName,
+        mcpServerCount: executionOptions.mcpServers.length,
+      },
+    });
+
     return Response.json(
       upstreamError.payload,
       { status: upstreamError.status },
@@ -627,6 +718,18 @@ function streamChatResponse(options: ChatExecutionOptions): Response {
           error,
           options.azureConfig.deploymentName,
         );
+        await logServerRouteEvent({
+          route: "/api/chat",
+          eventName: "chat_stream_execution_failed",
+          action: "stream_chat",
+          statusCode: upstreamError.status,
+          error,
+          context: {
+            deploymentName: options.azureConfig.deploymentName,
+            mcpServerCount: options.mcpServers.length,
+          },
+        });
+
         send({
           type: "error",
           error: upstreamError.payload.error,
