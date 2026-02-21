@@ -3777,20 +3777,6 @@ export function useWorkspaceController() {
       onAdoptEnhancedInstruction: handleAdoptEnhancedInstruction,
       onAdoptOriginalInstruction: handleAdoptOriginalInstruction,
     },
-    skillsSectionProps: {
-      skillOptions: threadSkillOptions,
-      selectedSkillCount: selectedThreadSkills.length,
-      isLoadingSkills,
-      isSending,
-      isThreadReadOnly: isActiveThreadArchived,
-      skillsError,
-      skillsWarning,
-      onReloadSkills: handleReloadSkills,
-      onToggleSkill: handleToggleThreadSkill,
-      onClearSkillsWarning: () => {
-        setSkillsWarning(null);
-      },
-    },
     activeThreadOptions: activeThreadSummaries.map((thread) => {
       const isActiveThread = thread.id === activeThreadId;
       return {
@@ -3835,6 +3821,23 @@ export function useWorkspaceController() {
     },
     onThreadRestore: (threadId: string) => {
       void handleThreadRestore(threadId);
+    },
+  };
+
+  const skillsTabProps = {
+    skillsSectionProps: {
+      skillOptions: threadSkillOptions,
+      selectedSkillCount: selectedThreadSkills.length,
+      isLoadingSkills,
+      isSending,
+      isThreadReadOnly: isActiveThreadArchived,
+      skillsError,
+      skillsWarning,
+      onReloadSkills: handleReloadSkills,
+      onToggleSkill: handleToggleThreadSkill,
+      onClearSkillsWarning: () => {
+        setSkillsWarning(null);
+      },
     },
   };
 
@@ -3903,6 +3906,7 @@ export function useWorkspaceController() {
       isChatLocked,
       settingsTabProps,
       mcpServersTabProps,
+      skillsTabProps,
       threadsTabProps,
     },
     playgroundPanelProps,

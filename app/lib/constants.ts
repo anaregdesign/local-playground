@@ -210,6 +210,7 @@ export const HOME_THREAD_NAME_MAX_LENGTH = 80;
 export const HOME_MAIN_VIEW_TAB_OPTIONS = [
   { id: "threads", label: "🧵 Threads" },
   { id: "mcp", label: "🧩 MCP Servers" },
+  { id: "skills", label: "🧠 Skills" },
   { id: "settings", label: "⚙️ Settings" },
 ] as const;
 
