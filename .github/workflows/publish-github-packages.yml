@@ -68,7 +68,17 @@ jobs:
           VERSION="${TAG_NAME#v}"
           npm version "${VERSION}" --no-git-tag-version --allow-same-version
 
-      - name: Build installer
+      - name: Build installer (macOS)
+        if: matrix.os == 'macos-latest'
+        shell: bash
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        run: |
+          ulimit -n 10240
+          ${{ matrix.package_command }}
+
+      - name: Build installer (Windows)
+        if: matrix.os == 'windows-latest'
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
         run: ${{ matrix.package_command }}
@@ -137,6 +147,11 @@ jobs:
           Open: `http://localhost:5173`
 
           ### Installer Assets
+
+          ### macOS First Launch
+          If Gatekeeper blocks launch, right-click `Local Playground.app` and choose `Open` once.
+          If needed, clear quarantine with:
+          `xattr -dr com.apple.quarantine "/Applications/Local Playground.app"`
           EOF
 
           for asset in "${ASSETS[@]}"; do
