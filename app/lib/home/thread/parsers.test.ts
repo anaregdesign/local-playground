@@ -12,6 +12,7 @@ describe("readThreadSnapshotFromUnknown", () => {
       name: "Thread 1",
       createdAt: "2026-02-20T00:00:00.000Z",
       updatedAt: "2026-02-20T00:00:00.000Z",
+      deletedAt: null,
       agentInstruction: "You are concise.",
       messages: [
         {
@@ -60,6 +61,15 @@ describe("readThreadSnapshotFromUnknown", () => {
   it("returns null for invalid payload", () => {
     expect(readThreadSnapshotFromUnknown({ id: "thread-1" })).toBeNull();
     expect(readThreadSnapshotFromUnknown("invalid")).toBeNull();
+    expect(
+      readThreadSnapshotFromUnknown({
+        id: "thread-1",
+        name: "Thread 1",
+        createdAt: "2026-02-20T00:00:00.000Z",
+        updatedAt: "2026-02-20T00:00:00.000Z",
+        deletedAt: "",
+      }),
+    ).toBeNull();
   });
 });
 
@@ -71,6 +81,7 @@ describe("readThreadSnapshotList", () => {
         name: "Thread 1",
         createdAt: "2026-02-20T00:00:00.000Z",
         updatedAt: "2026-02-20T00:00:00.000Z",
+        deletedAt: null,
         agentInstruction: "Instruction",
       },
       {
@@ -78,6 +89,7 @@ describe("readThreadSnapshotList", () => {
         name: "Duplicate",
         createdAt: "2026-02-20T00:00:00.000Z",
         updatedAt: "2026-02-20T00:00:00.000Z",
+        deletedAt: null,
         agentInstruction: "Instruction",
       },
       {
@@ -97,6 +109,7 @@ describe("buildThreadSummary", () => {
       name: "Thread 1",
       createdAt: "2026-02-20T00:00:00.000Z",
       updatedAt: "2026-02-20T00:00:00.000Z",
+      deletedAt: null,
       agentInstruction: "Instruction",
       messages: [
         {
@@ -125,6 +138,7 @@ describe("buildThreadSummary", () => {
       name: "Thread 1",
       createdAt: "2026-02-20T00:00:00.000Z",
       updatedAt: "2026-02-20T00:00:00.000Z",
+      deletedAt: null,
       messageCount: 1,
       mcpServerCount: 1,
     });

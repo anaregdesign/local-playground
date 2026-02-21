@@ -14,12 +14,17 @@ type ThreadsTabProps = {
 export function ThreadsTab(props: ThreadsTabProps) {
   const {
     activeMainTab,
-    threadOptions,
+    activeThreadOptions,
+    archivedThreadOptions,
     activeThreadId,
     isLoadingThreads,
     isSwitchingThread,
+    isDeletingThread,
+    isRestoringThread,
     threadError,
     onActiveThreadChange,
+    onThreadDelete,
+    onThreadRestore,
     instructionSectionProps,
   } = props;
 
@@ -35,12 +40,17 @@ export function ThreadsTab(props: ThreadsTabProps) {
       <div className="threads-content">
         <InstructionSection {...instructionSectionProps} />
         <ThreadsManageSection
-          threadOptions={threadOptions}
+          activeThreadOptions={activeThreadOptions}
+          archivedThreadOptions={archivedThreadOptions}
           activeThreadId={activeThreadId}
           isLoadingThreads={isLoadingThreads}
           isSwitchingThread={isSwitchingThread}
+          isDeletingThread={isDeletingThread}
+          isRestoringThread={isRestoringThread}
           threadError={threadError}
           onActiveThreadChange={onActiveThreadChange}
+          onThreadDelete={onThreadDelete}
+          onThreadRestore={onThreadRestore}
         />
       </div>
     </section>

@@ -239,9 +239,12 @@ async function ensureThreadSchema(): Promise<void> {
       "name" TEXT NOT NULL,
       "createdAt" TEXT NOT NULL,
       "updatedAt" TEXT NOT NULL,
+      "deletedAt" TEXT,
       FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE CASCADE
     )
   `);
+
+  await ensureTableColumn("Thread", "deletedAt", "TEXT");
 
   await prisma.$executeRawUnsafe(`
     CREATE INDEX IF NOT EXISTS "Thread_userId_updatedAt_idx"

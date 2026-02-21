@@ -21,6 +21,7 @@ type InstructionSectionProps = {
   instructionEnhanceComparison: InstructionEnhanceComparisonLike | null;
   describeInstructionLanguage: (language: InstructionLanguageLike) => string;
   isSending: boolean;
+  isThreadReadOnly: boolean;
   isEnhancingInstruction: boolean;
   isSavingInstructionPrompt: boolean;
   canSaveAgentInstructionPrompt: boolean;
@@ -50,6 +51,7 @@ export function InstructionSection(props: InstructionSectionProps) {
     instructionEnhanceComparison,
     describeInstructionLanguage,
     isSending,
+    isThreadReadOnly,
     isEnhancingInstruction,
     isSavingInstructionPrompt,
     canSaveAgentInstructionPrompt,
@@ -83,6 +85,11 @@ export function InstructionSection(props: InstructionSectionProps) {
       title="Agent Instruction 🧾"
       description="System instruction used for the agent."
     >
+      {isThreadReadOnly ? (
+        <p className="field-hint">
+          This thread is archived and read-only. Restore it from Archives to edit instruction.
+        </p>
+      ) : null}
       {instructionEnhanceComparison ? (
         <section className="instruction-diff-panel" aria-label="Instruction diff review">
           <div className="instruction-diff-header">
@@ -94,7 +101,7 @@ export function InstructionSection(props: InstructionSectionProps) {
                 size="small"
                 title="Use the enhanced instruction text."
                 onClick={onAdoptEnhancedInstruction}
-                disabled={isSending || isEnhancingInstruction}
+                disabled={isSending || isEnhancingInstruction || isThreadReadOnly}
               >
                 ✅ Adopt Enhanced
               </Button>
@@ -104,7 +111,7 @@ export function InstructionSection(props: InstructionSectionProps) {
                 size="small"
                 title="Keep the original instruction text."
                 onClick={onAdoptOriginalInstruction}
-                disabled={isSending || isEnhancingInstruction}
+                disabled={isSending || isEnhancingInstruction || isThreadReadOnly}
               >
                 ↩️ Keep Original
               </Button>
@@ -144,7 +151,7 @@ export function InstructionSection(props: InstructionSectionProps) {
             onChange={(_, data) => {
               onAgentInstructionChange(data.value);
             }}
-            disabled={isSending || isEnhancingInstruction}
+            disabled={isSending || isEnhancingInstruction || isThreadReadOnly}
             placeholder="System instruction for the agent"
           />
           {isEnhancingInstruction ? (
@@ -168,7 +175,7 @@ export function InstructionSection(props: InstructionSectionProps) {
               onChange={(event) => {
                 void onInstructionFileChange(event);
               }}
-              disabled={isSending || isEnhancingInstruction}
+              disabled={isSending || isEnhancingInstruction || isThreadReadOnly}
             />
             <Button
               type="button"
@@ -176,7 +183,7 @@ export function InstructionSection(props: InstructionSectionProps) {
               size="small"
               title="Load instruction content from a local file."
               onClick={() => instructionFileInputRef.current?.click()}
-              disabled={isSending || isEnhancingInstruction}
+              disabled={isSending || isEnhancingInstruction || isThreadReadOnly}
             >
               📂 Load File
             </Button>
@@ -192,6 +199,7 @@ export function InstructionSection(props: InstructionSectionProps) {
                 isSending ||
                 isSavingInstructionPrompt ||
                 isEnhancingInstruction ||
+                isThreadReadOnly ||
                 !canSaveAgentInstructionPrompt
               }
             >
@@ -205,7 +213,9 @@ export function InstructionSection(props: InstructionSectionProps) {
               onClick={() => {
                 void onEnhanceInstruction();
               }}
-              disabled={isSending || isEnhancingInstruction || !canEnhanceAgentInstruction}
+              disabled={
+                isSending || isEnhancingInstruction || isThreadReadOnly || !canEnhanceAgentInstruction
+              }
             >
               {isEnhancingInstruction ? "✨ Enhancing..." : "✨ Enhance"}
             </Button>
@@ -215,7 +225,9 @@ export function InstructionSection(props: InstructionSectionProps) {
               size="small"
               title="Clear instruction text and related form values."
               onClick={onClearInstruction}
-              disabled={isSending || isEnhancingInstruction || !canClearAgentInstruction}
+              disabled={
+                isSending || isEnhancingInstruction || isThreadReadOnly || !canClearAgentInstruction
+              }
             >
               🧹 Clear
             </Button>

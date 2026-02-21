@@ -18,10 +18,11 @@ import {
   buildThreadMcpRpcLogRowId,
   buildThreadMcpServerRowId,
 } from "~/lib/home/thread/server-ids";
+import { hasThreadInteraction } from "~/lib/home/thread/snapshot-state";
 import type { ThreadSnapshot } from "~/lib/home/thread/types";
 import type { Route } from "./+types/api.threads";
 
-type ThreadAction = "create" | "save";
+type ThreadAction = "save" | "delete" | "restore";
 
 export async function loader({ request }: Route.LoaderArgs) {
   installGlobalServerErrorLogging();
@@ -43,12 +44,7 @@ export async function loader({ request }: Route.LoaderArgs) {
 
   try {
     const threads = await readUserThreads(user.id);
-    if (threads.length > 0) {
-      return Response.json({ threads });
-    }
-
-    const created = await createThread(user.id);
-    return Response.json({ threads: [created] });
+    return Response.json({ threads });
   } catch (error) {
     await logServerRouteEvent({
       request,
@@ -114,64 +110,148 @@ export async function action({ request }: Route.ActionArgs) {
       action: "read_action",
       level: "warning",
       statusCode: 400,
-      message: '`action` must be either "create" or "save".',
+      message: '`action` must be one of "save", "delete", or "restore".',
       userId: user.id,
     });
 
     return Response.json(
       {
-        error: '`action` must be either "create" or "save".',
+        error: '`action` must be one of "save", "delete", or "restore".',
       },
       { status: 400 },
     );
   }
 
   try {
-    if (actionType === "create") {
-      const created = await createThread(user.id, readOptionalThreadName(payload));
-      return Response.json({ thread: created });
+    if (actionType === "save") {
+      const thread = readThreadSnapshotFromSavePayload(payload);
+      if (!thread) {
+        await logServerRouteEvent({
+          request,
+          route: "/api/threads",
+          eventName: "invalid_thread_payload",
+          action: "read_thread_snapshot",
+          level: "warning",
+          statusCode: 400,
+          message: "Invalid thread payload.",
+          userId: user.id,
+        });
+
+        return Response.json({ error: "Invalid thread payload." }, { status: 400 });
+      }
+
+      const saved = await saveThreadSnapshot(user.id, thread);
+      if (!saved) {
+        await logServerRouteEvent({
+          request,
+          route: "/api/threads",
+          eventName: "thread_not_found",
+          action: "save_thread",
+          level: "warning",
+          statusCode: 404,
+          message: "Thread is not available.",
+          userId: user.id,
+          threadId: thread.id,
+        });
+
+        return Response.json({ error: "Thread is not available." }, { status: 404 });
+      }
+
+      return Response.json({ thread: saved });
     }
 
-    const thread = readThreadSnapshotFromSavePayload(payload);
-    if (!thread) {
+    const threadId = readThreadIdFromActionPayload(payload);
+    if (!threadId) {
       await logServerRouteEvent({
         request,
         route: "/api/threads",
-        eventName: "invalid_thread_payload",
-        action: "read_thread_snapshot",
+        eventName: "invalid_thread_id_payload",
+        action: "read_thread_id",
         level: "warning",
         statusCode: 400,
-        message: "Invalid thread payload.",
+        message: "Invalid thread id payload.",
         userId: user.id,
       });
 
-      return Response.json({ error: "Invalid thread payload." }, { status: 400 });
+      return Response.json({ error: "Invalid thread id payload." }, { status: 400 });
     }
 
-    const saved = await saveThreadSnapshot(user.id, thread);
-    if (!saved) {
+    if (actionType === "delete") {
+      const deleted = await logicalDeleteThread(user.id, threadId);
+      if (deleted.status === "not_found") {
+        await logServerRouteEvent({
+          request,
+          route: "/api/threads",
+          eventName: "thread_not_found",
+          action: "delete_thread",
+          level: "warning",
+          statusCode: 404,
+          message: "Thread is not available.",
+          userId: user.id,
+          threadId,
+        });
+
+        return Response.json({ error: "Thread is not available." }, { status: 404 });
+      }
+      if (deleted.status === "empty") {
+        await logServerRouteEvent({
+          request,
+          route: "/api/threads",
+          eventName: "thread_delete_disallowed_empty",
+          action: "delete_thread",
+          level: "warning",
+          statusCode: 400,
+          message: "Threads without messages cannot be deleted.",
+          userId: user.id,
+          threadId,
+        });
+
+        return Response.json(
+          { error: "Threads without messages cannot be deleted." },
+          { status: 400 },
+        );
+      }
+
+      return Response.json({ thread: deleted.thread });
+    }
+
+    const restored = await logicalRestoreThread(user.id, threadId);
+    if (restored.status === "not_found") {
       await logServerRouteEvent({
         request,
         route: "/api/threads",
         eventName: "thread_not_found",
-        action: "save_thread",
+        action: "restore_thread",
         level: "warning",
         statusCode: 404,
         message: "Thread is not available.",
         userId: user.id,
-        threadId: thread.id,
+        threadId,
       });
 
       return Response.json({ error: "Thread is not available." }, { status: 404 });
     }
 
-    return Response.json({ thread: saved });
+    return Response.json({ thread: restored.thread });
   } catch (error) {
+    const eventName =
+      actionType === "save"
+        ? "save_thread_failed"
+        : actionType === "delete"
+          ? "delete_thread_failed"
+          : "restore_thread_failed";
+    const action =
+      actionType === "save"
+        ? "save_thread"
+        : actionType === "delete"
+          ? "delete_thread"
+          : "restore_thread";
+
     await logServerRouteEvent({
       request,
       route: "/api/threads",
-      eventName: actionType === "create" ? "create_thread_failed" : "save_thread_failed",
-      action: actionType === "create" ? "create_thread" : "save_thread",
+      eventName,
+      action,
       statusCode: 500,
       error,
       userId: user.id,
@@ -184,40 +264,6 @@ export async function action({ request }: Route.ActionArgs) {
       { status: 500 },
     );
   }
-}
-
-async function createThread(userId: number, rawName = ""): Promise<ThreadSnapshot> {
-  await ensurePersistenceDatabaseReady();
-
-  const now = new Date().toISOString();
-  const name = normalizeThreadName(rawName) || THREAD_DEFAULT_NAME;
-  const id = createRandomId();
-
-  await prisma.$transaction(async (transaction) => {
-    await transaction.thread.create({
-      data: {
-        id,
-        userId,
-        name,
-        createdAt: now,
-        updatedAt: now,
-      },
-    });
-
-    await transaction.threadInstruction.create({
-      data: {
-        threadId: id,
-        content: DEFAULT_AGENT_INSTRUCTION,
-      },
-    });
-  });
-
-  const created = await readThreadById(userId, id);
-  if (!created) {
-    throw new Error("Failed to create thread.");
-  }
-
-  return created;
 }
 
 async function readUserThreads(userId: number): Promise<ThreadSnapshot[]> {
@@ -308,8 +354,11 @@ async function saveThreadSnapshot(
   snapshot: ThreadSnapshot,
 ): Promise<ThreadSnapshot | null> {
   await ensurePersistenceDatabaseReady();
+  if (!hasThreadInteraction(snapshot)) {
+    return null;
+  }
 
-  const existing = await prisma.thread.findFirst({
+  let existing = await prisma.thread.findFirst({
     where: {
       id: snapshot.id,
       userId,
@@ -317,10 +366,43 @@ async function saveThreadSnapshot(
     select: {
       id: true,
       name: true,
+      deletedAt: true,
     },
   });
 
   if (!existing) {
+    const now = new Date().toISOString();
+    const createdAt = snapshot.createdAt || now;
+    const nextName = normalizeThreadName(snapshot.name) || THREAD_DEFAULT_NAME;
+
+    await prisma.$transaction(async (transaction) => {
+      await transaction.thread.create({
+        data: {
+          id: snapshot.id,
+          userId,
+          name: nextName,
+          createdAt,
+          updatedAt: now,
+          deletedAt: null,
+        },
+      });
+
+      await transaction.threadInstruction.create({
+        data: {
+          threadId: snapshot.id,
+          content: snapshot.agentInstruction,
+        },
+      });
+    });
+
+    existing = {
+      id: snapshot.id,
+      name: nextName,
+      deletedAt: null,
+    };
+  }
+
+  if (existing.deletedAt !== null) {
     return null;
   }
 
@@ -446,11 +528,106 @@ async function saveThreadSnapshot(
   return await readThreadById(userId, existing.id);
 }
 
+type LogicalDeleteThreadResult =
+  | {
+      status: "not_found";
+    }
+  | {
+      status: "empty";
+    }
+  | {
+      status: "ok";
+      thread: ThreadSnapshot;
+    };
+
+async function logicalDeleteThread(
+  userId: number,
+  threadId: string,
+): Promise<LogicalDeleteThreadResult> {
+  await ensurePersistenceDatabaseReady();
+
+  const existing = await readThreadById(userId, threadId);
+  if (!existing) {
+    return { status: "not_found" };
+  }
+  if (!hasThreadInteraction(existing)) {
+    return { status: "empty" };
+  }
+
+  if (existing.deletedAt === null) {
+    const now = new Date().toISOString();
+    await prisma.thread.update({
+      where: {
+        id: threadId,
+      },
+      data: {
+        deletedAt: now,
+        updatedAt: now,
+      },
+    });
+  }
+
+  const deleted = await readThreadById(userId, threadId);
+  if (!deleted) {
+    return { status: "not_found" };
+  }
+
+  return {
+    status: "ok",
+    thread: deleted,
+  };
+}
+
+type LogicalRestoreThreadResult =
+  | {
+      status: "not_found";
+    }
+  | {
+      status: "ok";
+      thread: ThreadSnapshot;
+    };
+
+async function logicalRestoreThread(
+  userId: number,
+  threadId: string,
+): Promise<LogicalRestoreThreadResult> {
+  await ensurePersistenceDatabaseReady();
+
+  const existing = await readThreadById(userId, threadId);
+  if (!existing) {
+    return { status: "not_found" };
+  }
+
+  if (existing.deletedAt !== null) {
+    const now = new Date().toISOString();
+    await prisma.thread.update({
+      where: {
+        id: threadId,
+      },
+      data: {
+        deletedAt: null,
+        updatedAt: now,
+      },
+    });
+  }
+
+  const restored = await readThreadById(userId, threadId);
+  if (!restored) {
+    return { status: "not_found" };
+  }
+
+  return {
+    status: "ok",
+    thread: restored,
+  };
+}
+
 function mapStoredThreadToSnapshot(value: {
   id: string;
   name: string;
   createdAt: string;
   updatedAt: string;
+  deletedAt: string | null;
   instruction: {
     content: string;
   } | null;
@@ -494,6 +671,7 @@ function mapStoredThreadToSnapshot(value: {
       name: value.name,
       createdAt: value.createdAt,
       updatedAt: value.updatedAt,
+      deletedAt: value.deletedAt,
       agentInstruction: value.instruction?.content ?? DEFAULT_AGENT_INSTRUCTION,
       messages: value.messages.map((message) => ({
         id: message.id,
@@ -563,7 +741,7 @@ function readThreadAction(value: unknown): ThreadAction | null {
   }
 
   const action = value.action;
-  if (action === "create" || action === "save") {
+  if (action === "save" || action === "delete" || action === "restore") {
     return action;
   }
 
@@ -580,12 +758,12 @@ function readThreadSnapshotFromSavePayload(value: unknown): ThreadSnapshot | nul
   });
 }
 
-function readOptionalThreadName(value: unknown): string {
-  if (!isRecord(value) || typeof value.name !== "string") {
+function readThreadIdFromActionPayload(value: unknown): string {
+  if (!isRecord(value) || typeof value.threadId !== "string") {
     return "";
   }
 
-  return value.name;
+  return value.threadId.trim();
 }
 
 function normalizeThreadName(value: string): string {
@@ -606,15 +784,6 @@ async function readAuthenticatedUser(): Promise<{ id: number } | null> {
   return {
     id: user.id,
   };
-}
-
-function createRandomId(): string {
-  const maybeCrypto = globalThis.crypto;
-  if (maybeCrypto && typeof maybeCrypto.randomUUID === "function") {
-    return maybeCrypto.randomUUID();
-  }
-
-  return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
 function readErrorMessage(error: unknown): string {

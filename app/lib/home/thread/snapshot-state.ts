@@ -34,11 +34,16 @@ export function cloneMcpRpcHistory(value: McpRpcHistoryEntry[]): McpRpcHistoryEn
 export function buildThreadSaveSignature(snapshot: ThreadSnapshot): string {
   return JSON.stringify({
     name: snapshot.name,
+    deletedAt: snapshot.deletedAt,
     agentInstruction: snapshot.agentInstruction,
     messages: snapshot.messages,
     mcpServers: snapshot.mcpServers,
     mcpRpcHistory: snapshot.mcpRpcHistory,
   });
+}
+
+export function hasThreadInteraction(snapshot: Pick<ThreadSnapshot, "messages">): boolean {
+  return snapshot.messages.length > 0;
 }
 
 export function upsertThreadSnapshot(

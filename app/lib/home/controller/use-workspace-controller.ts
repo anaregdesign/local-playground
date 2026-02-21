@@ -31,6 +31,7 @@ import {
   MCP_DEFAULT_TIMEOUT_SECONDS,
   MCP_TIMEOUT_SECONDS_MAX,
   MCP_TIMEOUT_SECONDS_MIN,
+  THREAD_DEFAULT_NAME,
 } from "~/lib/constants";
 import type {
   AzureConnectionOption,
@@ -106,6 +107,7 @@ import {
   cloneMcpRpcHistory,
   cloneMcpServers,
   cloneMessages,
+  hasThreadInteraction,
   upsertThreadSnapshot,
 } from "~/lib/home/thread/snapshot-state";
 import type { ThreadSnapshot, ThreadSummary } from "~/lib/home/thread/types";
@@ -207,6 +209,8 @@ export function useWorkspaceController() {
   const [isSavingThread, setIsSavingThread] = useState(false);
   const [isSwitchingThread, setIsSwitchingThread] = useState(false);
   const [isCreatingThread, setIsCreatingThread] = useState(false);
+  const [isDeletingThread, setIsDeletingThread] = useState(false);
+  const [isRestoringThread, setIsRestoringThread] = useState(false);
   const [threadError, setThreadError] = useState<string | null>(null);
   const [rightPaneWidth, setRightPaneWidth] = useState(420);
   const [activeResizeHandle, setActiveResizeHandle] = useState<"main" | null>(null);
@@ -282,9 +286,17 @@ export function useWorkspaceController() {
   ].join(",");
   const chatAttachmentFormatHint = "Code Interpreter supported files (.pdf, .csv, .xlsx, .docx, .png, ...)";
   const threadSummaries: ThreadSummary[] = threads.map((thread) => buildThreadSummary(thread));
+  const activeThreadSnapshot =
+    threads.find((thread) => thread.id === activeThreadId) ?? null;
+  const isActiveThreadArchived = activeThreadSnapshot?.deletedAt !== null;
+  const activeThreadSummaries = threadSummaries.filter((thread) => thread.deletedAt === null);
+  const archivedThreadSummaries = threadSummaries.filter((thread) => thread.deletedAt !== null);
   const canSendMessage =
     !isSending &&
     !isSwitchingThread &&
+    !isDeletingThread &&
+    !isRestoringThread &&
+    !isActiveThreadArchived &&
     !isLoadingThreads &&
     !isChatLocked &&
     !isLoadingAzureConnections &&
@@ -614,7 +626,7 @@ export function useWorkspaceController() {
     if (!isThreadsReadyRef.current || isApplyingThreadStateRef.current) {
       return;
     }
-    if (isSending || isSwitchingThread || isLoadingThreads) {
+    if (isSending || isSwitchingThread || isDeletingThread || isRestoringThread || isLoadingThreads) {
       return;
     }
 
@@ -629,6 +641,9 @@ export function useWorkspaceController() {
     }
 
     const snapshot = buildThreadSnapshotFromCurrentState(baseThread);
+    if (!hasThreadInteraction(snapshot)) {
+      return;
+    }
     const signature = buildThreadSaveSignature(snapshot);
     const savedSignature = threadSaveSignatureByIdRef.current.get(snapshot.id);
     if (savedSignature === signature) {
@@ -653,6 +668,8 @@ export function useWorkspaceController() {
     threads,
     isSending,
     isSwitchingThread,
+    isDeletingThread,
+    isRestoringThread,
     isLoadingThreads,
   ]);
 
@@ -660,7 +677,14 @@ export function useWorkspaceController() {
     if (!isThreadsReadyRef.current || isApplyingThreadStateRef.current) {
       return;
     }
-    if (isSending || isLoadingThreads || isSwitchingThread || isCreatingThread) {
+    if (
+      isSending ||
+      isLoadingThreads ||
+      isSwitchingThread ||
+      isCreatingThread ||
+      isDeletingThread ||
+      isRestoringThread
+    ) {
       return;
     }
 
@@ -671,6 +695,9 @@ export function useWorkspaceController() {
 
     const baseThread = threadsRef.current.find((thread) => thread.id === currentThreadId);
     if (!baseThread) {
+      return;
+    }
+    if (!hasThreadInteraction(baseThread)) {
       return;
     }
 
@@ -697,6 +724,8 @@ export function useWorkspaceController() {
     isLoadingThreads,
     isSwitchingThread,
     isCreatingThread,
+    isDeletingThread,
+    isRestoringThread,
   ]);
 
   async function loadSavedMcpServers() {
@@ -837,6 +866,8 @@ export function useWorkspaceController() {
     setIsLoadingThreads(false);
     setIsSwitchingThread(false);
     setIsCreatingThread(false);
+    setIsDeletingThread(false);
+    setIsRestoringThread(false);
     setIsSavingThread(false);
     setMessages([...HOME_INITIAL_MESSAGES]);
     setMcpRpcHistory([]);
@@ -903,6 +934,16 @@ export function useWorkspaceController() {
     });
   }
 
+  function isArchivedThread(threadIdRaw: string): boolean {
+    const threadId = threadIdRaw.trim();
+    if (!threadId) {
+      return false;
+    }
+
+    const thread = threadsRef.current.find((entry) => entry.id === threadId);
+    return thread?.deletedAt !== null;
+  }
+
   function resolveThreadNameForSave(baseName: string, includeDraftName: boolean): string {
     if (!includeDraftName) {
       return baseName;
@@ -914,6 +955,26 @@ export function useWorkspaceController() {
     }
 
     return draftName.slice(0, HOME_THREAD_NAME_MAX_LENGTH);
+  }
+
+  function createLocalThreadSnapshot(options: {
+    name?: string;
+  } = {}): ThreadSnapshot {
+    const now = new Date().toISOString();
+    const normalizedName = (options.name ?? "").trim().slice(0, HOME_THREAD_NAME_MAX_LENGTH);
+    const name = normalizedName || THREAD_DEFAULT_NAME;
+
+    return {
+      id: createId("thread"),
+      name,
+      createdAt: now,
+      updatedAt: now,
+      deletedAt: null,
+      agentInstruction: DEFAULT_AGENT_INSTRUCTION,
+      messages: [],
+      mcpServers: [],
+      mcpRpcHistory: [],
+    };
   }
 
   function buildThreadSnapshotFromCurrentState(
@@ -1040,6 +1101,9 @@ export function useWorkspaceController() {
   ): Promise<boolean> {
     const showBusy = options.showBusy !== false;
     const reportError = options.reportError !== false;
+    if (!hasThreadInteraction(snapshot)) {
+      return true;
+    }
     const expectedUserKey = activeWorkspaceUserKeyRef.current.trim();
     if (!expectedUserKey) {
       return false;
@@ -1127,6 +1191,9 @@ export function useWorkspaceController() {
     if (!snapshot) {
       return;
     }
+    if (!hasThreadInteraction(snapshot)) {
+      return;
+    }
 
     const signature = buildThreadSaveSignature(snapshot);
     const savedSignature = threadSaveSignatureByIdRef.current.get(normalizedThreadId);
@@ -1156,6 +1223,9 @@ export function useWorkspaceController() {
     const snapshot = buildThreadSnapshotFromCurrentState(baseThread, {
       includeDraftName: true,
     });
+    if (!hasThreadInteraction(snapshot)) {
+      return true;
+    }
     const signature = buildThreadSaveSignature(snapshot);
     const savedSignature = threadSaveSignatureByIdRef.current.get(currentThreadId);
     if (savedSignature === signature) {
@@ -1181,6 +1251,9 @@ export function useWorkspaceController() {
 
     const baseThread = threadsRef.current.find((thread) => thread.id === normalizedThreadId);
     if (!baseThread || baseThread.name === normalizedName) {
+      return;
+    }
+    if (!hasThreadInteraction(baseThread)) {
       return;
     }
 
@@ -1236,15 +1309,16 @@ export function useWorkspaceController() {
       const parsedThreads = readThreadSnapshotList(payload.threads, {
         fallbackInstruction: DEFAULT_AGENT_INSTRUCTION,
       });
-      if (parsedThreads.length === 0) {
-        throw new Error("No threads were returned from the server.");
-      }
+      const nextThreads =
+        parsedThreads.some((thread) => thread.deletedAt === null)
+          ? parsedThreads
+          : upsertThreadSnapshot(parsedThreads, createLocalThreadSnapshot());
 
       setThreadSaveSignatures(parsedThreads);
-      setThreadsState(parsedThreads);
+      setThreadsState(nextThreads);
       setThreadRequestStateById((current) => {
         const next: Record<string, ThreadRequestState> = {};
-        const validIds = new Set(parsedThreads.map((thread) => thread.id));
+        const validIds = new Set(nextThreads.map((thread) => thread.id));
         for (const [threadId, state] of Object.entries(current)) {
           if (validIds.has(threadId)) {
             next[threadId] = state;
@@ -1257,7 +1331,9 @@ export function useWorkspaceController() {
 
       const preferredThreadId = activeThreadIdRef.current.trim();
       const nextThread =
-        parsedThreads.find((thread) => thread.id === preferredThreadId) ?? parsedThreads[0];
+        nextThreads.find((thread) => thread.id === preferredThreadId) ??
+        nextThreads.find((thread) => thread.deletedAt === null) ??
+        nextThreads[0];
       if (!nextThread) {
         throw new Error("No thread is available.");
       }
@@ -1286,7 +1362,7 @@ export function useWorkspaceController() {
   async function createThreadAndSwitch(options: {
     name?: string;
   } = {}): Promise<boolean> {
-    if (isLoadingThreads || isSwitchingThread || isCreatingThread) {
+    if (isLoadingThreads || isSwitchingThread || isCreatingThread || isDeletingThread || isRestoringThread) {
       return false;
     }
 
@@ -1295,6 +1371,17 @@ export function useWorkspaceController() {
 
     try {
       const currentThreadId = activeThreadIdRef.current.trim();
+      const currentThread = threadsRef.current.find((thread) => thread.id === currentThreadId);
+
+      if (
+        currentThread &&
+        !hasThreadInteraction(currentThread) &&
+        !threadSaveSignatureByIdRef.current.has(currentThread.id)
+      ) {
+        applyThreadSnapshotToState(currentThread);
+        return true;
+      }
+
       if (!readThreadRequestState(currentThreadId).isSending) {
         const saved = await flushActiveThreadSnapshot();
         if (!saved) {
@@ -1302,39 +1389,12 @@ export function useWorkspaceController() {
         }
       }
 
-      const response = await fetch("/api/threads", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          action: "create",
-          name: options.name ?? "",
-        }),
+      const localThread = createLocalThreadSnapshot({
+        name: options.name,
       });
-      const payload = (await response.json()) as ThreadsApiResponse;
-      if (!response.ok) {
-        const authRequired = payload.authRequired === true || response.status === 401;
-        if (authRequired) {
-          setIsAzureAuthRequired(true);
-          throw new Error("Azure login is required. Open Settings and sign in to continue.");
-        }
-
-        throw new Error(payload.error || "Failed to create thread.");
-      }
-
-      const createdThread = readThreadSnapshotFromUnknown(payload.thread, {
-        fallbackInstruction: DEFAULT_AGENT_INSTRUCTION,
-      });
-      if (!createdThread) {
-        throw new Error("Created thread payload is invalid.");
-      }
-
-      const createdSignature = buildThreadSaveSignature(createdThread);
-      threadSaveSignatureByIdRef.current.set(createdThread.id, createdSignature);
-      updateThreadsState((current) => upsertThreadSnapshot(current, createdThread));
+      updateThreadsState((current) => upsertThreadSnapshot(current, localThread));
       isThreadsReadyRef.current = true;
-      applyThreadSnapshotToState(createdThread);
+      applyThreadSnapshotToState(localThread);
       return true;
     } catch (createError) {
       logHomeError("create_thread_failed", createError, {
@@ -1355,14 +1415,208 @@ export function useWorkspaceController() {
   }
 
   function handleActiveThreadNameInputChange(value: string) {
+    if (isActiveThreadArchived) {
+      return;
+    }
     const normalized = value.slice(0, HOME_THREAD_NAME_MAX_LENGTH);
     setActiveThreadNameInput(normalized);
     setThreadError(null);
   }
 
+  async function handleThreadLogicalDelete(threadIdRaw: string): Promise<void> {
+    const threadId = threadIdRaw.trim();
+    if (!threadId) {
+      return;
+    }
+
+    if (isSending) {
+      setThreadError("Thread state is updating. Please wait.");
+      return;
+    }
+
+    if (
+      isLoadingThreads ||
+      isSwitchingThread ||
+      isCreatingThread ||
+      isDeletingThread ||
+      isRestoringThread
+    ) {
+      return;
+    }
+
+    const targetThread = threadsRef.current.find((thread) => thread.id === threadId);
+    if (!targetThread || targetThread.deletedAt !== null) {
+      setThreadError("Selected thread is not available.");
+      return;
+    }
+    if (!hasThreadInteraction(targetThread)) {
+      setThreadError("Threads without messages cannot be deleted.");
+      return;
+    }
+
+    if (readThreadRequestState(threadId).isSending) {
+      setThreadError("Cannot delete a thread while a response is in progress.");
+      return;
+    }
+
+    setThreadError(null);
+    setIsDeletingThread(true);
+
+    try {
+      const currentThreadId = activeThreadIdRef.current.trim();
+      if (!readThreadRequestState(currentThreadId).isSending) {
+        const saved = await flushActiveThreadSnapshot();
+        if (!saved) {
+          return;
+        }
+      }
+
+      const response = await fetch("/api/threads", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          action: "delete",
+          threadId,
+        }),
+      });
+
+      const payload = (await response.json()) as ThreadsApiResponse;
+      if (!response.ok) {
+        const authRequired = payload.authRequired === true || response.status === 401;
+        if (authRequired) {
+          setIsAzureAuthRequired(true);
+          throw new Error("Azure login is required. Open Settings and sign in to continue.");
+        }
+
+        throw new Error(payload.error || "Failed to delete thread.");
+      }
+
+      const deletedThread = readThreadSnapshotFromUnknown(payload.thread, {
+        fallbackInstruction: DEFAULT_AGENT_INSTRUCTION,
+      });
+      if (!deletedThread || deletedThread.id !== threadId || deletedThread.deletedAt === null) {
+        throw new Error("Deleted thread payload is invalid.");
+      }
+
+      setThreadRequestStateById((current) => {
+        const next = { ...current };
+        delete next[threadId];
+        return next;
+      });
+      await loadThreads();
+    } catch (deleteError) {
+      logHomeError("delete_thread_failed", deleteError, {
+        action: "delete_thread",
+        statusCode: 500,
+        context: {
+          threadId,
+        },
+      });
+      setThreadError(deleteError instanceof Error ? deleteError.message : "Failed to delete thread.");
+    } finally {
+      setIsDeletingThread(false);
+    }
+  }
+
+  async function handleThreadRestore(threadIdRaw: string): Promise<void> {
+    const threadId = threadIdRaw.trim();
+    if (!threadId) {
+      return;
+    }
+
+    if (isSending) {
+      setThreadError("Thread state is updating. Please wait.");
+      return;
+    }
+
+    if (
+      isLoadingThreads ||
+      isSwitchingThread ||
+      isCreatingThread ||
+      isDeletingThread ||
+      isRestoringThread
+    ) {
+      return;
+    }
+
+    const targetThread = threadsRef.current.find((thread) => thread.id === threadId);
+    if (!targetThread || targetThread.deletedAt === null) {
+      setThreadError("Selected archive is not available.");
+      return;
+    }
+
+    setThreadError(null);
+    setIsRestoringThread(true);
+
+    try {
+      const currentThreadId = activeThreadIdRef.current.trim();
+      if (!readThreadRequestState(currentThreadId).isSending) {
+        const saved = await flushActiveThreadSnapshot();
+        if (!saved) {
+          return;
+        }
+      }
+
+      const response = await fetch("/api/threads", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          action: "restore",
+          threadId,
+        }),
+      });
+
+      const payload = (await response.json()) as ThreadsApiResponse;
+      if (!response.ok) {
+        const authRequired = payload.authRequired === true || response.status === 401;
+        if (authRequired) {
+          setIsAzureAuthRequired(true);
+          throw new Error("Azure login is required. Open Settings and sign in to continue.");
+        }
+
+        throw new Error(payload.error || "Failed to restore thread.");
+      }
+
+      const restoredThread = readThreadSnapshotFromUnknown(payload.thread, {
+        fallbackInstruction: DEFAULT_AGENT_INSTRUCTION,
+      });
+      if (!restoredThread || restoredThread.id !== threadId || restoredThread.deletedAt !== null) {
+        throw new Error("Restored thread payload is invalid.");
+      }
+
+      updateThreadsState((current) => upsertThreadSnapshot(current, restoredThread));
+      threadSaveSignatureByIdRef.current.set(restoredThread.id, buildThreadSaveSignature(restoredThread));
+      applyThreadSnapshotToState(restoredThread);
+    } catch (restoreError) {
+      logHomeError("restore_thread_failed", restoreError, {
+        action: "restore_thread",
+        statusCode: 500,
+        context: {
+          threadId,
+        },
+      });
+      setThreadError(restoreError instanceof Error ? restoreError.message : "Failed to restore thread.");
+    } finally {
+      setIsRestoringThread(false);
+    }
+  }
+
   async function handleThreadChange(nextThreadIdRaw: string) {
     const nextThreadId = nextThreadIdRaw.trim();
     setThreadError(null);
+    if (
+      isLoadingThreads ||
+      isSwitchingThread ||
+      isCreatingThread ||
+      isDeletingThread ||
+      isRestoringThread
+    ) {
+      return;
+    }
     if (!nextThreadId || nextThreadId === activeThreadIdRef.current) {
       return;
     }
@@ -1372,7 +1626,6 @@ export function useWorkspaceController() {
       setThreadError("Selected thread is not available.");
       return;
     }
-
     setIsSwitchingThread(true);
     try {
       const currentThreadId = activeThreadIdRef.current.trim();
@@ -1911,12 +2164,17 @@ export function useWorkspaceController() {
       setActiveMainTab("threads");
       return;
     }
+    if (isArchivedThread(threadId)) {
+      setThreadError("Archived thread is read-only. Restore it from Archives to continue.");
+      setActiveMainTab("threads");
+      return;
+    }
 
     if (readThreadRequestState(threadId).isSending) {
       return;
     }
 
-    if (isLoadingThreads || isSwitchingThread) {
+    if (isLoadingThreads || isSwitchingThread || isDeletingThread || isRestoringThread) {
       setThreadError("Thread state is updating. Please wait.");
       setActiveMainTab("threads");
       return;
@@ -2176,6 +2434,11 @@ export function useWorkspaceController() {
 
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (isArchivedThread(activeThreadIdRef.current)) {
+      setThreadError("Archived thread is read-only. Restore it from Archives to continue.");
+      setActiveMainTab("threads");
+      return;
+    }
     if (isChatLocked) {
       setActiveMainTab("settings");
       return;
@@ -2190,6 +2453,11 @@ export function useWorkspaceController() {
 
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
+      if (isArchivedThread(activeThreadIdRef.current)) {
+        setThreadError("Archived thread is read-only. Restore it from Archives to continue.");
+        setActiveMainTab("threads");
+        return;
+      }
       if (isChatLocked) {
         setActiveMainTab("settings");
         return;
@@ -2199,13 +2467,17 @@ export function useWorkspaceController() {
   }
 
   function handleDraftChange(event: React.ChangeEvent<HTMLTextAreaElement>, value: string) {
+    if (isArchivedThread(activeThreadIdRef.current)) {
+      return;
+    }
+
     setDraft(value);
     setChatAttachmentError(null);
     resizeChatInput(event.currentTarget);
   }
 
   function handleOpenChatAttachmentPicker() {
-    if (isSending || isChatLocked) {
+    if (isSending || isChatLocked || isArchivedThread(activeThreadIdRef.current)) {
       return;
     }
 
@@ -2216,6 +2488,10 @@ export function useWorkspaceController() {
     event: React.ChangeEvent<HTMLInputElement>,
   ) {
     const input = event.currentTarget;
+    if (isArchivedThread(activeThreadIdRef.current)) {
+      input.value = "";
+      return;
+    }
     const selectedFiles = input.files ? Array.from(input.files) : [];
     if (selectedFiles.length === 0) {
       input.value = "";
@@ -2317,6 +2593,10 @@ export function useWorkspaceController() {
   }
 
   function handleRemoveDraftAttachment(id: string) {
+    if (isArchivedThread(activeThreadIdRef.current)) {
+      return;
+    }
+
     setDraftAttachments((current) => current.filter((attachment) => attachment.id !== id));
     setChatAttachmentError(null);
   }
@@ -2402,6 +2682,10 @@ export function useWorkspaceController() {
   }
 
   function handleAgentInstructionChange(value: string) {
+    if (isArchivedThread(activeThreadIdRef.current)) {
+      return;
+    }
+
     setAgentInstruction(value);
     setInstructionSaveError(null);
     setInstructionSaveSuccess(null);
@@ -2411,6 +2695,10 @@ export function useWorkspaceController() {
   }
 
   function handleClearInstruction() {
+    if (isArchivedThread(activeThreadIdRef.current)) {
+      return;
+    }
+
     setAgentInstruction("");
     setLoadedInstructionFileName(null);
     setInstructionFileError(null);
@@ -2425,6 +2713,10 @@ export function useWorkspaceController() {
     event: React.ChangeEvent<HTMLInputElement>,
   ) {
     const input = event.currentTarget;
+    if (isArchivedThread(activeThreadIdRef.current)) {
+      input.value = "";
+      return;
+    }
     const file = input.files?.[0];
     if (!file) {
       return;
@@ -2471,6 +2763,10 @@ export function useWorkspaceController() {
   }
 
   async function handleSaveInstructionPrompt() {
+    if (isArchivedThread(activeThreadIdRef.current)) {
+      return;
+    }
+
     if (isSavingInstructionPrompt) {
       return;
     }
@@ -2514,6 +2810,10 @@ export function useWorkspaceController() {
   }
 
   async function handleEnhanceInstruction() {
+    if (isArchivedThread(activeThreadIdRef.current)) {
+      return;
+    }
+
     if (isEnhancingInstruction) {
       return;
     }
@@ -2650,6 +2950,10 @@ export function useWorkspaceController() {
   }
 
   function handleAdoptEnhancedInstruction() {
+    if (isArchivedThread(activeThreadIdRef.current)) {
+      return;
+    }
+
     if (!instructionEnhanceComparison) {
       return;
     }
@@ -2663,6 +2967,10 @@ export function useWorkspaceController() {
   }
 
   function handleAdoptOriginalInstruction() {
+    if (isArchivedThread(activeThreadIdRef.current)) {
+      return;
+    }
+
     if (!instructionEnhanceComparison) {
       return;
     }
@@ -2676,6 +2984,11 @@ export function useWorkspaceController() {
   }
 
   async function handleAddMcpServer() {
+    if (isArchivedThread(activeThreadIdRef.current)) {
+      setMcpFormError("Archived thread is read-only. Restore it from Archives to edit MCP servers.");
+      return;
+    }
+
     const rawName = mcpNameInput.trim();
     setMcpFormError(null);
     setMcpFormWarning(null);
@@ -2847,6 +3160,11 @@ export function useWorkspaceController() {
   }
 
   function handleConnectSelectedMcpServer() {
+    if (isArchivedThread(activeThreadIdRef.current)) {
+      setSavedMcpError("Archived thread is read-only. Restore it from Archives to edit MCP servers.");
+      return;
+    }
+
     if (!selectedSavedMcpServerId) {
       setSavedMcpError("Select an MCP server first.");
       return;
@@ -2863,6 +3181,10 @@ export function useWorkspaceController() {
   }
 
   function handleRemoveMcpServer(id: string) {
+    if (isArchivedThread(activeThreadIdRef.current)) {
+      return;
+    }
+
     setMcpServers((current) => current.filter((server) => server.id !== id));
   }
 
@@ -3038,6 +3360,7 @@ export function useWorkspaceController() {
       instructionEnhanceComparison,
       describeInstructionLanguage,
       isSending,
+      isThreadReadOnly: isActiveThreadArchived,
       isEnhancingInstruction,
       isSavingInstructionPrompt,
       canSaveAgentInstructionPrompt,
@@ -3064,24 +3387,43 @@ export function useWorkspaceController() {
       onAdoptEnhancedInstruction: handleAdoptEnhancedInstruction,
       onAdoptOriginalInstruction: handleAdoptOriginalInstruction,
     },
-    threadOptions: threadSummaries.map((thread) => {
+    activeThreadOptions: activeThreadSummaries.map((thread) => {
       const isActiveThread = thread.id === activeThreadId;
       return {
         id: thread.id,
         name: isActiveThread ? activeThreadNameInput : thread.name,
         updatedAt: thread.updatedAt,
+        deletedAt: thread.deletedAt,
         messageCount: thread.messageCount,
         mcpServerCount: thread.mcpServerCount,
         isAwaitingResponse:
           (threadRequestStateById[thread.id] ?? HOME_DEFAULT_THREAD_REQUEST_STATE).isSending,
       };
     }),
+    archivedThreadOptions: archivedThreadSummaries.map((thread) => ({
+      id: thread.id,
+      name: thread.name,
+      updatedAt: thread.updatedAt,
+      deletedAt: thread.deletedAt,
+      messageCount: thread.messageCount,
+      mcpServerCount: thread.mcpServerCount,
+      isAwaitingResponse:
+        (threadRequestStateById[thread.id] ?? HOME_DEFAULT_THREAD_REQUEST_STATE).isSending,
+    })),
     activeThreadId,
     isLoadingThreads,
     isSwitchingThread,
+    isDeletingThread,
+    isRestoringThread,
     threadError,
     onActiveThreadChange: (threadId: string) => {
       void handleThreadChange(threadId);
+    },
+    onThreadDelete: (threadId: string) => {
+      void handleThreadLogicalDelete(threadId);
+    },
+    onThreadRestore: (threadId: string) => {
+      void handleThreadRestore(threadId);
     },
   };
 
@@ -3089,7 +3431,9 @@ export function useWorkspaceController() {
     messages,
     mcpHistoryByTurnId,
     isSending,
-    isUpdatingThread: isCreatingThread || isSwitchingThread || isLoadingThreads,
+    isThreadReadOnly: isActiveThreadArchived,
+    isUpdatingThread:
+      isCreatingThread || isSwitchingThread || isDeletingThread || isRestoringThread || isLoadingThreads,
     activeThreadNameInput,
     onActiveThreadNameChange: handleActiveThreadNameInputChange,
     onCreateThread: handleCreateThreadFromPlaygroundHeader,

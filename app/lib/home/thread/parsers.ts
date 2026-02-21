@@ -45,7 +45,8 @@ export function readThreadSnapshotFromUnknown(
   const name = readTrimmedString(value.name);
   const createdAt = readTrimmedString(value.createdAt);
   const updatedAt = readTrimmedString(value.updatedAt);
-  if (!id || !name || !createdAt || !updatedAt) {
+  const deletedAt = readNullableTrimmedString(value.deletedAt);
+  if (!id || !name || !createdAt || !updatedAt || deletedAt === undefined) {
     return null;
   }
 
@@ -63,6 +64,7 @@ export function readThreadSnapshotFromUnknown(
     name,
     createdAt,
     updatedAt,
+    deletedAt,
     agentInstruction,
     messages,
     mcpServers,
@@ -76,6 +78,7 @@ export function buildThreadSummary(snapshot: ThreadSnapshot): ThreadSummary {
     name: snapshot.name,
     createdAt: snapshot.createdAt,
     updatedAt: snapshot.updatedAt,
+    deletedAt: snapshot.deletedAt,
     messageCount: snapshot.messages.length,
     mcpServerCount: snapshot.mcpServers.length,
   };
@@ -227,6 +230,19 @@ function readThreadMcpRpcHistoryEntryFromUnknown(value: unknown): McpRpcHistoryE
 
 function readTrimmedString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function readNullableTrimmedString(value: unknown): string | null | undefined {
+  if (value === null) {
+    return null;
+  }
+
+  if (typeof value !== "string") {
+    return undefined;
+  }
+
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
 }
 
 function readSafeInteger(value: unknown): number | null {

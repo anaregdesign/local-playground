@@ -7,6 +7,7 @@ export type ThreadSnapshot = {
   name: string;
   createdAt: string;
   updatedAt: string;
+  deletedAt: string | null;
   agentInstruction: string;
   messages: ChatMessage[];
   mcpServers: McpServerConfig[];
@@ -18,6 +19,7 @@ export type ThreadSummary = {
   name: string;
   createdAt: string;
   updatedAt: string;
+  deletedAt: string | null;
   messageCount: number;
   mcpServerCount: number;
 };

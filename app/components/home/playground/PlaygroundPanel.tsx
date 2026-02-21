@@ -76,6 +76,7 @@ type PlaygroundPanelProps<
   messages: TMessage[];
   mcpHistoryByTurnId: Map<string, TMcpRpcHistoryEntry[]>;
   isSending: boolean;
+  isThreadReadOnly: boolean;
   isUpdatingThread: boolean;
   activeThreadNameInput: string;
   onActiveThreadNameChange: (value: string) => void;
@@ -142,6 +143,7 @@ export function PlaygroundPanel<
     messages,
     mcpHistoryByTurnId,
     isSending,
+    isThreadReadOnly,
     isUpdatingThread,
     activeThreadNameInput,
     onActiveThreadNameChange,
@@ -290,7 +292,7 @@ export function PlaygroundPanel<
                     size="small"
                     className="chat-mcp-bubble-remove"
                     onClick={() => onRemoveMcpServer(server.id)}
-                    disabled={isSending}
+                    disabled={isSending || isThreadReadOnly}
                     aria-label={`Remove MCP server ${server.name}`}
                     title={`Remove ${server.name}`}
                   >
@@ -326,7 +328,7 @@ export function PlaygroundPanel<
                   size="small"
                   className="chat-attachment-bubble-remove"
                   onClick={() => onRemoveChatAttachment(attachment.id)}
-                  disabled={isSending}
+                  disabled={isSending || isThreadReadOnly}
                   aria-label={`Remove attachment ${attachment.name}`}
                   title={`Remove ${attachment.name}`}
                 >
@@ -354,12 +356,16 @@ export function PlaygroundPanel<
             <Input
               className="chat-thread-name-input"
               aria-label="Active thread name"
-              title="Edit the active thread name."
+              title={
+                isThreadReadOnly
+                  ? "Archived threads are read-only. Restore from Archives to rename."
+                  : "Edit the active thread name."
+              }
               value={activeThreadNameInput}
               onChange={(_, data) => {
                 onActiveThreadNameChange(data.value);
               }}
-              disabled={isUpdatingThread}
+              disabled={isUpdatingThread || isThreadReadOnly}
               placeholder="Thread name"
             />
             {renderLabeledTooltip(
@@ -468,10 +474,17 @@ export function PlaygroundPanel<
             },
           ]}
         />
-        {error || azureLoginError || chatAttachmentError ? (
+        {error || azureLoginError || chatAttachmentError || isThreadReadOnly ? (
           <StatusMessageList
             className="chat-error-stack"
             messages={[
+              {
+                intent: "warning",
+                title: "Archive",
+                text: isThreadReadOnly
+                  ? "This thread is archived and read-only. Restore it from Archives to edit or send messages."
+                  : null,
+              },
               { intent: "error", title: "Request failed", text: error },
               { intent: "error", text: azureLoginError },
               { intent: "error", title: "Attachment", text: chatAttachmentError },
@@ -490,7 +503,7 @@ export function PlaygroundPanel<
             accept={chatAttachmentAccept}
             multiple
             onChange={onChatAttachmentFileChange}
-            disabled={isSending || isChatLocked}
+            disabled={isSending || isChatLocked || isThreadReadOnly}
           />
           <div className="chat-composer">
             <Textarea
@@ -509,7 +522,7 @@ export function PlaygroundPanel<
               onKeyDown={onInputKeyDown}
               onCompositionStart={onCompositionStart}
               onCompositionEnd={onCompositionEnd}
-              disabled={isSending || isChatLocked}
+              disabled={isSending || isChatLocked || isThreadReadOnly}
             />
             <div className="chat-composer-actions">
               <div className="chat-quick-controls">
@@ -528,7 +541,7 @@ export function PlaygroundPanel<
                       aria-label="Attach files"
                       title="Attach files"
                       onClick={onOpenChatAttachmentPicker}
-                      disabled={isSending || isChatLocked}
+                      disabled={isSending || isChatLocked || isThreadReadOnly}
                     >
                       📎
                     </Button>
@@ -655,7 +668,9 @@ export function PlaygroundPanel<
               </div>
               {renderLabeledTooltip(
                 "Send",
-                ["Send current message."],
+                isThreadReadOnly
+                  ? ["Archived thread is read-only. Restore it from Archives to send messages."]
+                  : ["Send current message."],
                 <Button
                   type="submit"
                   appearance="subtle"

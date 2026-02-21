@@ -1286,9 +1286,16 @@ body {
   gap: 0.3rem;
 }
 
+.threads-active-item-row {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
 .threads-active-item-tooltip-target {
   display: block;
-  width: 100%;
+  flex: 1;
+  min-width: 0;
 }
 
 .threads-active-item.fui-Button {
@@ -1339,6 +1346,79 @@ body {
 .threads-active-item.fui-Button.is-active:enabled:hover {
   background: #edf4fa;
   color: #1f3f56;
+}
+
+.threads-delete-btn {
+  --home-symbol-btn-size: 1.55rem;
+  --home-symbol-glyph-size: 0.9rem;
+  color: #8a3b3b;
+  opacity: 0.72;
+}
+
+.threads-delete-btn:hover {
+  opacity: 1;
+  color: #7a2424;
+  background: rgba(174, 69, 69, 0.12) !important;
+}
+
+.threads-archived-list {
+  margin-top: 0.15rem;
+  border: 1px solid rgba(34, 48, 58, 0.12);
+  border-radius: var(--home-radius-sm);
+  background: #fbfcfe;
+}
+
+.threads-archived-summary {
+  cursor: pointer;
+  padding: 0.42rem 0.56rem;
+  font-size: var(--home-font-size-caption);
+  font-weight: 600;
+  color: var(--text-subtle);
+}
+
+.threads-archived-list[open] > .threads-archived-summary {
+  border-bottom: 1px solid rgba(34, 48, 58, 0.1);
+}
+
+.threads-archived-items {
+  padding: 0.45rem 0.56rem 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.34rem;
+}
+
+.threads-archived-item-row {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.threads-archived-item.fui-Button {
+  background: #fbfcfe;
+  color: #32475a;
+}
+
+.threads-archived-item.fui-Button:enabled:hover {
+  background: #f3f7fc;
+}
+
+.threads-archived-item.fui-Button.is-active,
+.threads-archived-item.fui-Button.is-active:enabled:hover {
+  background: #eaf2fb;
+  color: #1f3f56;
+}
+
+.threads-restore-btn {
+  --home-symbol-btn-size: 1.55rem;
+  --home-symbol-glyph-size: 0.84rem;
+  color: #1f4e67;
+  opacity: 0.76;
+}
+
+.threads-restore-btn:hover {
+  opacity: 1;
+  color: #0f4c75;
+  background: rgba(15, 108, 189, 0.12) !important;
 }
 
 .azure-loading-notice {

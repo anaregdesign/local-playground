@@ -57,6 +57,7 @@ model Thread {
   name         String
   createdAt    String
   updatedAt    String
+  deletedAt    String?
   user         User               @relation(fields: [userId], references: [id], onDelete: Cascade)
   instruction  ThreadInstruction?
   messages     ThreadMessage[]
