@@ -277,9 +277,23 @@ export const INSTRUCTION_DIFF_PATCH_OUTPUT_TYPE = {
 
 /**
  * Impact scope:
- * These constants define thread API defaults and home thread request defaults.
- * Changing them affects thread creation naming and in-memory request state resets.
+ * These constants define thread naming behavior and home thread request defaults.
+ * Changing them affects thread creation naming, auto-title generation, and request-state resets.
  */
+export const THREAD_AUTO_TITLE_MAX_LENGTH = 20;
+export const THREAD_AUTO_TITLE_SYSTEM_PROMPT = [
+  "<thread_auto_title_policy>",
+  "  <objective>",
+  "    Generate a concise thread title that summarizes the provided Playground content and Instruction.",
+  "  </objective>",
+  "  <output_rules>",
+  `    Return a single plain-text title with at most ${THREAD_AUTO_TITLE_MAX_LENGTH} characters.`,
+  "    Keep the same language as the source content.",
+  "    Do not use markdown, quotes, prefixes, suffixes, or line breaks.",
+  "    Do not reveal reasoning or explanations.",
+  "  </output_rules>",
+  "</thread_auto_title_policy>",
+].join("\n");
 export const THREAD_DEFAULT_NAME = "New Thread";
 export const HOME_DEFAULT_THREAD_REQUEST_STATE = {
   isSending: false,

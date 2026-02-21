@@ -110,6 +110,10 @@ import {
   hasThreadInteraction,
   upsertThreadSnapshot,
 } from "~/lib/home/thread/snapshot-state";
+import {
+  buildThreadAutoTitlePlaygroundContent,
+  normalizeThreadAutoTitle,
+} from "~/lib/home/thread/title";
 import type { ThreadSnapshot, ThreadSummary } from "~/lib/home/thread/types";
 import { copyTextToClipboard } from "~/lib/home/shared/clipboard";
 import { getFileExtension } from "~/lib/home/shared/files";
@@ -122,6 +126,7 @@ import {
   type InstructionEnhanceComparison,
   type McpServersApiResponse,
   type ThreadRequestState,
+  type ThreadTitleApiResponse,
   type ThreadsApiResponse,
 } from "~/lib/home/controller/types";
 
@@ -233,10 +238,13 @@ export function useWorkspaceController() {
   const selectedPlaygroundAzureDeploymentNameRef = useRef("");
   const selectedUtilityAzureConnectionIdRef = useRef("");
   const selectedUtilityAzureDeploymentNameRef = useRef("");
+  const activeThreadNameInputRef = useRef("");
   const isApplyingThreadStateRef = useRef(false);
   const isThreadsReadyRef = useRef(false);
   const threadNameSaveTimeoutRef = useRef<number | null>(null);
   const threadSaveTimeoutRef = useRef<number | null>(null);
+  const threadTitleRefreshTimeoutRef = useRef<number | null>(null);
+  const threadInstructionSignatureByIdRef = useRef(new Map<string, string>());
   const threadLoadRequestSeqRef = useRef(0);
   const threadSaveRequestSeqRef = useRef(0);
   const threadSaveSignatureByIdRef = useRef(new Map<string, string>());
@@ -608,6 +616,10 @@ export function useWorkspaceController() {
   }, [activeThreadId]);
 
   useEffect(() => {
+    activeThreadNameInputRef.current = activeThreadNameInput;
+  }, [activeThreadNameInput]);
+
+  useEffect(() => {
     threadRequestStateByIdRef.current = threadRequestStateById;
   }, [threadRequestStateById]);
 
@@ -617,6 +629,7 @@ export function useWorkspaceController() {
 
   useEffect(() => {
     return () => {
+      clearThreadTitleRefreshTimeout();
       clearThreadNameSaveTimeout();
       clearThreadSaveTimeout();
     };
@@ -728,6 +741,64 @@ export function useWorkspaceController() {
     isRestoringThread,
   ]);
 
+  useEffect(() => {
+    if (!isThreadsReadyRef.current || isApplyingThreadStateRef.current) {
+      return;
+    }
+    if (
+      isLoadingThreads ||
+      isSwitchingThread ||
+      isCreatingThread ||
+      isDeletingThread ||
+      isRestoringThread
+    ) {
+      return;
+    }
+
+    const currentThreadId = activeThreadIdRef.current.trim();
+    if (!currentThreadId || isArchivedThread(currentThreadId)) {
+      return;
+    }
+
+    const baseThread = threadsRef.current.find((thread) => thread.id === currentThreadId);
+    if (!baseThread || !hasThreadInteraction(baseThread)) {
+      return;
+    }
+
+    const currentInstruction = agentInstruction.trim();
+    const previousInstruction = threadInstructionSignatureByIdRef.current.get(currentThreadId);
+    if (previousInstruction === undefined) {
+      threadInstructionSignatureByIdRef.current.set(currentThreadId, currentInstruction);
+      return;
+    }
+    if (previousInstruction === currentInstruction) {
+      return;
+    }
+    threadInstructionSignatureByIdRef.current.set(currentThreadId, currentInstruction);
+
+    clearThreadTitleRefreshTimeout();
+    threadTitleRefreshTimeoutRef.current = window.setTimeout(() => {
+      threadTitleRefreshTimeoutRef.current = null;
+      void refreshThreadTitleInBackground({
+        threadId: currentThreadId,
+        reason: "instruction_update",
+      });
+    }, 1000);
+
+    return () => {
+      clearThreadTitleRefreshTimeout();
+    };
+  }, [
+    activeThreadId,
+    agentInstruction,
+    threads,
+    isLoadingThreads,
+    isSwitchingThread,
+    isCreatingThread,
+    isDeletingThread,
+    isRestoringThread,
+  ]);
+
   async function loadSavedMcpServers() {
     const expectedUserKey = activeWorkspaceUserKeyRef.current.trim();
     if (!expectedUserKey) {
@@ -830,6 +901,14 @@ export function useWorkspaceController() {
     }
   }
 
+  function clearThreadTitleRefreshTimeout() {
+    const timeoutId = threadTitleRefreshTimeoutRef.current;
+    if (timeoutId !== null) {
+      window.clearTimeout(timeoutId);
+      threadTitleRefreshTimeoutRef.current = null;
+    }
+  }
+
   function clearThreadSaveTimeout() {
     const timeoutId = threadSaveTimeoutRef.current;
     if (timeoutId !== null) {
@@ -853,12 +932,14 @@ export function useWorkspaceController() {
   }
 
   function clearThreadsState(nextError: string | null = null) {
+    clearThreadTitleRefreshTimeout();
     clearThreadNameSaveTimeout();
     clearThreadSaveTimeout();
     isThreadsReadyRef.current = false;
     activeThreadIdRef.current = "";
     isApplyingThreadStateRef.current = false;
     threadSaveSignatureByIdRef.current.clear();
+    threadInstructionSignatureByIdRef.current.clear();
     setThreadsState([]);
     setActiveThreadId("");
     setActiveThreadNameInput("");
@@ -1060,6 +1141,7 @@ export function useWorkspaceController() {
 
   function applyThreadSnapshotToState(thread: ThreadSnapshot) {
     isApplyingThreadStateRef.current = true;
+    threadInstructionSignatureByIdRef.current.set(thread.id, thread.agentInstruction.trim());
 
     const clonedMessages = cloneMessages(thread.messages);
     const clonedMcpServers = cloneMcpServers(thread.mcpServers);
@@ -1269,6 +1351,108 @@ export function useWorkspaceController() {
     }
 
     await saveThreadSnapshotToDatabase(snapshot, signature);
+  }
+
+  async function refreshThreadTitleInBackground(options: {
+    threadId: string;
+    reason: "first_message" | "instruction_update";
+  }): Promise<void> {
+    const normalizedThreadId = options.threadId.trim();
+    if (!normalizedThreadId) {
+      return;
+    }
+    if (isArchivedThread(normalizedThreadId) || isChatLocked || isLoadingUtilityAzureDeployments) {
+      return;
+    }
+
+    const utilityConnection = activeUtilityAzureConnection;
+    const deploymentName = selectedUtilityAzureDeploymentName.trim();
+    if (!utilityConnection || !deploymentName || !utilityAzureDeployments.includes(deploymentName)) {
+      return;
+    }
+
+    const baseThread = threadsRef.current.find((thread) => thread.id === normalizedThreadId);
+    if (!baseThread || !hasThreadInteraction(baseThread)) {
+      return;
+    }
+
+    const playgroundContent = buildThreadAutoTitlePlaygroundContent(baseThread.messages);
+    if (!playgroundContent) {
+      return;
+    }
+
+    const instruction =
+      normalizedThreadId === activeThreadIdRef.current.trim()
+        ? agentInstruction
+        : baseThread.agentInstruction;
+
+    try {
+      const response = await fetch("/api/thread-title", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({
+          playgroundContent,
+          instruction,
+          azureConfig: {
+            projectName: utilityConnection.projectName,
+            baseUrl: utilityConnection.baseUrl,
+            apiVersion: utilityConnection.apiVersion,
+            deploymentName,
+          },
+          reasoningEffort: utilityReasoningEffort,
+        }),
+      });
+
+      const payload = (await response.json()) as ThreadTitleApiResponse;
+      if (!response.ok || payload.error) {
+        if (payload.errorCode === "azure_login_required") {
+          setIsAzureAuthRequired(true);
+        }
+        throw new Error(payload.error || "Failed to generate thread title.");
+      }
+
+      const nextTitle = normalizeThreadAutoTitle(typeof payload.title === "string" ? payload.title : "");
+      if (!nextTitle) {
+        return;
+      }
+
+      const latestThread = threadsRef.current.find((thread) => thread.id === normalizedThreadId);
+      if (!latestThread || latestThread.deletedAt !== null) {
+        return;
+      }
+
+      const activeThreadId = activeThreadIdRef.current.trim();
+      const currentInputName =
+        normalizedThreadId === activeThreadId
+          ? activeThreadNameInputRef.current.trim()
+          : latestThread.name.trim();
+      if (nextTitle === latestThread.name && (!currentInputName || currentInputName === nextTitle)) {
+        return;
+      }
+
+      updateThreadSnapshotById(normalizedThreadId, (thread) => ({
+        ...thread,
+        updatedAt: new Date().toISOString(),
+        name: nextTitle,
+      }));
+
+      if (normalizedThreadId === activeThreadId) {
+        setActiveThreadNameInput(nextTitle);
+      }
+
+      await saveActiveThreadNameInBackground(normalizedThreadId, nextTitle);
+    } catch (threadTitleError) {
+      logHomeError("generate_thread_title_failed", threadTitleError, {
+        action: "generate_thread_title",
+        context: {
+          threadId: normalizedThreadId,
+          reason: options.reason,
+        },
+      });
+    }
   }
 
   async function loadThreads(): Promise<void> {
@@ -2206,6 +2390,10 @@ export function useWorkspaceController() {
       return;
     }
 
+    const baseThread = threadsRef.current.find((thread) => thread.id === threadId);
+    const shouldRefreshThreadTitleOnFirstMessage =
+      !!baseThread && baseThread.deletedAt === null && baseThread.messages.length === 0;
+
     const turnId = createId("turn");
     const requestAttachments = draftAttachments.map(
       ({ id: _id, ...attachment }) => attachment,
@@ -2249,6 +2437,12 @@ export function useWorkspaceController() {
       lastErrorTurnId: null,
       error: null,
     }));
+    if (shouldRefreshThreadTitleOnFirstMessage) {
+      void refreshThreadTitleInBackground({
+        threadId,
+        reason: "first_message",
+      });
+    }
 
     try {
       const response = await fetch("/api/chat", {

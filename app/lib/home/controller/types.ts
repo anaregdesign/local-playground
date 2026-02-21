@@ -43,6 +43,12 @@ export type ThreadsApiResponse = {
   error?: string;
 };
 
+export type ThreadTitleApiResponse = {
+  title?: string;
+  error?: string;
+  errorCode?: "azure_login_required";
+};
+
 export type ThreadRequestState = {
   isSending: boolean;
   sendProgressMessages: string[];
