@@ -84,6 +84,7 @@ export const CHAT_ATTACHMENT_ALLOWED_EXTENSIONS = new Set([
 ]);
 export const DEFAULT_AGENT_INSTRUCTION = "You are a concise assistant for a local playground app.";
 export const HOME_REASONING_EFFORT_OPTIONS = ["none", "low", "medium", "high"] as const;
+export const HOME_DEFAULT_UTILITY_REASONING_EFFORT = "high" as const;
 export const HOME_DEFAULT_MCP_TRANSPORT = "streamable_http" as const;
 export const HOME_INITIAL_MESSAGES: ReadonlyArray<never> = [];
 

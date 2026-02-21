@@ -21,8 +21,11 @@ model User {
 model AzureSelectionPreference {
   id             Int    @id @default(autoincrement())
   userId         Int    @unique
-  projectId      String
-  deploymentName String
+  projectId      String @default("")
+  deploymentName String @default("")
+  utilityProjectId String @default("")
+  utilityDeploymentName String @default("")
+  utilityReasoningEffort String @default("high")
   user           User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 

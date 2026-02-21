@@ -1225,6 +1225,11 @@ body {
   border-top: 1px solid rgba(225, 223, 221, 0.82);
 }
 
+.setting-group-utility-model {
+  order: 3;
+  border-top: 1px solid rgba(225, 223, 221, 0.82);
+}
+
 .setting-group-threads-manage {
   order: 2;
 }

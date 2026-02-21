@@ -6,7 +6,7 @@ It lets you move from prompt testing to MCP request/response debugging in one pl
 ## At A Glance
 
 - Chat playground powered by Agents SDK
-- Azure project/deployment selection with `DefaultAzureCredential`
+- Separate Azure project/deployment defaults for `Playground` and `Utility Model`
 - MCP server testing (`streamable_http`, `sse`, `stdio`)
 - Inline MCP operation logs (JSON-RPC request/response)
 
@@ -26,7 +26,7 @@ Run practical prompts while keeping deployment controls and active MCP servers v
 ### Settings
 
 ![Local Playground settings view](docs/images/local-playground-settings.png)
-Tune agent instruction and confirm the active Azure connection before each run.
+Configure Azure login, `Playground` model, and `Utility Model` defaults from one place.
 
 ### MCP Servers
 
@@ -56,6 +56,7 @@ Open `http://localhost:5173`.
 - Two-pane desktop layout with draggable splitter for chat vs. configuration work
 - Markdown rendering and JSON syntax highlighting for fast response inspection
 - Agent Instruction local file load/save (client-side save dialog) and enhance workflow with diff review
+- Dedicated `Utility Model` selection (deployment + reasoning effort) for instruction enhancement workflows
 - Per-server MCP headers, Azure auth scope, and timeout controls
 
 ## Developer Details
@@ -95,7 +96,7 @@ Configuration directory:
 SQLite database:
 
 - `local-playground.sqlite`
-- Stores Azure selection preferences and saved MCP profiles
+- Stores Azure selection preferences (Playground/Utility) and saved MCP profiles
 
 If `APPDATA` is unavailable on Windows, path falls back to:
 

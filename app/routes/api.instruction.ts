@@ -11,6 +11,7 @@ import {
 } from "~/lib/server/observability/app-event-log";
 import {
   CHAT_MAX_AGENT_INSTRUCTION_LENGTH,
+  HOME_REASONING_EFFORT_OPTIONS,
   INSTRUCTION_DIFF_PATCH_FILE_NAME_PATTERN,
   INSTRUCTION_DIFF_PATCH_MAX_HUNK_LINES,
   INSTRUCTION_DIFF_PATCH_MAX_HUNKS,
@@ -24,6 +25,7 @@ import {
   PROMPT_MAX_FILE_NAME_LENGTH,
   PROMPT_MAX_FILE_STEM_LENGTH,
 } from "~/lib/constants";
+import type { ReasoningEffort } from "~/lib/home/shared/view-types";
 
 type ParseResult<T> = { ok: true; value: T } | { ok: false; error: string };
 
@@ -43,6 +45,7 @@ type InstructionEnhanceOptions = {
   message: string;
   enhanceAgentInstruction: string;
   azureConfig: ResolvedAzureConfig;
+  reasoningEffort: ReasoningEffort;
 };
 
 type InstructionDiffPatchLineOutput = {
@@ -122,6 +125,21 @@ export async function action({ request }: Route.ActionArgs) {
   }
 
   const enhanceAgentInstruction = readEnhanceAgentInstruction(payload);
+  const reasoningEffortResult = parseInstructionReasoningEffort(payload);
+  if (!reasoningEffortResult.ok) {
+    await logServerRouteEvent({
+      request,
+      route: "/api/instruction",
+      eventName: "invalid_reasoning_effort",
+      action: "validate_payload",
+      level: "warning",
+      statusCode: 400,
+      message: reasoningEffortResult.error,
+    });
+
+    return Response.json({ error: reasoningEffortResult.error }, { status: 400 });
+  }
+  const reasoningEffort = reasoningEffortResult.value;
   const azureConfigResult = readAzureConfig(payload);
   if (!azureConfigResult.ok) {
     await logServerRouteEvent({
@@ -166,6 +184,7 @@ export async function action({ request }: Route.ActionArgs) {
       message,
       enhanceAgentInstruction,
       azureConfig,
+      reasoningEffort,
     });
     return Response.json({ message: patch });
   } catch (error) {
@@ -200,7 +219,7 @@ async function enhanceInstruction(options: InstructionEnhanceOptions): Promise<s
     model,
     modelSettings: {
       reasoning: {
-        effort: "high",
+        effort: options.reasoningEffort,
       },
     },
     outputType: INSTRUCTION_DIFF_PATCH_OUTPUT_TYPE,
@@ -393,6 +412,30 @@ function readEnhanceAgentInstruction(payload: unknown): string {
   }
 
   return trimmed.slice(0, CHAT_MAX_AGENT_INSTRUCTION_LENGTH);
+}
+
+export function parseInstructionReasoningEffort(payload: unknown): ParseResult<ReasoningEffort> {
+  if (!isRecord(payload)) {
+    return { ok: true, value: "high" };
+  }
+
+  const value = payload.reasoningEffort;
+  if (value === undefined || value === null) {
+    return { ok: true, value: "high" };
+  }
+  if (typeof value !== "string") {
+    return { ok: false, error: "`reasoningEffort` must be a string." };
+  }
+
+  const normalized = value.trim();
+  if (HOME_REASONING_EFFORT_OPTIONS.includes(normalized as ReasoningEffort)) {
+    return { ok: true, value: normalized as ReasoningEffort };
+  }
+
+  return {
+    ok: false,
+    error: "`reasoningEffort` must be one of: none, low, medium, high.",
+  };
 }
 
 function readAzureConfig(payload: unknown): ParseResult<ResolvedAzureConfig> {
