@@ -6,6 +6,20 @@ describe("hasThreadInteraction", () => {
     expect(hasThreadInteraction({ messages: [] })).toBe(false);
   });
 
+  it("returns true for threads with selected skills", () => {
+    expect(
+      hasThreadInteraction({
+        messages: [],
+        skillSelections: [
+          {
+            name: "local-playground-dev",
+            location: "/repo/skills/local-playground-dev/SKILL.md",
+          },
+        ],
+      }),
+    ).toBe(true);
+  });
+
   it("returns true for threads with messages", () => {
     expect(
       hasThreadInteraction({

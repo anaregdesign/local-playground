@@ -3,7 +3,7 @@ import { ConfigSection } from "~/components/home/shared/ConfigSection";
 import { FluentUI } from "~/components/home/shared/fluent";
 import type { SkillCatalogSource } from "~/lib/home/skills/types";
 
-const { Button, Checkbox, Spinner } = FluentUI;
+const { Button, Spinner } = FluentUI;
 
 export type ThreadSkillOption = {
   name: string;
@@ -87,17 +87,25 @@ export function SkillsSection(props: SkillsSectionProps) {
                 }`}
               >
                 <div className="thread-skill-item-top-row">
-                  <Checkbox
-                    checked={skill.isSelected}
-                    onChange={() => {
+                  <div className="thread-skill-item-title-row">
+                    <p className="thread-skill-name">{skill.name}</p>
+                    <span className="thread-skill-source">{sourceLabel}</span>
+                  </div>
+                  <Button
+                    type="button"
+                    appearance={skill.isSelected ? "subtle" : "secondary"}
+                    size="small"
+                    className={`thread-skill-add-btn${skill.isSelected ? " is-selected" : ""}`}
+                    onClick={() => {
                       onToggleSkill(skill.location);
                     }}
-                    label={skill.name}
                     disabled={
                       isSending || isThreadReadOnly || (!skill.isAvailable && !skill.isSelected)
                     }
-                  />
-                  <span className="thread-skill-source">{sourceLabel}</span>
+                    title={skill.isSelected ? `Remove ${skill.name}` : `Add ${skill.name}`}
+                  >
+                    {skill.isSelected ? "Added" : "Add"}
+                  </Button>
                 </div>
                 <p className="thread-skill-description">{skill.description}</p>
                 <p className="thread-skill-location">{skill.location}</p>

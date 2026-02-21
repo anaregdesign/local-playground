@@ -50,8 +50,15 @@ export function buildThreadSaveSignature(snapshot: ThreadSnapshot): string {
   });
 }
 
-export function hasThreadInteraction(snapshot: Pick<ThreadSnapshot, "messages">): boolean {
-  return snapshot.messages.length > 0;
+export function hasThreadInteraction(
+  snapshot: Pick<ThreadSnapshot, "messages"> &
+    Partial<Pick<ThreadSnapshot, "skillSelections">>,
+): boolean {
+  if (snapshot.messages.length > 0) {
+    return true;
+  }
+
+  return (snapshot.skillSelections?.length ?? 0) > 0;
 }
 
 export function upsertThreadSnapshot(

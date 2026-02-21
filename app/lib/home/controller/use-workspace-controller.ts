@@ -3891,6 +3891,8 @@ export function useWorkspaceController() {
     onReasoningEffortChange: setReasoningEffort,
     maxChatAttachmentFiles: CHAT_ATTACHMENT_MAX_FILES,
     canSendMessage,
+    selectedSkills: selectedThreadSkills,
+    onRemoveSkill: handleToggleThreadSkill,
     mcpServers,
     onRemoveMcpServer: handleRemoveMcpServer,
   };
