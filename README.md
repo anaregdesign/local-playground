@@ -86,6 +86,21 @@ Pushing a `v*.*.*` tag triggers GitHub Actions to publish installers to GitHub R
 - macOS: `.dmg`, `.zip`
 - Windows: `.exe` (NSIS)
 
+Release builds are signed for OS trust checks:
+
+- macOS: Developer ID code signing + Apple notarization (stapled)
+- Windows: Authenticode signing (SHA-256 + timestamp)
+
+Configure these GitHub repository secrets for release packaging:
+
+- `MACOS_CERTIFICATE_P12_BASE64` (Developer ID Application certificate in base64)
+- `MACOS_CERTIFICATE_PASSWORD`
+- `APPLE_NOTARY_KEY_P8` (App Store Connect API key `.p8` content)
+- `APPLE_NOTARY_KEY_ID`
+- `APPLE_NOTARY_ISSUER_ID`
+- `WINDOWS_CERTIFICATE_PFX_BASE64` (Code signing certificate in base64)
+- `WINDOWS_CERTIFICATE_PASSWORD`
+
 ### Persistence Paths
 
 Configuration directory:
