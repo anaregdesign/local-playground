@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  readPrincipalDisplayNameFromAccessToken,
   readPrincipalIdFromAccessToken,
+  readPrincipalNameFromAccessToken,
+  readPrincipalTypeFromAccessToken,
   readTenantIdFromAccessToken,
 } from "~/lib/server/auth/azure-user";
 import { isLikelyAzureAuthError } from "./api.azure-connections";
@@ -48,6 +51,57 @@ describe("readPrincipalIdFromAccessToken", () => {
 
   it("returns empty string for invalid token format", () => {
     expect(readPrincipalIdFromAccessToken("invalid-token")).toBe("");
+  });
+});
+
+describe("readPrincipalNameFromAccessToken", () => {
+  it("prefers preferred_username", () => {
+    const token = createAccessToken({
+      preferred_username: " user@contoso.com ",
+      upn: "ignored@contoso.com",
+    });
+    expect(readPrincipalNameFromAccessToken(token)).toBe("user@contoso.com");
+  });
+
+  it("falls back to upn and email", () => {
+    const withUpn = createAccessToken({ upn: " upn@contoso.com " });
+    expect(readPrincipalNameFromAccessToken(withUpn)).toBe("upn@contoso.com");
+
+    const withEmail = createAccessToken({ email: " email@contoso.com " });
+    expect(readPrincipalNameFromAccessToken(withEmail)).toBe("email@contoso.com");
+  });
+});
+
+describe("readPrincipalDisplayNameFromAccessToken", () => {
+  it("prefers name claim", () => {
+    const token = createAccessToken({ name: " Azure User ", preferred_username: "user@contoso.com" });
+    expect(readPrincipalDisplayNameFromAccessToken(token)).toBe("Azure User");
+  });
+
+  it("falls back to principal name and appid", () => {
+    const withPrincipalName = createAccessToken({ preferred_username: "user@contoso.com" });
+    expect(readPrincipalDisplayNameFromAccessToken(withPrincipalName)).toBe("user@contoso.com");
+
+    const withAppId = createAccessToken({ appid: " app-id " });
+    expect(readPrincipalDisplayNameFromAccessToken(withAppId)).toBe("app-id");
+  });
+});
+
+describe("readPrincipalTypeFromAccessToken", () => {
+  it("detects user and service principal", () => {
+    const userToken = createAccessToken({ idtyp: "user" });
+    expect(readPrincipalTypeFromAccessToken(userToken)).toBe("user");
+
+    const appToken = createAccessToken({ idtyp: "app" });
+    expect(readPrincipalTypeFromAccessToken(appToken)).toBe("servicePrincipal");
+  });
+
+  it("detects managed identity and unknown types", () => {
+    const managedIdentityToken = createAccessToken({ xms_mirid: "/subscriptions/s/resourceGroups/rg" });
+    expect(readPrincipalTypeFromAccessToken(managedIdentityToken)).toBe("managedIdentity");
+
+    const unknownToken = createAccessToken({});
+    expect(readPrincipalTypeFromAccessToken(unknownToken)).toBe("unknown");
   });
 });
 

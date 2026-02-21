@@ -10,6 +10,14 @@ type AzureConnectionLike = {
   apiVersion: string;
 };
 
+type AzurePrincipalLike = {
+  tenantId: string;
+  principalId: string;
+  displayName: string;
+  principalName: string;
+  principalType: "user" | "servicePrincipal" | "managedIdentity" | "unknown";
+};
+
 type AzureConnectionSectionProps = {
   isAzureAuthRequired: boolean;
   isSending: boolean;
@@ -18,6 +26,7 @@ type AzureConnectionSectionProps = {
   isLoadingAzureConnections: boolean;
   isLoadingAzureDeployments: boolean;
   activeAzureConnection: AzureConnectionLike | null;
+  activeAzurePrincipal: AzurePrincipalLike | null;
   selectedAzureDeploymentName: string;
   isStartingAzureLogout: boolean;
   onAzureLogout: () => void | Promise<void>;
@@ -35,6 +44,7 @@ export function AzureConnectionSection(props: AzureConnectionSectionProps) {
     isLoadingAzureConnections,
     isLoadingAzureDeployments,
     activeAzureConnection,
+    activeAzurePrincipal,
     selectedAzureDeploymentName,
     isStartingAzureLogout,
     onAzureLogout,
@@ -72,11 +82,37 @@ export function AzureConnectionSection(props: AzureConnectionSectionProps) {
                 : "Loading deployments for the selected project..."}
             </p>
           ) : null}
-          {activeAzureConnection ? (
+          {activeAzureConnection || activeAzurePrincipal ? (
             <dl className="azure-connection-summary" aria-label="Active Azure connection details">
+              {activeAzurePrincipal ? (
+                <>
+                  <div className="azure-connection-summary-row">
+                    <dt>Principal</dt>
+                    <dd>{activeAzurePrincipal.displayName || activeAzurePrincipal.principalId}</dd>
+                  </div>
+                  {activeAzurePrincipal.principalName ? (
+                    <div className="azure-connection-summary-row">
+                      <dt>Principal name</dt>
+                      <dd>{activeAzurePrincipal.principalName}</dd>
+                    </div>
+                  ) : null}
+                  <div className="azure-connection-summary-row">
+                    <dt>Principal type</dt>
+                    <dd>{formatPrincipalTypeLabel(activeAzurePrincipal.principalType)}</dd>
+                  </div>
+                  <div className="azure-connection-summary-row">
+                    <dt>Tenant ID</dt>
+                    <dd>{activeAzurePrincipal.tenantId}</dd>
+                  </div>
+                  <div className="azure-connection-summary-row">
+                    <dt>Principal ID</dt>
+                    <dd>{activeAzurePrincipal.principalId}</dd>
+                  </div>
+                </>
+              ) : null}
               <div className="azure-connection-summary-row">
                 <dt>Project</dt>
-                <dd>{activeAzureConnection.projectName}</dd>
+                <dd>{activeAzureConnection?.projectName ?? "Not selected"}</dd>
               </div>
               <div className="azure-connection-summary-row">
                 <dt>Deployment</dt>
@@ -84,17 +120,17 @@ export function AzureConnectionSection(props: AzureConnectionSectionProps) {
               </div>
               <div className="azure-connection-summary-row">
                 <dt>Endpoint</dt>
-                <dd>{activeAzureConnection.baseUrl}</dd>
+                <dd>{activeAzureConnection?.baseUrl ?? "Not selected"}</dd>
               </div>
               <div className="azure-connection-summary-row">
                 <dt>API version</dt>
-                <dd>{activeAzureConnection.apiVersion}</dd>
+                <dd>{activeAzureConnection?.apiVersion ?? "Not selected"}</dd>
               </div>
             </dl>
           ) : (
             <p className="field-hint">No active Azure project.</p>
           )}
-          {activeAzureConnection ? (
+          {activeAzureConnection || activeAzurePrincipal ? (
             <div className="azure-connection-actions">
               <Button
                 type="button"
@@ -121,4 +157,19 @@ export function AzureConnectionSection(props: AzureConnectionSectionProps) {
       )}
     </ConfigSection>
   );
+}
+
+function formatPrincipalTypeLabel(
+  principalType: AzurePrincipalLike["principalType"],
+): string {
+  if (principalType === "servicePrincipal") {
+    return "Service principal";
+  }
+  if (principalType === "managedIdentity") {
+    return "Managed identity";
+  }
+  if (principalType === "user") {
+    return "User";
+  }
+  return "Unknown";
 }

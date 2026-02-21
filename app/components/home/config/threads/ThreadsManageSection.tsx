@@ -1,8 +1,9 @@
 import { FluentUI } from "~/components/home/shared/fluent";
 import { ConfigSection } from "~/components/home/shared/ConfigSection";
+import { LabeledTooltip } from "~/components/home/shared/LabeledTooltip";
 import { StatusMessageList } from "~/components/home/shared/StatusMessageList";
 
-const { Button, Field, Spinner } = FluentUI;
+const { Button, Spinner } = FluentUI;
 
 export type ThreadOption = {
   id: string;
@@ -32,8 +33,6 @@ export function ThreadsManageSection(props: ThreadsManageSectionProps) {
     onActiveThreadChange,
   } = props;
 
-  const selectedThread =
-    threadOptions.find((thread) => thread.id === activeThreadId) ?? null;
   const isThreadSelectionDisabled = isLoadingThreads || isSwitchingThread;
 
   return (
@@ -48,20 +47,23 @@ export function ThreadsManageSection(props: ThreadsManageSectionProps) {
           Loading threads...
         </p>
       ) : null}
-      <Field label="Active Thread">
-        {threadOptions.length === 0 ? (
-          <p className="field-hint">No threads</p>
-        ) : (
-          <div className="threads-active-list" role="list" aria-label="Playground threads">
-            {threadOptions.map((thread) => {
-              const isActive = thread.id === activeThreadId;
-              return (
+      {threadOptions.length === 0 ? (
+        <p className="field-hint">No threads</p>
+      ) : (
+        <div className="threads-active-list" role="list" aria-label="Playground threads">
+          {threadOptions.map((thread) => {
+            const isActive = thread.id === activeThreadId;
+            return (
+              <LabeledTooltip
+                key={thread.id}
+                title={thread.name}
+                lines={buildThreadTooltipLines(thread)}
+                className="threads-active-item-tooltip-target"
+              >
                 <Button
-                  key={thread.id}
                   type="button"
                   appearance={isActive ? "secondary" : "subtle"}
                   className={`threads-active-item${isActive ? " is-active" : ""}`}
-                  title={`Switch to ${thread.name}`}
                   onClick={() => {
                     onActiveThreadChange(thread.id);
                   }}
@@ -79,17 +81,11 @@ export function ThreadsManageSection(props: ThreadsManageSectionProps) {
                     ) : null}
                   </span>
                 </Button>
-              );
-            })}
-          </div>
-        )}
-      </Field>
-      {selectedThread ? (
-        <p className="field-hint">
-          Updated: {formatUpdatedAt(selectedThread.updatedAt)} | Messages: {selectedThread.messageCount} |
-          Connected MCP Servers: {selectedThread.mcpServerCount}
-        </p>
-      ) : null}
+              </LabeledTooltip>
+            );
+          })}
+        </div>
+      )}
       <StatusMessageList messages={[{ intent: "error", text: threadError }]} />
     </ConfigSection>
   );
@@ -102,4 +98,12 @@ function formatUpdatedAt(value: string): string {
   }
 
   return parsed.toLocaleString();
+}
+
+function buildThreadTooltipLines(thread: ThreadOption): string[] {
+  return [
+    `Updated: ${formatUpdatedAt(thread.updatedAt)}`,
+    `Messages: ${thread.messageCount}`,
+    `Connected MCP Servers: ${thread.mcpServerCount}`,
+  ];
 }

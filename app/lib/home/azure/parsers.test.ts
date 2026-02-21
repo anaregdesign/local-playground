@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   readAzureDeploymentList,
+  readAzurePrincipalProfileFromUnknown,
   readAzureProjectList,
   readAzureSelectionFromUnknown,
   readPrincipalIdFromUnknown,
@@ -26,6 +27,69 @@ describe("readPrincipalIdFromUnknown", () => {
   it("returns empty string for non-string values", () => {
     expect(readPrincipalIdFromUnknown(100)).toBe("");
     expect(readPrincipalIdFromUnknown(null)).toBe("");
+  });
+});
+
+describe("readAzurePrincipalProfileFromUnknown", () => {
+  it("returns normalized principal profile when values are valid", () => {
+    expect(
+      readAzurePrincipalProfileFromUnknown(
+        {
+          tenantId: " tenant-a ",
+          principalId: " principal-a ",
+          displayName: " Azure User ",
+          principalName: " user@contoso.com ",
+          principalType: "user",
+        },
+      ),
+    ).toEqual({
+      tenantId: "tenant-a",
+      principalId: "principal-a",
+      displayName: "Azure User",
+      principalName: "user@contoso.com",
+      principalType: "user",
+    });
+  });
+
+  it("uses fallback tenant/principal ids when omitted from payload", () => {
+    expect(
+      readAzurePrincipalProfileFromUnknown(
+        {
+          displayName: "Fallback User",
+          principalType: "servicePrincipal",
+        },
+        "tenant-a",
+        "principal-a",
+      ),
+    ).toEqual({
+      tenantId: "tenant-a",
+      principalId: "principal-a",
+      displayName: "Fallback User",
+      principalName: "",
+      principalType: "servicePrincipal",
+    });
+  });
+
+  it("returns null when tenant and principal are unavailable", () => {
+    expect(readAzurePrincipalProfileFromUnknown({})).toBeNull();
+    expect(readAzurePrincipalProfileFromUnknown("invalid")).toBeNull();
+  });
+
+  it("normalizes unknown principal type and display name fallback", () => {
+    expect(
+      readAzurePrincipalProfileFromUnknown({
+        tenantId: "tenant-a",
+        principalId: "principal-a",
+        principalName: "user@contoso.com",
+        principalType: "external",
+      }),
+    ).toEqual({
+      tenantId: "tenant-a",
+      principalId: "principal-a",
+      displayName: "user@contoso.com",
+      principalName: "user@contoso.com",
+      principalType: "unknown",
+    });
   });
 });
 

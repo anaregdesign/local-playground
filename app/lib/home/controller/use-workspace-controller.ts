@@ -33,10 +33,12 @@ import {
 } from "~/lib/constants";
 import type {
   AzureConnectionOption,
+  AzurePrincipalProfile,
   AzureSelectionPreference,
 } from "~/lib/home/azure/parsers";
 import {
   readAzureDeploymentList,
+  readAzurePrincipalProfileFromUnknown,
   readPrincipalIdFromUnknown,
   readAzureProjectList,
   readAzureSelectionFromUnknown,
@@ -123,6 +125,9 @@ import {
 export function useWorkspaceController() {
   const [azureConnections, setAzureConnections] = useState<AzureConnectionOption[]>([]);
   const [azureDeployments, setAzureDeployments] = useState<string[]>([]);
+  const [activeAzurePrincipal, setActiveAzurePrincipal] = useState<AzurePrincipalProfile | null>(
+    null,
+  );
   const [messages, setMessages] = useState<ChatMessage[]>([...HOME_INITIAL_MESSAGES]);
   const [draft, setDraft] = useState("");
   const [draftAttachments, setDraftAttachments] = useState<DraftChatAttachment[]>([]);
@@ -1347,6 +1352,7 @@ export function useWorkspaceController() {
     activeAzurePrincipalIdRef.current = "";
     activeWorkspaceUserKeyRef.current = "";
     preferredAzureSelectionRef.current = null;
+    setActiveAzurePrincipal(null);
   }
 
   function updateActiveAzureIdentity(tenantId: string, principalId: string): string {
@@ -1388,6 +1394,17 @@ export function useWorkspaceController() {
       const parsedProjects = readAzureProjectList(payload.projects);
       const tenantId = readTenantIdFromUnknown(payload.tenantId);
       const principalId = readPrincipalIdFromUnknown(payload.principalId);
+      const parsedPrincipal =
+        readAzurePrincipalProfileFromUnknown(payload.principal, tenantId, principalId) ??
+        (tenantId && principalId
+          ? {
+              tenantId,
+              principalId,
+              displayName: principalId,
+              principalName: "",
+              principalType: "unknown" as const,
+            }
+          : null);
       const previousWorkspaceUserKey = activeWorkspaceUserKeyRef.current;
       const nextWorkspaceUserKey = updateActiveAzureIdentity(tenantId, principalId);
       if (!nextWorkspaceUserKey) {
@@ -1413,6 +1430,7 @@ export function useWorkspaceController() {
       const preferredProjectId = preferredSelection?.projectId ?? "";
 
       setAzureConnections(parsedProjects);
+      setActiveAzurePrincipal(parsedPrincipal);
       setAzureDeployments([]);
       setIsAzureAuthRequired(payload.authRequired === true ? true : false);
       setAzureConnectionError(null);
@@ -1497,6 +1515,22 @@ export function useWorkspaceController() {
       }
       if (principalIdFromPayload) {
         activeAzurePrincipalIdRef.current = principalIdFromPayload;
+      }
+      const parsedPrincipal = readAzurePrincipalProfileFromUnknown(
+        payload.principal,
+        activeAzureTenantIdRef.current,
+        activeAzurePrincipalIdRef.current,
+      );
+      if (parsedPrincipal) {
+        setActiveAzurePrincipal(parsedPrincipal);
+      } else if (activeAzureTenantIdRef.current && activeAzurePrincipalIdRef.current) {
+        setActiveAzurePrincipal({
+          tenantId: activeAzureTenantIdRef.current,
+          principalId: activeAzurePrincipalIdRef.current,
+          displayName: activeAzurePrincipalIdRef.current,
+          principalName: "",
+          principalType: "unknown",
+        });
       }
 
       const preferredSelection = preferredAzureSelectionRef.current;
@@ -2614,6 +2648,7 @@ export function useWorkspaceController() {
       isLoadingAzureConnections,
       isLoadingAzureDeployments,
       activeAzureConnection,
+      activeAzurePrincipal,
       selectedAzureDeploymentName,
       isStartingAzureLogout,
       onAzureLogout: handleAzureLogout,

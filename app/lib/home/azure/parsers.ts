@@ -7,6 +7,14 @@ export type AzureConnectionOption = {
   apiVersion: string;
 };
 
+export type AzurePrincipalProfile = {
+  tenantId: string;
+  principalId: string;
+  displayName: string;
+  principalName: string;
+  principalType: "user" | "servicePrincipal" | "managedIdentity" | "unknown";
+};
+
 export type AzureSelectionPreference = {
   tenantId: string;
   principalId: string;
@@ -20,6 +28,37 @@ export function readTenantIdFromUnknown(value: unknown): string {
 
 export function readPrincipalIdFromUnknown(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
+}
+
+export function readAzurePrincipalProfileFromUnknown(
+  value: unknown,
+  fallbackTenantId = "",
+  fallbackPrincipalId = "",
+): AzurePrincipalProfile | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const tenantId = readTenantIdFromUnknown(value.tenantId) || fallbackTenantId.trim();
+  const principalId = readPrincipalIdFromUnknown(value.principalId) || fallbackPrincipalId.trim();
+  if (!tenantId || !principalId) {
+    return null;
+  }
+
+  const principalName =
+    typeof value.principalName === "string" ? value.principalName.trim() : "";
+  const displayNameCandidate =
+    typeof value.displayName === "string" ? value.displayName.trim() : "";
+  const displayName = displayNameCandidate || principalName || principalId;
+  const principalType = readAzurePrincipalTypeFromUnknown(value.principalType);
+
+  return {
+    tenantId,
+    principalId,
+    displayName,
+    principalName,
+    principalType,
+  };
 }
 
 export function readAzureSelectionFromUnknown(
@@ -106,6 +145,15 @@ function readAzureProjectFromUnknown(value: unknown): AzureConnectionOption | nu
     baseUrl,
     apiVersion,
   };
+}
+
+function readAzurePrincipalTypeFromUnknown(
+  value: unknown,
+): AzurePrincipalProfile["principalType"] {
+  if (value === "user" || value === "servicePrincipal" || value === "managedIdentity") {
+    return value;
+  }
+  return "unknown";
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

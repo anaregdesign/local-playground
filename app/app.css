@@ -1281,6 +1281,11 @@ body {
   gap: 0.3rem;
 }
 
+.threads-active-item-tooltip-target {
+  display: block;
+  width: 100%;
+}
+
 .threads-active-item.fui-Button {
   width: 100%;
   justify-content: flex-start;
