@@ -44,7 +44,7 @@ npm install
 export CODEX_HOME="${CODEX_HOME:-$HOME/.codex}"
 # install Local Playground skill with Codex standard setup
 mkdir -p "$CODEX_HOME/skills"
-ln -sfn "$(pwd)/skills/local-playground-dev" "$CODEX_HOME/skills/local-playground-dev"
+ln -sfn "$(pwd)/skills/.dev/local-playground-dev" "$CODEX_HOME/skills/local-playground-dev"
 # restart Codex or start a new session after installation
 az login
 npm run dev
@@ -114,6 +114,16 @@ SQLite database:
 
 - `local-playground.sqlite`
 - Stores Azure selection preferences (Playground/Utility) and saved MCP profiles
+
+Skill directories loaded by the app:
+
+- Workspace default skills: `<workspace>/skills/default/`
+- CODEX_HOME shared skills: `$CODEX_HOME/skills/`
+- App data shared skills: `<config-directory>/skills/` (created automatically)
+
+Development-only project skills:
+
+- `<workspace>/skills/.dev/` (for example `local-playground-dev`)
 
 If `APPDATA` is unavailable on Windows, path falls back to:
 

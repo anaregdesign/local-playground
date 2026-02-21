@@ -45,7 +45,12 @@ export function SkillsSection(props: SkillsSectionProps) {
   const selectableSkillItems = skillOptions.map((skill) => ({
     id: skill.location,
     name: skill.name,
-    badge: skill.source === "workspace" ? "Workspace" : "CODEX_HOME",
+    badge:
+      skill.source === "workspace"
+        ? "Workspace"
+        : skill.source === "codex_home"
+          ? "CODEX_HOME"
+          : "App Data",
     description: skill.description,
     detail: skill.location,
     isSelected: skill.isSelected,
@@ -86,7 +91,7 @@ export function SkillsSection(props: SkillsSectionProps) {
       <SelectableCardList
         items={selectableSkillItems}
         listAriaLabel="Thread Skills"
-        emptyHint="No Skills discovered in workspace/CODEX_HOME skills directories."
+        emptyHint="No Skills discovered in workspace default, CODEX_HOME, or app data skills directories."
         isActionDisabled={isSending || isThreadReadOnly}
         onToggleItem={onToggleSkill}
       />

@@ -81,7 +81,7 @@ function readSkillCatalogEntryFromUnknown(value: unknown): SkillCatalogEntry | n
 }
 
 function readSkillCatalogSource(value: unknown): SkillCatalogSource | null {
-  if (value === "workspace" || value === "codex_home") {
+  if (value === "workspace" || value === "codex_home" || value === "app_data") {
     return value;
   }
 

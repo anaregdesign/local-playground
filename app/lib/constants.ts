@@ -34,6 +34,7 @@ export const AZURE_MAX_MODELS_PER_ACCOUNT = 512;
 export const FOUNDRY_LEGACY_CONFIG_DIRECTORY_NAME = ".foundry_local_playground";
 export const FOUNDRY_WINDOWS_CONFIG_DIRECTORY_NAME = "FoundryLocalPlayground";
 export const FOUNDRY_SQLITE_DATABASE_FILE_NAME = "local-playground.sqlite";
+export const FOUNDRY_SKILLS_DIRECTORY_NAME = "skills";
 
 /**
  * Impact scope:
@@ -94,6 +95,7 @@ export const HOME_INITIAL_MESSAGES: ReadonlyArray<never> = [];
  * Changing them affects SKILL.md validation and chat-time skill loading behavior.
  */
 export const AGENT_SKILLS_DIRECTORY_NAME = "skills";
+export const AGENT_DEFAULT_SKILLS_DIRECTORY_NAME = "default";
 export const AGENT_SKILL_NAME_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 export const AGENT_SKILL_NAME_MAX_LENGTH = 64;
 export const AGENT_SKILL_DESCRIPTION_MAX_LENGTH = 1024;

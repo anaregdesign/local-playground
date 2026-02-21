@@ -9,7 +9,7 @@
 - Before starting development, install the project skill with Codex standard setup by placing it under `$CODEX_HOME/skills/`.
 - If `CODEX_HOME` is not set, set it first (example: `export CODEX_HOME="$HOME/.codex"`).
 - Recommended setup command:
-  - `mkdir -p "$CODEX_HOME/skills" && ln -sfn "$(pwd)/skills/local-playground-dev" "$CODEX_HOME/skills/local-playground-dev"`
+  - `mkdir -p "$CODEX_HOME/skills" && ln -sfn "$(pwd)/skills/.dev/local-playground-dev" "$CODEX_HOME/skills/local-playground-dev"`
 - Restart Codex (or start a new session) after installing/updating the skill.
 
 # Implementation Policy
@@ -163,6 +163,10 @@
   - save on client side using save picker/download flow
   - AI enhancement using currently selected Azure project/deployment
   - diff review (adopt enhanced vs keep original)
+- Skill discovery roots for the app runtime:
+  - workspace defaults: `skills/default/`
+  - CODEX_HOME shared skills: `$CODEX_HOME/skills/`
+  - app-data shared skills: `<foundry-config-dir>/skills/` (same parent directory as `local-playground.sqlite`)
 
 ## MCP Server Management
 

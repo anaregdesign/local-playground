@@ -10,14 +10,20 @@ describe("readSkillCatalogList", () => {
       {
         name: "local-playground-dev",
         description: "Local Playground workflow",
-        location: "/repo/skills/local-playground-dev/SKILL.md",
+        location: "/repo/skills/default/local-playground-dev/SKILL.md",
         source: "workspace",
       },
       {
-        name: "duplicate",
-        description: "Duplicate",
-        location: "/repo/skills/local-playground-dev/SKILL.md",
-        source: "workspace",
+        name: "codex-shared",
+        description: "Loaded from CODEX_HOME",
+        location: "/Users/hiroki/.codex/skills/codex-shared/SKILL.md",
+        source: "codex_home",
+      },
+      {
+        name: "shared-skill",
+        description: "Shared from app data",
+        location: "/Users/hiroki/.foundry_local_playground/skills/shared-skill/SKILL.md",
+        source: "app_data",
       },
       {
         name: "invalid",
@@ -28,8 +34,20 @@ describe("readSkillCatalogList", () => {
       {
         name: "local-playground-dev",
         description: "Local Playground workflow",
-        location: "/repo/skills/local-playground-dev/SKILL.md",
+        location: "/repo/skills/default/local-playground-dev/SKILL.md",
         source: "workspace",
+      },
+      {
+        name: "codex-shared",
+        description: "Loaded from CODEX_HOME",
+        location: "/Users/hiroki/.codex/skills/codex-shared/SKILL.md",
+        source: "codex_home",
+      },
+      {
+        name: "shared-skill",
+        description: "Shared from app data",
+        location: "/Users/hiroki/.foundry_local_playground/skills/shared-skill/SKILL.md",
+        source: "app_data",
       },
     ]);
   });
@@ -40,11 +58,11 @@ describe("readThreadSkillSelectionList", () => {
     const result = readThreadSkillSelectionList([
       {
         name: "local-playground-dev",
-        location: "/repo/skills/local-playground-dev/SKILL.md",
+        location: "/repo/skills/default/local-playground-dev/SKILL.md",
       },
       {
         name: "duplicate",
-        location: "/repo/skills/local-playground-dev/SKILL.md",
+        location: "/repo/skills/default/local-playground-dev/SKILL.md",
       },
       {
         name: "",
@@ -55,7 +73,7 @@ describe("readThreadSkillSelectionList", () => {
     expect(result).toEqual([
       {
         name: "local-playground-dev",
-        location: "/repo/skills/local-playground-dev/SKILL.md",
+        location: "/repo/skills/default/local-playground-dev/SKILL.md",
       },
     ]);
   });

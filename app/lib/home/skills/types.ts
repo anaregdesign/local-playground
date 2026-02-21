@@ -1,4 +1,4 @@
-export type SkillCatalogSource = "workspace" | "codex_home";
+export type SkillCatalogSource = "workspace" | "codex_home" | "app_data";
 
 export type SkillCatalogEntry = {
   name: string;
