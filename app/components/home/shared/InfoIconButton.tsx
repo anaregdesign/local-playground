@@ -23,7 +23,7 @@ export function InfoIconButton(props: InfoIconButtonProps) {
       className={buildClassName("info-symbol-btn", className)}
       disabled={disabled}
       onClick={onClick}
-      symbol="i"
+      symbol="ⓘ"
     />
   );
 }

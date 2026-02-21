@@ -403,9 +403,7 @@ body {
 }
 
 .info-symbol-btn .symbol-icon-btn-glyph {
-  font-family: "IBM Plex Mono", "SFMono-Regular", Menlo, monospace;
-  font-weight: 700;
-  transform: translateY(-0.03em);
+  font-weight: 500;
 }
 
 .message-copy-btn {
@@ -1597,19 +1595,7 @@ body {
 }
 
 .field-info-btn {
-  --home-symbol-btn-size: 1.7rem;
-  --home-symbol-glyph-size: 0.88rem;
-  border-radius: var(--home-radius-pill);
   flex-shrink: 0;
-}
-
-.field-info-btn.fui-Button {
-  border: 1px solid rgba(50, 49, 48, 0.14) !important;
-  background: #f6f8fb !important;
-}
-
-.field-info-btn.fui-Button:enabled:hover {
-  background: #ecf1f7 !important;
 }
 
 .field-info-popover {

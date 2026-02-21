@@ -199,7 +199,7 @@ export function McpAddServerSection(props: McpAddServerSectionProps) {
               <Popover withArrow positioning="below-end">
                 <PopoverTrigger disableButtonEnhancement>
                   <InfoIconButton
-                    className="field-info-btn"
+                    className="setting-group-tooltip-icon field-info-btn"
                     ariaLabel="Show Azure authentication behavior details"
                     title="Show Azure authentication behavior details."
                   />
