@@ -6,6 +6,7 @@ It lets you move from prompt testing to MCP request/response debugging in one pl
 ## At A Glance
 
 - Chat playground powered by Agents SDK
+- Thread-level Agent Skills (`SKILL.md`) discovery and activation
 - Separate Azure project/deployment defaults for `Playground` and `Utility Model`
 - MCP server testing (`streamable_http`, `sse`, `stdio`)
 - Inline MCP operation logs (JSON-RPC request/response)
@@ -56,6 +57,7 @@ Open `http://localhost:5173`.
 - Two-pane desktop layout with draggable splitter for chat vs. configuration work
 - Markdown rendering and JSON syntax highlighting for fast response inspection
 - Agent Instruction local file load/save (client-side save dialog) and enhance workflow with diff review
+- Skills panel in `Threads` tab for `agentskills`-compatible `SKILL.md` selection
 - Dedicated `Utility Model` selection (deployment + reasoning effort) for instruction enhancement workflows
 - Per-server MCP headers, Azure auth scope, and timeout controls
 

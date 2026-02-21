@@ -63,8 +63,20 @@ model Thread {
   messages     ThreadMessage[]
   mcpServers   ThreadMcpServer[]
   mcpRpcLogs   ThreadMcpRpcLog[]
+  skillSelections ThreadSkillSelection[]
 
   @@index([userId, updatedAt])
+}
+
+model ThreadSkillSelection {
+  id        String @id
+  threadId  String
+  sortOrder Int
+  skillName String
+  skillPath String
+  thread    Thread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+
+  @@index([threadId, sortOrder])
 }
 
 model ThreadInstruction {

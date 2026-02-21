@@ -17,6 +17,7 @@ import { readThreadSnapshotFromUnknown } from "~/lib/home/thread/parsers";
 import {
   buildThreadMcpRpcLogRowId,
   buildThreadMcpServerRowId,
+  buildThreadSkillSelectionRowId,
 } from "~/lib/home/thread/server-ids";
 import { hasThreadInteraction } from "~/lib/home/thread/snapshot-state";
 import type { ThreadSnapshot } from "~/lib/home/thread/types";
@@ -298,6 +299,11 @@ async function readUserThreads(userId: number): Promise<ThreadSnapshot[]> {
           sortOrder: "asc",
         },
       },
+      skillSelections: {
+        orderBy: {
+          sortOrder: "asc",
+        },
+      },
     },
   });
 
@@ -335,6 +341,11 @@ async function readThreadById(userId: number, threadId: string): Promise<ThreadS
         },
       },
       mcpRpcLogs: {
+        orderBy: {
+          sortOrder: "asc",
+        },
+      },
+      skillSelections: {
         orderBy: {
           sortOrder: "asc",
         },
@@ -523,6 +534,24 @@ async function saveThreadSnapshot(
         })),
       });
     }
+
+    await transaction.threadSkillSelection.deleteMany({
+      where: {
+        threadId: existing.id,
+      },
+    });
+
+    if (snapshot.skillSelections.length > 0) {
+      await transaction.threadSkillSelection.createMany({
+        data: snapshot.skillSelections.map((selection, index) => ({
+          id: buildThreadSkillSelectionRowId(existing.id, index),
+          threadId: existing.id,
+          sortOrder: index,
+          skillName: selection.name,
+          skillPath: selection.location,
+        })),
+      });
+    }
   });
 
   return await readThreadById(userId, existing.id);
@@ -664,6 +693,12 @@ function mapStoredThreadToSnapshot(value: {
     isError: boolean;
     turnId: string;
   }>;
+  skillSelections: Array<{
+    id: string;
+    sortOrder: number;
+    skillName: string;
+    skillPath: string;
+  }>;
 }): ThreadSnapshot | null {
   const parsed = readThreadSnapshotFromUnknown(
     {
@@ -713,6 +748,10 @@ function mapStoredThreadToSnapshot(value: {
         response: readJsonValue(entry.responseJson, null),
         isError: entry.isError,
         turnId: entry.turnId,
+      })),
+      skillSelections: value.skillSelections.map((selection) => ({
+        name: selection.skillName,
+        location: selection.skillPath,
       })),
     },
     {

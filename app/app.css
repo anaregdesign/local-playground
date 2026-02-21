@@ -1176,6 +1176,10 @@ body {
 }
 
 .setting-group-threads-manage {
+  order: 3;
+}
+
+.setting-group-thread-skills {
   order: 2;
 }
 
@@ -1229,6 +1233,97 @@ body {
   display: flex;
   flex-direction: column;
   gap: 0.3rem;
+}
+
+.thread-skills-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.45rem;
+}
+
+.thread-skills-count {
+  margin: 0;
+  font-size: var(--home-font-size-caption);
+  color: var(--text-subtle);
+}
+
+.thread-skills-reload-btn.fui-Button {
+  min-height: 1.75rem;
+}
+
+.thread-skills-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.42rem;
+}
+
+.thread-skill-item {
+  border: 1px solid rgba(31, 63, 86, 0.12);
+  border-radius: var(--home-radius-sm);
+  padding: 0.45rem 0.5rem;
+  background: #fbfdff;
+  display: flex;
+  flex-direction: column;
+  gap: 0.26rem;
+}
+
+.thread-skill-item.is-selected {
+  border-color: rgba(15, 108, 189, 0.35);
+  background: #f5faff;
+}
+
+.thread-skill-item.is-unavailable {
+  border-style: dashed;
+  background: #fdfdfd;
+}
+
+.thread-skill-item-top-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.42rem;
+}
+
+.thread-skill-item-top-row .fui-Checkbox {
+  flex: 1;
+  min-width: 0;
+}
+
+.thread-skill-item-top-row .fui-Checkbox__label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.thread-skill-source {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 1.15rem;
+  padding: 0 0.4rem;
+  border-radius: var(--home-radius-pill);
+  border: 1px solid rgba(49, 94, 135, 0.2);
+  background: #f3f7fc;
+  color: #33546f;
+  font-size: var(--home-font-size-note);
+  font-weight: 600;
+}
+
+.thread-skill-description {
+  margin: 0;
+  font-size: var(--home-font-size-caption);
+  color: var(--text-main);
+  line-height: var(--home-line-height-compact);
+}
+
+.thread-skill-location {
+  margin: 0;
+  font-size: var(--home-font-size-note);
+  color: var(--text-subtle);
+  font-family: "IBM Plex Mono", "SFMono-Regular", Menlo, monospace;
+  line-height: var(--home-line-height-compact);
+  overflow-wrap: anywhere;
 }
 
 .threads-action-row {

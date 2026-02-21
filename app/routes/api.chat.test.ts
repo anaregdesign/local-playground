@@ -6,6 +6,7 @@ const {
   readTemperature,
   readAttachments,
   hasNonPdfAttachments,
+  readSkills,
   readMcpServers,
   buildMcpHttpRequestHeaders,
   normalizeMcpMetaNulls,
@@ -250,6 +251,45 @@ describe("readMcpServers", () => {
       ok: false,
       error:
         'mcpServers[0].headers cannot include "Content-Type". It is fixed to "application/json".',
+    });
+  });
+});
+
+describe("readSkills", () => {
+  it("parses skill selections and de-duplicates locations", () => {
+    const result = readSkills({
+      skills: [
+        {
+          name: "local-playground-dev",
+          location: "/Users/hiroki/projects/local-playground/skills/local-playground-dev/SKILL.md",
+        },
+        {
+          name: "local-playground-dev",
+          location: "/Users/hiroki/projects/local-playground/skills/local-playground-dev/SKILL.md",
+        },
+      ],
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      value: [
+        {
+          name: "local-playground-dev",
+          location: "/Users/hiroki/projects/local-playground/skills/local-playground-dev/SKILL.md",
+        },
+      ],
+    });
+  });
+
+  it("rejects invalid payloads", () => {
+    expect(readSkills({ skills: "invalid" })).toEqual({
+      ok: false,
+      error: "`skills` must be an array.",
+    });
+
+    expect(readSkills({ skills: [{ location: "/tmp/SKILL.md" }] })).toEqual({
+      ok: false,
+      error: "skills[0].name is required.",
     });
   });
 });

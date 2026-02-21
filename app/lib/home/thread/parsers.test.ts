@@ -49,6 +49,12 @@ describe("readThreadSnapshotFromUnknown", () => {
           turnId: "turn-1",
         },
       ],
+      skillSelections: [
+        {
+          name: "local-playground-dev",
+          location: "/Users/hiroki/projects/local-playground/skills/local-playground-dev/SKILL.md",
+        },
+      ],
     });
 
     expect(parsed).not.toBeNull();
@@ -83,6 +89,7 @@ describe("readThreadSnapshotList", () => {
         updatedAt: "2026-02-20T00:00:00.000Z",
         deletedAt: null,
         agentInstruction: "Instruction",
+        skillSelections: [],
       },
       {
         id: "thread-1",
@@ -91,6 +98,7 @@ describe("readThreadSnapshotList", () => {
         updatedAt: "2026-02-20T00:00:00.000Z",
         deletedAt: null,
         agentInstruction: "Instruction",
+        skillSelections: [],
       },
       {
         id: "",
@@ -131,6 +139,7 @@ describe("buildThreadSummary", () => {
         },
       ],
       mcpRpcHistory: [],
+      skillSelections: [],
     });
 
     expect(summary).toEqual({

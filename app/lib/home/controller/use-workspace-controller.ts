@@ -107,6 +107,7 @@ import {
   cloneMcpRpcHistory,
   cloneMcpServers,
   cloneMessages,
+  cloneThreadSkillSelections,
   hasThreadInteraction,
   upsertThreadSnapshot,
 } from "~/lib/home/thread/snapshot-state";
@@ -115,6 +116,8 @@ import {
   normalizeThreadAutoTitle,
 } from "~/lib/home/thread/title";
 import type { ThreadSnapshot, ThreadSummary } from "~/lib/home/thread/types";
+import { readSkillCatalogList } from "~/lib/home/skills/parsers";
+import type { SkillCatalogEntry, ThreadSkillSelection } from "~/lib/home/skills/types";
 import { copyTextToClipboard } from "~/lib/home/shared/clipboard";
 import { getFileExtension } from "~/lib/home/shared/files";
 import { createId } from "~/lib/home/shared/ids";
@@ -125,6 +128,7 @@ import {
   type AzureSelectionApiResponse,
   type InstructionEnhanceComparison,
   type McpServersApiResponse,
+  type SkillsApiResponse,
   type ThreadRequestState,
   type ThreadTitleApiResponse,
   type ThreadsApiResponse,
@@ -218,6 +222,11 @@ export function useWorkspaceController() {
   const [isDeletingThread, setIsDeletingThread] = useState(false);
   const [isRestoringThread, setIsRestoringThread] = useState(false);
   const [threadError, setThreadError] = useState<string | null>(null);
+  const [availableSkills, setAvailableSkills] = useState<SkillCatalogEntry[]>([]);
+  const [selectedThreadSkills, setSelectedThreadSkills] = useState<ThreadSkillSelection[]>([]);
+  const [isLoadingSkills, setIsLoadingSkills] = useState(false);
+  const [skillsError, setSkillsError] = useState<string | null>(null);
+  const [skillsWarning, setSkillsWarning] = useState<string | null>(null);
   const [rightPaneWidth, setRightPaneWidth] = useState(420);
   const [activeResizeHandle, setActiveResizeHandle] = useState<"main" | null>(null);
   const endOfMessagesRef = useRef<HTMLDivElement | null>(null);
@@ -303,6 +312,38 @@ export function useWorkspaceController() {
     instructionEnhancingThreadId === activeThreadId;
   const activeThreadSummaries = threadSummaries.filter((thread) => thread.deletedAt === null);
   const archivedThreadSummaries = threadSummaries.filter((thread) => thread.deletedAt !== null);
+  const selectedThreadSkillLocationSet = new Set(
+    selectedThreadSkills.map((selection) => selection.location),
+  );
+  const availableSkillByLocation = new Map(
+    availableSkills.map((skill) => [skill.location, skill] as const),
+  );
+  const threadSkillOptions = [
+    ...availableSkills.map((skill) => ({
+      name: skill.name,
+      description: skill.description,
+      location: skill.location,
+      source: skill.source,
+      isSelected: selectedThreadSkillLocationSet.has(skill.location),
+      isAvailable: true,
+    })),
+    ...selectedThreadSkills
+      .filter((selection) => !availableSkillByLocation.has(selection.location))
+      .map((selection) => ({
+        name: selection.name,
+        description: "Saved for this thread, but the SKILL.md file is currently unavailable.",
+        location: selection.location,
+        source: "workspace" as const,
+        isSelected: true,
+        isAvailable: false,
+      })),
+  ].sort((left, right) => {
+    if (left.isSelected !== right.isSelected) {
+      return left.isSelected ? -1 : 1;
+    }
+
+    return left.name.localeCompare(right.name);
+  });
   const canSendMessage =
     !isSending &&
     !isSwitchingThread &&
@@ -415,6 +456,10 @@ export function useWorkspaceController() {
 
   useEffect(() => {
     void loadAzureConnections();
+  }, []);
+
+  useEffect(() => {
+    void loadAvailableSkills();
   }, []);
 
   useEffect(() => {
@@ -682,6 +727,7 @@ export function useWorkspaceController() {
     messages,
     mcpServers,
     mcpRpcHistory,
+    selectedThreadSkills,
     threads,
     isSending,
     isSwitchingThread,
@@ -866,6 +912,40 @@ export function useWorkspaceController() {
     }
   }
 
+  async function loadAvailableSkills(options: {
+    clearStatus?: boolean;
+  } = {}): Promise<void> {
+    if (options.clearStatus !== false) {
+      setSkillsError(null);
+      setSkillsWarning(null);
+    }
+    setIsLoadingSkills(true);
+
+    try {
+      const response = await fetch("/api/skills", {
+        method: "GET",
+      });
+      const payload = (await response.json()) as SkillsApiResponse;
+      if (!response.ok) {
+        throw new Error(payload.error || "Failed to load Skills.");
+      }
+
+      const parsedSkills = readSkillCatalogList(payload.skills);
+      const warnings = readStringList(payload.warnings);
+      setAvailableSkills(parsedSkills);
+      setSkillsError(null);
+      setSkillsWarning(warnings.length > 0 ? warnings.slice(0, 2).join("\n") : null);
+    } catch (loadError) {
+      logHomeError("load_skills_failed", loadError, {
+        action: "load_skills",
+      });
+      setAvailableSkills([]);
+      setSkillsError(loadError instanceof Error ? loadError.message : "Failed to load Skills.");
+    } finally {
+      setIsLoadingSkills(false);
+    }
+  }
+
   function clearSavedMcpLoginRetryTimeout() {
     const timeoutId = savedMcpLoginRetryTimeoutRef.current;
     if (timeoutId !== null) {
@@ -951,6 +1031,7 @@ export function useWorkspaceController() {
     setMessages([...HOME_INITIAL_MESSAGES]);
     setMcpRpcHistory([]);
     setMcpServers([]);
+    setSelectedThreadSkills([]);
     setAgentInstruction(DEFAULT_AGENT_INSTRUCTION);
     setLoadedInstructionFileName(null);
     setInstructionFileError(null);
@@ -1054,6 +1135,7 @@ export function useWorkspaceController() {
       messages: [],
       mcpServers: [],
       mcpRpcHistory: [],
+      skillSelections: [],
     };
   }
 
@@ -1072,6 +1154,7 @@ export function useWorkspaceController() {
       messages: cloneMessages(messages),
       mcpServers: cloneMcpServers(mcpServers),
       mcpRpcHistory: cloneMcpRpcHistory(mcpRpcHistory),
+      skillSelections: cloneThreadSkillSelections(selectedThreadSkills),
     };
   }
 
@@ -1144,6 +1227,7 @@ export function useWorkspaceController() {
     const clonedMessages = cloneMessages(thread.messages);
     const clonedMcpServers = cloneMcpServers(thread.mcpServers);
     const clonedMcpRpcHistory = cloneMcpRpcHistory(thread.mcpRpcHistory);
+    const clonedSkillSelections = cloneThreadSkillSelections(thread.skillSelections);
 
     activeThreadIdRef.current = thread.id;
     setActiveThreadId(thread.id);
@@ -1151,6 +1235,7 @@ export function useWorkspaceController() {
     setMessages(clonedMessages);
     setMcpServers(clonedMcpServers);
     setMcpRpcHistory(clonedMcpRpcHistory);
+    setSelectedThreadSkills(clonedSkillSelections);
     setAgentInstruction(thread.agentInstruction);
     setLoadedInstructionFileName(null);
     setInstructionFileError(null);
@@ -2453,6 +2538,7 @@ export function useWorkspaceController() {
       ({ id: _id, ...attachment }) => attachment,
     );
     const requestMcpServers = cloneMcpServers(mcpServers);
+    const requestSkillSelections = cloneThreadSkillSelections(selectedThreadSkills);
     const requestAgentInstruction = agentInstruction;
     const userMessage: ChatMessage = createMessage(
       "user",
@@ -2517,6 +2603,7 @@ export function useWorkspaceController() {
           },
           reasoningEffort,
           agentInstruction: requestAgentInstruction,
+          skills: requestSkillSelections,
           mcpServers: requestMcpServers.map((server) =>
             server.transport === "stdio"
               ? {
@@ -2589,6 +2676,7 @@ export function useWorkspaceController() {
           turnId,
           messageLength: content.length,
           attachmentCount: requestAttachments.length,
+          skillSelectionCount: requestSkillSelections.length,
         },
       });
       updateThreadRequestState(threadId, (current) => ({
@@ -2678,6 +2766,38 @@ export function useWorkspaceController() {
   function handleReloadSavedMcpServers() {
     setSavedMcpError(null);
     void loadSavedMcpServers();
+  }
+
+  function handleReloadSkills() {
+    void loadAvailableSkills();
+  }
+
+  function handleToggleThreadSkill(locationRaw: string) {
+    const location = locationRaw.trim();
+    if (!location) {
+      return;
+    }
+
+    setSelectedThreadSkills((current) => {
+      const existingIndex = current.findIndex((selection) => selection.location === location);
+      if (existingIndex >= 0) {
+        return current.filter((selection) => selection.location !== location);
+      }
+
+      const skill = availableSkillByLocation.get(location);
+      if (!skill) {
+        return current;
+      }
+
+      return [
+        ...current,
+        {
+          name: skill.name,
+          location: skill.location,
+        },
+      ];
+    });
+    setSkillsError(null);
   }
 
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -3657,6 +3777,20 @@ export function useWorkspaceController() {
       onAdoptEnhancedInstruction: handleAdoptEnhancedInstruction,
       onAdoptOriginalInstruction: handleAdoptOriginalInstruction,
     },
+    skillsSectionProps: {
+      skillOptions: threadSkillOptions,
+      selectedSkillCount: selectedThreadSkills.length,
+      isLoadingSkills,
+      isSending,
+      isThreadReadOnly: isActiveThreadArchived,
+      skillsError,
+      skillsWarning,
+      onReloadSkills: handleReloadSkills,
+      onToggleSkill: handleToggleThreadSkill,
+      onClearSkillsWarning: () => {
+        setSkillsWarning(null);
+      },
+    },
     activeThreadOptions: activeThreadSummaries.map((thread) => {
       const isActiveThread = thread.id === activeThreadId;
       return {
@@ -3773,6 +3907,28 @@ export function useWorkspaceController() {
     },
     playgroundPanelProps,
   };
+}
+
+function readStringList(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const result: string[] = [];
+  for (const entry of value) {
+    if (typeof entry !== "string") {
+      continue;
+    }
+
+    const normalized = entry.trim();
+    if (!normalized) {
+      continue;
+    }
+
+    result.push(normalized);
+  }
+
+  return result;
 }
 
 function isLikelyChatAzureAuthError(message: string | null): boolean {

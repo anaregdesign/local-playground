@@ -1,6 +1,7 @@
 import type { McpServerConfig } from "~/lib/home/mcp/profile";
 import type { ChatMessage } from "~/lib/home/chat/messages";
 import type { McpRpcHistoryEntry } from "~/lib/home/chat/stream";
+import type { ThreadSkillSelection } from "~/lib/home/skills/types";
 import type { ThreadSnapshot } from "~/lib/home/thread/types";
 
 export function cloneMessages(value: ChatMessage[]): ChatMessage[] {
@@ -31,6 +32,12 @@ export function cloneMcpRpcHistory(value: McpRpcHistoryEntry[]): McpRpcHistoryEn
   }));
 }
 
+export function cloneThreadSkillSelections(value: ThreadSkillSelection[]): ThreadSkillSelection[] {
+  return value.map((entry) => ({
+    ...entry,
+  }));
+}
+
 export function buildThreadSaveSignature(snapshot: ThreadSnapshot): string {
   return JSON.stringify({
     name: snapshot.name,
@@ -39,6 +46,7 @@ export function buildThreadSaveSignature(snapshot: ThreadSnapshot): string {
     messages: snapshot.messages,
     mcpServers: snapshot.mcpServers,
     mcpRpcHistory: snapshot.mcpRpcHistory,
+    skillSelections: snapshot.skillSelections,
   });
 }
 

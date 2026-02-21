@@ -90,6 +90,18 @@ export const HOME_INITIAL_MESSAGES: ReadonlyArray<never> = [];
 
 /**
  * Impact scope:
+ * These constants define Agent Skills discovery and runtime activation limits.
+ * Changing them affects SKILL.md validation and chat-time skill loading behavior.
+ */
+export const AGENT_SKILLS_DIRECTORY_NAME = "skills";
+export const AGENT_SKILL_NAME_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+export const AGENT_SKILL_NAME_MAX_LENGTH = 64;
+export const AGENT_SKILL_DESCRIPTION_MAX_LENGTH = 1024;
+export const AGENT_SKILL_FILE_MAX_BYTES = 1_000_000;
+export const CHAT_MAX_ACTIVE_SKILLS = 24;
+
+/**
+ * Impact scope:
  * These constants define MCP server validation, parsing, and display behavior.
  * Changing them affects both API-side payload validation and home-side form checks.
  */

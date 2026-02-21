@@ -1,5 +1,6 @@
 import type { ComponentProps } from "react";
 import { InstructionSection } from "~/components/home/config/threads/InstructionSection";
+import { SkillsSection } from "~/components/home/config/threads/SkillsSection";
 import {
   ThreadsManageSection,
   type ThreadsManageSectionProps,
@@ -9,6 +10,7 @@ import type { MainViewTab } from "~/lib/home/shared/view-types";
 type ThreadsTabProps = {
   activeMainTab: MainViewTab;
   instructionSectionProps: ComponentProps<typeof InstructionSection>;
+  skillsSectionProps: ComponentProps<typeof SkillsSection>;
 } & ThreadsManageSectionProps;
 
 export function ThreadsTab(props: ThreadsTabProps) {
@@ -29,6 +31,7 @@ export function ThreadsTab(props: ThreadsTabProps) {
     onThreadDelete,
     onThreadRestore,
     instructionSectionProps,
+    skillsSectionProps,
   } = props;
 
   return (
@@ -42,6 +45,7 @@ export function ThreadsTab(props: ThreadsTabProps) {
     >
       <div className="threads-content">
         <InstructionSection {...instructionSectionProps} />
+        <SkillsSection {...skillsSectionProps} />
         <ThreadsManageSection
           activeThreadOptions={activeThreadOptions}
           archivedThreadOptions={archivedThreadOptions}

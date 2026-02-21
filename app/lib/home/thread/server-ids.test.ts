@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildThreadMcpRpcLogRowId,
   buildThreadMcpServerRowId,
+  buildThreadSkillSelectionRowId,
   normalizeThreadMcpRpcLogSourceId,
   normalizeThreadMcpServerSourceId,
 } from "~/lib/home/thread/server-ids";
@@ -59,5 +60,12 @@ describe("buildThreadMcpRpcLogRowId", () => {
 
     expect(first).toBe("thread:thread-1:rpc:0:rpc-origin");
     expect(second).toBe(first);
+  });
+});
+
+describe("buildThreadSkillSelectionRowId", () => {
+  it("builds deterministic row ids from thread id and order", () => {
+    expect(buildThreadSkillSelectionRowId("thread-1", 0)).toBe("thread:thread-1:skill:0");
+    expect(buildThreadSkillSelectionRowId("thread-1", 3)).toBe("thread:thread-1:skill:3");
   });
 });

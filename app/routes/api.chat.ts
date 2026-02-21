@@ -37,10 +37,12 @@ import {
   CHAT_ATTACHMENT_MAX_PDF_TOTAL_SIZE_BYTES,
   CHAT_ATTACHMENT_MAX_TOTAL_SIZE_BYTES,
   CHAT_MAX_AGENT_INSTRUCTION_LENGTH,
+  CHAT_MAX_ACTIVE_SKILLS,
   CHAT_MAX_RUN_TURNS,
   CHAT_MAX_MCP_SERVERS,
   CHAT_MODEL_RUN_TIMEOUT_MS,
   DEFAULT_AGENT_INSTRUCTION,
+  AGENT_SKILL_NAME_MAX_LENGTH,
   ENV_KEY_PATTERN,
   HTTP_HEADER_NAME_PATTERN,
   MCP_AZURE_AUTH_SCOPE_MAX_LENGTH,
@@ -57,6 +59,8 @@ import {
   TEMPERATURE_MIN,
 } from "~/lib/constants";
 import type { AzureDependencies } from "~/lib/azure/dependencies";
+import type { SkillCatalogEntry, ThreadSkillSelection } from "~/lib/home/skills/types";
+import { discoverSkillCatalog, readSkillMarkdown } from "~/lib/server/skills/catalog";
 
 type ChatRole = "user" | "assistant";
 
@@ -93,6 +97,7 @@ type ClientMcpStdioServerConfig = {
   env: Record<string, string>;
 };
 type ClientMcpServerConfig = ClientMcpHttpServerConfig | ClientMcpStdioServerConfig;
+type ClientSkillSelection = ThreadSkillSelection;
 
 type ParseResult<T> = { ok: true; value: T } | { ok: false; error: string };
 type ResolvedAzureConfig = {
@@ -112,6 +117,7 @@ type ChatExecutionOptions = {
   reasoningEffort: ReasoningEffort;
   temperature: number | null;
   agentInstruction: string;
+  skills: ClientSkillSelection[];
   azureConfig: ResolvedAzureConfig;
   mcpServers: ClientMcpServerConfig[];
 };
@@ -183,6 +189,17 @@ type ChatStreamPayload =
       error: string;
       errorCode?: "azure_login_required";
     };
+type ActiveSkillRuntimeEntry = {
+  name: string;
+  description: string;
+  location: string;
+  content: string;
+};
+type SkillRuntimeContext = {
+  availableSkills: SkillCatalogEntry[];
+  activeSkills: ActiveSkillRuntimeEntry[];
+  warnings: string[];
+};
 
 let codeInterpreterAttachmentAvailabilityCache: CodeInterpreterAttachmentAvailabilityCache | null =
   null;
@@ -280,6 +297,20 @@ export async function action({ request }: Route.ActionArgs) {
     return Response.json({ error: temperatureResult.error }, { status: 400 });
   }
   const agentInstruction = readAgentInstruction(payload);
+  const skillsResult = readSkills(payload);
+  if (!skillsResult.ok) {
+    await logServerRouteEvent({
+      request,
+      route: "/api/chat",
+      eventName: "invalid_skills_payload",
+      action: "validate_payload",
+      level: "warning",
+      statusCode: 400,
+      message: skillsResult.error,
+    });
+
+    return Response.json({ error: skillsResult.error }, { status: 400 });
+  }
   const azureConfigResult = readAzureConfig(payload);
   if (!azureConfigResult.ok) {
     await logServerRouteEvent({
@@ -340,6 +371,7 @@ export async function action({ request }: Route.ActionArgs) {
     reasoningEffort,
     temperature: temperatureResult.value,
     agentInstruction,
+    skills: skillsResult.value,
     azureConfig,
     mcpServers: mcpServersResult.value,
   };
@@ -503,6 +535,14 @@ async function executeChat(
       });
     }
 
+    const skillRuntime = await buildSkillRuntimeContext(options.skills);
+    const skillWarnings = collectSkillRuntimeWarnings(skillRuntime);
+    if (skillWarnings.length > 0) {
+      emitProgress({
+        message: `Skill loading warnings: ${skillWarnings.slice(0, 2).join(" / ")}`,
+      });
+    }
+
     emitProgress({ message: "Initializing model and agent..." });
 
     const model = new OpenAIResponsesModel(
@@ -550,7 +590,7 @@ async function executeChat(
 
     const agent = new Agent({
       name: "LocalPlaygroundAgent",
-      instructions: options.agentInstruction,
+      instructions: buildAgentInstructionWithSkills(options.agentInstruction, skillRuntime),
       model,
       modelSettings: {
         ...(options.temperature !== null ? { temperature: options.temperature } : {}),
@@ -1401,6 +1441,65 @@ function readAgentInstruction(payload: unknown): string {
   }
 
   return trimmed.slice(0, CHAT_MAX_AGENT_INSTRUCTION_LENGTH);
+}
+
+function readSkills(payload: unknown): ParseResult<ClientSkillSelection[]> {
+  if (!isRecord(payload) || payload.skills === undefined) {
+    return { ok: true, value: [] };
+  }
+
+  const value = payload.skills;
+  if (!Array.isArray(value)) {
+    return { ok: false, error: "`skills` must be an array." };
+  }
+
+  if (value.length > CHAT_MAX_ACTIVE_SKILLS) {
+    return {
+      ok: false,
+      error: `You can enable up to ${CHAT_MAX_ACTIVE_SKILLS} Skills per message.`,
+    };
+  }
+
+  const result: ClientSkillSelection[] = [];
+  const seenLocations = new Set<string>();
+  for (const [index, entry] of value.entries()) {
+    if (!isRecord(entry)) {
+      return { ok: false, error: `skills[${index}] is invalid.` };
+    }
+
+    const name = typeof entry.name === "string" ? entry.name.trim() : "";
+    const location = typeof entry.location === "string" ? entry.location.trim() : "";
+    if (!name) {
+      return { ok: false, error: `skills[${index}].name is required.` };
+    }
+    if (name.length > AGENT_SKILL_NAME_MAX_LENGTH) {
+      return {
+        ok: false,
+        error: `skills[${index}].name must be ${AGENT_SKILL_NAME_MAX_LENGTH} characters or fewer.`,
+      };
+    }
+    if (!location) {
+      return { ok: false, error: `skills[${index}].location is required.` };
+    }
+    if (location.length > 4096) {
+      return { ok: false, error: `skills[${index}].location is too long.` };
+    }
+
+    if (seenLocations.has(location)) {
+      continue;
+    }
+
+    seenLocations.add(location);
+    result.push({
+      name,
+      location,
+    });
+  }
+
+  return {
+    ok: true,
+    value: result,
+  };
 }
 
 function readAzureConfig(payload: unknown): ParseResult<ResolvedAzureConfig> {
@@ -2259,6 +2358,130 @@ function describeMcpServer(config: ClientMcpServerConfig): string {
     : `${config.url} (timeout: ${config.timeoutSeconds}s)`;
 }
 
+async function buildSkillRuntimeContext(
+  selectedSkills: ClientSkillSelection[],
+): Promise<SkillRuntimeContext> {
+  let availableSkills: SkillCatalogEntry[] = [];
+  let warnings: string[] = [];
+  try {
+    const discovery = await discoverSkillCatalog();
+    availableSkills = discovery.skills;
+    warnings = [...discovery.warnings];
+  } catch (error) {
+    warnings = [`Failed to discover skills: ${readErrorMessage(error)}`];
+  }
+  if (selectedSkills.length === 0) {
+    return {
+      availableSkills,
+      activeSkills: [],
+      warnings,
+    };
+  }
+
+  const availableSkillByLocation = new Map(
+    availableSkills.map((skill) => [skill.location, skill] as const),
+  );
+  const activeSkills: ActiveSkillRuntimeEntry[] = [];
+  for (const selectedSkill of selectedSkills) {
+    const availableSkill = availableSkillByLocation.get(selectedSkill.location);
+    if (!availableSkill) {
+      warnings.push(`Skill not found: ${selectedSkill.name}`);
+      continue;
+    }
+
+    try {
+      const content = (await readSkillMarkdown(availableSkill.location)).trim();
+      if (!content) {
+        warnings.push(`Skill is empty and was skipped: ${availableSkill.name}`);
+        continue;
+      }
+
+      activeSkills.push({
+        name: availableSkill.name,
+        description: availableSkill.description,
+        location: availableSkill.location,
+        content,
+      });
+    } catch (error) {
+      warnings.push(`Failed to load Skill ${availableSkill.name}: ${readErrorMessage(error)}`);
+    }
+  }
+
+  return {
+    availableSkills,
+    activeSkills,
+    warnings,
+  };
+}
+
+function collectSkillRuntimeWarnings(runtime: SkillRuntimeContext): string[] {
+  return runtime.warnings
+    .map((warning) => warning.trim())
+    .filter((warning) => warning.length > 0);
+}
+
+function buildAgentInstructionWithSkills(
+  baseInstruction: string,
+  runtime: SkillRuntimeContext,
+): string {
+  const normalizedBaseInstruction = baseInstruction.trim() || DEFAULT_AGENT_INSTRUCTION;
+  if (runtime.availableSkills.length === 0 && runtime.activeSkills.length === 0) {
+    return normalizedBaseInstruction;
+  }
+
+  const lines: string[] = [
+    normalizedBaseInstruction,
+    "",
+    "<skills_context>",
+    "The runtime supports agentskills-compatible SKILL.md files.",
+  ];
+
+  if (runtime.availableSkills.length > 0) {
+    const availableSkillsForPrompt = runtime.availableSkills.slice(0, 60);
+    lines.push("<available_skills>");
+    for (const skill of availableSkillsForPrompt) {
+      lines.push(
+        `- ${skill.name}: ${truncateSkillDescription(skill.description)} (${skill.location})`,
+      );
+    }
+    if (runtime.availableSkills.length > availableSkillsForPrompt.length) {
+      lines.push(
+        `- ...and ${runtime.availableSkills.length - availableSkillsForPrompt.length} more skills.`,
+      );
+    }
+    lines.push("</available_skills>");
+  }
+
+  if (runtime.activeSkills.length > 0) {
+    lines.push("<active_skills>");
+    for (const skill of runtime.activeSkills) {
+      lines.push(`<<<ACTIVE_SKILL name="${skill.name}" location="${skill.location}">>>`);
+      lines.push(skill.content);
+      lines.push("<<<END_ACTIVE_SKILL>>>");
+    }
+    lines.push("</active_skills>");
+    lines.push(
+      "Follow active skills as additional instructions. If skills conflict, the most specific active skill should win unless it violates system safety.",
+    );
+  } else {
+    lines.push(
+      "No active skills were selected for this turn. Continue using the base instruction.",
+    );
+  }
+
+  lines.push("</skills_context>");
+  return lines.join("\n");
+}
+
+function truncateSkillDescription(value: string): string {
+  const normalized = value.trim().replace(/\s+/g, " ");
+  if (normalized.length <= 220) {
+    return normalized;
+  }
+
+  return `${normalized.slice(0, 217)}...`;
+}
+
 function readProgressEventFromRunStreamEvent(
   event: unknown,
   hasMcpServers: boolean,
@@ -2462,6 +2685,7 @@ export const chatRouteTestUtils = {
   readTemperature,
   readAttachments,
   hasNonPdfAttachments,
+  readSkills,
   readMcpServers,
   buildMcpHttpRequestHeaders,
   normalizeMcpMetaNulls,
