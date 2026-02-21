@@ -16,6 +16,7 @@ export type AzureActionApiResponse = {
 export type AzureConnectionsApiResponse = {
   projects?: unknown;
   deployments?: unknown;
+  principal?: unknown;
   tenantId?: unknown;
   principalId?: unknown;
   authRequired?: boolean;

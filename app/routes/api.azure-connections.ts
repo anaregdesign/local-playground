@@ -4,6 +4,7 @@ import {
 } from "~/lib/azure/dependencies";
 import {
   AZURE_COGNITIVE_API_VERSION,
+  AZURE_GRAPH_SCOPE,
   AZURE_MAX_ACCOUNTS_PER_SUBSCRIPTION,
   AZURE_MAX_DEPLOYMENTS_PER_ACCOUNT,
   AZURE_MAX_MODELS_PER_ACCOUNT,
@@ -13,6 +14,7 @@ import {
 } from "~/lib/constants";
 import {
   readAzureArmUserContext,
+  type AzurePrincipalType,
 } from "~/lib/server/auth/azure-user";
 import {
   installGlobalServerErrorLogging,
@@ -72,6 +74,21 @@ type ArmAccountModel = {
   model?: ArmModelInfo;
 };
 
+type AzurePrincipalProfile = {
+  tenantId: string;
+  principalId: string;
+  displayName: string;
+  principalName: string;
+  principalType: AzurePrincipalType;
+};
+
+type GraphMeResponse = {
+  id?: string;
+  displayName?: string;
+  userPrincipalName?: string;
+  mail?: string;
+};
+
 export async function loader({ request }: Route.LoaderArgs) {
   installGlobalServerErrorLogging();
 
@@ -79,7 +96,8 @@ export async function loader({ request }: Route.LoaderArgs) {
     return Response.json({ error: "Method not allowed." }, { status: 405 });
   }
 
-  const tokenResult = await getArmAccessToken();
+  const dependencies = getAzureDependencies();
+  const tokenResult = await getArmAccessToken(dependencies);
   if (!tokenResult.ok) {
     return Response.json(
       {
@@ -92,12 +110,14 @@ export async function loader({ request }: Route.LoaderArgs) {
 
   const url = new URL(request.url);
   const projectId = url.searchParams.get("projectId")?.trim() ?? "";
+  const principal = await resolveAzurePrincipalProfile(tokenResult, dependencies);
 
   try {
     if (!projectId) {
       const projects = await listAzureProjects(tokenResult.token);
       return Response.json({
         projects,
+        principal,
         tenantId: tokenResult.tenantId,
         principalId: tokenResult.principalId,
         authRequired: false,
@@ -125,6 +145,7 @@ export async function loader({ request }: Route.LoaderArgs) {
     const deployments = await listProjectDeployments(tokenResult.token, projectRef);
     return Response.json({
       deployments,
+      principal,
       tenantId: tokenResult.tenantId,
       principalId: tokenResult.principalId,
       authRequired: false,
@@ -548,9 +569,21 @@ function parseResourceGroupFromResourceId(resourceId: string): string {
   return match?.[1] ?? "";
 }
 
+type ArmAccessTokenResult =
+  | {
+      ok: true;
+      token: string;
+      tenantId: string;
+      principalId: string;
+      displayName: string;
+      principalName: string;
+      principalType: AzurePrincipalType;
+    }
+  | { ok: false };
+
 async function getArmAccessToken(
   dependencies: AzureDependencies = getAzureDependencies(),
-): Promise<{ ok: true; token: string; tenantId: string; principalId: string } | { ok: false }> {
+): Promise<ArmAccessTokenResult> {
   const userContext = await readAzureArmUserContext(dependencies);
   if (!userContext) {
     return { ok: false };
@@ -561,6 +594,91 @@ async function getArmAccessToken(
     token: userContext.token,
     tenantId: userContext.tenantId,
     principalId: userContext.principalId,
+    displayName: userContext.displayName,
+    principalName: userContext.principalName,
+    principalType: userContext.principalType,
+  };
+}
+
+async function resolveAzurePrincipalProfile(
+  accessContext: Extract<ArmAccessTokenResult, { ok: true }>,
+  dependencies: AzureDependencies,
+): Promise<AzurePrincipalProfile> {
+  const fallbackProfile: AzurePrincipalProfile = {
+    tenantId: accessContext.tenantId,
+    principalId: accessContext.principalId,
+    displayName: accessContext.displayName,
+    principalName: accessContext.principalName,
+    principalType: accessContext.principalType,
+  };
+
+  if (
+    accessContext.principalType === "servicePrincipal" ||
+    accessContext.principalType === "managedIdentity"
+  ) {
+    return normalizeAzurePrincipalProfile(fallbackProfile);
+  }
+
+  let graphToken = "";
+  try {
+    graphToken = await dependencies.getAzureBearerToken(AZURE_GRAPH_SCOPE);
+  } catch {
+    return normalizeAzurePrincipalProfile(fallbackProfile);
+  }
+
+  if (!graphToken) {
+    return normalizeAzurePrincipalProfile(fallbackProfile);
+  }
+
+  try {
+    const response = await fetch(
+      "https://graph.microsoft.com/v1.0/me?$select=id,displayName,userPrincipalName,mail",
+      {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${graphToken}`,
+        },
+      },
+    );
+    const payload = (await response.json().catch(() => null)) as GraphMeResponse | null;
+    if (!response.ok) {
+      return normalizeAzurePrincipalProfile(fallbackProfile);
+    }
+
+    const graphPrincipalId = typeof payload?.id === "string" ? payload.id.trim() : "";
+    const graphDisplayName = typeof payload?.displayName === "string" ? payload.displayName.trim() : "";
+    const graphPrincipalName =
+      typeof payload?.userPrincipalName === "string"
+        ? payload.userPrincipalName.trim()
+        : typeof payload?.mail === "string"
+          ? payload.mail.trim()
+          : "";
+
+    return normalizeAzurePrincipalProfile({
+      tenantId: fallbackProfile.tenantId,
+      principalId: graphPrincipalId || fallbackProfile.principalId,
+      displayName: graphDisplayName || fallbackProfile.displayName,
+      principalName: graphPrincipalName || fallbackProfile.principalName,
+      principalType:
+        fallbackProfile.principalType === "unknown" ? "user" : fallbackProfile.principalType,
+    });
+  } catch {
+    return normalizeAzurePrincipalProfile(fallbackProfile);
+  }
+}
+
+function normalizeAzurePrincipalProfile(profile: AzurePrincipalProfile): AzurePrincipalProfile {
+  const tenantId = profile.tenantId.trim();
+  const principalId = profile.principalId.trim();
+  const principalName = profile.principalName.trim();
+  const displayName = profile.displayName.trim() || principalName || principalId;
+
+  return {
+    tenantId,
+    principalId,
+    displayName,
+    principalName,
+    principalType: profile.principalType,
   };
 }
 
