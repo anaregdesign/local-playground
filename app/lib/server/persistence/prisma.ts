@@ -309,6 +309,7 @@ async function ensureThreadSchema(): Promise<void> {
       "threadId" TEXT NOT NULL,
       "sortOrder" INTEGER NOT NULL,
       "sequence" INTEGER NOT NULL,
+      "operationType" TEXT NOT NULL DEFAULT 'mcp',
       "serverName" TEXT NOT NULL,
       "method" TEXT NOT NULL,
       "startedAt" TEXT NOT NULL,
@@ -320,6 +321,12 @@ async function ensureThreadSchema(): Promise<void> {
       FOREIGN KEY ("threadId") REFERENCES "Thread" ("id") ON DELETE CASCADE
     )
   `);
+
+  await ensureTableColumn(
+    "ThreadMcpRpcLog",
+    "operationType",
+    "TEXT NOT NULL DEFAULT 'mcp'",
+  );
 
   await prisma.$executeRawUnsafe(`
     CREATE INDEX IF NOT EXISTS "ThreadMcpRpcLog_threadId_sortOrder_idx"

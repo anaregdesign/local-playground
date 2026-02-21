@@ -660,6 +660,31 @@ body {
   color: #1f4e67;
 }
 
+.mcp-history-type-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 1rem;
+  padding: 0 0.35rem;
+  border-radius: var(--home-radius-pill);
+  font-size: 0.66rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  border: 1px solid rgba(49, 94, 135, 0.2);
+}
+
+.mcp-history-type-badge.mcp {
+  background: #eef4fb;
+  color: #33546f;
+}
+
+.mcp-history-type-badge.skill {
+  background: #eef8f1;
+  border-color: rgba(65, 110, 77, 0.28);
+  color: #2f5e3a;
+}
+
 .mcp-history-server {
   color: var(--text-subtle);
 }

@@ -1,11 +1,16 @@
 import { describe, expect, it } from "vitest";
 import type { McpRpcHistoryEntry } from "~/lib/home/chat/stream";
-import { buildMcpEntryCopyPayload, buildMcpHistoryByTurnId } from "./history";
+import {
+  buildMcpEntryCopyPayload,
+  buildMcpHistoryByTurnId,
+  readOperationLogType,
+} from "./history";
 
 function createEntry(overrides: Partial<McpRpcHistoryEntry>): McpRpcHistoryEntry {
   return {
     id: "rpc-1",
     sequence: 1,
+    operationType: "mcp",
     serverName: "server-a",
     method: "tools/list",
     startedAt: "2026-02-19T00:00:00.000Z",
@@ -45,6 +50,7 @@ describe("buildMcpEntryCopyPayload", () => {
     expect(payload).toEqual({
       id: "rpc-1",
       sequence: 1,
+      operationType: "mcp",
       serverName: "server-a",
       method: "tools/list",
       startedAt: "2026-02-19T00:00:00.000Z",
@@ -54,5 +60,13 @@ describe("buildMcpEntryCopyPayload", () => {
       isError: false,
       turnId: "turn-1",
     });
+  });
+});
+
+describe("readOperationLogType", () => {
+  it("classifies skill-prefixed methods as skill operations", () => {
+    expect(readOperationLogType({ operationType: "skill", method: "tools/call" })).toBe("skill");
+    expect(readOperationLogType({ method: "skill_run_script" })).toBe("skill");
+    expect(readOperationLogType({ method: "tools/call" })).toBe("mcp");
   });
 });

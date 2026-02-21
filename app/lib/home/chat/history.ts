@@ -18,6 +18,7 @@ export function buildMcpHistoryByTurnId(
 
 export function buildMcpEntryCopyPayload(entry: McpRpcHistoryEntry): Record<string, unknown> {
   return {
+    operationType: readOperationLogType(entry),
     id: entry.id,
     sequence: entry.sequence,
     serverName: entry.serverName,
@@ -29,4 +30,18 @@ export function buildMcpEntryCopyPayload(entry: McpRpcHistoryEntry): Record<stri
     isError: entry.isError,
     turnId: entry.turnId,
   };
+}
+
+export function readOperationLogType(
+  entry: Pick<McpRpcHistoryEntry, "method"> &
+    Partial<Pick<McpRpcHistoryEntry, "operationType">>,
+): "mcp" | "skill" {
+  if (entry.operationType === "skill") {
+    return "skill";
+  }
+  if (entry.operationType === "mcp") {
+    return "mcp";
+  }
+
+  return entry.method.startsWith("skill_") ? "skill" : "mcp";
 }

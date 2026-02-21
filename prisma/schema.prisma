@@ -124,6 +124,7 @@ model ThreadMcpRpcLog {
   threadId     String
   sortOrder    Int
   sequence     Int
+  operationType String @default("mcp")
   serverName   String
   method       String
   startedAt    String

@@ -161,6 +161,7 @@ type JsonRpcResponsePayload =
 type McpRpcRecord = {
   id: string;
   sequence: number;
+  operationType: "mcp" | "skill";
   serverName: string;
   method: string;
   startedAt: string;
@@ -226,6 +227,10 @@ type SkillRuntimeContext = {
   warnings: string[];
 };
 type SkillToolCategory = SkillResourceKind;
+type SkillToolLogHandlers = {
+  nextSequence: () => number;
+  onRecord: (record: McpRpcRecord) => void;
+};
 
 let codeInterpreterAttachmentAvailabilityCache: CodeInterpreterAttachmentAvailabilityCache | null =
   null;
@@ -523,6 +528,7 @@ async function executeChat(
         emitMcpRpcRecord({
           id: connectRequestId,
           sequence: connectSequence,
+          operationType: "mcp",
           serverName: serverConfig.name,
           method: "server/connect",
           startedAt: connectStartedAt,
@@ -547,6 +553,7 @@ async function executeChat(
       emitMcpRpcRecord({
         id: connectRequestId,
         sequence: connectSequence,
+        operationType: "mcp",
         serverName: serverConfig.name,
         method: "server/connect",
         startedAt: connectStartedAt,
@@ -613,7 +620,13 @@ async function executeChat(
 
     const enableCodeInterpreterTool =
       codeInterpreterEnabledForRun && codeInterpreterContainerId.length > 0;
-    const skillTools = buildSkillTools(skillRuntime.activeSkills);
+    const skillTools = buildSkillTools(skillRuntime.activeSkills, {
+      nextSequence: () => {
+        mcpRpcSequence += 1;
+        return mcpRpcSequence;
+      },
+      onRecord: emitMcpRpcRecord,
+    });
 
     const agent = new Agent({
       name: "LocalPlaygroundAgent",
@@ -2041,6 +2054,7 @@ function instrumentMcpServer(
       handlers.onRecord({
         id: requestId,
         sequence,
+        operationType: "mcp",
         serverName: server.name,
         method: "tools/list",
         startedAt,
@@ -2063,6 +2077,7 @@ function instrumentMcpServer(
       handlers.onRecord({
         id: requestId,
         sequence,
+        operationType: "mcp",
         serverName: server.name,
         method: "tools/list",
         startedAt,
@@ -2102,6 +2117,7 @@ function instrumentMcpServer(
       handlers.onRecord({
         id: requestId,
         sequence,
+        operationType: "mcp",
         serverName: server.name,
         method: "tools/call",
         startedAt,
@@ -2124,6 +2140,7 @@ function instrumentMcpServer(
       handlers.onRecord({
         id: requestId,
         sequence,
+        operationType: "mcp",
         serverName: server.name,
         method: "tools/call",
         startedAt,
@@ -2474,7 +2491,10 @@ function buildSkillResourceManifestFallback(skillRoot: string) {
   };
 }
 
-function buildSkillTools(activeSkills: ActiveSkillRuntimeEntry[]) {
+function buildSkillTools(
+  activeSkills: ActiveSkillRuntimeEntry[],
+  logHandlers: SkillToolLogHandlers,
+) {
   if (activeSkills.length === 0) {
     return [];
   }
@@ -2531,6 +2551,113 @@ function buildSkillTools(activeSkills: ActiveSkillRuntimeEntry[]) {
     };
   };
 
+  const readSkillOperationServerName = (input: unknown): string => {
+    if (isRecord(input)) {
+      const selector = readTrimmedString(input.skill);
+      if (selector) {
+        return selector;
+      }
+    }
+
+    if (activeSkills.length === 1) {
+      return activeSkills[0]?.name ?? "skill-runtime";
+    }
+
+    return "skill-runtime";
+  };
+
+  const readSkillOperationParams = (input: unknown): Record<string, unknown> => {
+    if (!isRecord(input)) {
+      return {
+        input: toSerializableValue(input),
+      };
+    }
+
+    const serialized = toSerializableValue(input);
+    return isRecord(serialized) ? serialized : {};
+  };
+
+  const parseSkillOperationResult = (result: string): unknown => {
+    const trimmed = result.trim();
+    if (!trimmed) {
+      return "";
+    }
+
+    try {
+      return JSON.parse(trimmed);
+    } catch {
+      return result;
+    }
+  };
+
+  const isSkillOperationErrorResult = (value: unknown): boolean =>
+    isRecord(value) && value.ok === false;
+
+  const executeWithSkillOperationLog = async (
+    method: string,
+    input: unknown,
+    execute: () => Promise<string> | string,
+  ): Promise<string> => {
+    const sequence = logHandlers.nextSequence();
+    const serverName = readSkillOperationServerName(input);
+    const requestId = buildMcpRpcRequestId(serverName, sequence);
+    const startedAt = new Date().toISOString();
+    const requestPayload: JsonRpcRequestPayload = {
+      jsonrpc: "2.0",
+      id: requestId,
+      method,
+      params: readSkillOperationParams(input),
+    };
+
+    try {
+      const result = await execute();
+      const parsedResult = parseSkillOperationResult(result);
+      const responsePayload: JsonRpcResponsePayload = {
+        jsonrpc: "2.0",
+        id: requestId,
+        result: parsedResult,
+      };
+
+      logHandlers.onRecord({
+        id: requestId,
+        sequence,
+        operationType: "skill",
+        serverName,
+        method,
+        startedAt,
+        completedAt: new Date().toISOString(),
+        request: requestPayload,
+        response: responsePayload,
+        isError: isSkillOperationErrorResult(parsedResult),
+      });
+
+      return result;
+    } catch (error) {
+      const responsePayload: JsonRpcResponsePayload = {
+        jsonrpc: "2.0",
+        id: requestId,
+        error: {
+          message: readErrorMessage(error),
+        },
+      };
+
+      logHandlers.onRecord({
+        id: requestId,
+        sequence,
+        operationType: "skill",
+        serverName,
+        method,
+        startedAt,
+        completedAt: new Date().toISOString(),
+        request: requestPayload,
+        response: responsePayload,
+        isError: true,
+      });
+
+      throw error;
+    }
+  };
+
   const listResourcesTool = tool({
     name: "skill_list_resources",
     description:
@@ -2553,32 +2680,33 @@ function buildSkillTools(activeSkills: ActiveSkillRuntimeEntry[]) {
       additionalProperties: true as const,
     },
     strict: false,
-    execute: (input) => {
-      if (!isRecord(input)) {
-        return buildSkillToolErrorResult("Invalid tool input.");
-      }
+    execute: (input) =>
+      executeWithSkillOperationLog("skill_list_resources", input, () => {
+        if (!isRecord(input)) {
+          return buildSkillToolErrorResult("Invalid tool input.");
+        }
 
-      const selectedCategory = readSkillToolCategory(input.category);
-      if (input.category !== undefined && !selectedCategory) {
-        return buildSkillToolErrorResult(
-          "category must be one of scripts, references, or assets.",
-        );
-      }
+        const selectedCategory = readSkillToolCategory(input.category);
+        if (input.category !== undefined && !selectedCategory) {
+          return buildSkillToolErrorResult(
+            "category must be one of scripts, references, or assets.",
+          );
+        }
 
-      const skillSelection = resolveSkillSelection(input.skill, {
-        allowAllWhenMissing: true,
-      });
-      if (!skillSelection.ok) {
-        return buildSkillToolErrorResult(skillSelection.error);
-      }
+        const skillSelection = resolveSkillSelection(input.skill, {
+          allowAllWhenMissing: true,
+        });
+        if (!skillSelection.ok) {
+          return buildSkillToolErrorResult(skillSelection.error);
+        }
 
-      return buildSkillToolResult({
-        ok: true,
-        skills: skillSelection.skills.map((skill) =>
-          buildSkillResourcePreview(skill, selectedCategory),
-        ),
-      });
-    },
+        return buildSkillToolResult({
+          ok: true,
+          skills: skillSelection.skills.map((skill) =>
+            buildSkillResourcePreview(skill, selectedCategory),
+          ),
+        });
+      }),
   });
 
   const readReferenceTool = tool({
@@ -2616,65 +2744,66 @@ function buildSkillTools(activeSkills: ActiveSkillRuntimeEntry[]) {
       additionalProperties: true as const,
     },
     strict: false,
-    execute: async (input) => {
-      if (!isRecord(input)) {
-        return buildSkillToolErrorResult("Invalid tool input.");
-      }
+    execute: (input) =>
+      executeWithSkillOperationLog("skill_read_reference", input, async () => {
+        if (!isRecord(input)) {
+          return buildSkillToolErrorResult("Invalid tool input.");
+        }
 
-      const skillSelection = resolveSkillSelection(input.skill, {
-        allowAllWhenMissing: false,
-      });
-      if (!skillSelection.ok) {
-        return buildSkillToolErrorResult(skillSelection.error);
-      }
-      const selectedSkill = skillSelection.skills[0];
-
-      const relativePath = readTrimmedString(input.path);
-      if (!relativePath) {
-        return buildSkillToolErrorResult("path is required.");
-      }
-
-      let content: string;
-      try {
-        content = await readSkillResourceText({
-          skillRoot: selectedSkill.skillRoot,
-          kind: "references",
-          relativePath,
+        const skillSelection = resolveSkillSelection(input.skill, {
+          allowAllWhenMissing: false,
         });
-      } catch (error) {
-        return buildSkillToolErrorResult(readErrorMessage(error));
-      }
+        if (!skillSelection.ok) {
+          return buildSkillToolErrorResult(skillSelection.error);
+        }
+        const selectedSkill = skillSelection.skills[0];
 
-      const startLine = readInteger(input.startLine);
-      const endLine = readInteger(input.endLine);
-      if ((startLine !== null && startLine <= 0) || (endLine !== null && endLine <= 0)) {
-        return buildSkillToolErrorResult("startLine and endLine must be positive integers.");
-      }
-      if (startLine !== null && endLine !== null && endLine < startLine) {
-        return buildSkillToolErrorResult("endLine must be greater than or equal to startLine.");
-      }
+        const relativePath = readTrimmedString(input.path);
+        if (!relativePath) {
+          return buildSkillToolErrorResult("path is required.");
+        }
 
-      const maxChars = normalizeSkillReadMaxChars(input.maxChars);
-      const lineNormalized = content.replace(/\r\n?/g, "\n");
-      const lines = lineNormalized.split("\n");
-      const begin = Math.max(1, startLine ?? 1);
-      const end = Math.min(lines.length, endLine ?? lines.length);
-      const lineWindowText =
-        lines.length === 0 || end < begin ? "" : lines.slice(begin - 1, end).join("\n");
-      const clipped = clipTextForSkillTool(lineWindowText, maxChars);
+        let content: string;
+        try {
+          content = await readSkillResourceText({
+            skillRoot: selectedSkill.skillRoot,
+            kind: "references",
+            relativePath,
+          });
+        } catch (error) {
+          return buildSkillToolErrorResult(readErrorMessage(error));
+        }
 
-      return buildSkillToolResult({
-        ok: true,
-        skill: selectedSkill.name,
-        location: selectedSkill.location,
-        path: relativePath,
-        startLine: begin,
-        endLine: end,
-        totalLines: lines.length,
-        truncated: clipped.truncated,
-        text: clipped.value,
-      });
-    },
+        const startLine = readInteger(input.startLine);
+        const endLine = readInteger(input.endLine);
+        if ((startLine !== null && startLine <= 0) || (endLine !== null && endLine <= 0)) {
+          return buildSkillToolErrorResult("startLine and endLine must be positive integers.");
+        }
+        if (startLine !== null && endLine !== null && endLine < startLine) {
+          return buildSkillToolErrorResult("endLine must be greater than or equal to startLine.");
+        }
+
+        const maxChars = normalizeSkillReadMaxChars(input.maxChars);
+        const lineNormalized = content.replace(/\r\n?/g, "\n");
+        const lines = lineNormalized.split("\n");
+        const begin = Math.max(1, startLine ?? 1);
+        const end = Math.min(lines.length, endLine ?? lines.length);
+        const lineWindowText =
+          lines.length === 0 || end < begin ? "" : lines.slice(begin - 1, end).join("\n");
+        const clipped = clipTextForSkillTool(lineWindowText, maxChars);
+
+        return buildSkillToolResult({
+          ok: true,
+          skill: selectedSkill.name,
+          location: selectedSkill.location,
+          path: relativePath,
+          startLine: begin,
+          endLine: end,
+          totalLines: lines.length,
+          truncated: clipped.truncated,
+          text: clipped.value,
+        });
+      }),
   });
 
   const readAssetTool = tool({
@@ -2707,55 +2836,57 @@ function buildSkillTools(activeSkills: ActiveSkillRuntimeEntry[]) {
       additionalProperties: true as const,
     },
     strict: false,
-    execute: async (input) => {
-      if (!isRecord(input)) {
-        return buildSkillToolErrorResult("Invalid tool input.");
-      }
+    execute: (input) =>
+      executeWithSkillOperationLog("skill_read_asset", input, async () => {
+        if (!isRecord(input)) {
+          return buildSkillToolErrorResult("Invalid tool input.");
+        }
 
-      const skillSelection = resolveSkillSelection(input.skill, {
-        allowAllWhenMissing: false,
-      });
-      if (!skillSelection.ok) {
-        return buildSkillToolErrorResult(skillSelection.error);
-      }
-      const selectedSkill = skillSelection.skills[0];
-
-      const relativePath = readTrimmedString(input.path);
-      if (!relativePath) {
-        return buildSkillToolErrorResult("path is required.");
-      }
-
-      const encoding = readTrimmedString(input.encoding) || "text";
-      if (encoding !== "text" && encoding !== "base64") {
-        return buildSkillToolErrorResult("encoding must be text or base64.");
-      }
-
-      let buffer: Buffer;
-      try {
-        buffer = await readSkillResourceBuffer({
-          skillRoot: selectedSkill.skillRoot,
-          kind: "assets",
-          relativePath,
+        const skillSelection = resolveSkillSelection(input.skill, {
+          allowAllWhenMissing: false,
         });
-      } catch (error) {
-        return buildSkillToolErrorResult(readErrorMessage(error));
-      }
+        if (!skillSelection.ok) {
+          return buildSkillToolErrorResult(skillSelection.error);
+        }
+        const selectedSkill = skillSelection.skills[0];
 
-      const maxChars = normalizeSkillReadMaxChars(input.maxChars);
-      const payload = encoding === "base64" ? buffer.toString("base64") : buffer.toString("utf8");
-      const clipped = clipTextForSkillTool(payload, maxChars);
+        const relativePath = readTrimmedString(input.path);
+        if (!relativePath) {
+          return buildSkillToolErrorResult("path is required.");
+        }
 
-      return buildSkillToolResult({
-        ok: true,
-        skill: selectedSkill.name,
-        location: selectedSkill.location,
-        path: relativePath,
-        encoding,
-        sizeBytes: buffer.byteLength,
-        truncated: clipped.truncated,
-        content: clipped.value,
-      });
-    },
+        const encoding = readTrimmedString(input.encoding) || "text";
+        if (encoding !== "text" && encoding !== "base64") {
+          return buildSkillToolErrorResult("encoding must be text or base64.");
+        }
+
+        let buffer: Buffer;
+        try {
+          buffer = await readSkillResourceBuffer({
+            skillRoot: selectedSkill.skillRoot,
+            kind: "assets",
+            relativePath,
+          });
+        } catch (error) {
+          return buildSkillToolErrorResult(readErrorMessage(error));
+        }
+
+        const maxChars = normalizeSkillReadMaxChars(input.maxChars);
+        const payload =
+          encoding === "base64" ? buffer.toString("base64") : buffer.toString("utf8");
+        const clipped = clipTextForSkillTool(payload, maxChars);
+
+        return buildSkillToolResult({
+          ok: true,
+          skill: selectedSkill.name,
+          location: selectedSkill.location,
+          path: relativePath,
+          encoding,
+          sizeBytes: buffer.byteLength,
+          truncated: clipped.truncated,
+          content: clipped.value,
+        });
+      }),
   });
 
   const runScriptTool = tool({
@@ -2790,50 +2921,51 @@ function buildSkillTools(activeSkills: ActiveSkillRuntimeEntry[]) {
       additionalProperties: true as const,
     },
     strict: false,
-    execute: async (input) => {
-      if (!isRecord(input)) {
-        return buildSkillToolErrorResult("Invalid tool input.");
-      }
+    execute: (input) =>
+      executeWithSkillOperationLog("skill_run_script", input, async () => {
+        if (!isRecord(input)) {
+          return buildSkillToolErrorResult("Invalid tool input.");
+        }
 
-      const skillSelection = resolveSkillSelection(input.skill, {
-        allowAllWhenMissing: false,
-      });
-      if (!skillSelection.ok) {
-        return buildSkillToolErrorResult(skillSelection.error);
-      }
-      const selectedSkill = skillSelection.skills[0];
-
-      const relativePath = readTrimmedString(input.path);
-      if (!relativePath) {
-        return buildSkillToolErrorResult("path is required.");
-      }
-
-      const argsResult = readSkillScriptArgs(input.args);
-      if (!argsResult.ok) {
-        return buildSkillToolErrorResult(argsResult.error);
-      }
-
-      const timeoutMs = normalizeSkillScriptTimeout(input.timeoutMs);
-      try {
-        const result = await runSkillScript({
-          skillRoot: selectedSkill.skillRoot,
-          relativePath,
-          args: argsResult.value,
-          timeoutMs,
-          outputMaxChars: AGENT_SKILL_SCRIPT_OUTPUT_MAX_CHARS,
+        const skillSelection = resolveSkillSelection(input.skill, {
+          allowAllWhenMissing: false,
         });
+        if (!skillSelection.ok) {
+          return buildSkillToolErrorResult(skillSelection.error);
+        }
+        const selectedSkill = skillSelection.skills[0];
 
-        return buildSkillToolResult({
-          ok: true,
-          skill: selectedSkill.name,
-          location: selectedSkill.location,
-          path: relativePath,
-          ...result,
-        });
-      } catch (error) {
-        return buildSkillToolErrorResult(readErrorMessage(error));
-      }
-    },
+        const relativePath = readTrimmedString(input.path);
+        if (!relativePath) {
+          return buildSkillToolErrorResult("path is required.");
+        }
+
+        const argsResult = readSkillScriptArgs(input.args);
+        if (!argsResult.ok) {
+          return buildSkillToolErrorResult(argsResult.error);
+        }
+
+        const timeoutMs = normalizeSkillScriptTimeout(input.timeoutMs);
+        try {
+          const result = await runSkillScript({
+            skillRoot: selectedSkill.skillRoot,
+            relativePath,
+            args: argsResult.value,
+            timeoutMs,
+            outputMaxChars: AGENT_SKILL_SCRIPT_OUTPUT_MAX_CHARS,
+          });
+
+          return buildSkillToolResult({
+            ok: true,
+            skill: selectedSkill.name,
+            location: selectedSkill.location,
+            path: relativePath,
+            ...result,
+          });
+        } catch (error) {
+          return buildSkillToolErrorResult(readErrorMessage(error));
+        }
+      }),
   });
 
   return [listResourcesTool, readReferenceTool, readAssetTool, runScriptTool];

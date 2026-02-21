@@ -523,6 +523,7 @@ async function saveThreadSnapshot(
           threadId: existing.id,
           sortOrder: index,
           sequence: entry.sequence,
+          operationType: entry.operationType,
           serverName: entry.serverName,
           method: entry.method,
           startedAt: entry.startedAt,
@@ -684,6 +685,7 @@ function mapStoredThreadToSnapshot(value: {
   mcpRpcLogs: Array<{
     id: string;
     sequence: number;
+    operationType: string;
     serverName: string;
     method: string;
     startedAt: string;
@@ -740,6 +742,7 @@ function mapStoredThreadToSnapshot(value: {
       mcpRpcHistory: value.mcpRpcLogs.map((entry) => ({
         id: entry.id,
         sequence: entry.sequence,
+        operationType: entry.operationType,
         serverName: entry.serverName,
         method: entry.method,
         startedAt: entry.startedAt,

@@ -26,6 +26,7 @@ describe("readChatStreamEvent", () => {
         record: {
           id: "rpc-1",
           sequence: 1,
+          operationType: "mcp",
           serverName: "workiq",
           method: "tools/call",
           startedAt: "2026-02-16T00:00:00.000Z",
@@ -47,6 +48,7 @@ describe("readMcpRpcHistoryEntryFromUnknown", () => {
     const entry = readMcpRpcHistoryEntryFromUnknown({
       id: "rpc-2",
       sequence: 2,
+      operationType: "mcp",
       serverName: "workiq",
       method: "tools/list",
       startedAt: "2026-02-16T00:00:00.000Z",
@@ -72,6 +74,7 @@ describe("upsertMcpRpcHistoryEntry", () => {
     const first = {
       id: "rpc-1",
       sequence: 2,
+      operationType: "mcp" as const,
       serverName: "srv",
       method: "tools/call",
       startedAt: "2026-02-16T00:00:00.000Z",
@@ -84,6 +87,7 @@ describe("upsertMcpRpcHistoryEntry", () => {
     const second = {
       id: "rpc-0",
       sequence: 1,
+      operationType: "mcp" as const,
       serverName: "srv",
       method: "tools/list",
       startedAt: "2026-02-16T00:00:00.000Z",
