@@ -1,6 +1,7 @@
 import type { ComponentProps } from "react";
 import { CopyIconButton } from "~/components/home/shared/CopyIconButton";
 import { FluentUI } from "~/components/home/shared/fluent";
+import { copyTextToClipboard } from "~/lib/home/shared/clipboard";
 
 const { MessageBar, MessageBarBody, MessageBarTitle } = FluentUI;
 
@@ -62,34 +63,4 @@ export function StatusMessageList(props: StatusMessageListProps) {
       })}
     </div>
   );
-}
-
-async function copyTextToClipboard(text: string): Promise<void> {
-  if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
-    await navigator.clipboard.writeText(text);
-    return;
-  }
-
-  if (typeof document === "undefined") {
-    throw new Error("Clipboard API is unavailable.");
-  }
-
-  const textarea = document.createElement("textarea");
-  textarea.value = text;
-  textarea.style.position = "fixed";
-  textarea.style.opacity = "0";
-  textarea.style.pointerEvents = "none";
-  textarea.setAttribute("readonly", "true");
-  document.body.appendChild(textarea);
-
-  try {
-    textarea.focus();
-    textarea.select();
-    const copied = document.execCommand("copy");
-    if (!copied) {
-      throw new Error("Failed to copy text.");
-    }
-  } finally {
-    textarea.remove();
-  }
 }
