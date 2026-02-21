@@ -25,6 +25,7 @@ export function ThreadsTab(props: ThreadsTabProps) {
     threadError,
     onActiveThreadChange,
     onCreateThread,
+    onThreadRename,
     onThreadDelete,
     onThreadRestore,
     instructionSectionProps,
@@ -53,6 +54,7 @@ export function ThreadsTab(props: ThreadsTabProps) {
           threadError={threadError}
           onActiveThreadChange={onActiveThreadChange}
           onCreateThread={onCreateThread}
+          onThreadRename={onThreadRename}
           onThreadDelete={onThreadDelete}
           onThreadRestore={onThreadRestore}
         />

@@ -1599,6 +1599,68 @@ export function useWorkspaceController() {
     });
   }
 
+  async function handleThreadRename(threadIdRaw: string, nextNameRaw: string): Promise<void> {
+    const threadId = threadIdRaw.trim();
+    if (!threadId) {
+      return;
+    }
+
+    const normalizedName = nextNameRaw.trim().slice(0, HOME_THREAD_NAME_MAX_LENGTH);
+    if (!normalizedName) {
+      setThreadError("Thread name cannot be empty.");
+      return;
+    }
+
+    if (isSending) {
+      setThreadError("Thread state is updating. Please wait.");
+      return;
+    }
+
+    if (
+      isLoadingThreads ||
+      isSwitchingThread ||
+      isCreatingThread ||
+      isDeletingThread ||
+      isRestoringThread
+    ) {
+      return;
+    }
+
+    const targetThread = threadsRef.current.find((thread) => thread.id === threadId);
+    if (!targetThread || targetThread.deletedAt !== null) {
+      setThreadError("Selected thread is not available.");
+      return;
+    }
+
+    if (readThreadRequestState(threadId).isSending) {
+      setThreadError("Cannot rename a thread while a response is in progress.");
+      return;
+    }
+
+    if (targetThread.name === normalizedName) {
+      return;
+    }
+
+    setThreadError(null);
+    updateThreadSnapshotById(threadId, (thread) => ({
+      ...thread,
+      updatedAt: new Date().toISOString(),
+      name: normalizedName,
+    }));
+
+    if (threadId === activeThreadIdRef.current.trim()) {
+      setActiveThreadNameInput(normalizedName);
+    }
+
+    const renamedThread = threadsRef.current.find((thread) => thread.id === threadId);
+    if (!renamedThread) {
+      return;
+    }
+
+    const signature = buildThreadSaveSignature(renamedThread);
+    await saveThreadSnapshotToDatabase(renamedThread, signature);
+  }
+
   async function handleThreadLogicalDelete(threadIdRaw: string): Promise<void> {
     const threadId = threadIdRaw.trim();
     if (!threadId) {
@@ -3630,6 +3692,9 @@ export function useWorkspaceController() {
     },
     onCreateThread: () => {
       void handleCreateThread();
+    },
+    onThreadRename: (threadId: string, nextName: string) => {
+      void handleThreadRename(threadId, nextName);
     },
     onThreadDelete: (threadId: string) => {
       void handleThreadLogicalDelete(threadId);

@@ -1252,6 +1252,17 @@ body {
   min-width: 0;
 }
 
+.threads-rename-input.fui-Input {
+  flex: 1;
+  min-width: 0;
+  min-height: 2rem;
+  border-radius: var(--home-radius-sm);
+}
+
+.threads-rename-input.fui-Input input {
+  font-size: var(--home-font-size-label);
+}
+
 .threads-active-item.fui-Button {
   width: 100%;
   justify-content: flex-start;
@@ -1302,19 +1313,6 @@ body {
   color: #1f3f56;
 }
 
-.threads-delete-btn {
-  --home-symbol-btn-size: 1.55rem;
-  --home-symbol-glyph-size: 0.9rem;
-  color: #8a3b3b;
-  opacity: 0.72;
-}
-
-.threads-delete-btn:hover {
-  opacity: 1;
-  color: #7a2424;
-  background: rgba(174, 69, 69, 0.12) !important;
-}
-
 .threads-archived-list {
   margin-top: 0.15rem;
   border: 1px solid rgba(34, 48, 58, 0.12);
@@ -1360,19 +1358,6 @@ body {
 .threads-archived-item.fui-Button.is-active:enabled:hover {
   background: #eaf2fb;
   color: #1f3f56;
-}
-
-.threads-restore-btn {
-  --home-symbol-btn-size: 1.55rem;
-  --home-symbol-glyph-size: 0.84rem;
-  color: #1f4e67;
-  opacity: 0.76;
-}
-
-.threads-restore-btn:hover {
-  opacity: 1;
-  color: #0f4c75;
-  background: rgba(15, 108, 189, 0.12) !important;
 }
 
 .azure-loading-notice {
@@ -1726,6 +1711,10 @@ body {
   min-width: 1.6rem;
   width: 1.6rem;
   padding-inline: 0;
+}
+
+.context-action-item-danger {
+  color: #8a3b3b;
 }
 
 .sr-only {
