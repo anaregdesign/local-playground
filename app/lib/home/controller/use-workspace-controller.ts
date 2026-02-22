@@ -2205,6 +2205,96 @@ export function useWorkspaceController() {
       const preferredUtilityProjectId = preferredSelection?.utility?.projectId ?? "";
       const preferredUtilityReasoningEffort =
         preferredSelection?.utility?.reasoningEffort ?? HOME_DEFAULT_UTILITY_REASONING_EFFORT;
+      const knownProjectIds = new Set(parsedProjects.map((connection) => connection.id));
+      const deploymentAvailabilityByProjectId = new Map<string, boolean>();
+
+      const resolveInitialProjectId = (currentProjectId: string, preferredProjectId: string): string => {
+        const normalizedCurrentProjectId = currentProjectId.trim();
+        if (knownProjectIds.has(normalizedCurrentProjectId)) {
+          return normalizedCurrentProjectId;
+        }
+
+        const normalizedPreferredProjectId = preferredProjectId.trim();
+        if (knownProjectIds.has(normalizedPreferredProjectId)) {
+          return normalizedPreferredProjectId;
+        }
+
+        return parsedProjects[0]?.id ?? "";
+      };
+
+      const checkProjectHasDeployments = async (projectId: string): Promise<boolean> => {
+        const normalizedProjectId = projectId.trim();
+        if (!normalizedProjectId) {
+          return false;
+        }
+
+        const cachedAvailability = deploymentAvailabilityByProjectId.get(normalizedProjectId);
+        if (cachedAvailability !== undefined) {
+          return cachedAvailability;
+        }
+
+        try {
+          const deploymentResponse = await fetch(
+            `/api/azure-connections?projectId=${encodeURIComponent(normalizedProjectId)}`,
+            {
+              method: "GET",
+            },
+          );
+          const deploymentPayload = (await deploymentResponse.json()) as AzureConnectionsApiResponse;
+          if (requestSeq !== azureConnectionsRequestSeqRef.current) {
+            return false;
+          }
+
+          if (!deploymentResponse.ok) {
+            deploymentAvailabilityByProjectId.set(normalizedProjectId, false);
+            return false;
+          }
+
+          const hasDeployments = readAzureDeploymentList(deploymentPayload.deployments).length > 0;
+          deploymentAvailabilityByProjectId.set(normalizedProjectId, hasDeployments);
+          return hasDeployments;
+        } catch {
+          deploymentAvailabilityByProjectId.set(normalizedProjectId, false);
+          return false;
+        }
+      };
+
+      const resolveProjectWithDeployments = async (
+        currentProjectId: string,
+        preferredProjectId: string,
+      ): Promise<string> => {
+        const initialProjectId = resolveInitialProjectId(currentProjectId, preferredProjectId);
+        if (!initialProjectId) {
+          return "";
+        }
+
+        if (await checkProjectHasDeployments(initialProjectId)) {
+          return initialProjectId;
+        }
+
+        for (const project of parsedProjects) {
+          if (await checkProjectHasDeployments(project.id)) {
+            return project.id;
+          }
+        }
+
+        return initialProjectId;
+      };
+
+      const nextPlaygroundProjectId = await resolveProjectWithDeployments(
+        selectedPlaygroundAzureConnectionIdRef.current,
+        preferredPlaygroundProjectId,
+      );
+      if (requestSeq !== azureConnectionsRequestSeqRef.current) {
+        return payload.authRequired === true;
+      }
+      const nextUtilityProjectId = await resolveProjectWithDeployments(
+        selectedUtilityAzureConnectionIdRef.current,
+        preferredUtilityProjectId,
+      );
+      if (requestSeq !== azureConnectionsRequestSeqRef.current) {
+        return payload.authRequired === true;
+      }
 
       setAzureConnections(parsedProjects);
       setActiveAzurePrincipal(parsedPrincipal);
@@ -2215,22 +2305,8 @@ export function useWorkspaceController() {
       setPlaygroundAzureDeploymentError(null);
       setUtilityAzureDeploymentError(null);
       setUtilityReasoningEffort(preferredUtilityReasoningEffort);
-      setSelectedPlaygroundAzureConnectionId((current) =>
-        current && parsedProjects.some((connection) => connection.id === current)
-          ? current
-          : preferredPlaygroundProjectId &&
-              parsedProjects.some((connection) => connection.id === preferredPlaygroundProjectId)
-            ? preferredPlaygroundProjectId
-            : parsedProjects[0]?.id ?? "",
-      );
-      setSelectedUtilityAzureConnectionId((current) =>
-        current && parsedProjects.some((connection) => connection.id === current)
-          ? current
-          : preferredUtilityProjectId &&
-              parsedProjects.some((connection) => connection.id === preferredUtilityProjectId)
-            ? preferredUtilityProjectId
-            : parsedProjects[0]?.id ?? "",
-      );
+      setSelectedPlaygroundAzureConnectionId(nextPlaygroundProjectId);
+      setSelectedUtilityAzureConnectionId(nextUtilityProjectId);
       return payload.authRequired === true;
     } catch (loadError) {
       if (requestSeq !== azureConnectionsRequestSeqRef.current) {
@@ -3716,7 +3792,6 @@ export function useWorkspaceController() {
       selectedPlaygroundAzureDeploymentName,
       isStartingAzureLogout,
       onAzureLogout: handleAzureLogout,
-      azureDeploymentError: playgroundAzureDeploymentError,
       azureLogoutError,
       azureConnectionError,
     },
