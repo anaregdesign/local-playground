@@ -329,17 +329,19 @@ function resolveServerBuildPath(appRootPath) {
 
 function resolveRuntimeAppRootPath() {
   if (app.isPackaged) {
-    return path.resolve(process.resourcesPath, 'app.asar');
+    return process.resourcesPath;
   }
 
   return path.resolve(__dirname, '..', '..');
 }
 
 function resolveBackendNodePath(appRootPath) {
-  const nodePaths = [path.resolve(appRootPath, 'node_modules')];
-  if (app.isPackaged) {
-    nodePaths.push(path.resolve(process.resourcesPath, 'node_modules'));
-  }
+  const nodePaths = app.isPackaged
+    ? [
+        path.resolve(process.resourcesPath, 'app.asar', 'node_modules'),
+        path.resolve(process.resourcesPath, 'node_modules'),
+      ]
+    : [path.resolve(appRootPath, 'node_modules')];
 
   if (process.env.NODE_PATH) {
     nodePaths.push(process.env.NODE_PATH);
