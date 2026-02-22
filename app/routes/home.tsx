@@ -1,5 +1,6 @@
 import type { CSSProperties } from "react";
 import { ConfigPanel } from "~/components/home/config/ConfigPanel";
+import { UnauthenticatedPanel } from "~/components/home/authorize/UnauthenticatedPanel";
 import { PlaygroundPanel } from "~/components/home/playground/PlaygroundPanel";
 import {
   renderMessageContent,
@@ -21,9 +22,19 @@ export default function Home() {
     rightPaneWidth,
     isMainSplitterResizing,
     onMainSplitterPointerDown,
+    isAzureAuthRequired,
+    unauthenticatedPanelProps,
     configPanelProps,
     playgroundPanelProps,
   } = useWorkspaceController();
+
+  if (isAzureAuthRequired) {
+    return (
+      <main className="chat-page chat-page-unauth">
+        <UnauthenticatedPanel {...unauthenticatedPanelProps} />
+      </main>
+    );
+  }
 
   return (
     <main className="chat-page">

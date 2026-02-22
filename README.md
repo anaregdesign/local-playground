@@ -69,6 +69,13 @@ Open `http://localhost:5173`.
 
 ## Developer Details
 
+### Home UI Structure
+
+- `app/components/home/authorize/`: auth-only top-level panel(s) for unauthenticated state
+- `app/components/home/playground/`: Playground panel and message/MCP renderers
+- `app/components/home/config/`: right-side configuration panel and tabs
+- Keep top-level panels as sibling directories under `app/components/home/` to match DOM hierarchy.
+
 ### Desktop Shell (Electron)
 
 ```bash

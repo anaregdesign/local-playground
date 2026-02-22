@@ -3912,11 +3912,18 @@ export function useWorkspaceController() {
     onRemoveMcpServer: handleRemoveMcpServer,
   };
 
+  const unauthenticatedPanelProps = {
+    isStartingAzureLogin,
+    onAzureLogin: handleAzureLogin,
+  };
+
   return {
     layoutRef,
     rightPaneWidth,
     isMainSplitterResizing: activeResizeHandle === "main",
     onMainSplitterPointerDown: handleMainSplitterPointerDown,
+    isAzureAuthRequired,
+    unauthenticatedPanelProps,
     configPanelProps: {
       activeMainTab,
       onMainTabChange: setActiveMainTab,
