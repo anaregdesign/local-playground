@@ -19,6 +19,7 @@ extraMetadata:
 
 mac:
   icon: desktop/electron/assets/icon.icns
+  identity: Developer ID Application
   hardenedRuntime: true
   gatekeeperAssess: false
   entitlements: desktop/electron/entitlements.mac.plist
