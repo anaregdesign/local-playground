@@ -61,6 +61,25 @@ export function hasThreadInteraction(
   return (snapshot.skillSelections?.length ?? 0) > 0;
 }
 
+export function isThreadSnapshotArchived(
+  snapshot: Pick<ThreadSnapshot, "deletedAt"> | null | undefined,
+): boolean {
+  return snapshot !== null && snapshot !== undefined && snapshot.deletedAt !== null;
+}
+
+export function isThreadArchivedById(
+  snapshots: Array<Pick<ThreadSnapshot, "id" | "deletedAt">>,
+  threadIdRaw: string,
+): boolean {
+  const threadId = threadIdRaw.trim();
+  if (!threadId) {
+    return false;
+  }
+
+  const snapshot = snapshots.find((entry) => entry.id === threadId);
+  return isThreadSnapshotArchived(snapshot);
+}
+
 export function upsertThreadSnapshot(
   current: ThreadSnapshot[],
   next: ThreadSnapshot,

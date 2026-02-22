@@ -109,6 +109,8 @@ import {
   cloneMessages,
   cloneThreadSkillSelections,
   hasThreadInteraction,
+  isThreadArchivedById,
+  isThreadSnapshotArchived,
   upsertThreadSnapshot,
 } from "~/lib/home/thread/snapshot-state";
 import {
@@ -337,7 +339,7 @@ export function useWorkspaceController() {
   const threadSummaries: ThreadSummary[] = threads.map((thread) => buildThreadSummary(thread));
   const activeThreadSnapshot =
     threads.find((thread) => thread.id === activeThreadId) ?? null;
-  const isActiveThreadArchived = activeThreadSnapshot?.deletedAt !== null;
+  const isActiveThreadArchived = isThreadSnapshotArchived(activeThreadSnapshot);
   const isEnhancingInstructionForActiveThread =
     isEnhancingInstruction &&
     instructionEnhancingThreadId.length > 0 &&
@@ -1125,13 +1127,7 @@ export function useWorkspaceController() {
   }
 
   function isArchivedThread(threadIdRaw: string): boolean {
-    const threadId = threadIdRaw.trim();
-    if (!threadId) {
-      return false;
-    }
-
-    const thread = threadsRef.current.find((entry) => entry.id === threadId);
-    return thread?.deletedAt !== null;
+    return isThreadArchivedById(threadsRef.current, threadIdRaw);
   }
 
   function resolveThreadNameForSave(baseName: string, includeDraftName: boolean): string {
