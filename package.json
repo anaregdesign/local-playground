@@ -2,6 +2,7 @@
   "name": "local-playground",
   "version": "0.0.0",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "scripts": {
     "build": "npm run prisma:generate && react-router build",

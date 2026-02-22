@@ -149,3 +149,7 @@ If `APPDATA` is unavailable on Windows, path falls back to:
 - `npm run start`
 - `npm run typecheck`
 - `npm run test`
+
+## License
+
+This project is licensed under the MIT License. See `LICENSE`.
