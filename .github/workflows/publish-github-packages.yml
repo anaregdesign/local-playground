@@ -102,6 +102,31 @@ jobs:
             echo "CSC_IDENTITY_AUTO_DISCOVERY=false"
           } >> "${GITHUB_ENV}"
 
+      - name: Validate macOS signing certificate type
+        if: matrix.os == 'macos-latest'
+        shell: bash
+        env:
+          CSC_LINK: ${{ env.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ env.CSC_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${CSC_LINK:-}" ] || [ ! -f "${CSC_LINK}" ]; then
+            echo "::error title=Invalid certificate path::CSC_LINK is not set to a valid file."
+            exit 1
+          fi
+
+          CERT_SUBJECT="$(
+            openssl pkcs12 -in "${CSC_LINK}" -clcerts -nokeys -passin "pass:${CSC_KEY_PASSWORD}" \
+            | openssl x509 -noout -subject -nameopt utf8 2>/dev/null
+          )"
+
+          if [[ "${CERT_SUBJECT}" != *"Developer ID Application"* ]]; then
+            echo "::error title=Invalid macOS signing certificate::MACOS_CERTIFICATE_P12_BASE64 must contain a Developer ID Application certificate."
+            echo "::error::Current certificate subject: ${CERT_SUBJECT}"
+            exit 1
+          fi
+
       - name: Build installer (macOS)
         if: matrix.os == 'macos-latest'
         shell: bash
