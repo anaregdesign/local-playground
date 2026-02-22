@@ -38,6 +38,34 @@ describe("app-event-log-client", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it("evicts old dedupe signatures to keep cache bounded", async () => {
+    vi.resetModules();
+    const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 202 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const module = await import("./app-event-log-client");
+
+    const firstPayload = {
+      level: "warning" as const,
+      category: "frontend",
+      eventName: "bounded_cache_first",
+      message: "first payload",
+    };
+
+    module.reportClientEvent(firstPayload);
+    for (let index = 0; index < 540; index += 1) {
+      module.reportClientEvent({
+        level: "warning",
+        category: "frontend",
+        eventName: `bounded_cache_${index}`,
+        message: `message_${index}`,
+      });
+    }
+    module.reportClientEvent(firstPayload);
+    await flushMicrotasks();
+
+    expect(fetchMock).toHaveBeenCalledTimes(542);
+  });
+
   it("sends structured payload for reportClientError", async () => {
     vi.resetModules();
     const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 202 }));

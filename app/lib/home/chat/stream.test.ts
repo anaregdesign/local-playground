@@ -108,4 +108,42 @@ describe("upsertMcpRpcHistoryEntry", () => {
     });
     expect(replaced.find((entry) => entry.id === "rpc-1")?.method).toBe("tools/call-updated");
   });
+
+  it("repositions existing entries when ordering fields change", () => {
+    const first = {
+      id: "rpc-1",
+      sequence: 1,
+      operationType: "mcp" as const,
+      serverName: "srv",
+      method: "tools/call",
+      startedAt: "2026-02-16T00:00:00.000Z",
+      completedAt: "2026-02-16T00:00:01.000Z",
+      request: {},
+      response: {},
+      isError: false,
+      turnId: "turn-1",
+    };
+    const second = {
+      id: "rpc-2",
+      sequence: 1,
+      operationType: "mcp" as const,
+      serverName: "srv",
+      method: "tools/list",
+      startedAt: "2026-02-16T00:00:02.000Z",
+      completedAt: "2026-02-16T00:00:03.000Z",
+      request: {},
+      response: {},
+      isError: false,
+      turnId: "turn-1",
+    };
+
+    const initial = upsertMcpRpcHistoryEntry(upsertMcpRpcHistoryEntry([], first), second);
+    expect(initial.map((entry) => entry.id)).toEqual(["rpc-1", "rpc-2"]);
+
+    const moved = upsertMcpRpcHistoryEntry(initial, {
+      ...second,
+      startedAt: "2026-02-15T23:59:59.000Z",
+    });
+    expect(moved.map((entry) => entry.id)).toEqual(["rpc-2", "rpc-1"]);
+  });
 });

@@ -15,20 +15,29 @@ const globalForClientEventLog = globalThis as typeof globalThis & {
 };
 
 const lastSentAtBySignature = new Map<string, number>();
+const dedupeSignatureCacheLimit = 512;
+const dedupeSignatureMaxAgeMs = CLIENT_EVENT_LOG_DEDUPE_WINDOW_MS * 6;
 
 export function reportClientEvent(payload: ClientAppEventLogPayload): void {
+  const now = Date.now();
+  pruneSignatureCache(now);
+
   const signature = [
     payload.level,
     payload.category,
     payload.eventName,
     payload.message,
   ].join("::");
-  const now = Date.now();
   const lastSentAt = lastSentAtBySignature.get(signature);
   if (lastSentAt !== undefined && now - lastSentAt < CLIENT_EVENT_LOG_DEDUPE_WINDOW_MS) {
     return;
   }
+
+  if (lastSentAt !== undefined) {
+    lastSentAtBySignature.delete(signature);
+  }
   lastSentAtBySignature.set(signature, now);
+  trimSignatureCache();
 
   void sendClientEvent(payload);
 }
@@ -197,6 +206,25 @@ function releaseGlobalClientLogger(): void {
 
   state.uninstall();
   globalForClientEventLog.__localPlaygroundClientErrorLoggerState = undefined;
+}
+
+function pruneSignatureCache(now: number): void {
+  for (const [signature, lastSentAt] of lastSentAtBySignature) {
+    if (now - lastSentAt <= dedupeSignatureMaxAgeMs) {
+      continue;
+    }
+    lastSentAtBySignature.delete(signature);
+  }
+}
+
+function trimSignatureCache(): void {
+  while (lastSentAtBySignature.size > dedupeSignatureCacheLimit) {
+    const oldest = lastSentAtBySignature.keys().next();
+    if (oldest.done) {
+      return;
+    }
+    lastSentAtBySignature.delete(oldest.value);
+  }
 }
 
 async function sendClientEvent(payload: ClientAppEventLogPayload): Promise<void> {

@@ -1,5 +1,6 @@
 import {
   useEffect,
+  useMemo,
   useRef,
   useState,
   type PointerEvent as ReactPointerEvent,
@@ -232,6 +233,7 @@ export function useWorkspaceController() {
   const chatAttachmentInputRef = useRef<HTMLInputElement | null>(null);
   const instructionFileInputRef = useRef<HTMLInputElement | null>(null);
   const layoutRef = useRef<HTMLDivElement | null>(null);
+  const azureConnectionsRequestSeqRef = useRef(0);
   const playgroundAzureDeploymentRequestSeqRef = useRef(0);
   const utilityAzureDeploymentRequestSeqRef = useRef(0);
   const activeAzureTenantIdRef = useRef("");
@@ -280,31 +282,45 @@ export function useWorkspaceController() {
   const activeTurnId = activeThreadRequestState.activeTurnId;
   const lastErrorTurnId = activeThreadRequestState.lastErrorTurnId;
   const error = uiError ?? activeThreadRequestState.error;
-  const mcpHistoryByTurnId = buildMcpHistoryByTurnId(mcpRpcHistory);
-  const activeTurnMcpHistory = activeTurnId ? (mcpHistoryByTurnId.get(activeTurnId) ?? []) : [];
-  const errorTurnMcpHistory = lastErrorTurnId ? (mcpHistoryByTurnId.get(lastErrorTurnId) ?? []) : [];
-  const activeMcpServerKeySet = new Set(mcpServers.map((server) => buildMcpServerKey(server)));
-  const savedMcpServerOptions = savedMcpServers
-    .map((server) => {
-      const key = buildMcpServerKey(server);
-      return {
-        id: server.id,
-        name: server.name,
-        badge: resolveMcpTransportBadge(server),
-        description: describeSavedMcpServer(server),
-        detail: describeSavedMcpServerDetail(server),
-        isSelected: activeMcpServerKeySet.has(key),
-        isAvailable: true,
-      };
-    })
-    .sort((left, right) => {
-      if (left.isSelected !== right.isSelected) {
-        return left.isSelected ? -1 : 1;
-      }
+  const mcpHistoryByTurnId = useMemo(
+    () => buildMcpHistoryByTurnId(mcpRpcHistory),
+    [mcpRpcHistory],
+  );
+  const activeTurnMcpHistory = useMemo(
+    () => (activeTurnId ? (mcpHistoryByTurnId.get(activeTurnId) ?? []) : []),
+    [activeTurnId, mcpHistoryByTurnId],
+  );
+  const errorTurnMcpHistory = useMemo(
+    () => (lastErrorTurnId ? (mcpHistoryByTurnId.get(lastErrorTurnId) ?? []) : []),
+    [lastErrorTurnId, mcpHistoryByTurnId],
+  );
+  const savedMcpServerOptions = useMemo(() => {
+    const activeMcpServerKeySet = new Set(mcpServers.map((server) => buildMcpServerKey(server)));
+    return savedMcpServers
+      .map((server) => {
+        const key = buildMcpServerKey(server);
+        return {
+          id: server.id,
+          name: server.name,
+          badge: resolveMcpTransportBadge(server),
+          description: describeSavedMcpServer(server),
+          detail: describeSavedMcpServerDetail(server),
+          isSelected: activeMcpServerKeySet.has(key),
+          isAvailable: true,
+        };
+      })
+      .sort((left, right) => {
+        if (left.isSelected !== right.isSelected) {
+          return left.isSelected ? -1 : 1;
+        }
 
-      return left.name.localeCompare(right.name);
-    });
-  const selectedSavedMcpServerCount = savedMcpServerOptions.filter((server) => server.isSelected).length;
+        return left.name.localeCompare(right.name);
+      });
+  }, [mcpServers, savedMcpServers]);
+  const selectedSavedMcpServerCount = useMemo(
+    () => savedMcpServerOptions.filter((server) => server.isSelected).length,
+    [savedMcpServerOptions],
+  );
   const draftAttachmentTotalSizeBytes = draftAttachments.reduce(
     (sum, attachment) => sum + attachment.sizeBytes,
     0,
@@ -328,38 +344,41 @@ export function useWorkspaceController() {
     instructionEnhancingThreadId === activeThreadId;
   const activeThreadSummaries = threadSummaries.filter((thread) => thread.deletedAt === null);
   const archivedThreadSummaries = threadSummaries.filter((thread) => thread.deletedAt !== null);
-  const selectedThreadSkillLocationSet = new Set(
-    selectedThreadSkills.map((selection) => selection.location),
+  const availableSkillByLocation = useMemo(
+    () => new Map(availableSkills.map((skill) => [skill.location, skill] as const)),
+    [availableSkills],
   );
-  const availableSkillByLocation = new Map(
-    availableSkills.map((skill) => [skill.location, skill] as const),
-  );
-  const threadSkillOptions = [
-    ...availableSkills.map((skill) => ({
-      name: skill.name,
-      description: skill.description,
-      location: skill.location,
-      source: skill.source,
-      isSelected: selectedThreadSkillLocationSet.has(skill.location),
-      isAvailable: true,
-    })),
-    ...selectedThreadSkills
-      .filter((selection) => !availableSkillByLocation.has(selection.location))
-      .map((selection) => ({
-        name: selection.name,
-        description: "Saved for this thread, but the SKILL.md file is currently unavailable.",
-        location: selection.location,
-        source: "workspace" as const,
-        isSelected: true,
-        isAvailable: false,
+  const threadSkillOptions = useMemo(() => {
+    const selectedThreadSkillLocationSet = new Set(
+      selectedThreadSkills.map((selection) => selection.location),
+    );
+    return [
+      ...availableSkills.map((skill) => ({
+        name: skill.name,
+        description: skill.description,
+        location: skill.location,
+        source: skill.source,
+        isSelected: selectedThreadSkillLocationSet.has(skill.location),
+        isAvailable: true,
       })),
-  ].sort((left, right) => {
-    if (left.isSelected !== right.isSelected) {
-      return left.isSelected ? -1 : 1;
-    }
+      ...selectedThreadSkills
+        .filter((selection) => !availableSkillByLocation.has(selection.location))
+        .map((selection) => ({
+          name: selection.name,
+          description: "Saved for this thread, but the SKILL.md file is currently unavailable.",
+          location: selection.location,
+          source: "workspace" as const,
+          isSelected: true,
+          isAvailable: false,
+        })),
+    ].sort((left, right) => {
+      if (left.isSelected !== right.isSelected) {
+        return left.isSelected ? -1 : 1;
+      }
 
-    return left.name.localeCompare(right.name);
-  });
+        return left.name.localeCompare(right.name);
+      });
+  }, [availableSkillByLocation, availableSkills, selectedThreadSkills]);
   const canSendMessage =
     !isSending &&
     !isSwitchingThread &&
@@ -2104,6 +2123,8 @@ export function useWorkspaceController() {
   }
 
   async function loadAzureConnections(): Promise<boolean> {
+    const requestSeq = azureConnectionsRequestSeqRef.current + 1;
+    azureConnectionsRequestSeqRef.current = requestSeq;
     setIsLoadingAzureConnections(true);
 
     try {
@@ -2112,6 +2133,9 @@ export function useWorkspaceController() {
       });
 
       const payload = (await response.json()) as AzureConnectionsApiResponse;
+      if (requestSeq !== azureConnectionsRequestSeqRef.current) {
+        return isAzureAuthRequired;
+      }
       if (!response.ok) {
         const authRequired = payload.authRequired === true || response.status === 401;
         clearActiveAzureIdentity();
@@ -2173,6 +2197,9 @@ export function useWorkspaceController() {
         tenantId && principalId
           ? await loadAzureSelectionPreference(tenantId, principalId)
           : null;
+      if (requestSeq !== azureConnectionsRequestSeqRef.current) {
+        return payload.authRequired === true;
+      }
       preferredAzureSelectionRef.current = preferredSelection;
       const preferredPlaygroundProjectId = preferredSelection?.playground?.projectId ?? "";
       const preferredUtilityProjectId = preferredSelection?.utility?.projectId ?? "";
@@ -2206,6 +2233,9 @@ export function useWorkspaceController() {
       );
       return payload.authRequired === true;
     } catch (loadError) {
+      if (requestSeq !== azureConnectionsRequestSeqRef.current) {
+        return isAzureAuthRequired;
+      }
       logHomeError("load_azure_connections_failed", loadError, {
         action: "load_azure_connections",
       });
@@ -2230,7 +2260,9 @@ export function useWorkspaceController() {
       setUtilityAzureDeploymentError(null);
       return false;
     } finally {
-      setIsLoadingAzureConnections(false);
+      if (requestSeq === azureConnectionsRequestSeqRef.current) {
+        setIsLoadingAzureConnections(false);
+      }
     }
   }
 

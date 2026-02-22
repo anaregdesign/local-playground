@@ -12,6 +12,10 @@ export type JsonToken = {
   type: JsonTokenType;
 };
 
+const jsonTokenCacheLimit = 256;
+const tokenizedJsonCache = new Map<string, JsonToken[]>();
+const parsedJsonMessageTokenCache = new Map<string, JsonToken[] | null>();
+
 export function formatJsonForDisplay(value: unknown): string {
   const normalizedValue = normalizeJsonStringValue(value);
   try {
@@ -22,8 +26,14 @@ export function formatJsonForDisplay(value: unknown): string {
 }
 
 export function parseJsonMessageTokens(content: string): JsonToken[] | null {
+  const cached = readParsedJsonMessageTokenCache(content);
+  if (cached.hit) {
+    return cached.value;
+  }
+
   const trimmed = content.trim();
   if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) {
+    writeParsedJsonMessageTokenCache(content, null);
     return null;
   }
 
@@ -31,11 +41,14 @@ export function parseJsonMessageTokens(content: string): JsonToken[] | null {
   try {
     parsed = JSON.parse(trimmed);
   } catch {
+    writeParsedJsonMessageTokenCache(content, null);
     return null;
   }
 
   const formatted = JSON.stringify(parsed, null, 2);
-  return tokenizeJson(formatted);
+  const tokens = tokenizeJson(formatted);
+  writeParsedJsonMessageTokenCache(content, tokens);
+  return tokens;
 }
 
 export function isJsonCodeClassName(className: string | undefined): boolean {
@@ -47,6 +60,11 @@ export function isJsonCodeClassName(className: string | undefined): boolean {
 }
 
 export function tokenizeJson(input: string): JsonToken[] {
+  const cached = readTokenizedJsonCache(input);
+  if (cached) {
+    return cached;
+  }
+
   const pattern =
     /"(?:\\u[\da-fA-F]{4}|\\[^u]|[^\\"])*"(?=\s*:)|"(?:\\u[\da-fA-F]{4}|\\[^u]|[^\\"])*"|true|false|null|-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?|[{}[\],:]/g;
   const tokens: JsonToken[] = [];
@@ -78,6 +96,7 @@ export function tokenizeJson(input: string): JsonToken[] {
     });
   }
 
+  writeTokenizedJsonCache(input, tokens);
   return tokens;
 }
 
@@ -127,4 +146,56 @@ function isJsonKeyToken(source: string, tokenIndex: number, tokenLength: number)
     cursor += 1;
   }
   return source[cursor] === ":";
+}
+
+function readTokenizedJsonCache(input: string): JsonToken[] | null {
+  const cached = tokenizedJsonCache.get(input);
+  if (!cached) {
+    return null;
+  }
+  tokenizedJsonCache.delete(input);
+  tokenizedJsonCache.set(input, cached);
+  return cached;
+}
+
+function writeTokenizedJsonCache(input: string, tokens: JsonToken[]): void {
+  tokenizedJsonCache.set(input, tokens);
+  trimTokenCache(tokenizedJsonCache);
+}
+
+function readParsedJsonMessageTokenCache(
+  input: string,
+): {
+  hit: boolean;
+  value: JsonToken[] | null;
+} {
+  if (!parsedJsonMessageTokenCache.has(input)) {
+    return {
+      hit: false,
+      value: null,
+    };
+  }
+
+  const cached = parsedJsonMessageTokenCache.get(input) ?? null;
+  parsedJsonMessageTokenCache.delete(input);
+  parsedJsonMessageTokenCache.set(input, cached);
+  return {
+    hit: true,
+    value: cached,
+  };
+}
+
+function writeParsedJsonMessageTokenCache(input: string, tokens: JsonToken[] | null): void {
+  parsedJsonMessageTokenCache.set(input, tokens);
+  trimTokenCache(parsedJsonMessageTokenCache);
+}
+
+function trimTokenCache<T>(cache: Map<string, T>): void {
+  while (cache.size > jsonTokenCacheLimit) {
+    const oldest = cache.keys().next();
+    if (oldest.done) {
+      return;
+    }
+    cache.delete(oldest.value);
+  }
 }
