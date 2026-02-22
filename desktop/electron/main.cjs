@@ -324,6 +324,10 @@ function resolveBackendWorkingDirectory(appRootPath) {
 }
 
 function resolveServerBuildPath(appRootPath) {
+  if (app.isPackaged) {
+    return path.resolve(process.resourcesPath, 'app.asar', 'build', 'server', 'index.js');
+  }
+
   return path.resolve(appRootPath, 'build', 'server', 'index.js');
 }
 
