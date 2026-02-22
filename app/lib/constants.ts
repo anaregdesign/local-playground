@@ -1,16 +1,5 @@
 /**
  * Impact scope:
- * These constants are used by Azure login/logout route handlers.
- * Changing them affects how the app invokes Azure CLI on all platforms.
- */
-export const AZURE_CLI_COMMAND = "az";
-export const AZURE_LOGIN_ARGS = ["login"] as const;
-export const AZURE_LOGOUT_ARGS = ["logout"] as const;
-export const AZURE_LOGOUT_TIMEOUT_MS = 30_000;
-export const AZURE_LOGOUT_MAX_BUFFER_BYTES = 1024 * 1024;
-
-/**
- * Impact scope:
  * These constants are shared by Azure ARM discovery and Azure OpenAI auth logic.
  * Changing them affects project/deployment discovery and token acquisition behavior.
  */

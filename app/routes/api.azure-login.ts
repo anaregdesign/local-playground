@@ -1,5 +1,9 @@
-import { spawn } from "node:child_process";
-import { AZURE_CLI_COMMAND, AZURE_LOGIN_ARGS } from "~/lib/constants";
+import {
+  AZURE_ARM_SCOPE,
+  AZURE_COGNITIVE_SERVICES_SCOPE,
+  AZURE_GRAPH_SCOPE,
+} from "~/lib/constants";
+import { getAzureDependencies } from "~/lib/azure/dependencies";
 import {
   installGlobalServerErrorLogging,
   logServerRouteEvent,
@@ -21,34 +25,32 @@ export async function action({ request }: Route.ActionArgs) {
   }
 
   try {
-    const loginProcess = spawn(AZURE_CLI_COMMAND, [...AZURE_LOGIN_ARGS], {
-      detached: true,
-      stdio: "ignore",
-      windowsHide: true,
-      env: process.env,
-    });
-    loginProcess.unref();
+    const dependencies = getAzureDependencies();
+    await dependencies.authenticateAzure([
+      AZURE_ARM_SCOPE,
+      AZURE_COGNITIVE_SERVICES_SCOPE,
+      AZURE_GRAPH_SCOPE,
+    ]);
 
     return Response.json({
-      message: "Azure login started. Complete sign-in in the browser, then retry.",
+      message: "Azure login completed. Azure connections were refreshed.",
     });
   } catch (error) {
     await logServerRouteEvent({
       request,
       route: "/api/azure-login",
       eventName: "azure_login_start_failed",
-      action: "spawn_azure_cli_login",
+      action: "authenticate_interactive_browser_credential",
       statusCode: 500,
       error,
       context: {
-        command: AZURE_CLI_COMMAND,
-        args: [...AZURE_LOGIN_ARGS],
+        scopes: [AZURE_ARM_SCOPE, AZURE_COGNITIVE_SERVICES_SCOPE, AZURE_GRAPH_SCOPE],
       },
     });
 
     return Response.json(
       {
-        error: `Failed to start Azure login: ${readErrorMessage(error)}. Ensure Azure CLI (az) is installed and available in PATH.`,
+        error: `Failed to run Azure login: ${readErrorMessage(error)}. Retry and complete sign-in in the browser.`,
       },
       { status: 500 },
     );

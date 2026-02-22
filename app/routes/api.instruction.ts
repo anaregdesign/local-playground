@@ -717,13 +717,13 @@ function isAzureCredentialError(error: unknown): boolean {
   const message = error.message.toLowerCase();
   return [
     "defaultazurecredential",
+    "interactivebrowsercredential",
+    "authenticationrequirederror",
+    "automatic authentication has been disabled",
     "chainedtokencredential",
     "credentialunavailableerror",
     "managedidentitycredential",
-    "azureclicredential",
-    "please run 'az login'",
-    "run az login",
-    "az login",
+    "azure credential failed",
   ].some((pattern) => message.includes(pattern));
 }
 

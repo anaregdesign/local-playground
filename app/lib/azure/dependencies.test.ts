@@ -24,9 +24,10 @@ describe("normalizeAzureOpenAIBaseURL", () => {
 });
 
 describe("createAzureDependencies", () => {
-  it("creates DefaultAzureCredential lazily once and reuses it", () => {
+  it("creates InteractiveBrowserCredential lazily once and reuses it", () => {
     const credential = {
       getToken: vi.fn(async () => null),
+      authenticate: vi.fn(async () => undefined),
     };
     const createCredential = vi.fn(() => credential);
     const dependencies = createAzureDependencies({
@@ -44,7 +45,7 @@ describe("createAzureDependencies", () => {
       token: `token-for-${scope}`,
       expiresOnTimestamp: Date.now() + 120_000,
     }));
-    const createCredential = vi.fn(() => ({ getToken }));
+    const createCredential = vi.fn(() => ({ getToken, authenticate: vi.fn(async () => undefined) }));
     const createOpenAIClient = vi.fn((options: unknown) => ({ options }));
 
     const dependencies = createAzureDependencies({
@@ -85,6 +86,7 @@ describe("createAzureDependencies", () => {
         () =>
           ({
             getToken: vi.fn(async () => null),
+            authenticate: vi.fn(async () => undefined),
           }) as never,
       ),
       createOpenAIClient: vi.fn(() => ({}) as never),
@@ -102,8 +104,9 @@ describe("createAzureDependencies", () => {
         expiresOnTimestamp: Date.now() + 120_000,
       };
     });
+    const authenticate = vi.fn(async () => undefined);
     const dependencies = createAzureDependencies({
-      createCredential: vi.fn(() => ({ getToken })) as never,
+      createCredential: vi.fn(() => ({ getToken, authenticate })) as never,
       createOpenAIClient: vi.fn(() => ({}) as never),
     });
 
@@ -128,9 +131,10 @@ describe("createAzureDependencies", () => {
           resolveToken = resolve as (value: { token: string; expiresOnTimestamp: number }) => void;
         }),
     );
+    const authenticate = vi.fn(async () => undefined);
 
     const dependencies = createAzureDependencies({
-      createCredential: vi.fn(() => ({ getToken })) as never,
+      createCredential: vi.fn(() => ({ getToken, authenticate })) as never,
       createOpenAIClient: vi.fn(() => ({}) as never),
     });
 
@@ -157,9 +161,10 @@ describe("createAzureDependencies", () => {
         expiresOnTimestamp: Date.now() + (sequence === 1 ? 5_000 : 120_000),
       };
     });
+    const authenticate = vi.fn(async () => undefined);
 
     const dependencies = createAzureDependencies({
-      createCredential: vi.fn(() => ({ getToken })) as never,
+      createCredential: vi.fn(() => ({ getToken, authenticate })) as never,
       createOpenAIClient: vi.fn(() => ({}) as never),
     });
 
@@ -180,6 +185,7 @@ describe("createAzureDependencies", () => {
               token: "unused",
               expiresOnTimestamp: Date.now() + 120_000,
             })),
+            authenticate: vi.fn(async () => undefined),
           }) as never,
       ),
       createOpenAIClient: vi.fn(() => ({}) as never),
@@ -188,5 +194,33 @@ describe("createAzureDependencies", () => {
     await expect(dependencies.getAzureBearerToken("   ")).rejects.toThrow(
       "Azure token scope is missing.",
     );
+  });
+
+  it("runs interactive authentication and clears cached tokens", async () => {
+    const getToken = vi
+      .fn()
+      .mockResolvedValueOnce({
+        token: "scope-a-token-1",
+        expiresOnTimestamp: Date.now() + 120_000,
+      })
+      .mockResolvedValueOnce({
+        token: "scope-a-token-2",
+        expiresOnTimestamp: Date.now() + 120_000,
+      });
+    const authenticate = vi.fn(async () => undefined);
+
+    const dependencies = createAzureDependencies({
+      createCredential: vi.fn(() => ({ getToken, authenticate })) as never,
+      createOpenAIClient: vi.fn(() => ({}) as never),
+    });
+
+    await dependencies.getAzureBearerToken("scope-a");
+    await dependencies.authenticateAzure([" scope-a ", "scope-a"]);
+    const nextToken = await dependencies.getAzureBearerToken("scope-a");
+
+    expect(nextToken).toBe("scope-a-token-2");
+    expect(authenticate).toHaveBeenCalledTimes(1);
+    expect(authenticate).toHaveBeenCalledWith(["scope-a"]);
+    expect(getToken).toHaveBeenCalledTimes(2);
   });
 });

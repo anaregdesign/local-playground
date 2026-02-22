@@ -1,4 +1,4 @@
-import { DefaultAzureCredential } from "@azure/identity";
+import { InteractiveBrowserCredential } from "@azure/identity";
 import OpenAI from "openai";
 import {
   AZURE_ACCESS_TOKEN_REFRESH_BUFFER_MS,
@@ -6,7 +6,8 @@ import {
 } from "~/lib/constants";
 
 type AzureCredential = {
-  getToken: DefaultAzureCredential["getToken"];
+  getToken: InteractiveBrowserCredential["getToken"];
+  authenticate: InteractiveBrowserCredential["authenticate"];
 };
 
 type AzureAccessToken = NonNullable<Awaited<ReturnType<AzureCredential["getToken"]>>>;
@@ -18,6 +19,7 @@ type CachedAzureAccessToken = {
 
 export type AzureDependencies = {
   getCredential: () => AzureCredential;
+  authenticateAzure: (scopes: string | ReadonlyArray<string>) => Promise<void>;
   getAzureBearerToken: (scope: string) => Promise<string>;
   getAzureOpenAIClient: (baseUrl: string) => OpenAI;
 };
@@ -32,7 +34,12 @@ export { AZURE_COGNITIVE_SERVICES_SCOPE };
 export function createAzureDependencies(
   options: CreateAzureDependenciesOptions = {},
 ): AzureDependencies {
-  const createCredential = options.createCredential ?? (() => new DefaultAzureCredential());
+  const createCredential =
+    options.createCredential ??
+    (() =>
+      new InteractiveBrowserCredential({
+        disableAutomaticAuthentication: true,
+      }));
   const createOpenAIClient =
     options.createOpenAIClient ?? ((openAIOptions) => new OpenAI(openAIOptions));
   let credential: AzureCredential | null = null;
@@ -45,6 +52,21 @@ export function createAzureDependencies(
       credential = createCredential();
     }
     return credential;
+  };
+
+  const clearAzureAccessTokenCache = (): void => {
+    accessTokenByScope.clear();
+    accessTokenRequestByScope.clear();
+  };
+
+  const authenticateAzure = async (scopes: string | ReadonlyArray<string>): Promise<void> => {
+    const normalizedScopes = normalizeAzureScopes(scopes);
+    if (normalizedScopes.length === 0) {
+      throw new Error("Azure token scope is missing.");
+    }
+
+    await getCredential().authenticate(normalizedScopes);
+    clearAzureAccessTokenCache();
   };
 
   const getAzureBearerToken = async (scope: string): Promise<string> => {
@@ -68,7 +90,7 @@ export function createAzureDependencies(
       .then((token) => {
         if (!token?.token) {
           throw new Error(
-            `DefaultAzureCredential failed to acquire Azure token (scope: ${normalizedScope}).`,
+            `Azure credential failed to acquire Azure token (scope: ${normalizedScope}).`,
           );
         }
         accessTokenByScope.set(normalizedScope, mapCachedAzureAccessToken(token));
@@ -103,6 +125,7 @@ export function createAzureDependencies(
 
   return {
     getCredential,
+    authenticateAzure,
     getAzureBearerToken,
     getAzureOpenAIClient,
   };
@@ -136,6 +159,15 @@ export function normalizeAzureOpenAIBaseURL(rawValue: string): string {
 
 function normalizeAzureScope(rawValue: string): string {
   return rawValue.trim();
+}
+
+function normalizeAzureScopes(rawValue: string | ReadonlyArray<string>): string[] {
+  const rawScopes = Array.isArray(rawValue) ? rawValue : [rawValue];
+  const normalized = rawScopes
+    .map((scope) => scope.trim())
+    .filter((scope) => scope.length > 0);
+
+  return [...new Set(normalized)];
 }
 
 function mapCachedAzureAccessToken(token: AzureAccessToken): CachedAzureAccessToken {

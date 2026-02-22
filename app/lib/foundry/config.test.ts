@@ -25,12 +25,32 @@ describe("resolveFoundryConfigDirectory", () => {
     expect(resolved).toBe("C:\\Users\\hiroki\\.foundry_local_playground");
   });
 
-  it("uses hidden home directory on non-Windows", () => {
+  it("uses Application Support on macOS", () => {
     const resolved = resolveFoundryConfigDirectory({
       platform: "darwin",
       homeDirectory: "/Users/hiroki",
     });
-    expect(resolved).toBe("/Users/hiroki/.foundry_local_playground");
+    expect(resolved).toBe("/Users/hiroki/Library/Application Support/FoundryLocalPlayground");
+  });
+
+  it("uses XDG_DATA_HOME on Linux when available", () => {
+    const resolved = resolveFoundryConfigDirectory({
+      platform: "linux",
+      homeDirectory: "/home/hiroki",
+      xdgDataHomeDirectory: "/home/hiroki/.xdg-data",
+    });
+
+    expect(resolved).toBe("/home/hiroki/.xdg-data/FoundryLocalPlayground");
+  });
+
+  it("falls back to ~/.local/share on Linux when XDG_DATA_HOME is missing", () => {
+    const resolved = resolveFoundryConfigDirectory({
+      platform: "linux",
+      homeDirectory: "/home/hiroki",
+      xdgDataHomeDirectory: "",
+    });
+
+    expect(resolved).toBe("/home/hiroki/.local/share/FoundryLocalPlayground");
   });
 });
 
@@ -41,7 +61,9 @@ describe("resolveFoundryDatabaseFilePath", () => {
       homeDirectory: "/Users/hiroki",
     });
 
-    expect(resolved).toBe("/Users/hiroki/.foundry_local_playground/local-playground.sqlite");
+    expect(resolved).toBe(
+      "/Users/hiroki/Library/Application Support/FoundryLocalPlayground/local-playground.sqlite",
+    );
   });
 });
 
@@ -52,7 +74,7 @@ describe("resolveFoundrySkillsDirectory", () => {
       homeDirectory: "/Users/hiroki",
     });
 
-    expect(resolved).toBe("/Users/hiroki/.foundry_local_playground/skills");
+    expect(resolved).toBe("/Users/hiroki/Library/Application Support/FoundryLocalPlayground/skills");
   });
 });
 
@@ -72,7 +94,7 @@ describe("resolveFoundryDatabaseUrl", () => {
     });
 
     expect(resolved).toBe(
-      "file:///home/hiroki/.foundry_local_playground/local-playground.sqlite",
+      "file:///home/hiroki/.local/share/FoundryLocalPlayground/local-playground.sqlite",
     );
   });
 });

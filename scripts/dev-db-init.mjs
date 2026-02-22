@@ -46,6 +46,31 @@ function resolveDefaultDatabaseFilePath() {
     return path.win32.join(homedir(), LEGACY_CONFIG_DIRECTORY, SQLITE_FILE_NAME);
   }
 
+  if (process.platform === "darwin") {
+    return path.posix.join(
+      homedir(),
+      "Library",
+      "Application Support",
+      WINDOWS_CONFIG_DIRECTORY,
+      SQLITE_FILE_NAME,
+    );
+  }
+
+  if (process.platform === "linux") {
+    const xdgDataHomeDirectory = (process.env.XDG_DATA_HOME ?? "").trim();
+    if (xdgDataHomeDirectory) {
+      return path.posix.join(xdgDataHomeDirectory, WINDOWS_CONFIG_DIRECTORY, SQLITE_FILE_NAME);
+    }
+
+    return path.posix.join(
+      homedir(),
+      ".local",
+      "share",
+      WINDOWS_CONFIG_DIRECTORY,
+      SQLITE_FILE_NAME,
+    );
+  }
+
   return path.posix.join(homedir(), LEGACY_CONFIG_DIRECTORY, SQLITE_FILE_NAME);
 }
 

@@ -2311,10 +2311,17 @@ export function useWorkspaceController() {
       logHomeError("load_azure_connections_failed", loadError, {
         action: "load_azure_connections",
       });
+      const errorMessage =
+        loadError instanceof Error ? loadError.message : "Failed to load Azure projects.";
+      const nextAuthRequired = isAzureAuthRequired || isLikelyChatAzureAuthError(errorMessage);
       clearActiveAzureIdentity();
       clearSavedMcpServersState();
-      clearThreadsState();
-      setIsAzureAuthRequired(false);
+      clearThreadsState(
+        nextAuthRequired
+          ? "Azure login is required. Open Settings and sign in to load threads."
+          : null,
+      );
+      setIsAzureAuthRequired(nextAuthRequired);
       setAzureConnections([]);
       setPlaygroundAzureDeployments([]);
       setUtilityAzureDeployments([]);
@@ -2325,12 +2332,10 @@ export function useWorkspaceController() {
       setSelectedUtilityAzureConnectionId("");
       setSelectedUtilityAzureDeploymentName("");
       setUtilityReasoningEffort(HOME_DEFAULT_UTILITY_REASONING_EFFORT);
-      setAzureConnectionError(
-        loadError instanceof Error ? loadError.message : "Failed to load Azure projects.",
-      );
+      setAzureConnectionError(nextAuthRequired ? null : errorMessage);
       setPlaygroundAzureDeploymentError(null);
       setUtilityAzureDeploymentError(null);
-      return false;
+      return nextAuthRequired;
     } finally {
       if (requestSeq === azureConnectionsRequestSeqRef.current) {
         setIsLoadingAzureConnections(false);
@@ -2815,11 +2820,6 @@ export function useWorkspaceController() {
     setSystemNotice(null);
     setIsStartingAzureLogin(true);
     try {
-      const stillAuthRequired = await loadAzureConnections();
-      if (!stillAuthRequired) {
-        return;
-      }
-
       const response = await fetch("/api/azure-login", {
         method: "POST",
       });
@@ -2828,8 +2828,9 @@ export function useWorkspaceController() {
         throw new Error(payload.error || "Failed to start Azure login.");
       }
 
-      setSystemNotice(payload.message || "Azure login started. Sign in and reload Azure connections.");
+      setSystemNotice(payload.message || "Azure login completed.");
       setAzureConnectionError(null);
+      await loadAzureConnections();
     } catch (loginError) {
       logHomeError("azure_login_flow_failed", loginError, {
         action: "azure_login",
@@ -4104,8 +4105,10 @@ function isLikelyChatAzureAuthError(message: string | null): boolean {
   const normalizedMessage = message.toLowerCase();
   return [
     "azure login is required",
-    "az login",
     "defaultazurecredential",
+    "interactivebrowsercredential",
+    "authenticationrequirederror",
+    "automatic authentication has been disabled",
     "credential",
     "authentication",
     "authorization",

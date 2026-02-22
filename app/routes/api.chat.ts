@@ -2381,7 +2381,7 @@ async function getAzureMcpAuthorizationToken(
     return await dependencies.getAzureBearerToken(scope);
   } catch {
     throw new Error(
-      `DefaultAzureCredential failed to acquire Azure token for MCP Authorization header (scope: ${scope}). Run Azure Login and try again.`,
+      `Azure credential failed to acquire token for MCP Authorization header (scope: ${scope}). Run Azure Login and try again.`,
     );
   }
 }
@@ -3411,13 +3411,13 @@ function isAzureCredentialError(error: unknown): boolean {
   const message = error.message.toLowerCase();
   return [
     "defaultazurecredential",
+    "interactivebrowsercredential",
+    "authenticationrequirederror",
+    "automatic authentication has been disabled",
     "chainedtokencredential",
     "credentialunavailableerror",
     "managedidentitycredential",
-    "azureclicredential",
-    "please run 'az login'",
-    "run az login",
-    "az login",
+    "azure credential failed",
   ].some((pattern) => message.includes(pattern));
 }
 

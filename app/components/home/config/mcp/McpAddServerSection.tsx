@@ -188,13 +188,13 @@ export function McpAddServerSection(props: McpAddServerSectionProps) {
             <div className="field-with-info">
               <Checkbox
                 className="field-checkbox"
-                title="Attach Azure Bearer token from DefaultAzureCredential."
+                title="Attach Azure Bearer token from the app's Azure credential."
                 checked={mcpUseAzureAuthInput}
                 onChange={(_, data) => {
                   onMcpUseAzureAuthInputChange(data.checked === true);
                 }}
                 disabled={isSending}
-                label="Use Azure Bearer token from DefaultAzureCredential"
+                label="Use Azure Bearer token from app credential"
               />
               <Popover withArrow positioning="below-end">
                 <PopoverTrigger disableButtonEnhancement>
@@ -214,7 +214,7 @@ export function McpAddServerSection(props: McpAddServerSectionProps) {
                       <code>Content-Type: application/json</code> is always included.
                     </li>
                     <li>
-                      At connect time, the app calls <code>DefaultAzureCredential.getToken(scope)</code>.
+                      At connect time, the app calls <code>InteractiveBrowserCredential.getToken(scope)</code>.
                     </li>
                     <li>
                       The resulting <code>Authorization: Bearer &lt;token&gt;</code> header is added after custom

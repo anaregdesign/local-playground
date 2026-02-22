@@ -109,7 +109,7 @@ describe("isLikelyAzureAuthError", () => {
   it("returns true for Azure login/authentication failures", () => {
     expect(
       isLikelyAzureAuthError(
-        new Error("DefaultAzureCredential failed. Please run 'az login' to setup account."),
+        new Error("AuthenticationRequiredError: Automatic authentication has been disabled."),
       ),
     ).toBe(true);
     expect(

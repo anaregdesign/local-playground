@@ -46,11 +46,11 @@ export CODEX_HOME="${CODEX_HOME:-$HOME/.codex}"
 mkdir -p "$CODEX_HOME/skills"
 ln -sfn "$(pwd)/skills/.dev/local-playground-dev" "$CODEX_HOME/skills/local-playground-dev"
 # restart Codex or start a new session after installation
-az login
 npm run dev
 ```
 
 Open `http://localhost:5173`.
+Then click `Azure Login` in the app `Settings` tab.
 
 ## Main Features
 
@@ -108,7 +108,8 @@ Release builds are signed for OS trust checks:
 
 Configuration directory:
 
-- macOS/Linux: `~/.foundry_local_playground/`
+- macOS: `~/Library/Application Support/FoundryLocalPlayground/`
+- Linux: `${XDG_DATA_HOME:-~/.local/share}/FoundryLocalPlayground/`
 - Windows: `%APPDATA%\FoundryLocalPlayground\`
 
 SQLite database:

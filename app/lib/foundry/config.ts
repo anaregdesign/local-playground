@@ -12,6 +12,7 @@ type ResolveFoundryConfigDirectoryOptions = {
   platform?: NodeJS.Platform;
   homeDirectory?: string;
   appDataDirectory?: string | null;
+  xdgDataHomeDirectory?: string | null;
 };
 
 type ResolveFoundryDatabaseUrlOptions = ResolveFoundryConfigDirectoryOptions & {
@@ -32,18 +33,43 @@ export function resolveFoundryConfigDirectory(
   options: ResolveFoundryConfigDirectoryOptions = {},
 ): string {
   const platform = options.platform ?? process.platform;
-  const legacyDirectory = resolveLegacyFoundryConfigDirectory(options);
+  const homeDirectory = options.homeDirectory ?? homedir();
 
-  if (platform !== "win32") {
-    return legacyDirectory;
+  if (platform === "win32") {
+    const appDataDirectory = (options.appDataDirectory ?? process.env.APPDATA ?? "").trim();
+    if (!appDataDirectory) {
+      return path.win32.join(homeDirectory, FOUNDRY_LEGACY_CONFIG_DIRECTORY_NAME);
+    }
+
+    return path.win32.join(appDataDirectory, FOUNDRY_WINDOWS_CONFIG_DIRECTORY_NAME);
   }
 
-  const appDataDirectory = (options.appDataDirectory ?? process.env.APPDATA ?? "").trim();
-  if (!appDataDirectory) {
-    return legacyDirectory;
+  if (platform === "darwin") {
+    return path.posix.join(
+      homeDirectory,
+      "Library",
+      "Application Support",
+      FOUNDRY_WINDOWS_CONFIG_DIRECTORY_NAME,
+    );
   }
 
-  return path.win32.join(appDataDirectory, FOUNDRY_WINDOWS_CONFIG_DIRECTORY_NAME);
+  if (platform === "linux") {
+    const xdgDataHomeDirectory = (
+      options.xdgDataHomeDirectory ?? process.env.XDG_DATA_HOME ?? ""
+    ).trim();
+    if (xdgDataHomeDirectory) {
+      return path.posix.join(xdgDataHomeDirectory, FOUNDRY_WINDOWS_CONFIG_DIRECTORY_NAME);
+    }
+
+    return path.posix.join(
+      homeDirectory,
+      ".local",
+      "share",
+      FOUNDRY_WINDOWS_CONFIG_DIRECTORY_NAME,
+    );
+  }
+
+  return resolveLegacyFoundryConfigDirectory(options);
 }
 
 export function resolveFoundryDatabaseFilePath(

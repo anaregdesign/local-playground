@@ -743,12 +743,13 @@ export function isLikelyAzureAuthError(error: unknown): boolean {
   const message = error.message.toLowerCase();
   return [
     "defaultazurecredential",
+    "interactivebrowsercredential",
+    "authenticationrequirederror",
+    "automatic authentication has been disabled",
     "chainedtokencredential",
     "credentialunavailableerror",
     "managedidentitycredential",
-    "azureclicredential",
-    "az login",
-    "run az login",
+    "azure credential failed",
     "authentication",
     "authorization",
     "unauthorized",
