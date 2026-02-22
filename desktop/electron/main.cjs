@@ -1,5 +1,5 @@
 const path = require('node:path');
-const { existsSync } = require('node:fs');
+const { existsSync, readFileSync } = require('node:fs');
 const { spawn } = require('node:child_process');
 const { app, BrowserWindow, session, shell } = require('electron');
 
@@ -42,7 +42,7 @@ function configureContentSecurityPolicy() {
   );
 }
 
-function createMainWindow() {
+function createMainWindow({ loadAppUrl = true } = {}) {
   const browserWindowOptions = {
     width: 1600,
     height: 980,
@@ -71,17 +71,19 @@ function createMainWindow() {
   const appUrl = resolveAppUrl();
   const appOrigin = readUrlOrigin(appUrl);
   configureExternalLinkHandling(appOrigin);
-  mainWindow.loadURL(appUrl).catch((error) => {
-    const summary =
-      DESKTOP_MODE === 'development'
-        ? `Could not connect to ${appUrl}.`
-        : `Could not open ${appUrl}.`;
-    const guide =
-      DESKTOP_MODE === 'development'
-        ? 'Run `npm run desktop:dev` or start the web app with `npm run dev`.'
-        : 'Run `npm run desktop:start` again after a successful build.';
-    void showErrorPage(`${summary} ${guide}`, readErrorMessage(error));
-  });
+  if (loadAppUrl) {
+    mainWindow.loadURL(appUrl).catch((error) => {
+      const summary =
+        DESKTOP_MODE === 'development'
+          ? `Could not connect to ${appUrl}.`
+          : `Could not open ${appUrl}.`;
+      const guide =
+        DESKTOP_MODE === 'development'
+          ? 'Run `npm run desktop:dev` or start the web app with `npm run dev`.'
+          : 'Run `npm run desktop:start` again after a successful build.';
+      void showErrorPage(`${summary} ${guide}`, readErrorMessage(error));
+    });
+  }
 
   mainWindow.on('closed', () => {
     mainWindow = null;
@@ -145,15 +147,15 @@ function openInExternalBrowser(url) {
 }
 
 async function startProductionBackend() {
-  const appRootPath = app.getAppPath();
-  const serveCliPath = require.resolve('@react-router/serve/bin.js');
-  const serverBuildPath = path.resolve(appRootPath, 'build', 'server', 'index.js');
+  const appRootPath = resolveRuntimeAppRootPath();
+  const serveCliPath = resolveReactRouterServeCliPath();
+  const serverBuildPath = resolveServerBuildPath(appRootPath);
   if (!existsSync(serverBuildPath)) {
-    throw new Error('Server build is missing. Run `npm run build` first.');
+    throw new Error(`Server build is missing at ${serverBuildPath}. Run \`npm run build\` first.`);
   }
 
   backendProcess = spawn(process.execPath, [serveCliPath, serverBuildPath], {
-    cwd: appRootPath,
+    cwd: resolveBackendWorkingDirectory(appRootPath),
     env: {
       ...process.env,
       PORT: String(BACKEND_PORT),
@@ -255,7 +257,11 @@ async function showErrorPage(message, details) {
 </html>`;
 
   const encoded = `data:text/html;charset=utf-8,${encodeURIComponent(html)}`;
-  await mainWindow.loadURL(encoded);
+  try {
+    await mainWindow.loadURL(encoded);
+  } catch (error) {
+    console.error(`[desktop-ui] Failed to render error page: ${readErrorMessage(error)}`);
+  }
 }
 
 function escapeHtml(value) {
@@ -287,6 +293,47 @@ function readErrorMessage(error) {
   return error instanceof Error ? error.message : 'Unknown error.';
 }
 
+function resolveReactRouterServeCliPath() {
+  const servePackageJsonPath = require.resolve('@react-router/serve/package.json');
+  const servePackageDir = path.dirname(servePackageJsonPath);
+  const servePackageJson = JSON.parse(readFileSync(servePackageJsonPath, 'utf8'));
+  const binField = servePackageJson?.bin;
+
+  let relativeCliPath = null;
+  if (typeof binField === 'string') {
+    relativeCliPath = binField;
+  } else if (binField && typeof binField === 'object') {
+    relativeCliPath = binField['react-router-serve'] || Object.values(binField)[0] || null;
+  }
+
+  if (!relativeCliPath) {
+    throw new Error('Could not resolve @react-router/serve CLI path from package metadata.');
+  }
+
+  const serveCliPath = path.resolve(servePackageDir, relativeCliPath);
+  if (!existsSync(serveCliPath)) {
+    throw new Error(`React Router serve CLI not found at ${serveCliPath}.`);
+  }
+
+  return serveCliPath;
+}
+
+function resolveBackendWorkingDirectory(appRootPath) {
+  return app.isPackaged ? process.resourcesPath : appRootPath;
+}
+
+function resolveServerBuildPath(appRootPath) {
+  return path.resolve(appRootPath, 'build', 'server', 'index.js');
+}
+
+function resolveRuntimeAppRootPath() {
+  if (app.isPackaged) {
+    return path.resolve(process.resourcesPath, 'app.asar');
+  }
+
+  return path.resolve(__dirname, '..', '..');
+}
+
 function setDockIconIfAvailable() {
   if (process.platform !== 'darwin' || !app.dock || !existsSync(APP_ICON_PATH)) {
     return;
@@ -305,7 +352,7 @@ app.whenReady().then(async () => {
     } catch (error) {
       const message = `Failed to start local backend at ${BACKEND_URL}.`;
       const detail = readErrorMessage(error);
-      createMainWindow();
+      createMainWindow({ loadAppUrl: false });
       await showErrorPage(message, detail);
       return;
     }
