@@ -1,11 +1,25 @@
 import { describe, expect, it } from "vitest";
 import {
+  MCP_DEFAULT_AZURE_MCP_SERVER_ARGS,
+  MCP_DEFAULT_AZURE_MCP_SERVER_COMMAND,
+  MCP_DEFAULT_AZURE_MCP_SERVER_NAME,
   MCP_DEFAULT_AZURE_AUTH_SCOPE,
+  MCP_DEFAULT_MICROSOFT_LEARN_SERVER_NAME,
+  MCP_DEFAULT_MICROSOFT_LEARN_SERVER_URL,
+  MCP_DEFAULT_OPENAI_DOCS_SERVER_NAME,
+  MCP_DEFAULT_OPENAI_DOCS_SERVER_URL,
+  MCP_DEFAULT_PLAYWRIGHT_MCP_SERVER_ARGS,
+  MCP_DEFAULT_PLAYWRIGHT_MCP_SERVER_COMMAND,
+  MCP_DEFAULT_PLAYWRIGHT_MCP_SERVER_NAME,
   MCP_DEFAULT_TIMEOUT_SECONDS,
+  MCP_DEFAULT_WORKIQ_SERVER_ARGS,
+  MCP_DEFAULT_WORKIQ_SERVER_COMMAND,
+  MCP_DEFAULT_WORKIQ_SERVER_NAME,
 } from "~/lib/constants";
 import { mcpServersRouteTestUtils } from "./api.mcp-servers";
 
-const { parseIncomingMcpServer, upsertSavedMcpServer } = mcpServersRouteTestUtils;
+const { parseIncomingMcpServer, upsertSavedMcpServer, mergeDefaultMcpServers } =
+  mcpServersRouteTestUtils;
 
 describe("parseIncomingMcpServer", () => {
   it("parses HTTP payload and applies defaults", () => {
@@ -199,5 +213,150 @@ describe("upsertSavedMcpServer", () => {
     expect(result.profiles).toHaveLength(2);
     expect(result.profile.id).toBe("profile-2");
     expect(result.warning).toBeNull();
+  });
+});
+
+describe("mergeDefaultMcpServers", () => {
+  it("adds the default vendor profiles when missing", () => {
+    const result = mergeDefaultMcpServers([]);
+
+    expect(result).toHaveLength(5);
+    expect(result).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: MCP_DEFAULT_OPENAI_DOCS_SERVER_NAME,
+          transport: "streamable_http",
+          url: MCP_DEFAULT_OPENAI_DOCS_SERVER_URL,
+          headers: {},
+          useAzureAuth: false,
+          azureAuthScope: MCP_DEFAULT_AZURE_AUTH_SCOPE,
+          timeoutSeconds: MCP_DEFAULT_TIMEOUT_SECONDS,
+        }),
+        expect.objectContaining({
+          name: MCP_DEFAULT_MICROSOFT_LEARN_SERVER_NAME,
+          transport: "streamable_http",
+          url: MCP_DEFAULT_MICROSOFT_LEARN_SERVER_URL,
+          headers: {},
+          useAzureAuth: false,
+          azureAuthScope: MCP_DEFAULT_AZURE_AUTH_SCOPE,
+          timeoutSeconds: MCP_DEFAULT_TIMEOUT_SECONDS,
+        }),
+        expect.objectContaining({
+          name: MCP_DEFAULT_WORKIQ_SERVER_NAME,
+          transport: "stdio",
+          command: MCP_DEFAULT_WORKIQ_SERVER_COMMAND,
+          args: [...MCP_DEFAULT_WORKIQ_SERVER_ARGS],
+          env: {},
+        }),
+        expect.objectContaining({
+          name: MCP_DEFAULT_AZURE_MCP_SERVER_NAME,
+          transport: "stdio",
+          command: MCP_DEFAULT_AZURE_MCP_SERVER_COMMAND,
+          args: [...MCP_DEFAULT_AZURE_MCP_SERVER_ARGS],
+          env: {},
+        }),
+        expect.objectContaining({
+          name: MCP_DEFAULT_PLAYWRIGHT_MCP_SERVER_NAME,
+          transport: "stdio",
+          command: MCP_DEFAULT_PLAYWRIGHT_MCP_SERVER_COMMAND,
+          args: [...MCP_DEFAULT_PLAYWRIGHT_MCP_SERVER_ARGS],
+          env: {},
+        }),
+      ]),
+    );
+    expect(result.every((entry) => entry.id.length > 0)).toBe(true);
+  });
+
+  it("does not duplicate defaults when matching profiles already exist", () => {
+    const existing = [
+      {
+        id: "profile-openai-docs",
+        name: "OpenAI Docs (Custom Name)",
+        transport: "streamable_http" as const,
+        url: MCP_DEFAULT_OPENAI_DOCS_SERVER_URL,
+        headers: {},
+        useAzureAuth: false,
+        azureAuthScope: MCP_DEFAULT_AZURE_AUTH_SCOPE,
+        timeoutSeconds: MCP_DEFAULT_TIMEOUT_SECONDS,
+      },
+      {
+        id: "profile-microsoft-learn",
+        name: "Microsoft Learn (Custom Name)",
+        transport: "streamable_http" as const,
+        url: MCP_DEFAULT_MICROSOFT_LEARN_SERVER_URL,
+        headers: {},
+        useAzureAuth: false,
+        azureAuthScope: MCP_DEFAULT_AZURE_AUTH_SCOPE,
+        timeoutSeconds: MCP_DEFAULT_TIMEOUT_SECONDS,
+      },
+      {
+        id: "profile-workiq",
+        name: "Custom WorkIQ",
+        transport: "stdio" as const,
+        command: MCP_DEFAULT_WORKIQ_SERVER_COMMAND,
+        args: [...MCP_DEFAULT_WORKIQ_SERVER_ARGS],
+        env: {},
+      },
+      {
+        id: "profile-azure-mcp",
+        name: "Azure MCP (Custom Name)",
+        transport: "stdio" as const,
+        command: MCP_DEFAULT_AZURE_MCP_SERVER_COMMAND,
+        args: [...MCP_DEFAULT_AZURE_MCP_SERVER_ARGS],
+        env: {},
+      },
+      {
+        id: "profile-playwright",
+        name: "Playwright (Custom Name)",
+        transport: "stdio" as const,
+        command: MCP_DEFAULT_PLAYWRIGHT_MCP_SERVER_COMMAND,
+        args: [...MCP_DEFAULT_PLAYWRIGHT_MCP_SERVER_ARGS],
+        env: {},
+      },
+    ];
+
+    const result = mergeDefaultMcpServers(existing);
+
+    expect(result).toEqual(existing);
+  });
+
+  it("adds only missing defaults when some profiles already exist", () => {
+    const existing = [
+      {
+        id: "profile-workiq",
+        name: "Custom WorkIQ",
+        transport: "stdio" as const,
+        command: MCP_DEFAULT_WORKIQ_SERVER_COMMAND,
+        args: [...MCP_DEFAULT_WORKIQ_SERVER_ARGS],
+        env: {},
+      },
+    ];
+
+    const result = mergeDefaultMcpServers(existing);
+
+    expect(result).toHaveLength(5);
+    expect(result).toEqual(
+      expect.arrayContaining([
+        existing[0],
+        expect.objectContaining({
+          transport: "streamable_http",
+          url: MCP_DEFAULT_OPENAI_DOCS_SERVER_URL,
+        }),
+        expect.objectContaining({
+          transport: "streamable_http",
+          url: MCP_DEFAULT_MICROSOFT_LEARN_SERVER_URL,
+        }),
+        expect.objectContaining({
+          transport: "stdio",
+          command: MCP_DEFAULT_AZURE_MCP_SERVER_COMMAND,
+          args: [...MCP_DEFAULT_AZURE_MCP_SERVER_ARGS],
+        }),
+        expect.objectContaining({
+          transport: "stdio",
+          command: MCP_DEFAULT_PLAYWRIGHT_MCP_SERVER_COMMAND,
+          args: [...MCP_DEFAULT_PLAYWRIGHT_MCP_SERVER_ARGS],
+        }),
+      ]),
+    );
   });
 });

@@ -77,6 +77,7 @@ git diff --name-only
 ```
 
 2. Confirm each new/changed file is in the correct folder:
+   - Auth-only top-level panel(s) -> `app/components/home/authorize/`
    - Playground panel/renderers -> `app/components/home/playground/`
    - Config panel shell -> `app/components/home/config/`
    - Threads tab/sections -> `app/components/home/config/threads/`
@@ -87,11 +88,15 @@ git diff --name-only
    - top-level panes: `*Panel`
    - tab roots: `*Tab`
    - tab subsections: `*Section`
+4. Confirm top-level panel directories mirror DOM hierarchy:
+   - top-level panels are siblings under `app/components/home/`
+   - no nesting of one top-level panel inside another panel directory
 
 ### Pass Criteria
 
 - File placement matches feature ownership.
 - Names communicate structural role (`Panel`, `Tab`, `Section`).
+- Top-level panel placement matches DOM hierarchy.
 
 ## 3) Route vs Controller Ownership
 

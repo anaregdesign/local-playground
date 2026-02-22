@@ -1,7 +1,7 @@
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { CopyIconButton } from "~/components/home/shared/CopyIconButton";
-import { buildMcpEntryCopyPayload } from "~/lib/home/chat/history";
+import { buildMcpEntryCopyPayload, readOperationLogType } from "~/lib/home/chat/history";
 import { formatChatAttachmentSize } from "~/lib/home/chat/attachments";
 import type { ChatMessage } from "~/lib/home/chat/messages";
 import type { JsonToken } from "~/lib/home/chat/json-highlighting";
@@ -23,11 +23,11 @@ export function renderTurnMcpLog(
   return (
     <details className="mcp-turn-log">
       <summary>
-        <span>🧩 MCP Operation Log ({entries.length})</span>
+        <span>🧩 MCP / Skill Operation Log ({entries.length})</span>
         <CopyIconButton
           className="mcp-log-copy-btn"
-          ariaLabel="Copy MCP operation log"
-          title="Copy all MCP operation logs in this turn."
+          ariaLabel="Copy MCP and Skill operation log"
+          title="Copy all MCP and Skill operation logs in this turn."
           onClick={(event) => {
             event.preventDefault();
             event.stopPropagation();
@@ -41,71 +41,80 @@ export function renderTurnMcpLog(
       </summary>
       {entries.length === 0 ? (
         <p className="mcp-turn-log-empty">
-          {isLive ? "Waiting for MCP operations..." : "No MCP operations in this turn."}
+          {isLive
+            ? "Waiting for MCP / Skill operations..."
+            : "No MCP / Skill operations in this turn."}
         </p>
       ) : (
         <div className="mcp-history-list">
-          {entries.map((entry) => (
-            <details key={entry.id} className="mcp-history-item">
-              <summary>
-                <span className="mcp-history-seq">#{entry.sequence}</span>
-                <span className="mcp-history-method">{entry.method}</span>
-                <span className="mcp-history-server">{entry.serverName}</span>
-                <span className={`mcp-history-state ${entry.isError ? "error" : "ok"}`}>
-                  {entry.isError ? "error" : "ok"}
-                </span>
-                <CopyIconButton
-                  className="mcp-history-copy-btn"
-                  ariaLabel="Copy MCP operation entry"
-                  title="Copy this MCP operation entry."
-                  onClick={(event) => {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    onCopyText(formatJsonForDisplay(buildMcpEntryCopyPayload(entry)));
-                  }}
-                />
-              </summary>
-              <div className="mcp-history-body">
-                <p className="mcp-history-time">
-                  {entry.startedAt}
-                  {" -> "}
-                  {entry.completedAt}
-                </p>
-                <p className="mcp-history-label-row">
-                  <span className="mcp-history-label">request</span>
+          {entries.map((entry) => {
+            const operationType = readOperationLogType(entry);
+            const operationLabel = operationType === "skill" ? "Skill" : "MCP";
+            return (
+              <details key={entry.id} className="mcp-history-item">
+                <summary>
+                  <span className="mcp-history-seq">#{entry.sequence}</span>
+                  <span className={`mcp-history-type-badge ${operationType}`}>
+                    {operationLabel}
+                  </span>
+                  <span className="mcp-history-method">{entry.method}</span>
+                  <span className="mcp-history-server">{entry.serverName}</span>
+                  <span className={`mcp-history-state ${entry.isError ? "error" : "ok"}`}>
+                    {entry.isError ? "error" : "ok"}
+                  </span>
                   <CopyIconButton
-                    className="mcp-part-copy-btn"
-                    ariaLabel="Copy MCP request payload"
-                    title="Copy MCP request payload."
-                    onClick={() => {
-                      onCopyText(
-                        formatJsonForDisplay({
-                          request: entry.request ?? null,
-                        }),
-                      );
+                    className="mcp-history-copy-btn"
+                    ariaLabel="Copy operation entry"
+                    title="Copy this operation entry."
+                    onClick={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      onCopyText(formatJsonForDisplay(buildMcpEntryCopyPayload(entry)));
                     }}
                   />
-                </p>
-                {renderHighlightedJson(entry.request, "MCP request JSON", "compact")}
-                <p className="mcp-history-label-row">
-                  <span className="mcp-history-label">response</span>
-                  <CopyIconButton
-                    className="mcp-part-copy-btn"
-                    ariaLabel="Copy MCP response payload"
-                    title="Copy MCP response payload."
-                    onClick={() => {
-                      onCopyText(
-                        formatJsonForDisplay({
-                          response: entry.response ?? null,
-                        }),
-                      );
-                    }}
-                  />
-                </p>
-                {renderHighlightedJson(entry.response, "MCP response JSON", "compact")}
-              </div>
-            </details>
-          ))}
+                </summary>
+                <div className="mcp-history-body">
+                  <p className="mcp-history-time">
+                    {entry.startedAt}
+                    {" -> "}
+                    {entry.completedAt}
+                  </p>
+                  <p className="mcp-history-label-row">
+                    <span className="mcp-history-label">request</span>
+                    <CopyIconButton
+                      className="mcp-part-copy-btn"
+                      ariaLabel="Copy operation request payload"
+                      title="Copy operation request payload."
+                      onClick={() => {
+                        onCopyText(
+                          formatJsonForDisplay({
+                            request: entry.request ?? null,
+                          }),
+                        );
+                      }}
+                    />
+                  </p>
+                  {renderHighlightedJson(entry.request, "Operation request JSON", "compact")}
+                  <p className="mcp-history-label-row">
+                    <span className="mcp-history-label">response</span>
+                    <CopyIconButton
+                      className="mcp-part-copy-btn"
+                      ariaLabel="Copy operation response payload"
+                      title="Copy operation response payload."
+                      onClick={() => {
+                        onCopyText(
+                          formatJsonForDisplay({
+                            response: entry.response ?? null,
+                          }),
+                        );
+                      }}
+                    />
+                  </p>
+                  {renderHighlightedJson(entry.response, "Operation response JSON", "compact")}
+                </div>
+              </details>
+            );
+          })}
         </div>
       )}
     </details>

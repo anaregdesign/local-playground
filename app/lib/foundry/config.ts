@@ -4,6 +4,7 @@ import { pathToFileURL } from "node:url";
 import {
   FOUNDRY_SQLITE_DATABASE_FILE_NAME,
   FOUNDRY_LEGACY_CONFIG_DIRECTORY_NAME,
+  FOUNDRY_SKILLS_DIRECTORY_NAME,
   FOUNDRY_WINDOWS_CONFIG_DIRECTORY_NAME,
 } from "~/lib/constants";
 
@@ -52,6 +53,15 @@ export function resolveFoundryDatabaseFilePath(
   const platform = options.platform ?? process.platform;
   const pathModule = platform === "win32" ? path.win32 : path.posix;
   return pathModule.join(primaryDirectoryPath, FOUNDRY_SQLITE_DATABASE_FILE_NAME);
+}
+
+export function resolveFoundrySkillsDirectory(
+  options: ResolveFoundryConfigDirectoryOptions = {},
+): string {
+  const primaryDirectoryPath = resolveFoundryConfigDirectory(options);
+  const platform = options.platform ?? process.platform;
+  const pathModule = platform === "win32" ? path.win32 : path.posix;
+  return pathModule.join(primaryDirectoryPath, FOUNDRY_SKILLS_DIRECTORY_NAME);
 }
 
 export function resolveFoundryDatabaseUrl(

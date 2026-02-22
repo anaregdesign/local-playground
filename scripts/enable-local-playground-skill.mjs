@@ -4,11 +4,12 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 
 const SKILL_NAME = "local-playground-dev";
+const SKILL_DIRECTORY_SEGMENTS = ["skills", ".dev", SKILL_NAME];
 
 async function main() {
   const codexHome = resolveCodexHome();
   const repoRoot = resolveRepositoryRoot();
-  const sourceSkillPath = path.join(repoRoot, "skills", SKILL_NAME);
+  const sourceSkillPath = path.join(repoRoot, ...SKILL_DIRECTORY_SEGMENTS);
   const codexSkillsDirectory = path.join(codexHome, "skills");
   const destinationSkillPath = path.join(codexSkillsDirectory, SKILL_NAME);
 

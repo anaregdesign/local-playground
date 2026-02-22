@@ -9,7 +9,7 @@
 - Before starting development, install the project skill with Codex standard setup by placing it under `$CODEX_HOME/skills/`.
 - If `CODEX_HOME` is not set, set it first (example: `export CODEX_HOME="$HOME/.codex"`).
 - Recommended setup command:
-  - `mkdir -p "$CODEX_HOME/skills" && ln -sfn "$(pwd)/skills/local-playground-dev" "$CODEX_HOME/skills/local-playground-dev"`
+  - `mkdir -p "$CODEX_HOME/skills" && ln -sfn "$(pwd)/skills/.dev/local-playground-dev" "$CODEX_HOME/skills/local-playground-dev"`
 - Restart Codex (or start a new session) after installing/updating the skill.
 
 # Implementation Policy
@@ -50,6 +50,7 @@
 
 - Keep component boundaries aligned with the real DOM tree.
 - For `home` UI, preserve this directory structure:
+  - `app/components/home/authorize/` for auth-only top-level panel(s) rendered when sign-in is required
   - `app/components/home/playground/` for left-pane Playground panel and renderers
   - `app/components/home/config/` for right-pane configuration panel
   - `app/components/home/config/threads/` for Threads tab and its sections
@@ -57,10 +58,12 @@
   - `app/components/home/config/settings/` for Settings tab and its sections
   - `app/components/home/shared/` for reusable UI primitives and shared types
 - Naming conventions:
-  - `*Panel`: top-level pane container (`PlaygroundPanel`, `ConfigPanel`)
+  - `*Panel`: top-level pane container (`UnauthenticatedPanel`, `PlaygroundPanel`, `ConfigPanel`)
   - `*Tab`: tab content root under a panel (`ThreadsTab`, `McpServersTab`, `SettingsTab`)
   - `*Section`: vertically segmented form/content block inside a tab (`InstructionSection`, `ThreadsManageSection`, `McpAddServerSection`)
   - Shared primitives should use purpose-based names (`ConfigSection`, `StatusMessageList`, `AutoDismissStatusMessageList`, `LabeledTooltip`, `CopyIconButton`)
+- Place top-level panel components as siblings under `app/components/home/*` according to DOM hierarchy.
+  - Do not place one top-level panel inside another panel directory (for example, auth panel under `playground/`).
 - Home route modules under `app/routes/` should stay as visual composition only (layout + panel wiring), not runtime state/effects.
 - Prefer one-directional dependencies:
   - panel -> tab -> section -> shared
@@ -163,6 +166,10 @@
   - save on client side using save picker/download flow
   - AI enhancement using currently selected Azure project/deployment
   - diff review (adopt enhanced vs keep original)
+- Skill discovery roots for the app runtime:
+  - workspace defaults: `skills/default/`
+  - CODEX_HOME shared skills: `$CODEX_HOME/skills/`
+  - app-data shared skills: `<foundry-config-dir>/skills/` (same parent directory as `local-playground.sqlite`)
 
 ## MCP Server Management
 

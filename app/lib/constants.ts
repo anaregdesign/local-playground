@@ -34,6 +34,7 @@ export const AZURE_MAX_MODELS_PER_ACCOUNT = 512;
 export const FOUNDRY_LEGACY_CONFIG_DIRECTORY_NAME = ".foundry_local_playground";
 export const FOUNDRY_WINDOWS_CONFIG_DIRECTORY_NAME = "FoundryLocalPlayground";
 export const FOUNDRY_SQLITE_DATABASE_FILE_NAME = "local-playground.sqlite";
+export const FOUNDRY_SKILLS_DIRECTORY_NAME = "skills";
 
 /**
  * Impact scope:
@@ -90,6 +91,35 @@ export const HOME_INITIAL_MESSAGES: ReadonlyArray<never> = [];
 
 /**
  * Impact scope:
+ * These constants define Agent Skills discovery and runtime activation limits.
+ * Changing them affects SKILL.md validation and chat-time skill loading behavior.
+ */
+export const AGENT_SKILLS_DIRECTORY_NAME = "skills";
+export const AGENT_DEFAULT_SKILLS_DIRECTORY_NAME = "default";
+export const AGENT_SKILL_NAME_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+export const AGENT_SKILL_NAME_MAX_LENGTH = 64;
+export const AGENT_SKILL_DESCRIPTION_MAX_LENGTH = 1024;
+export const AGENT_SKILL_FILE_MAX_BYTES = 1_000_000;
+export const CHAT_MAX_ACTIVE_SKILLS = 24;
+export const AGENT_SKILL_SCRIPTS_DIRECTORY_NAME = "scripts";
+export const AGENT_SKILL_REFERENCES_DIRECTORY_NAME = "references";
+export const AGENT_SKILL_ASSETS_DIRECTORY_NAME = "assets";
+export const AGENT_SKILL_RESOURCE_MAX_FILES_PER_DIRECTORY = 200;
+export const AGENT_SKILL_RESOURCE_PATH_MAX_LENGTH = 512;
+export const AGENT_SKILL_PROMPT_RESOURCE_PREVIEW_MAX_FILES = 24;
+export const AGENT_SKILL_TOOL_RESOURCE_PREVIEW_MAX_FILES = 80;
+export const AGENT_SKILL_REFERENCE_FILE_MAX_BYTES = 1_000_000;
+export const AGENT_SKILL_ASSET_FILE_MAX_BYTES = 2_000_000;
+export const AGENT_SKILL_READ_TEXT_DEFAULT_MAX_CHARS = 12_000;
+export const AGENT_SKILL_READ_TEXT_MAX_CHARS = 60_000;
+export const AGENT_SKILL_SCRIPT_MAX_ARGS = 32;
+export const AGENT_SKILL_SCRIPT_ARG_MAX_LENGTH = 512;
+export const AGENT_SKILL_SCRIPT_TIMEOUT_MS = 20_000;
+export const AGENT_SKILL_SCRIPT_TIMEOUT_MAX_MS = 120_000;
+export const AGENT_SKILL_SCRIPT_OUTPUT_MAX_CHARS = 24_000;
+
+/**
+ * Impact scope:
  * These constants define MCP server validation, parsing, and display behavior.
  * Changing them affects both API-side payload validation and home-side form checks.
  */
@@ -105,6 +135,24 @@ export const MCP_DEFAULT_AZURE_AUTH_SCOPE = AZURE_COGNITIVE_SERVICES_SCOPE;
 export const MCP_DEFAULT_HTTP_HEADERS: Record<string, string> = {
   "Content-Type": "application/json",
 };
+export const MCP_DEFAULT_OPENAI_DOCS_SERVER_NAME = "openai-docs";
+export const MCP_DEFAULT_OPENAI_DOCS_SERVER_URL = "https://developers.openai.com/mcp";
+export const MCP_DEFAULT_MICROSOFT_LEARN_SERVER_NAME = "microsoft-learn";
+export const MCP_DEFAULT_MICROSOFT_LEARN_SERVER_URL = "https://learn.microsoft.com/api/mcp";
+export const MCP_DEFAULT_WORKIQ_SERVER_NAME = "workiq";
+export const MCP_DEFAULT_WORKIQ_SERVER_COMMAND = "npx";
+export const MCP_DEFAULT_WORKIQ_SERVER_ARGS = ["-y", "@microsoft/workiq", "mcp"] as const;
+export const MCP_DEFAULT_AZURE_MCP_SERVER_NAME = "azure-mcp";
+export const MCP_DEFAULT_AZURE_MCP_SERVER_COMMAND = "npx";
+export const MCP_DEFAULT_AZURE_MCP_SERVER_ARGS = [
+  "-y",
+  "@azure/mcp@latest",
+  "server",
+  "start",
+] as const;
+export const MCP_DEFAULT_PLAYWRIGHT_MCP_SERVER_NAME = "playwright";
+export const MCP_DEFAULT_PLAYWRIGHT_MCP_SERVER_COMMAND = "npx";
+export const MCP_DEFAULT_PLAYWRIGHT_MCP_SERVER_ARGS = ["-y", "@playwright/mcp@latest"] as const;
 export const ENV_KEY_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
 export const HTTP_HEADER_NAME_PATTERN = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/;
 
@@ -198,6 +246,7 @@ export const HOME_THREAD_NAME_MAX_LENGTH = 80;
 export const HOME_MAIN_VIEW_TAB_OPTIONS = [
   { id: "threads", label: "🧵 Threads" },
   { id: "mcp", label: "🧩 MCP Servers" },
+  { id: "skills", label: "🧠 Skills" },
   { id: "settings", label: "⚙️ Settings" },
 ] as const;
 

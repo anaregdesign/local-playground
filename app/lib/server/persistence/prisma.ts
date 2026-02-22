@@ -309,6 +309,7 @@ async function ensureThreadSchema(): Promise<void> {
       "threadId" TEXT NOT NULL,
       "sortOrder" INTEGER NOT NULL,
       "sequence" INTEGER NOT NULL,
+      "operationType" TEXT NOT NULL DEFAULT 'mcp',
       "serverName" TEXT NOT NULL,
       "method" TEXT NOT NULL,
       "startedAt" TEXT NOT NULL,
@@ -321,9 +322,31 @@ async function ensureThreadSchema(): Promise<void> {
     )
   `);
 
+  await ensureTableColumn(
+    "ThreadMcpRpcLog",
+    "operationType",
+    "TEXT NOT NULL DEFAULT 'mcp'",
+  );
+
   await prisma.$executeRawUnsafe(`
     CREATE INDEX IF NOT EXISTS "ThreadMcpRpcLog_threadId_sortOrder_idx"
     ON "ThreadMcpRpcLog" ("threadId", "sortOrder")
+  `);
+
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS "ThreadSkillSelection" (
+      "id" TEXT NOT NULL PRIMARY KEY,
+      "threadId" TEXT NOT NULL,
+      "sortOrder" INTEGER NOT NULL,
+      "skillName" TEXT NOT NULL,
+      "skillPath" TEXT NOT NULL,
+      FOREIGN KEY ("threadId") REFERENCES "Thread" ("id") ON DELETE CASCADE
+    )
+  `);
+
+  await prisma.$executeRawUnsafe(`
+    CREATE INDEX IF NOT EXISTS "ThreadSkillSelection_threadId_sortOrder_idx"
+    ON "ThreadSkillSelection" ("threadId", "sortOrder")
   `);
 }
 

@@ -1,6 +1,7 @@
 import type { McpServerConfig } from "~/lib/home/mcp/profile";
 import type { ChatMessage } from "~/lib/home/chat/messages";
 import type { McpRpcHistoryEntry } from "~/lib/home/chat/stream";
+import type { ThreadSkillSelection } from "~/lib/home/skills/types";
 import type { ThreadSnapshot } from "~/lib/home/thread/types";
 
 export function cloneMessages(value: ChatMessage[]): ChatMessage[] {
@@ -31,6 +32,12 @@ export function cloneMcpRpcHistory(value: McpRpcHistoryEntry[]): McpRpcHistoryEn
   }));
 }
 
+export function cloneThreadSkillSelections(value: ThreadSkillSelection[]): ThreadSkillSelection[] {
+  return value.map((entry) => ({
+    ...entry,
+  }));
+}
+
 export function buildThreadSaveSignature(snapshot: ThreadSnapshot): string {
   return JSON.stringify({
     name: snapshot.name,
@@ -39,11 +46,38 @@ export function buildThreadSaveSignature(snapshot: ThreadSnapshot): string {
     messages: snapshot.messages,
     mcpServers: snapshot.mcpServers,
     mcpRpcHistory: snapshot.mcpRpcHistory,
+    skillSelections: snapshot.skillSelections,
   });
 }
 
-export function hasThreadInteraction(snapshot: Pick<ThreadSnapshot, "messages">): boolean {
-  return snapshot.messages.length > 0;
+export function hasThreadInteraction(
+  snapshot: Pick<ThreadSnapshot, "messages"> &
+    Partial<Pick<ThreadSnapshot, "skillSelections">>,
+): boolean {
+  if (snapshot.messages.length > 0) {
+    return true;
+  }
+
+  return (snapshot.skillSelections?.length ?? 0) > 0;
+}
+
+export function isThreadSnapshotArchived(
+  snapshot: Pick<ThreadSnapshot, "deletedAt"> | null | undefined,
+): boolean {
+  return snapshot !== null && snapshot !== undefined && snapshot.deletedAt !== null;
+}
+
+export function isThreadArchivedById(
+  snapshots: Array<Pick<ThreadSnapshot, "id" | "deletedAt">>,
+  threadIdRaw: string,
+): boolean {
+  const threadId = threadIdRaw.trim();
+  if (!threadId) {
+    return false;
+  }
+
+  const snapshot = snapshots.find((entry) => entry.id === threadId);
+  return isThreadSnapshotArchived(snapshot);
 }
 
 export function upsertThreadSnapshot(

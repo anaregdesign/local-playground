@@ -2,7 +2,20 @@ import {
   ENV_KEY_PATTERN,
   HTTP_HEADER_NAME_PATTERN,
   MCP_AZURE_AUTH_SCOPE_MAX_LENGTH,
+  MCP_DEFAULT_AZURE_MCP_SERVER_ARGS,
+  MCP_DEFAULT_AZURE_MCP_SERVER_COMMAND,
+  MCP_DEFAULT_AZURE_MCP_SERVER_NAME,
   MCP_DEFAULT_AZURE_AUTH_SCOPE,
+  MCP_DEFAULT_MICROSOFT_LEARN_SERVER_NAME,
+  MCP_DEFAULT_MICROSOFT_LEARN_SERVER_URL,
+  MCP_DEFAULT_OPENAI_DOCS_SERVER_NAME,
+  MCP_DEFAULT_OPENAI_DOCS_SERVER_URL,
+  MCP_DEFAULT_PLAYWRIGHT_MCP_SERVER_ARGS,
+  MCP_DEFAULT_PLAYWRIGHT_MCP_SERVER_COMMAND,
+  MCP_DEFAULT_PLAYWRIGHT_MCP_SERVER_NAME,
+  MCP_DEFAULT_WORKIQ_SERVER_ARGS,
+  MCP_DEFAULT_WORKIQ_SERVER_COMMAND,
+  MCP_DEFAULT_WORKIQ_SERVER_NAME,
   MCP_DEFAULT_TIMEOUT_SECONDS,
   MCP_HTTP_HEADERS_MAX,
   MCP_SERVER_NAME_MAX_LENGTH,
@@ -71,7 +84,11 @@ export async function loader({ request }: Route.LoaderArgs) {
   }
 
   try {
-    const profiles = await readSavedMcpServers(user.id);
+    const currentProfiles = await readSavedMcpServers(user.id);
+    const profiles = mergeDefaultMcpServers(currentProfiles);
+    if (profiles.length !== currentProfiles.length) {
+      await writeSavedMcpServers(user.id, profiles);
+    }
     return Response.json({ profiles });
   } catch (error) {
     await logServerRouteEvent({
@@ -237,6 +254,71 @@ async function writeSavedMcpServers(userId: number, profiles: SavedMcpServerConf
       data: profiles.map((profile, index) => mapProfileToDatabaseRecord(userId, profile, index)),
     });
   });
+}
+
+function mergeDefaultMcpServers(currentProfiles: SavedMcpServerConfig[]): SavedMcpServerConfig[] {
+  const mergedProfiles = [...currentProfiles];
+  const profileKeys = new Set(mergedProfiles.map((profile) => buildProfileKey(profile)));
+  for (const profile of buildDefaultMcpServerProfiles()) {
+    const profileKey = buildProfileKey(profile);
+    if (profileKeys.has(profileKey)) {
+      continue;
+    }
+
+    profileKeys.add(profileKey);
+    mergedProfiles.push(profile);
+  }
+
+  return mergedProfiles;
+}
+
+function buildDefaultMcpServerProfiles(): SavedMcpServerConfig[] {
+  return [
+    {
+      id: createRandomId(),
+      name: MCP_DEFAULT_OPENAI_DOCS_SERVER_NAME,
+      transport: "streamable_http",
+      url: MCP_DEFAULT_OPENAI_DOCS_SERVER_URL,
+      headers: {},
+      useAzureAuth: false,
+      azureAuthScope: MCP_DEFAULT_AZURE_AUTH_SCOPE,
+      timeoutSeconds: MCP_DEFAULT_TIMEOUT_SECONDS,
+    },
+    {
+      id: createRandomId(),
+      name: MCP_DEFAULT_MICROSOFT_LEARN_SERVER_NAME,
+      transport: "streamable_http",
+      url: MCP_DEFAULT_MICROSOFT_LEARN_SERVER_URL,
+      headers: {},
+      useAzureAuth: false,
+      azureAuthScope: MCP_DEFAULT_AZURE_AUTH_SCOPE,
+      timeoutSeconds: MCP_DEFAULT_TIMEOUT_SECONDS,
+    },
+    {
+      id: createRandomId(),
+      name: MCP_DEFAULT_WORKIQ_SERVER_NAME,
+      transport: "stdio",
+      command: MCP_DEFAULT_WORKIQ_SERVER_COMMAND,
+      args: [...MCP_DEFAULT_WORKIQ_SERVER_ARGS],
+      env: {},
+    },
+    {
+      id: createRandomId(),
+      name: MCP_DEFAULT_AZURE_MCP_SERVER_NAME,
+      transport: "stdio",
+      command: MCP_DEFAULT_AZURE_MCP_SERVER_COMMAND,
+      args: [...MCP_DEFAULT_AZURE_MCP_SERVER_ARGS],
+      env: {},
+    },
+    {
+      id: createRandomId(),
+      name: MCP_DEFAULT_PLAYWRIGHT_MCP_SERVER_NAME,
+      transport: "stdio",
+      command: MCP_DEFAULT_PLAYWRIGHT_MCP_SERVER_COMMAND,
+      args: [...MCP_DEFAULT_PLAYWRIGHT_MCP_SERVER_ARGS],
+      env: {},
+    },
+  ];
 }
 
 function parseIncomingMcpServer(payload: unknown): ParseResult<IncomingMcpServerConfig> {
@@ -849,4 +931,5 @@ export const mcpServersRouteTestUtils = {
   parseIncomingMcpServer,
   upsertSavedMcpServer,
   buildIncomingProfileKey,
+  mergeDefaultMcpServers,
 };

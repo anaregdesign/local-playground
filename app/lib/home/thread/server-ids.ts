@@ -52,3 +52,8 @@ export function buildThreadMcpRpcLogRowId(threadId: string, sourceId: string, in
   const normalizedSourceId = normalizeThreadMcpRpcLogSourceId(sourceId, index);
   return `thread:${normalizedThreadId}:rpc:${index}:${normalizedSourceId}`;
 }
+
+export function buildThreadSkillSelectionRowId(threadId: string, index: number): string {
+  const normalizedThreadId = threadId.trim();
+  return `thread:${normalizedThreadId}:skill:${index}`;
+}

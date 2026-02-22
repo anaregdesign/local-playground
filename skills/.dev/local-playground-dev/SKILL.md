@@ -43,6 +43,7 @@ Run this loop for every implementation task.
 - Keep Home route modules in `app/routes/` as visual composition and panel wiring only.
 - Keep Home runtime ownership in `app/lib/home/controller/`.
 - Map each change to the approved `home` structure:
+  - `app/components/home/authorize/`: auth-only top-level panel(s) for sign-in-required states.
   - `app/components/home/playground/`: left-pane Playground panel and renderers.
   - `app/components/home/config/`: right-pane panel shell and tab wiring.
   - `app/components/home/config/threads/`: Threads tab and sections.
@@ -50,6 +51,8 @@ Run this loop for every implementation task.
   - `app/components/home/config/settings/`: Settings tab and sections.
   - `app/components/home/shared/`: reusable primitives and shared types.
   - `app/lib/home/*`: runtime helpers and pure transforms.
+- Keep top-level panels as siblings under `app/components/home/` to match DOM hierarchy.
+  - Never place one top-level panel under another panel directory.
 - Preserve dependency direction: panel -> tab -> section -> shared.
 
 ## 3) Enforce State Persistence Policy

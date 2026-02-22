@@ -3,6 +3,7 @@ import {
   resolveFoundryDatabaseFilePath,
   resolveFoundryDatabaseUrl,
   resolveFoundryConfigDirectory,
+  resolveFoundrySkillsDirectory,
 } from "./config";
 
 describe("resolveFoundryConfigDirectory", () => {
@@ -41,6 +42,17 @@ describe("resolveFoundryDatabaseFilePath", () => {
     });
 
     expect(resolved).toBe("/Users/hiroki/.foundry_local_playground/local-playground.sqlite");
+  });
+});
+
+describe("resolveFoundrySkillsDirectory", () => {
+  it("builds Skills path in the primary config directory", () => {
+    const resolved = resolveFoundrySkillsDirectory({
+      platform: "darwin",
+      homeDirectory: "/Users/hiroki",
+    });
+
+    expect(resolved).toBe("/Users/hiroki/.foundry_local_playground/skills");
   });
 });
 

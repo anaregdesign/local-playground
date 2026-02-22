@@ -1,4 +1,5 @@
 import type { Route } from "./+types/api.chat";
+import path from "node:path";
 import {
   Agent,
   MCPServerSSE,
@@ -6,6 +7,7 @@ import {
   MCPServerStreamableHttp,
   assistant,
   run,
+  tool,
   user,
   type AgentInputItem,
   type MCPServer,
@@ -37,10 +39,20 @@ import {
   CHAT_ATTACHMENT_MAX_PDF_TOTAL_SIZE_BYTES,
   CHAT_ATTACHMENT_MAX_TOTAL_SIZE_BYTES,
   CHAT_MAX_AGENT_INSTRUCTION_LENGTH,
+  CHAT_MAX_ACTIVE_SKILLS,
   CHAT_MAX_RUN_TURNS,
   CHAT_MAX_MCP_SERVERS,
   CHAT_MODEL_RUN_TIMEOUT_MS,
   DEFAULT_AGENT_INSTRUCTION,
+  AGENT_SKILL_PROMPT_RESOURCE_PREVIEW_MAX_FILES,
+  AGENT_SKILL_READ_TEXT_DEFAULT_MAX_CHARS,
+  AGENT_SKILL_READ_TEXT_MAX_CHARS,
+  AGENT_SKILL_SCRIPT_ARG_MAX_LENGTH,
+  AGENT_SKILL_SCRIPT_MAX_ARGS,
+  AGENT_SKILL_SCRIPT_OUTPUT_MAX_CHARS,
+  AGENT_SKILL_SCRIPT_TIMEOUT_MAX_MS,
+  AGENT_SKILL_TOOL_RESOURCE_PREVIEW_MAX_FILES,
+  AGENT_SKILL_NAME_MAX_LENGTH,
   ENV_KEY_PATTERN,
   HTTP_HEADER_NAME_PATTERN,
   MCP_AZURE_AUTH_SCOPE_MAX_LENGTH,
@@ -57,6 +69,16 @@ import {
   TEMPERATURE_MIN,
 } from "~/lib/constants";
 import type { AzureDependencies } from "~/lib/azure/dependencies";
+import type { SkillCatalogEntry, ThreadSkillSelection } from "~/lib/home/skills/types";
+import { discoverSkillCatalog, readSkillMarkdown } from "~/lib/server/skills/catalog";
+import {
+  inspectSkillResourceManifest,
+  readSkillResourceBuffer,
+  readSkillResourceText,
+  runSkillScript,
+  type SkillResourceFileEntry,
+  type SkillResourceKind,
+} from "~/lib/server/skills/runtime";
 
 type ChatRole = "user" | "assistant";
 
@@ -93,6 +115,7 @@ type ClientMcpStdioServerConfig = {
   env: Record<string, string>;
 };
 type ClientMcpServerConfig = ClientMcpHttpServerConfig | ClientMcpStdioServerConfig;
+type ClientSkillSelection = ThreadSkillSelection;
 
 type ParseResult<T> = { ok: true; value: T } | { ok: false; error: string };
 type ResolvedAzureConfig = {
@@ -112,6 +135,7 @@ type ChatExecutionOptions = {
   reasoningEffort: ReasoningEffort;
   temperature: number | null;
   agentInstruction: string;
+  skills: ClientSkillSelection[];
   azureConfig: ResolvedAzureConfig;
   mcpServers: ClientMcpServerConfig[];
 };
@@ -137,6 +161,7 @@ type JsonRpcResponsePayload =
 type McpRpcRecord = {
   id: string;
   sequence: number;
+  operationType: "mcp" | "skill";
   serverName: string;
   method: string;
   startedAt: string;
@@ -183,6 +208,29 @@ type ChatStreamPayload =
       error: string;
       errorCode?: "azure_login_required";
     };
+type ActiveSkillRuntimeEntry = {
+  name: string;
+  description: string;
+  location: string;
+  content: string;
+  skillRoot: string;
+  scripts: SkillResourceFileEntry[];
+  references: SkillResourceFileEntry[];
+  assets: SkillResourceFileEntry[];
+  scriptsTruncated: boolean;
+  referencesTruncated: boolean;
+  assetsTruncated: boolean;
+};
+type SkillRuntimeContext = {
+  availableSkills: SkillCatalogEntry[];
+  activeSkills: ActiveSkillRuntimeEntry[];
+  warnings: string[];
+};
+type SkillToolCategory = SkillResourceKind;
+type SkillToolLogHandlers = {
+  nextSequence: () => number;
+  onRecord: (record: McpRpcRecord) => void;
+};
 
 let codeInterpreterAttachmentAvailabilityCache: CodeInterpreterAttachmentAvailabilityCache | null =
   null;
@@ -280,6 +328,20 @@ export async function action({ request }: Route.ActionArgs) {
     return Response.json({ error: temperatureResult.error }, { status: 400 });
   }
   const agentInstruction = readAgentInstruction(payload);
+  const skillsResult = readSkills(payload);
+  if (!skillsResult.ok) {
+    await logServerRouteEvent({
+      request,
+      route: "/api/chat",
+      eventName: "invalid_skills_payload",
+      action: "validate_payload",
+      level: "warning",
+      statusCode: 400,
+      message: skillsResult.error,
+    });
+
+    return Response.json({ error: skillsResult.error }, { status: 400 });
+  }
   const azureConfigResult = readAzureConfig(payload);
   if (!azureConfigResult.ok) {
     await logServerRouteEvent({
@@ -340,6 +402,7 @@ export async function action({ request }: Route.ActionArgs) {
     reasoningEffort,
     temperature: temperatureResult.value,
     agentInstruction,
+    skills: skillsResult.value,
     azureConfig,
     mcpServers: mcpServersResult.value,
   };
@@ -465,6 +528,7 @@ async function executeChat(
         emitMcpRpcRecord({
           id: connectRequestId,
           sequence: connectSequence,
+          operationType: "mcp",
           serverName: serverConfig.name,
           method: "server/connect",
           startedAt: connectStartedAt,
@@ -489,6 +553,7 @@ async function executeChat(
       emitMcpRpcRecord({
         id: connectRequestId,
         sequence: connectSequence,
+        operationType: "mcp",
         serverName: serverConfig.name,
         method: "server/connect",
         startedAt: connectStartedAt,
@@ -500,6 +565,14 @@ async function executeChat(
       emitProgress({
         message: `Connected MCP server: ${serverConfig.name}`,
         isMcp: true,
+      });
+    }
+
+    const skillRuntime = await buildSkillRuntimeContext(options.skills);
+    const skillWarnings = collectSkillRuntimeWarnings(skillRuntime);
+    if (skillWarnings.length > 0) {
+      emitProgress({
+        message: `Skill loading warnings: ${skillWarnings.slice(0, 2).join(" / ")}`,
       });
     }
 
@@ -547,10 +620,17 @@ async function executeChat(
 
     const enableCodeInterpreterTool =
       codeInterpreterEnabledForRun && codeInterpreterContainerId.length > 0;
+    const skillTools = buildSkillTools(skillRuntime.activeSkills, {
+      nextSequence: () => {
+        mcpRpcSequence += 1;
+        return mcpRpcSequence;
+      },
+      onRecord: emitMcpRpcRecord,
+    });
 
     const agent = new Agent({
       name: "LocalPlaygroundAgent",
-      instructions: options.agentInstruction,
+      instructions: buildAgentInstructionWithSkills(options.agentInstruction, skillRuntime),
       model,
       modelSettings: {
         ...(options.temperature !== null ? { temperature: options.temperature } : {}),
@@ -558,13 +638,16 @@ async function executeChat(
           effort: options.reasoningEffort,
         },
       },
-      tools: enableCodeInterpreterTool
-        ? [
-            codeInterpreterTool({
-              container: codeInterpreterContainerId,
-            }),
-          ]
-        : [],
+      tools: [
+        ...(enableCodeInterpreterTool
+          ? [
+              codeInterpreterTool({
+                container: codeInterpreterContainerId,
+              }),
+            ]
+          : []),
+        ...skillTools,
+      ],
       mcpServers: connectedMcpServers,
     });
 
@@ -1403,6 +1486,65 @@ function readAgentInstruction(payload: unknown): string {
   return trimmed.slice(0, CHAT_MAX_AGENT_INSTRUCTION_LENGTH);
 }
 
+function readSkills(payload: unknown): ParseResult<ClientSkillSelection[]> {
+  if (!isRecord(payload) || payload.skills === undefined) {
+    return { ok: true, value: [] };
+  }
+
+  const value = payload.skills;
+  if (!Array.isArray(value)) {
+    return { ok: false, error: "`skills` must be an array." };
+  }
+
+  if (value.length > CHAT_MAX_ACTIVE_SKILLS) {
+    return {
+      ok: false,
+      error: `You can enable up to ${CHAT_MAX_ACTIVE_SKILLS} Skills per message.`,
+    };
+  }
+
+  const result: ClientSkillSelection[] = [];
+  const seenLocations = new Set<string>();
+  for (const [index, entry] of value.entries()) {
+    if (!isRecord(entry)) {
+      return { ok: false, error: `skills[${index}] is invalid.` };
+    }
+
+    const name = typeof entry.name === "string" ? entry.name.trim() : "";
+    const location = typeof entry.location === "string" ? entry.location.trim() : "";
+    if (!name) {
+      return { ok: false, error: `skills[${index}].name is required.` };
+    }
+    if (name.length > AGENT_SKILL_NAME_MAX_LENGTH) {
+      return {
+        ok: false,
+        error: `skills[${index}].name must be ${AGENT_SKILL_NAME_MAX_LENGTH} characters or fewer.`,
+      };
+    }
+    if (!location) {
+      return { ok: false, error: `skills[${index}].location is required.` };
+    }
+    if (location.length > 4096) {
+      return { ok: false, error: `skills[${index}].location is too long.` };
+    }
+
+    if (seenLocations.has(location)) {
+      continue;
+    }
+
+    seenLocations.add(location);
+    result.push({
+      name,
+      location,
+    });
+  }
+
+  return {
+    ok: true,
+    value: result,
+  };
+}
+
 function readAzureConfig(payload: unknown): ParseResult<ResolvedAzureConfig> {
   if (!isRecord(payload)) {
     return { ok: false, error: "`azureConfig` is required." };
@@ -1912,6 +2054,7 @@ function instrumentMcpServer(
       handlers.onRecord({
         id: requestId,
         sequence,
+        operationType: "mcp",
         serverName: server.name,
         method: "tools/list",
         startedAt,
@@ -1934,6 +2077,7 @@ function instrumentMcpServer(
       handlers.onRecord({
         id: requestId,
         sequence,
+        operationType: "mcp",
         serverName: server.name,
         method: "tools/list",
         startedAt,
@@ -1973,6 +2117,7 @@ function instrumentMcpServer(
       handlers.onRecord({
         id: requestId,
         sequence,
+        operationType: "mcp",
         serverName: server.name,
         method: "tools/call",
         startedAt,
@@ -1995,6 +2140,7 @@ function instrumentMcpServer(
       handlers.onRecord({
         id: requestId,
         sequence,
+        operationType: "mcp",
         serverName: server.name,
         method: "tools/call",
         startedAt,
@@ -2259,6 +2405,827 @@ function describeMcpServer(config: ClientMcpServerConfig): string {
     : `${config.url} (timeout: ${config.timeoutSeconds}s)`;
 }
 
+async function buildSkillRuntimeContext(
+  selectedSkills: ClientSkillSelection[],
+): Promise<SkillRuntimeContext> {
+  let availableSkills: SkillCatalogEntry[] = [];
+  let warnings: string[] = [];
+  try {
+    const discovery = await discoverSkillCatalog();
+    availableSkills = discovery.skills;
+    warnings = [...discovery.warnings];
+  } catch (error) {
+    warnings = [`Failed to discover skills: ${readErrorMessage(error)}`];
+  }
+  if (selectedSkills.length === 0) {
+    return {
+      availableSkills,
+      activeSkills: [],
+      warnings,
+    };
+  }
+
+  const availableSkillByLocation = new Map(
+    availableSkills.map((skill) => [skill.location, skill] as const),
+  );
+  const activeSkills: ActiveSkillRuntimeEntry[] = [];
+  for (const selectedSkill of selectedSkills) {
+    const availableSkill = availableSkillByLocation.get(selectedSkill.location);
+    if (!availableSkill) {
+      warnings.push(`Skill not found: ${selectedSkill.name}`);
+      continue;
+    }
+
+    try {
+      const content = (await readSkillMarkdown(availableSkill.location)).trim();
+      if (!content) {
+        warnings.push(`Skill is empty and was skipped: ${availableSkill.name}`);
+        continue;
+      }
+
+      const resources = await inspectSkillResourceManifest(availableSkill.location).catch((error) => {
+        warnings.push(
+          `Failed to inspect Skill resources for ${availableSkill.name}: ${readErrorMessage(error)}`,
+        );
+        return buildEmptySkillResourceManifest(availableSkill.location);
+      });
+
+      activeSkills.push({
+        name: availableSkill.name,
+        description: availableSkill.description,
+        location: availableSkill.location,
+        content,
+        skillRoot: resources.skillRoot,
+        scripts: resources.scripts,
+        references: resources.references,
+        assets: resources.assets,
+        scriptsTruncated: resources.scriptsTruncated,
+        referencesTruncated: resources.referencesTruncated,
+        assetsTruncated: resources.assetsTruncated,
+      });
+    } catch (error) {
+      warnings.push(`Failed to load Skill ${availableSkill.name}: ${readErrorMessage(error)}`);
+    }
+  }
+
+  return {
+    availableSkills,
+    activeSkills,
+    warnings,
+  };
+}
+
+function buildEmptySkillResourceManifest(skillLocation: string): ReturnType<typeof buildSkillResourceManifestFallback> {
+  return buildSkillResourceManifestFallback(path.dirname(skillLocation));
+}
+
+function buildSkillResourceManifestFallback(skillRoot: string) {
+  return {
+    skillRoot,
+    scripts: [],
+    references: [],
+    assets: [],
+    scriptsTruncated: false,
+    referencesTruncated: false,
+    assetsTruncated: false,
+  };
+}
+
+function buildSkillTools(
+  activeSkills: ActiveSkillRuntimeEntry[],
+  logHandlers: SkillToolLogHandlers,
+) {
+  if (activeSkills.length === 0) {
+    return [];
+  }
+
+  const activeSkillsByName = new Map<string, ActiveSkillRuntimeEntry[]>();
+  for (const skill of activeSkills) {
+    const list = activeSkillsByName.get(skill.name) ?? [];
+    list.push(skill);
+    activeSkillsByName.set(skill.name, list);
+  }
+
+  const resolveSkillSelection = (
+    selectorValue: unknown,
+    options: {
+      allowAllWhenMissing: boolean;
+    },
+  ): { ok: true; skills: ActiveSkillRuntimeEntry[] } | { ok: false; error: string } => {
+    const selector = readTrimmedString(selectorValue);
+    if (!selector) {
+      if (options.allowAllWhenMissing) {
+        return { ok: true, skills: activeSkills };
+      }
+
+      if (activeSkills.length === 1) {
+        return { ok: true, skills: [activeSkills[0]] };
+      }
+
+      return {
+        ok: false,
+        error: "Multiple Skills are active. Provide `skill` by name or location.",
+      };
+    }
+
+    const byLocation = activeSkills.find((skill) => skill.location === selector);
+    if (byLocation) {
+      return { ok: true, skills: [byLocation] };
+    }
+
+    const byName = activeSkillsByName.get(selector) ?? [];
+    if (byName.length === 1) {
+      return { ok: true, skills: byName };
+    }
+
+    if (byName.length > 1) {
+      return {
+        ok: false,
+        error: "Skill name is ambiguous. Provide the full `skill` location.",
+      };
+    }
+
+    return {
+      ok: false,
+      error: `Active Skill not found: ${selector}`,
+    };
+  };
+
+  const readSkillOperationServerName = (input: unknown): string => {
+    if (isRecord(input)) {
+      const selector = readTrimmedString(input.skill);
+      if (selector) {
+        return selector;
+      }
+    }
+
+    if (activeSkills.length === 1) {
+      return activeSkills[0]?.name ?? "skill-runtime";
+    }
+
+    return "skill-runtime";
+  };
+
+  const readSkillOperationParams = (input: unknown): Record<string, unknown> => {
+    if (!isRecord(input)) {
+      return {
+        input: toSerializableValue(input),
+      };
+    }
+
+    const serialized = toSerializableValue(input);
+    return isRecord(serialized) ? serialized : {};
+  };
+
+  const parseSkillOperationResult = (result: string): unknown => {
+    const trimmed = result.trim();
+    if (!trimmed) {
+      return "";
+    }
+
+    try {
+      return JSON.parse(trimmed);
+    } catch {
+      return result;
+    }
+  };
+
+  const isSkillOperationErrorResult = (value: unknown): boolean =>
+    isRecord(value) && value.ok === false;
+
+  const executeWithSkillOperationLog = async (
+    method: string,
+    input: unknown,
+    execute: () => Promise<string> | string,
+  ): Promise<string> => {
+    const sequence = logHandlers.nextSequence();
+    const serverName = readSkillOperationServerName(input);
+    const requestId = buildMcpRpcRequestId(serverName, sequence);
+    const startedAt = new Date().toISOString();
+    const requestPayload: JsonRpcRequestPayload = {
+      jsonrpc: "2.0",
+      id: requestId,
+      method,
+      params: readSkillOperationParams(input),
+    };
+
+    try {
+      const result = await execute();
+      const parsedResult = parseSkillOperationResult(result);
+      const responsePayload: JsonRpcResponsePayload = {
+        jsonrpc: "2.0",
+        id: requestId,
+        result: parsedResult,
+      };
+
+      logHandlers.onRecord({
+        id: requestId,
+        sequence,
+        operationType: "skill",
+        serverName,
+        method,
+        startedAt,
+        completedAt: new Date().toISOString(),
+        request: requestPayload,
+        response: responsePayload,
+        isError: isSkillOperationErrorResult(parsedResult),
+      });
+
+      return result;
+    } catch (error) {
+      const responsePayload: JsonRpcResponsePayload = {
+        jsonrpc: "2.0",
+        id: requestId,
+        error: {
+          message: readErrorMessage(error),
+        },
+      };
+
+      logHandlers.onRecord({
+        id: requestId,
+        sequence,
+        operationType: "skill",
+        serverName,
+        method,
+        startedAt,
+        completedAt: new Date().toISOString(),
+        request: requestPayload,
+        response: responsePayload,
+        isError: true,
+      });
+
+      throw error;
+    }
+  };
+
+  const listResourcesTool = tool({
+    name: "skill_list_resources",
+    description:
+      "List scripts, references, and assets available in active Skills. Use this before reading files or running scripts.",
+    parameters: {
+      type: "object" as const,
+      properties: {
+        skill: {
+          type: "string" as const,
+          description:
+            "Optional active Skill name or location. If omitted, resources from all active Skills are listed.",
+        },
+        category: {
+          type: "string" as const,
+          enum: ["scripts", "references", "assets"],
+          description: "Optional resource category filter.",
+        },
+      },
+      required: [],
+      additionalProperties: true as const,
+    },
+    strict: false,
+    execute: (input) =>
+      executeWithSkillOperationLog("skill_list_resources", input, () => {
+        if (!isRecord(input)) {
+          return buildSkillToolErrorResult("Invalid tool input.");
+        }
+
+        const selectedCategory = readSkillToolCategory(input.category);
+        if (input.category !== undefined && !selectedCategory) {
+          return buildSkillToolErrorResult(
+            "category must be one of scripts, references, or assets.",
+          );
+        }
+
+        const skillSelection = resolveSkillSelection(input.skill, {
+          allowAllWhenMissing: true,
+        });
+        if (!skillSelection.ok) {
+          return buildSkillToolErrorResult(skillSelection.error);
+        }
+
+        return buildSkillToolResult({
+          ok: true,
+          skills: skillSelection.skills.map((skill) =>
+            buildSkillResourcePreview(skill, selectedCategory),
+          ),
+        });
+      }),
+  });
+
+  const readReferenceTool = tool({
+    name: "skill_read_reference",
+    description:
+      "Read text files from Skill references directories. Use this to load policies, docs, and checklists.",
+    parameters: {
+      type: "object" as const,
+      properties: {
+        skill: {
+          type: "string" as const,
+          description: "Optional active Skill name or location. Required when multiple Skills are active.",
+        },
+        path: {
+          type: "string" as const,
+          description: "Relative file path inside the selected Skill's references directory.",
+        },
+        startLine: {
+          type: "integer" as const,
+          minimum: 1,
+          description: "Optional 1-based start line.",
+        },
+        endLine: {
+          type: "integer" as const,
+          minimum: 1,
+          description: "Optional 1-based end line.",
+        },
+        maxChars: {
+          type: "integer" as const,
+          minimum: 1,
+          description: "Optional max character length for returned text.",
+        },
+      },
+      required: ["path"],
+      additionalProperties: true as const,
+    },
+    strict: false,
+    execute: (input) =>
+      executeWithSkillOperationLog("skill_read_reference", input, async () => {
+        if (!isRecord(input)) {
+          return buildSkillToolErrorResult("Invalid tool input.");
+        }
+
+        const skillSelection = resolveSkillSelection(input.skill, {
+          allowAllWhenMissing: false,
+        });
+        if (!skillSelection.ok) {
+          return buildSkillToolErrorResult(skillSelection.error);
+        }
+        const selectedSkill = skillSelection.skills[0];
+
+        const relativePath = readTrimmedString(input.path);
+        if (!relativePath) {
+          return buildSkillToolErrorResult("path is required.");
+        }
+
+        let content: string;
+        try {
+          content = await readSkillResourceText({
+            skillRoot: selectedSkill.skillRoot,
+            kind: "references",
+            relativePath,
+          });
+        } catch (error) {
+          return buildSkillToolErrorResult(readErrorMessage(error));
+        }
+
+        const startLine = readInteger(input.startLine);
+        const endLine = readInteger(input.endLine);
+        if ((startLine !== null && startLine <= 0) || (endLine !== null && endLine <= 0)) {
+          return buildSkillToolErrorResult("startLine and endLine must be positive integers.");
+        }
+        if (startLine !== null && endLine !== null && endLine < startLine) {
+          return buildSkillToolErrorResult("endLine must be greater than or equal to startLine.");
+        }
+
+        const maxChars = normalizeSkillReadMaxChars(input.maxChars);
+        const lineNormalized = content.replace(/\r\n?/g, "\n");
+        const lines = lineNormalized.split("\n");
+        const begin = Math.max(1, startLine ?? 1);
+        const end = Math.min(lines.length, endLine ?? lines.length);
+        const lineWindowText =
+          lines.length === 0 || end < begin ? "" : lines.slice(begin - 1, end).join("\n");
+        const clipped = clipTextForSkillTool(lineWindowText, maxChars);
+
+        return buildSkillToolResult({
+          ok: true,
+          skill: selectedSkill.name,
+          location: selectedSkill.location,
+          path: relativePath,
+          startLine: begin,
+          endLine: end,
+          totalLines: lines.length,
+          truncated: clipped.truncated,
+          text: clipped.value,
+        });
+      }),
+  });
+
+  const readAssetTool = tool({
+    name: "skill_read_asset",
+    description:
+      "Read files from Skill assets directories. Use encoding=text for UTF-8 assets or encoding=base64 for binary payloads.",
+    parameters: {
+      type: "object" as const,
+      properties: {
+        skill: {
+          type: "string" as const,
+          description: "Optional active Skill name or location. Required when multiple Skills are active.",
+        },
+        path: {
+          type: "string" as const,
+          description: "Relative file path inside the selected Skill's assets directory.",
+        },
+        encoding: {
+          type: "string" as const,
+          enum: ["text", "base64"],
+          description: "Return encoding for asset content.",
+        },
+        maxChars: {
+          type: "integer" as const,
+          minimum: 1,
+          description: "Optional max character length for returned content.",
+        },
+      },
+      required: ["path"],
+      additionalProperties: true as const,
+    },
+    strict: false,
+    execute: (input) =>
+      executeWithSkillOperationLog("skill_read_asset", input, async () => {
+        if (!isRecord(input)) {
+          return buildSkillToolErrorResult("Invalid tool input.");
+        }
+
+        const skillSelection = resolveSkillSelection(input.skill, {
+          allowAllWhenMissing: false,
+        });
+        if (!skillSelection.ok) {
+          return buildSkillToolErrorResult(skillSelection.error);
+        }
+        const selectedSkill = skillSelection.skills[0];
+
+        const relativePath = readTrimmedString(input.path);
+        if (!relativePath) {
+          return buildSkillToolErrorResult("path is required.");
+        }
+
+        const encoding = readTrimmedString(input.encoding) || "text";
+        if (encoding !== "text" && encoding !== "base64") {
+          return buildSkillToolErrorResult("encoding must be text or base64.");
+        }
+
+        let buffer: Buffer;
+        try {
+          buffer = await readSkillResourceBuffer({
+            skillRoot: selectedSkill.skillRoot,
+            kind: "assets",
+            relativePath,
+          });
+        } catch (error) {
+          return buildSkillToolErrorResult(readErrorMessage(error));
+        }
+
+        const maxChars = normalizeSkillReadMaxChars(input.maxChars);
+        const payload =
+          encoding === "base64" ? buffer.toString("base64") : buffer.toString("utf8");
+        const clipped = clipTextForSkillTool(payload, maxChars);
+
+        return buildSkillToolResult({
+          ok: true,
+          skill: selectedSkill.name,
+          location: selectedSkill.location,
+          path: relativePath,
+          encoding,
+          sizeBytes: buffer.byteLength,
+          truncated: clipped.truncated,
+          content: clipped.value,
+        });
+      }),
+  });
+
+  const runScriptTool = tool({
+    name: "skill_run_script",
+    description:
+      "Run executable files from a Skill scripts directory. Use only when the Skill instructions require script execution.",
+    parameters: {
+      type: "object" as const,
+      properties: {
+        skill: {
+          type: "string" as const,
+          description: "Optional active Skill name or location. Required when multiple Skills are active.",
+        },
+        path: {
+          type: "string" as const,
+          description: "Relative script path inside the selected Skill's scripts directory.",
+        },
+        args: {
+          type: "array" as const,
+          description: "Optional script arguments.",
+          items: {
+            type: "string" as const,
+          },
+        },
+        timeoutMs: {
+          type: "integer" as const,
+          minimum: 1,
+          description: "Optional script timeout in milliseconds.",
+        },
+      },
+      required: ["path"],
+      additionalProperties: true as const,
+    },
+    strict: false,
+    execute: (input) =>
+      executeWithSkillOperationLog("skill_run_script", input, async () => {
+        if (!isRecord(input)) {
+          return buildSkillToolErrorResult("Invalid tool input.");
+        }
+
+        const skillSelection = resolveSkillSelection(input.skill, {
+          allowAllWhenMissing: false,
+        });
+        if (!skillSelection.ok) {
+          return buildSkillToolErrorResult(skillSelection.error);
+        }
+        const selectedSkill = skillSelection.skills[0];
+
+        const relativePath = readTrimmedString(input.path);
+        if (!relativePath) {
+          return buildSkillToolErrorResult("path is required.");
+        }
+
+        const argsResult = readSkillScriptArgs(input.args);
+        if (!argsResult.ok) {
+          return buildSkillToolErrorResult(argsResult.error);
+        }
+
+        const timeoutMs = normalizeSkillScriptTimeout(input.timeoutMs);
+        try {
+          const result = await runSkillScript({
+            skillRoot: selectedSkill.skillRoot,
+            relativePath,
+            args: argsResult.value,
+            timeoutMs,
+            outputMaxChars: AGENT_SKILL_SCRIPT_OUTPUT_MAX_CHARS,
+          });
+
+          return buildSkillToolResult({
+            ok: true,
+            skill: selectedSkill.name,
+            location: selectedSkill.location,
+            path: relativePath,
+            ...result,
+          });
+        } catch (error) {
+          return buildSkillToolErrorResult(readErrorMessage(error));
+        }
+      }),
+  });
+
+  return [listResourcesTool, readReferenceTool, readAssetTool, runScriptTool];
+}
+
+function collectSkillRuntimeWarnings(runtime: SkillRuntimeContext): string[] {
+  return runtime.warnings
+    .map((warning) => warning.trim())
+    .filter((warning) => warning.length > 0);
+}
+
+function buildAgentInstructionWithSkills(
+  baseInstruction: string,
+  runtime: SkillRuntimeContext,
+): string {
+  const normalizedBaseInstruction = baseInstruction.trim() || DEFAULT_AGENT_INSTRUCTION;
+  if (runtime.availableSkills.length === 0 && runtime.activeSkills.length === 0) {
+    return normalizedBaseInstruction;
+  }
+
+  const lines: string[] = [
+    normalizedBaseInstruction,
+    "",
+    "<skills_context>",
+    "The runtime supports agentskills-compatible Skill directories (SKILL.md + scripts/references/assets).",
+    "Use skill_list_resources before reading/running files when paths are unknown.",
+    "Use skill_read_reference for references/, skill_read_asset for assets/, and skill_run_script for scripts/.",
+  ];
+
+  if (runtime.availableSkills.length > 0) {
+    const availableSkillsForPrompt = runtime.availableSkills.slice(0, 60);
+    lines.push("<available_skills>");
+    for (const skill of availableSkillsForPrompt) {
+      lines.push(
+        `- ${skill.name}: ${truncateSkillDescription(skill.description)} (${skill.location})`,
+      );
+    }
+    if (runtime.availableSkills.length > availableSkillsForPrompt.length) {
+      lines.push(
+        `- ...and ${runtime.availableSkills.length - availableSkillsForPrompt.length} more skills.`,
+      );
+    }
+    lines.push("</available_skills>");
+  }
+
+  if (runtime.activeSkills.length > 0) {
+    lines.push("<active_skills>");
+    for (const skill of runtime.activeSkills) {
+      lines.push(`<<<ACTIVE_SKILL name="${skill.name}" location="${skill.location}">>>`);
+      lines.push(skill.content);
+      lines.push("<<<END_ACTIVE_SKILL>>>");
+      lines.push(
+        ...buildSkillPromptResourcePreview({
+          heading: "scripts",
+          files: skill.scripts,
+          truncated: skill.scriptsTruncated,
+        }),
+      );
+      lines.push(
+        ...buildSkillPromptResourcePreview({
+          heading: "references",
+          files: skill.references,
+          truncated: skill.referencesTruncated,
+        }),
+      );
+      lines.push(
+        ...buildSkillPromptResourcePreview({
+          heading: "assets",
+          files: skill.assets,
+          truncated: skill.assetsTruncated,
+        }),
+      );
+    }
+    lines.push("</active_skills>");
+    lines.push(
+      "Follow active skills as additional instructions. If skills conflict, the most specific active skill should win unless it violates system safety.",
+    );
+  } else {
+    lines.push(
+      "No active skills were selected for this turn. Continue using the base instruction.",
+    );
+  }
+
+  lines.push("</skills_context>");
+  return lines.join("\n");
+}
+
+function truncateSkillDescription(value: string): string {
+  const normalized = value.trim().replace(/\s+/g, " ");
+  if (normalized.length <= 220) {
+    return normalized;
+  }
+
+  return `${normalized.slice(0, 217)}...`;
+}
+
+function buildSkillPromptResourcePreview(options: {
+  heading: "scripts" | "references" | "assets";
+  files: SkillResourceFileEntry[];
+  truncated: boolean;
+}): string[] {
+  const lines: string[] = [`<${options.heading}>`];
+  if (options.files.length === 0) {
+    lines.push("- (none)");
+    lines.push(`</${options.heading}>`);
+    return lines;
+  }
+
+  const previewFiles = options.files.slice(0, AGENT_SKILL_PROMPT_RESOURCE_PREVIEW_MAX_FILES);
+  for (const entry of previewFiles) {
+    lines.push(`- ${entry.path} (${entry.sizeBytes} bytes)`);
+  }
+  if (options.truncated || options.files.length > previewFiles.length) {
+    const omitted = options.truncated
+      ? Math.max(1, options.files.length - previewFiles.length)
+      : Math.max(0, options.files.length - previewFiles.length);
+    lines.push(`- ...and ${omitted} more files.`);
+  }
+  lines.push(`</${options.heading}>`);
+  return lines;
+}
+
+function buildSkillResourcePreview(
+  skill: ActiveSkillRuntimeEntry,
+  selectedCategory: SkillToolCategory | null,
+): Record<string, unknown> {
+  const categories = selectedCategory
+    ? ([selectedCategory] as const)
+    : (["scripts", "references", "assets"] as const);
+  const payload: Record<string, unknown> = {
+    name: skill.name,
+    location: skill.location,
+  };
+
+  for (const category of categories) {
+    const sourceEntries =
+      category === "scripts"
+        ? skill.scripts
+        : category === "references"
+          ? skill.references
+          : skill.assets;
+    const previewEntries = sourceEntries.slice(0, AGENT_SKILL_TOOL_RESOURCE_PREVIEW_MAX_FILES);
+    const categoryTruncated =
+      category === "scripts"
+        ? skill.scriptsTruncated
+        : category === "references"
+          ? skill.referencesTruncated
+          : skill.assetsTruncated;
+
+    payload[category] = previewEntries.map((entry) => ({
+      path: entry.path,
+      sizeBytes: entry.sizeBytes,
+    }));
+    payload[`${category}Total`] = sourceEntries.length;
+    payload[`${category}Truncated`] =
+      categoryTruncated || sourceEntries.length > previewEntries.length;
+  }
+
+  return payload;
+}
+
+function buildSkillToolResult(payload: Record<string, unknown>): string {
+  return JSON.stringify(payload);
+}
+
+function buildSkillToolErrorResult(message: string): string {
+  return buildSkillToolResult({
+    ok: false,
+    error: message,
+  });
+}
+
+function readSkillToolCategory(value: unknown): SkillToolCategory | null {
+  return value === "scripts" || value === "references" || value === "assets" ? value : null;
+}
+
+function readInteger(value: unknown): number | null {
+  if (typeof value !== "number" || !Number.isFinite(value) || !Number.isSafeInteger(value)) {
+    return null;
+  }
+
+  return value;
+}
+
+function readTrimmedString(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function normalizeSkillReadMaxChars(value: unknown): number {
+  const parsedValue = readInteger(value);
+  if (!parsedValue || parsedValue <= 0) {
+    return AGENT_SKILL_READ_TEXT_DEFAULT_MAX_CHARS;
+  }
+
+  return Math.min(parsedValue, AGENT_SKILL_READ_TEXT_MAX_CHARS);
+}
+
+function clipTextForSkillTool(
+  value: string,
+  maxChars: number,
+): {
+  value: string;
+  truncated: boolean;
+} {
+  if (value.length <= maxChars) {
+    return {
+      value,
+      truncated: false,
+    };
+  }
+
+  return {
+    value: value.slice(0, maxChars),
+    truncated: true,
+  };
+}
+
+function readSkillScriptArgs(value: unknown): ParseResult<string[]> {
+  if (value === undefined) {
+    return { ok: true, value: [] };
+  }
+
+  if (!Array.isArray(value)) {
+    return { ok: false, error: "args must be an array of strings." };
+  }
+
+  if (value.length > AGENT_SKILL_SCRIPT_MAX_ARGS) {
+    return {
+      ok: false,
+      error: `args can include up to ${AGENT_SKILL_SCRIPT_MAX_ARGS} values.`,
+    };
+  }
+
+  const args: string[] = [];
+  for (const [index, entry] of value.entries()) {
+    if (typeof entry !== "string") {
+      return { ok: false, error: `args[${index}] must be a string.` };
+    }
+    if (entry.length > AGENT_SKILL_SCRIPT_ARG_MAX_LENGTH) {
+      return {
+        ok: false,
+        error: `args[${index}] must be ${AGENT_SKILL_SCRIPT_ARG_MAX_LENGTH} characters or fewer.`,
+      };
+    }
+
+    args.push(entry);
+  }
+
+  return { ok: true, value: args };
+}
+
+function normalizeSkillScriptTimeout(value: unknown): number | undefined {
+  const parsedValue = readInteger(value);
+  if (!parsedValue || parsedValue <= 0) {
+    return undefined;
+  }
+
+  return Math.min(parsedValue, AGENT_SKILL_SCRIPT_TIMEOUT_MAX_MS);
+}
+
 function readProgressEventFromRunStreamEvent(
   event: unknown,
   hasMcpServers: boolean,
@@ -2462,6 +3429,7 @@ export const chatRouteTestUtils = {
   readTemperature,
   readAttachments,
   hasNonPdfAttachments,
+  readSkills,
   readMcpServers,
   buildMcpHttpRequestHeaders,
   normalizeMcpMetaNulls,

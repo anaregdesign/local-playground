@@ -1,6 +1,7 @@
 import type { ChatMessage } from "~/lib/home/chat/messages";
 import type { McpRpcHistoryEntry } from "~/lib/home/chat/stream";
 import type { McpServerConfig } from "~/lib/home/mcp/profile";
+import type { ThreadSkillSelection } from "~/lib/home/skills/types";
 
 export type ThreadSnapshot = {
   id: string;
@@ -12,6 +13,7 @@ export type ThreadSnapshot = {
   messages: ChatMessage[];
   mcpServers: McpServerConfig[];
   mcpRpcHistory: McpRpcHistoryEntry[];
+  skillSelections: ThreadSkillSelection[];
 };
 
 export type ThreadSummary = {

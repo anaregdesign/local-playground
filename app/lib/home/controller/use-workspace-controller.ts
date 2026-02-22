@@ -1,5 +1,6 @@
 import {
   useEffect,
+  useMemo,
   useRef,
   useState,
   type PointerEvent as ReactPointerEvent,
@@ -78,7 +79,6 @@ import {
 import type { McpServerConfig } from "~/lib/home/mcp/profile";
 import {
   buildMcpServerKey,
-  formatMcpServerOption,
   readMcpServerFromUnknown,
   readMcpServerList,
   serializeMcpServerForSave,
@@ -107,7 +107,10 @@ import {
   cloneMcpRpcHistory,
   cloneMcpServers,
   cloneMessages,
+  cloneThreadSkillSelections,
   hasThreadInteraction,
+  isThreadArchivedById,
+  isThreadSnapshotArchived,
   upsertThreadSnapshot,
 } from "~/lib/home/thread/snapshot-state";
 import {
@@ -115,6 +118,8 @@ import {
   normalizeThreadAutoTitle,
 } from "~/lib/home/thread/title";
 import type { ThreadSnapshot, ThreadSummary } from "~/lib/home/thread/types";
+import { readSkillCatalogList } from "~/lib/home/skills/parsers";
+import type { SkillCatalogEntry, ThreadSkillSelection } from "~/lib/home/skills/types";
 import { copyTextToClipboard } from "~/lib/home/shared/clipboard";
 import { getFileExtension } from "~/lib/home/shared/files";
 import { createId } from "~/lib/home/shared/ids";
@@ -125,6 +130,7 @@ import {
   type AzureSelectionApiResponse,
   type InstructionEnhanceComparison,
   type McpServersApiResponse,
+  type SkillsApiResponse,
   type ThreadRequestState,
   type ThreadTitleApiResponse,
   type ThreadsApiResponse,
@@ -176,7 +182,6 @@ export function useWorkspaceController() {
     useState<InstructionEnhanceComparison | null>(null);
   const [mcpServers, setMcpServers] = useState<McpServerConfig[]>([]);
   const [savedMcpServers, setSavedMcpServers] = useState<McpServerConfig[]>([]);
-  const [selectedSavedMcpServerId, setSelectedSavedMcpServerId] = useState("");
   const [mcpNameInput, setMcpNameInput] = useState("");
   const [mcpUrlInput, setMcpUrlInput] = useState("");
   const [mcpCommandInput, setMcpCommandInput] = useState("");
@@ -218,6 +223,11 @@ export function useWorkspaceController() {
   const [isDeletingThread, setIsDeletingThread] = useState(false);
   const [isRestoringThread, setIsRestoringThread] = useState(false);
   const [threadError, setThreadError] = useState<string | null>(null);
+  const [availableSkills, setAvailableSkills] = useState<SkillCatalogEntry[]>([]);
+  const [selectedThreadSkills, setSelectedThreadSkills] = useState<ThreadSkillSelection[]>([]);
+  const [isLoadingSkills, setIsLoadingSkills] = useState(false);
+  const [skillsError, setSkillsError] = useState<string | null>(null);
+  const [skillsWarning, setSkillsWarning] = useState<string | null>(null);
   const [rightPaneWidth, setRightPaneWidth] = useState(420);
   const [activeResizeHandle, setActiveResizeHandle] = useState<"main" | null>(null);
   const endOfMessagesRef = useRef<HTMLDivElement | null>(null);
@@ -225,6 +235,7 @@ export function useWorkspaceController() {
   const chatAttachmentInputRef = useRef<HTMLInputElement | null>(null);
   const instructionFileInputRef = useRef<HTMLInputElement | null>(null);
   const layoutRef = useRef<HTMLDivElement | null>(null);
+  const azureConnectionsRequestSeqRef = useRef(0);
   const playgroundAzureDeploymentRequestSeqRef = useRef(0);
   const utilityAzureDeploymentRequestSeqRef = useRef(0);
   const activeAzureTenantIdRef = useRef("");
@@ -273,13 +284,45 @@ export function useWorkspaceController() {
   const activeTurnId = activeThreadRequestState.activeTurnId;
   const lastErrorTurnId = activeThreadRequestState.lastErrorTurnId;
   const error = uiError ?? activeThreadRequestState.error;
-  const mcpHistoryByTurnId = buildMcpHistoryByTurnId(mcpRpcHistory);
-  const activeTurnMcpHistory = activeTurnId ? (mcpHistoryByTurnId.get(activeTurnId) ?? []) : [];
-  const errorTurnMcpHistory = lastErrorTurnId ? (mcpHistoryByTurnId.get(lastErrorTurnId) ?? []) : [];
-  const savedMcpServerOptions = savedMcpServers.map((server) => ({
-    id: server.id,
-    label: formatMcpServerOption(server),
-  }));
+  const mcpHistoryByTurnId = useMemo(
+    () => buildMcpHistoryByTurnId(mcpRpcHistory),
+    [mcpRpcHistory],
+  );
+  const activeTurnMcpHistory = useMemo(
+    () => (activeTurnId ? (mcpHistoryByTurnId.get(activeTurnId) ?? []) : []),
+    [activeTurnId, mcpHistoryByTurnId],
+  );
+  const errorTurnMcpHistory = useMemo(
+    () => (lastErrorTurnId ? (mcpHistoryByTurnId.get(lastErrorTurnId) ?? []) : []),
+    [lastErrorTurnId, mcpHistoryByTurnId],
+  );
+  const savedMcpServerOptions = useMemo(() => {
+    const activeMcpServerKeySet = new Set(mcpServers.map((server) => buildMcpServerKey(server)));
+    return savedMcpServers
+      .map((server) => {
+        const key = buildMcpServerKey(server);
+        return {
+          id: server.id,
+          name: server.name,
+          badge: resolveMcpTransportBadge(server),
+          description: describeSavedMcpServer(server),
+          detail: describeSavedMcpServerDetail(server),
+          isSelected: activeMcpServerKeySet.has(key),
+          isAvailable: true,
+        };
+      })
+      .sort((left, right) => {
+        if (left.isSelected !== right.isSelected) {
+          return left.isSelected ? -1 : 1;
+        }
+
+        return left.name.localeCompare(right.name);
+      });
+  }, [mcpServers, savedMcpServers]);
+  const selectedSavedMcpServerCount = useMemo(
+    () => savedMcpServerOptions.filter((server) => server.isSelected).length,
+    [savedMcpServerOptions],
+  );
   const draftAttachmentTotalSizeBytes = draftAttachments.reduce(
     (sum, attachment) => sum + attachment.sizeBytes,
     0,
@@ -296,13 +339,48 @@ export function useWorkspaceController() {
   const threadSummaries: ThreadSummary[] = threads.map((thread) => buildThreadSummary(thread));
   const activeThreadSnapshot =
     threads.find((thread) => thread.id === activeThreadId) ?? null;
-  const isActiveThreadArchived = activeThreadSnapshot?.deletedAt !== null;
+  const isActiveThreadArchived = isThreadSnapshotArchived(activeThreadSnapshot);
   const isEnhancingInstructionForActiveThread =
     isEnhancingInstruction &&
     instructionEnhancingThreadId.length > 0 &&
     instructionEnhancingThreadId === activeThreadId;
   const activeThreadSummaries = threadSummaries.filter((thread) => thread.deletedAt === null);
   const archivedThreadSummaries = threadSummaries.filter((thread) => thread.deletedAt !== null);
+  const availableSkillByLocation = useMemo(
+    () => new Map(availableSkills.map((skill) => [skill.location, skill] as const)),
+    [availableSkills],
+  );
+  const threadSkillOptions = useMemo(() => {
+    const selectedThreadSkillLocationSet = new Set(
+      selectedThreadSkills.map((selection) => selection.location),
+    );
+    return [
+      ...availableSkills.map((skill) => ({
+        name: skill.name,
+        description: skill.description,
+        location: skill.location,
+        source: skill.source,
+        isSelected: selectedThreadSkillLocationSet.has(skill.location),
+        isAvailable: true,
+      })),
+      ...selectedThreadSkills
+        .filter((selection) => !availableSkillByLocation.has(selection.location))
+        .map((selection) => ({
+          name: selection.name,
+          description: "Saved for this thread, but the SKILL.md file is currently unavailable.",
+          location: selection.location,
+          source: "workspace" as const,
+          isSelected: true,
+          isAvailable: false,
+        })),
+    ].sort((left, right) => {
+      if (left.isSelected !== right.isSelected) {
+        return left.isSelected ? -1 : 1;
+      }
+
+        return left.name.localeCompare(right.name);
+      });
+  }, [availableSkillByLocation, availableSkills, selectedThreadSkills]);
   const canSendMessage =
     !isSending &&
     !isSwitchingThread &&
@@ -415,6 +493,10 @@ export function useWorkspaceController() {
 
   useEffect(() => {
     void loadAzureConnections();
+  }, []);
+
+  useEffect(() => {
+    void loadAvailableSkills();
   }, []);
 
   useEffect(() => {
@@ -682,6 +764,7 @@ export function useWorkspaceController() {
     messages,
     mcpServers,
     mcpRpcHistory,
+    selectedThreadSkills,
     threads,
     isSending,
     isSwitchingThread,
@@ -836,11 +919,6 @@ export function useWorkspaceController() {
 
       const parsedServers = readMcpServerList(payload.profiles);
       setSavedMcpServers(parsedServers);
-      setSelectedSavedMcpServerId((current) =>
-        current && parsedServers.some((server) => server.id === current)
-          ? current
-          : parsedServers[0]?.id ?? "",
-      );
       setSavedMcpError(null);
     } catch (loadError) {
       if (requestSeq !== savedMcpRequestSeqRef.current) {
@@ -866,6 +944,40 @@ export function useWorkspaceController() {
     }
   }
 
+  async function loadAvailableSkills(options: {
+    clearStatus?: boolean;
+  } = {}): Promise<void> {
+    if (options.clearStatus !== false) {
+      setSkillsError(null);
+      setSkillsWarning(null);
+    }
+    setIsLoadingSkills(true);
+
+    try {
+      const response = await fetch("/api/skills", {
+        method: "GET",
+      });
+      const payload = (await response.json()) as SkillsApiResponse;
+      if (!response.ok) {
+        throw new Error(payload.error || "Failed to load Skills.");
+      }
+
+      const parsedSkills = readSkillCatalogList(payload.skills);
+      const warnings = readStringList(payload.warnings);
+      setAvailableSkills(parsedSkills);
+      setSkillsError(null);
+      setSkillsWarning(warnings.length > 0 ? warnings.slice(0, 2).join("\n") : null);
+    } catch (loadError) {
+      logHomeError("load_skills_failed", loadError, {
+        action: "load_skills",
+      });
+      setAvailableSkills([]);
+      setSkillsError(loadError instanceof Error ? loadError.message : "Failed to load Skills.");
+    } finally {
+      setIsLoadingSkills(false);
+    }
+  }
+
   function clearSavedMcpLoginRetryTimeout() {
     const timeoutId = savedMcpLoginRetryTimeoutRef.current;
     if (timeoutId !== null) {
@@ -887,7 +999,6 @@ export function useWorkspaceController() {
   function clearSavedMcpServersState(nextError: string | null = null) {
     clearSavedMcpLoginRetryTimeout();
     setSavedMcpServers([]);
-    setSelectedSavedMcpServerId("");
     setSavedMcpError(nextError);
     setIsLoadingSavedMcpServers(false);
   }
@@ -951,6 +1062,7 @@ export function useWorkspaceController() {
     setMessages([...HOME_INITIAL_MESSAGES]);
     setMcpRpcHistory([]);
     setMcpServers([]);
+    setSelectedThreadSkills([]);
     setAgentInstruction(DEFAULT_AGENT_INSTRUCTION);
     setLoadedInstructionFileName(null);
     setInstructionFileError(null);
@@ -1015,13 +1127,7 @@ export function useWorkspaceController() {
   }
 
   function isArchivedThread(threadIdRaw: string): boolean {
-    const threadId = threadIdRaw.trim();
-    if (!threadId) {
-      return false;
-    }
-
-    const thread = threadsRef.current.find((entry) => entry.id === threadId);
-    return thread?.deletedAt !== null;
+    return isThreadArchivedById(threadsRef.current, threadIdRaw);
   }
 
   function resolveThreadNameForSave(baseName: string, includeDraftName: boolean): string {
@@ -1054,6 +1160,7 @@ export function useWorkspaceController() {
       messages: [],
       mcpServers: [],
       mcpRpcHistory: [],
+      skillSelections: [],
     };
   }
 
@@ -1072,6 +1179,7 @@ export function useWorkspaceController() {
       messages: cloneMessages(messages),
       mcpServers: cloneMcpServers(mcpServers),
       mcpRpcHistory: cloneMcpRpcHistory(mcpRpcHistory),
+      skillSelections: cloneThreadSkillSelections(selectedThreadSkills),
     };
   }
 
@@ -1144,6 +1252,7 @@ export function useWorkspaceController() {
     const clonedMessages = cloneMessages(thread.messages);
     const clonedMcpServers = cloneMcpServers(thread.mcpServers);
     const clonedMcpRpcHistory = cloneMcpRpcHistory(thread.mcpRpcHistory);
+    const clonedSkillSelections = cloneThreadSkillSelections(thread.skillSelections);
 
     activeThreadIdRef.current = thread.id;
     setActiveThreadId(thread.id);
@@ -1151,6 +1260,7 @@ export function useWorkspaceController() {
     setMessages(clonedMessages);
     setMcpServers(clonedMcpServers);
     setMcpRpcHistory(clonedMcpRpcHistory);
+    setSelectedThreadSkills(clonedSkillSelections);
     setAgentInstruction(thread.agentInstruction);
     setLoadedInstructionFileName(null);
     setInstructionFileError(null);
@@ -2009,6 +2119,8 @@ export function useWorkspaceController() {
   }
 
   async function loadAzureConnections(): Promise<boolean> {
+    const requestSeq = azureConnectionsRequestSeqRef.current + 1;
+    azureConnectionsRequestSeqRef.current = requestSeq;
     setIsLoadingAzureConnections(true);
 
     try {
@@ -2017,6 +2129,9 @@ export function useWorkspaceController() {
       });
 
       const payload = (await response.json()) as AzureConnectionsApiResponse;
+      if (requestSeq !== azureConnectionsRequestSeqRef.current) {
+        return isAzureAuthRequired;
+      }
       if (!response.ok) {
         const authRequired = payload.authRequired === true || response.status === 401;
         clearActiveAzureIdentity();
@@ -2078,11 +2193,104 @@ export function useWorkspaceController() {
         tenantId && principalId
           ? await loadAzureSelectionPreference(tenantId, principalId)
           : null;
+      if (requestSeq !== azureConnectionsRequestSeqRef.current) {
+        return payload.authRequired === true;
+      }
       preferredAzureSelectionRef.current = preferredSelection;
       const preferredPlaygroundProjectId = preferredSelection?.playground?.projectId ?? "";
       const preferredUtilityProjectId = preferredSelection?.utility?.projectId ?? "";
       const preferredUtilityReasoningEffort =
         preferredSelection?.utility?.reasoningEffort ?? HOME_DEFAULT_UTILITY_REASONING_EFFORT;
+      const knownProjectIds = new Set(parsedProjects.map((connection) => connection.id));
+      const deploymentAvailabilityByProjectId = new Map<string, boolean>();
+
+      const resolveInitialProjectId = (currentProjectId: string, preferredProjectId: string): string => {
+        const normalizedCurrentProjectId = currentProjectId.trim();
+        if (knownProjectIds.has(normalizedCurrentProjectId)) {
+          return normalizedCurrentProjectId;
+        }
+
+        const normalizedPreferredProjectId = preferredProjectId.trim();
+        if (knownProjectIds.has(normalizedPreferredProjectId)) {
+          return normalizedPreferredProjectId;
+        }
+
+        return parsedProjects[0]?.id ?? "";
+      };
+
+      const checkProjectHasDeployments = async (projectId: string): Promise<boolean> => {
+        const normalizedProjectId = projectId.trim();
+        if (!normalizedProjectId) {
+          return false;
+        }
+
+        const cachedAvailability = deploymentAvailabilityByProjectId.get(normalizedProjectId);
+        if (cachedAvailability !== undefined) {
+          return cachedAvailability;
+        }
+
+        try {
+          const deploymentResponse = await fetch(
+            `/api/azure-connections?projectId=${encodeURIComponent(normalizedProjectId)}`,
+            {
+              method: "GET",
+            },
+          );
+          const deploymentPayload = (await deploymentResponse.json()) as AzureConnectionsApiResponse;
+          if (requestSeq !== azureConnectionsRequestSeqRef.current) {
+            return false;
+          }
+
+          if (!deploymentResponse.ok) {
+            deploymentAvailabilityByProjectId.set(normalizedProjectId, false);
+            return false;
+          }
+
+          const hasDeployments = readAzureDeploymentList(deploymentPayload.deployments).length > 0;
+          deploymentAvailabilityByProjectId.set(normalizedProjectId, hasDeployments);
+          return hasDeployments;
+        } catch {
+          deploymentAvailabilityByProjectId.set(normalizedProjectId, false);
+          return false;
+        }
+      };
+
+      const resolveProjectWithDeployments = async (
+        currentProjectId: string,
+        preferredProjectId: string,
+      ): Promise<string> => {
+        const initialProjectId = resolveInitialProjectId(currentProjectId, preferredProjectId);
+        if (!initialProjectId) {
+          return "";
+        }
+
+        if (await checkProjectHasDeployments(initialProjectId)) {
+          return initialProjectId;
+        }
+
+        for (const project of parsedProjects) {
+          if (await checkProjectHasDeployments(project.id)) {
+            return project.id;
+          }
+        }
+
+        return initialProjectId;
+      };
+
+      const nextPlaygroundProjectId = await resolveProjectWithDeployments(
+        selectedPlaygroundAzureConnectionIdRef.current,
+        preferredPlaygroundProjectId,
+      );
+      if (requestSeq !== azureConnectionsRequestSeqRef.current) {
+        return payload.authRequired === true;
+      }
+      const nextUtilityProjectId = await resolveProjectWithDeployments(
+        selectedUtilityAzureConnectionIdRef.current,
+        preferredUtilityProjectId,
+      );
+      if (requestSeq !== azureConnectionsRequestSeqRef.current) {
+        return payload.authRequired === true;
+      }
 
       setAzureConnections(parsedProjects);
       setActiveAzurePrincipal(parsedPrincipal);
@@ -2093,24 +2301,13 @@ export function useWorkspaceController() {
       setPlaygroundAzureDeploymentError(null);
       setUtilityAzureDeploymentError(null);
       setUtilityReasoningEffort(preferredUtilityReasoningEffort);
-      setSelectedPlaygroundAzureConnectionId((current) =>
-        current && parsedProjects.some((connection) => connection.id === current)
-          ? current
-          : preferredPlaygroundProjectId &&
-              parsedProjects.some((connection) => connection.id === preferredPlaygroundProjectId)
-            ? preferredPlaygroundProjectId
-            : parsedProjects[0]?.id ?? "",
-      );
-      setSelectedUtilityAzureConnectionId((current) =>
-        current && parsedProjects.some((connection) => connection.id === current)
-          ? current
-          : preferredUtilityProjectId &&
-              parsedProjects.some((connection) => connection.id === preferredUtilityProjectId)
-            ? preferredUtilityProjectId
-            : parsedProjects[0]?.id ?? "",
-      );
+      setSelectedPlaygroundAzureConnectionId(nextPlaygroundProjectId);
+      setSelectedUtilityAzureConnectionId(nextUtilityProjectId);
       return payload.authRequired === true;
     } catch (loadError) {
+      if (requestSeq !== azureConnectionsRequestSeqRef.current) {
+        return isAzureAuthRequired;
+      }
       logHomeError("load_azure_connections_failed", loadError, {
         action: "load_azure_connections",
       });
@@ -2135,7 +2332,9 @@ export function useWorkspaceController() {
       setUtilityAzureDeploymentError(null);
       return false;
     } finally {
-      setIsLoadingAzureConnections(false);
+      if (requestSeq === azureConnectionsRequestSeqRef.current) {
+        setIsLoadingAzureConnections(false);
+      }
     }
   }
 
@@ -2363,10 +2562,8 @@ export function useWorkspaceController() {
     const profiles = readMcpServerList(payload.profiles);
     if (profiles.length > 0) {
       setSavedMcpServers(profiles);
-      setSelectedSavedMcpServerId(profile.id);
     } else {
       setSavedMcpServers((current) => upsertMcpServer(current, profile));
-      setSelectedSavedMcpServerId(profile.id);
     }
 
     return {
@@ -2453,6 +2650,7 @@ export function useWorkspaceController() {
       ({ id: _id, ...attachment }) => attachment,
     );
     const requestMcpServers = cloneMcpServers(mcpServers);
+    const requestSkillSelections = cloneThreadSkillSelections(selectedThreadSkills);
     const requestAgentInstruction = agentInstruction;
     const userMessage: ChatMessage = createMessage(
       "user",
@@ -2517,6 +2715,7 @@ export function useWorkspaceController() {
           },
           reasoningEffort,
           agentInstruction: requestAgentInstruction,
+          skills: requestSkillSelections,
           mcpServers: requestMcpServers.map((server) =>
             server.transport === "stdio"
               ? {
@@ -2589,6 +2788,7 @@ export function useWorkspaceController() {
           turnId,
           messageLength: content.length,
           attachmentCount: requestAttachments.length,
+          skillSelectionCount: requestSkillSelections.length,
         },
       });
       updateThreadRequestState(threadId, (current) => ({
@@ -2678,6 +2878,38 @@ export function useWorkspaceController() {
   function handleReloadSavedMcpServers() {
     setSavedMcpError(null);
     void loadSavedMcpServers();
+  }
+
+  function handleReloadSkills() {
+    void loadAvailableSkills();
+  }
+
+  function handleToggleThreadSkill(locationRaw: string) {
+    const location = locationRaw.trim();
+    if (!location) {
+      return;
+    }
+
+    setSelectedThreadSkills((current) => {
+      const existingIndex = current.findIndex((selection) => selection.location === location);
+      if (existingIndex >= 0) {
+        return current.filter((selection) => selection.location !== location);
+      }
+
+      const skill = availableSkillByLocation.get(location);
+      if (!skill) {
+        return current;
+      }
+
+      return [
+        ...current,
+        {
+          name: skill.name,
+          location: skill.location,
+        },
+      ];
+    });
+    setSkillsError(null);
   }
 
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -3428,24 +3660,34 @@ export function useWorkspaceController() {
     setMcpTransport(HOME_DEFAULT_MCP_TRANSPORT);
   }
 
-  function handleConnectSelectedMcpServer() {
+  function handleToggleSavedMcpServer(serverIdRaw: string) {
     if (isArchivedThread(activeThreadIdRef.current)) {
       setSavedMcpError("Archived thread is read-only. Restore it from Archives to edit MCP servers.");
       return;
     }
 
-    if (!selectedSavedMcpServerId) {
-      setSavedMcpError("Select an MCP server first.");
+    const serverId = serverIdRaw.trim();
+    if (!serverId) {
       return;
     }
 
-    const selected = savedMcpServers.find((server) => server.id === selectedSavedMcpServerId);
+    const selected = savedMcpServers.find((server) => server.id === serverId);
     if (!selected) {
       setSavedMcpError("Selected MCP server is not available.");
       return;
     }
 
-    connectMcpServerToAgent(selected);
+    const selectedKey = buildMcpServerKey(selected);
+    setMcpServers((current) => {
+      const alreadyConnected = current.some(
+        (server) => buildMcpServerKey(server) === selectedKey,
+      );
+      if (alreadyConnected) {
+        return current.filter((server) => buildMcpServerKey(server) !== selectedKey);
+      }
+
+      return [...current, selected];
+    });
     setSavedMcpError(null);
   }
 
@@ -3546,7 +3788,6 @@ export function useWorkspaceController() {
       selectedPlaygroundAzureDeploymentName,
       isStartingAzureLogout,
       onAzureLogout: handleAzureLogout,
-      azureDeploymentError: playgroundAzureDeploymentError,
       azureLogoutError,
       azureConnectionError,
     },
@@ -3569,16 +3810,13 @@ export function useWorkspaceController() {
   };
 
   const mcpServersTabProps = {
-    selectedSavedMcpServerId,
     savedMcpServerOptions,
+    selectedSavedMcpServerCount,
     isSending,
+    isThreadReadOnly: isActiveThreadArchived,
     isLoadingSavedMcpServers,
     savedMcpError,
-    onSelectedSavedMcpServerIdChange: (value: string) => {
-      setSelectedSavedMcpServerId(value);
-      setSavedMcpError(null);
-    },
-    onConnectSelectedMcpServer: handleConnectSelectedMcpServer,
+    onToggleSavedMcpServer: handleToggleSavedMcpServer,
     onReloadSavedMcpServers: handleReloadSavedMcpServers,
     mcpNameInput,
     onMcpNameInputChange: setMcpNameInput,
@@ -3704,6 +3942,23 @@ export function useWorkspaceController() {
     },
   };
 
+  const skillsTabProps = {
+    skillsSectionProps: {
+      skillOptions: threadSkillOptions,
+      selectedSkillCount: selectedThreadSkills.length,
+      isLoadingSkills,
+      isSending,
+      isThreadReadOnly: isActiveThreadArchived,
+      skillsError,
+      skillsWarning,
+      onReloadSkills: handleReloadSkills,
+      onToggleSkill: handleToggleThreadSkill,
+      onClearSkillsWarning: () => {
+        setSkillsWarning(null);
+      },
+    },
+  };
+
   const playgroundPanelProps = {
     messages,
     mcpHistoryByTurnId,
@@ -3754,8 +4009,15 @@ export function useWorkspaceController() {
     onReasoningEffortChange: setReasoningEffort,
     maxChatAttachmentFiles: CHAT_ATTACHMENT_MAX_FILES,
     canSendMessage,
+    selectedSkills: selectedThreadSkills,
+    onRemoveSkill: handleToggleThreadSkill,
     mcpServers,
     onRemoveMcpServer: handleRemoveMcpServer,
+  };
+
+  const unauthenticatedPanelProps = {
+    isStartingAzureLogin,
+    onAzureLogin: handleAzureLogin,
   };
 
   return {
@@ -3763,16 +4025,75 @@ export function useWorkspaceController() {
     rightPaneWidth,
     isMainSplitterResizing: activeResizeHandle === "main",
     onMainSplitterPointerDown: handleMainSplitterPointerDown,
+    isAzureAuthRequired,
+    unauthenticatedPanelProps,
     configPanelProps: {
       activeMainTab,
       onMainTabChange: setActiveMainTab,
       isChatLocked,
       settingsTabProps,
       mcpServersTabProps,
+      skillsTabProps,
       threadsTabProps,
     },
     playgroundPanelProps,
   };
+}
+
+function readStringList(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const result: string[] = [];
+  for (const entry of value) {
+    if (typeof entry !== "string") {
+      continue;
+    }
+
+    const normalized = entry.trim();
+    if (!normalized) {
+      continue;
+    }
+
+    result.push(normalized);
+  }
+
+  return result;
+}
+
+function resolveMcpTransportBadge(server: McpServerConfig): string {
+  if (server.transport === "stdio") {
+    return "STDIO";
+  }
+
+  if (server.transport === "sse") {
+    return "SSE";
+  }
+
+  return "HTTP";
+}
+
+function describeSavedMcpServer(server: McpServerConfig): string {
+  if (server.transport === "stdio") {
+    const argsSuffix = server.args.length > 0 ? ` ${server.args.join(" ")}` : "";
+    const envCount = Object.keys(server.env).length;
+    return `Command: ${server.command}${argsSuffix}; Environment variables: ${envCount}`;
+  }
+
+  const headersCount = Object.keys(server.headers).length;
+  const azureAuthLabel = server.useAzureAuth
+    ? `Azure auth: enabled (${server.azureAuthScope})`
+    : "Azure auth: disabled";
+  return `Transport: ${server.transport}; Headers: ${headersCount}; Timeout: ${server.timeoutSeconds}s; ${azureAuthLabel}`;
+}
+
+function describeSavedMcpServerDetail(server: McpServerConfig): string {
+  if (server.transport === "stdio") {
+    return `Working directory: ${server.cwd ?? "(inherit current workspace)"}`;
+  }
+
+  return server.url;
 }
 
 function isLikelyChatAzureAuthError(message: string | null): boolean {

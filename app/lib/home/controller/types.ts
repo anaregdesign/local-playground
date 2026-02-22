@@ -43,6 +43,12 @@ export type ThreadsApiResponse = {
   error?: string;
 };
 
+export type SkillsApiResponse = {
+  skills?: unknown;
+  warnings?: unknown;
+  error?: string;
+};
+
 export type ThreadTitleApiResponse = {
   title?: string;
   error?: string;

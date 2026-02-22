@@ -1,7 +1,7 @@
 const path = require('node:path');
 const { existsSync } = require('node:fs');
 const { spawn } = require('node:child_process');
-const { app, BrowserWindow, session } = require('electron');
+const { app, BrowserWindow, session, shell } = require('electron');
 
 const DESKTOP_MODE = process.env.DESKTOP_MODE === 'development' ? 'development' : 'production';
 const BACKEND_DEV_URL = process.env.DESKTOP_BACKEND_URL || 'http://localhost:5173';
@@ -69,6 +69,8 @@ function createMainWindow() {
   });
 
   const appUrl = resolveAppUrl();
+  const appOrigin = readUrlOrigin(appUrl);
+  configureExternalLinkHandling(appOrigin);
   mainWindow.loadURL(appUrl).catch((error) => {
     const summary =
       DESKTOP_MODE === 'development'
@@ -86,8 +88,60 @@ function createMainWindow() {
   });
 }
 
+function configureExternalLinkHandling(appOrigin) {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    return;
+  }
+
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (shouldOpenInExternalBrowser(url, appOrigin)) {
+      openInExternalBrowser(url);
+      return { action: 'deny' };
+    }
+
+    return { action: 'allow' };
+  });
+
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    if (!shouldOpenInExternalBrowser(url, appOrigin)) {
+      return;
+    }
+
+    event.preventDefault();
+    openInExternalBrowser(url);
+  });
+}
+
 function resolveAppUrl() {
   return DESKTOP_MODE === 'development' ? BACKEND_DEV_URL : BACKEND_URL;
+}
+
+function shouldOpenInExternalBrowser(url, appOrigin) {
+  const targetOrigin = readUrlOrigin(url);
+  if (!targetOrigin) {
+    return false;
+  }
+
+  return targetOrigin !== appOrigin;
+}
+
+function readUrlOrigin(url) {
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      return null;
+    }
+
+    return parsed.origin;
+  } catch {
+    return null;
+  }
+}
+
+function openInExternalBrowser(url) {
+  void shell.openExternal(url).catch((error) => {
+    console.error(`[desktop-shell] Failed to open external URL: ${readErrorMessage(error)}`);
+  });
 }
 
 async function startProductionBackend() {

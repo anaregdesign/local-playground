@@ -30,7 +30,6 @@ type AzureConnectionSectionProps = {
   selectedPlaygroundAzureDeploymentName: string;
   isStartingAzureLogout: boolean;
   onAzureLogout: () => void | Promise<void>;
-  azureDeploymentError: string | null;
   azureLogoutError: string | null;
   azureConnectionError: string | null;
 };
@@ -48,7 +47,6 @@ export function AzureConnectionSection(props: AzureConnectionSectionProps) {
     selectedPlaygroundAzureDeploymentName,
     isStartingAzureLogout,
     onAzureLogout,
-    azureDeploymentError,
     azureLogoutError,
     azureConnectionError,
   } = props;
@@ -148,7 +146,6 @@ export function AzureConnectionSection(props: AzureConnectionSectionProps) {
           ) : null}
           <StatusMessageList
             messages={[
-              { intent: "error", text: azureDeploymentError },
               { intent: "error", text: azureLogoutError },
               { intent: "error", text: azureConnectionError },
             ]}

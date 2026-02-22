@@ -3,6 +3,7 @@ import type { ChatMessage } from "~/lib/home/chat/messages";
 import type { McpRpcHistoryEntry } from "~/lib/home/chat/stream";
 import { readMcpRpcHistoryEntryFromUnknown } from "~/lib/home/chat/stream";
 import { readMcpServerFromUnknown } from "~/lib/home/mcp/profile";
+import { readThreadSkillSelectionList } from "~/lib/home/skills/parsers";
 import type { ThreadSnapshot, ThreadSummary } from "~/lib/home/thread/types";
 
 type ReadThreadSnapshotOptions = {
@@ -58,6 +59,7 @@ export function readThreadSnapshotFromUnknown(
   const messages = readThreadMessageList(value.messages);
   const mcpServers = readThreadMcpServerList(value.mcpServers);
   const mcpRpcHistory = readThreadMcpRpcHistoryList(value.mcpRpcHistory);
+  const skillSelections = readThreadSkillSelectionList(value.skillSelections);
 
   return {
     id,
@@ -69,6 +71,7 @@ export function readThreadSnapshotFromUnknown(
     messages,
     mcpServers,
     mcpRpcHistory,
+    skillSelections,
   };
 }
 

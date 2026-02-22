@@ -35,6 +35,11 @@ type ChatAttachmentLike = {
   sizeBytes: number;
 };
 
+type ThreadSkillLike = {
+  name: string;
+  location: string;
+};
+
 type AzureConnectionLike = {
   id: string;
   projectName: string;
@@ -125,6 +130,8 @@ type PlaygroundPanelProps<
   onReasoningEffortChange: (value: ReasoningEffort) => void;
   maxChatAttachmentFiles: number;
   canSendMessage: boolean;
+  selectedSkills: ThreadSkillLike[];
+  onRemoveSkill: (location: string) => void;
   mcpServers: TMcpServer[];
   onRemoveMcpServer: (id: string) => void;
 };
@@ -184,6 +191,8 @@ export function PlaygroundPanel<
     onReasoningEffortChange,
     maxChatAttachmentFiles,
     canSendMessage,
+    selectedSkills,
+    onRemoveSkill,
     mcpServers,
     onRemoveMcpServer,
   } = props;
@@ -286,6 +295,43 @@ export function PlaygroundPanel<
                     disabled={isSending || isThreadReadOnly}
                     aria-label={`Remove MCP server ${server.name}`}
                     title={`Remove ${server.name}`}
+                  >
+                    ×
+                  </Button>
+                </span>
+              </LabeledTooltip>
+            </div>
+          ))}
+        </div>
+      </section>
+    );
+  }
+
+  function renderAddedSkillBubbles() {
+    if (selectedSkills.length === 0) {
+      return null;
+    }
+
+    return (
+      <section className="chat-skill-strip" aria-label="Added Skills">
+        <div className="chat-skill-bubbles">
+          {selectedSkills.map((skill) => (
+            <div key={skill.location} className="chat-skill-bubble-item">
+              <LabeledTooltip
+                title={skill.name}
+                lines={[`Source: ${skill.location}`]}
+              >
+                <span className="chat-skill-bubble">
+                  <span className="chat-skill-bubble-name">{skill.name}</span>
+                  <Button
+                    type="button"
+                    appearance="subtle"
+                    size="small"
+                    className="chat-skill-bubble-remove"
+                    onClick={() => onRemoveSkill(skill.location)}
+                    disabled={isSending || isThreadReadOnly}
+                    aria-label={`Remove skill ${skill.name}`}
+                    title={`Remove ${skill.name}`}
                   >
                     ×
                   </Button>
@@ -634,6 +680,7 @@ export function PlaygroundPanel<
           </div>
         </form>
         {renderDraftAttachmentBubbles()}
+        {renderAddedSkillBubbles()}
         {renderAddedMcpServersBubbles()}
       </footer>
     </section>

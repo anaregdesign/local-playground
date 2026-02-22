@@ -7,6 +7,7 @@ export type ChatApiResponse = {
 export type McpRpcHistoryEntry = {
   id: string;
   sequence: number;
+  operationType: "mcp" | "skill";
   serverName: string;
   method: string;
   startedAt: string;
@@ -201,6 +202,7 @@ export function readMcpRpcHistoryEntryFromUnknown(value: unknown): McpRpcHistory
   const sequence = typeof value.sequence === "number" ? value.sequence : Number.NaN;
   const serverName = typeof value.serverName === "string" ? value.serverName.trim() : "";
   const method = typeof value.method === "string" ? value.method.trim() : "";
+  const operationType = value.operationType === "skill" ? "skill" : "mcp";
   const startedAt = typeof value.startedAt === "string" ? value.startedAt.trim() : "";
   const completedAt = typeof value.completedAt === "string" ? value.completedAt.trim() : "";
   const isError = value.isError === true;
@@ -220,6 +222,7 @@ export function readMcpRpcHistoryEntryFromUnknown(value: unknown): McpRpcHistory
   return {
     id,
     sequence,
+    operationType,
     serverName,
     method,
     startedAt,
@@ -235,16 +238,35 @@ export function upsertMcpRpcHistoryEntry(
   current: McpRpcHistoryEntry[],
   entry: McpRpcHistoryEntry,
 ): McpRpcHistoryEntry[] {
-  const filtered = current.filter((existing) => existing.id !== entry.id);
-  const next = [...filtered, entry];
-  next.sort((left, right) => {
-    const timeOrder = left.startedAt.localeCompare(right.startedAt);
-    if (timeOrder !== 0) {
-      return timeOrder;
+  const existingIndex = current.findIndex((existing) => existing.id === entry.id);
+  if (existingIndex < 0) {
+    const insertIndex = findMcpRpcInsertIndex(current, entry);
+    if (insertIndex === current.length) {
+      return [...current, entry];
     }
-    return left.sequence - right.sequence;
-  });
-  return next;
+    return [...current.slice(0, insertIndex), entry, ...current.slice(insertIndex)];
+  }
+
+  const existing = current[existingIndex];
+  if (compareMcpRpcHistoryOrder(existing, entry) === 0) {
+    const next = [...current];
+    next[existingIndex] = entry;
+    return next;
+  }
+
+  const withoutExisting = [
+    ...current.slice(0, existingIndex),
+    ...current.slice(existingIndex + 1),
+  ];
+  const insertIndex = findMcpRpcInsertIndex(withoutExisting, entry);
+  if (insertIndex === withoutExisting.length) {
+    return [...withoutExisting, entry];
+  }
+  return [
+    ...withoutExisting.slice(0, insertIndex),
+    entry,
+    ...withoutExisting.slice(insertIndex),
+  ];
 }
 
 export function appendProgressMessage(
@@ -268,4 +290,32 @@ export function appendProgressMessage(
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object";
+}
+
+function compareMcpRpcHistoryOrder(
+  left: Pick<McpRpcHistoryEntry, "startedAt" | "sequence">,
+  right: Pick<McpRpcHistoryEntry, "startedAt" | "sequence">,
+): number {
+  const timeOrder = left.startedAt.localeCompare(right.startedAt);
+  if (timeOrder !== 0) {
+    return timeOrder;
+  }
+  return left.sequence - right.sequence;
+}
+
+function findMcpRpcInsertIndex(
+  entries: McpRpcHistoryEntry[],
+  entry: McpRpcHistoryEntry,
+): number {
+  let low = 0;
+  let high = entries.length;
+  while (low < high) {
+    const middle = Math.floor((low + high) / 2);
+    if (compareMcpRpcHistoryOrder(entries[middle], entry) <= 0) {
+      low = middle + 1;
+    } else {
+      high = middle;
+    }
+  }
+  return low;
 }

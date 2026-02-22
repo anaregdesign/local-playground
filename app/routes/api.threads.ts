@@ -17,6 +17,7 @@ import { readThreadSnapshotFromUnknown } from "~/lib/home/thread/parsers";
 import {
   buildThreadMcpRpcLogRowId,
   buildThreadMcpServerRowId,
+  buildThreadSkillSelectionRowId,
 } from "~/lib/home/thread/server-ids";
 import { hasThreadInteraction } from "~/lib/home/thread/snapshot-state";
 import type { ThreadSnapshot } from "~/lib/home/thread/types";
@@ -298,6 +299,11 @@ async function readUserThreads(userId: number): Promise<ThreadSnapshot[]> {
           sortOrder: "asc",
         },
       },
+      skillSelections: {
+        orderBy: {
+          sortOrder: "asc",
+        },
+      },
     },
   });
 
@@ -335,6 +341,11 @@ async function readThreadById(userId: number, threadId: string): Promise<ThreadS
         },
       },
       mcpRpcLogs: {
+        orderBy: {
+          sortOrder: "asc",
+        },
+      },
+      skillSelections: {
         orderBy: {
           sortOrder: "asc",
         },
@@ -512,6 +523,7 @@ async function saveThreadSnapshot(
           threadId: existing.id,
           sortOrder: index,
           sequence: entry.sequence,
+          operationType: entry.operationType,
           serverName: entry.serverName,
           method: entry.method,
           startedAt: entry.startedAt,
@@ -520,6 +532,24 @@ async function saveThreadSnapshot(
           responseJson: JSON.stringify(entry.response ?? null),
           isError: entry.isError,
           turnId: entry.turnId,
+        })),
+      });
+    }
+
+    await transaction.threadSkillSelection.deleteMany({
+      where: {
+        threadId: existing.id,
+      },
+    });
+
+    if (snapshot.skillSelections.length > 0) {
+      await transaction.threadSkillSelection.createMany({
+        data: snapshot.skillSelections.map((selection, index) => ({
+          id: buildThreadSkillSelectionRowId(existing.id, index),
+          threadId: existing.id,
+          sortOrder: index,
+          skillName: selection.name,
+          skillPath: selection.location,
         })),
       });
     }
@@ -655,6 +685,7 @@ function mapStoredThreadToSnapshot(value: {
   mcpRpcLogs: Array<{
     id: string;
     sequence: number;
+    operationType: string;
     serverName: string;
     method: string;
     startedAt: string;
@@ -663,6 +694,12 @@ function mapStoredThreadToSnapshot(value: {
     responseJson: string;
     isError: boolean;
     turnId: string;
+  }>;
+  skillSelections: Array<{
+    id: string;
+    sortOrder: number;
+    skillName: string;
+    skillPath: string;
   }>;
 }): ThreadSnapshot | null {
   const parsed = readThreadSnapshotFromUnknown(
@@ -705,6 +742,7 @@ function mapStoredThreadToSnapshot(value: {
       mcpRpcHistory: value.mcpRpcLogs.map((entry) => ({
         id: entry.id,
         sequence: entry.sequence,
+        operationType: entry.operationType,
         serverName: entry.serverName,
         method: entry.method,
         startedAt: entry.startedAt,
@@ -713,6 +751,10 @@ function mapStoredThreadToSnapshot(value: {
         response: readJsonValue(entry.responseJson, null),
         isError: entry.isError,
         turnId: entry.turnId,
+      })),
+      skillSelections: value.skillSelections.map((selection) => ({
+        name: selection.skillName,
+        location: selection.skillPath,
       })),
     },
     {

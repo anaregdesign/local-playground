@@ -6,6 +6,7 @@ It lets you move from prompt testing to MCP request/response debugging in one pl
 ## At A Glance
 
 - Chat playground powered by Agents SDK
+- Thread-level Agent Skills (`SKILL.md`) discovery and activation
 - Separate Azure project/deployment defaults for `Playground` and `Utility Model`
 - MCP server testing (`streamable_http`, `sse`, `stdio`)
 - Inline MCP operation logs (JSON-RPC request/response)
@@ -43,7 +44,7 @@ npm install
 export CODEX_HOME="${CODEX_HOME:-$HOME/.codex}"
 # install Local Playground skill with Codex standard setup
 mkdir -p "$CODEX_HOME/skills"
-ln -sfn "$(pwd)/skills/local-playground-dev" "$CODEX_HOME/skills/local-playground-dev"
+ln -sfn "$(pwd)/skills/.dev/local-playground-dev" "$CODEX_HOME/skills/local-playground-dev"
 # restart Codex or start a new session after installation
 az login
 npm run dev
@@ -56,10 +57,24 @@ Open `http://localhost:5173`.
 - Two-pane desktop layout with draggable splitter for chat vs. configuration work
 - Markdown rendering and JSON syntax highlighting for fast response inspection
 - Agent Instruction local file load/save (client-side save dialog) and enhance workflow with diff review
+- Skills panel in `Threads` tab for `agentskills`-compatible `SKILL.md` selection
 - Dedicated `Utility Model` selection (deployment + reasoning effort) for instruction enhancement workflows
 - Per-server MCP headers, Azure auth scope, and timeout controls
+- Default saved MCP profiles (not connected by default):
+  - `openai-docs` (`https://developers.openai.com/mcp`)
+  - `microsoft-learn` (`https://learn.microsoft.com/api/mcp`)
+  - `workiq` (`npx -y @microsoft/workiq mcp`)
+  - `azure-mcp` (`npx -y @azure/mcp@latest server start`)
+  - `playwright` (`npx -y @playwright/mcp@latest`)
 
 ## Developer Details
+
+### Home UI Structure
+
+- `app/components/home/authorize/`: auth-only top-level panel(s) for unauthenticated state
+- `app/components/home/playground/`: Playground panel and message/MCP renderers
+- `app/components/home/config/`: right-side configuration panel and tabs
+- Keep top-level panels as sibling directories under `app/components/home/` to match DOM hierarchy.
 
 ### Desktop Shell (Electron)
 
@@ -113,6 +128,16 @@ SQLite database:
 - `local-playground.sqlite`
 - Stores Azure selection preferences (Playground/Utility) and saved MCP profiles
 
+Skill directories loaded by the app:
+
+- Workspace default skills: `<workspace>/skills/default/`
+- CODEX_HOME shared skills: `$CODEX_HOME/skills/`
+- App data shared skills: `<config-directory>/skills/` (created automatically)
+
+Development-only project skills:
+
+- `<workspace>/skills/.dev/` (for example `local-playground-dev`)
+
 If `APPDATA` is unavailable on Windows, path falls back to:
 
 - `%USERPROFILE%\.foundry_local_playground\`
@@ -124,3 +149,7 @@ If `APPDATA` is unavailable on Windows, path falls back to:
 - `npm run start`
 - `npm run typecheck`
 - `npm run test`
+
+## License
+
+This project is licensed under the MIT License. See `LICENSE`.

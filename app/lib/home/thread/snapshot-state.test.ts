@@ -1,9 +1,27 @@
 import { describe, expect, it } from "vitest";
-import { hasThreadInteraction } from "~/lib/home/thread/snapshot-state";
+import {
+  hasThreadInteraction,
+  isThreadArchivedById,
+  isThreadSnapshotArchived,
+} from "~/lib/home/thread/snapshot-state";
 
 describe("hasThreadInteraction", () => {
   it("returns false for threads without messages", () => {
     expect(hasThreadInteraction({ messages: [] })).toBe(false);
+  });
+
+  it("returns true for threads with selected skills", () => {
+    expect(
+      hasThreadInteraction({
+        messages: [],
+        skillSelections: [
+          {
+            name: "local-playground-dev",
+            location: "/repo/skills/default/local-playground-dev/SKILL.md",
+          },
+        ],
+      }),
+    ).toBe(true);
   });
 
   it("returns true for threads with messages", () => {
@@ -20,5 +38,40 @@ describe("hasThreadInteraction", () => {
         ],
       }),
     ).toBe(true);
+  });
+});
+
+describe("isThreadSnapshotArchived", () => {
+  it("returns false when the snapshot is missing", () => {
+    expect(isThreadSnapshotArchived(null)).toBe(false);
+    expect(isThreadSnapshotArchived(undefined)).toBe(false);
+  });
+
+  it("returns false when deletedAt is null", () => {
+    expect(isThreadSnapshotArchived({ deletedAt: null })).toBe(false);
+  });
+
+  it("returns true when deletedAt is set", () => {
+    expect(isThreadSnapshotArchived({ deletedAt: "2026-02-20T00:00:00.000Z" })).toBe(true);
+  });
+});
+
+describe("isThreadArchivedById", () => {
+  const snapshots = [
+    { id: "thread-active", deletedAt: null },
+    { id: "thread-archived", deletedAt: "2026-02-20T00:00:00.000Z" },
+  ];
+
+  it("returns false when the id is empty or unknown", () => {
+    expect(isThreadArchivedById(snapshots, "")).toBe(false);
+    expect(isThreadArchivedById(snapshots, "thread-missing")).toBe(false);
+  });
+
+  it("returns false for active thread ids", () => {
+    expect(isThreadArchivedById(snapshots, "thread-active")).toBe(false);
+  });
+
+  it("returns true for archived thread ids", () => {
+    expect(isThreadArchivedById(snapshots, "thread-archived")).toBe(true);
   });
 });
