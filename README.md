@@ -99,12 +99,10 @@ Per-OS packaging:
 Pushing a `v*.*.*` tag triggers GitHub Actions to publish installers to GitHub Releases:
 
 - macOS: `.dmg`, `.zip`
-- Windows: `.exe` (NSIS)
 
 Release builds are signed for OS trust checks:
 
 - macOS: Developer ID code signing + Apple notarization (stapled)
-- Windows: Authenticode signing (SHA-256 + timestamp)
 
 ### Persistence Paths
 

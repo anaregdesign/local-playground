@@ -44,9 +44,6 @@ jobs:
           - os: macos-latest
             platform: macOS
             package_command: npm run desktop:package:mac
-          - os: windows-latest
-            platform: Windows
-            package_command: npm run desktop:package:win
 
     steps:
       - name: Checkout
@@ -105,45 +102,11 @@ jobs:
             echo "CSC_IDENTITY_AUTO_DISCOVERY=false"
           } >> "${GITHUB_ENV}"
 
-      - name: Prepare Windows signing credentials
-        if: matrix.os == 'windows-latest'
-        shell: pwsh
-        env:
-          WINDOWS_CERTIFICATE_PFX_BASE64: ${{ secrets.WINDOWS_CERTIFICATE_PFX_BASE64 }}
-          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
-        run: |
-          $ErrorActionPreference = "Stop"
-
-          if ([string]::IsNullOrWhiteSpace($env:WINDOWS_CERTIFICATE_PFX_BASE64)) {
-            throw "WINDOWS_CERTIFICATE_PFX_BASE64 is required for Windows signed release builds."
-          }
-
-          if ([string]::IsNullOrWhiteSpace($env:WINDOWS_CERTIFICATE_PASSWORD)) {
-            throw "WINDOWS_CERTIFICATE_PASSWORD is required for Windows signed release builds."
-          }
-
-          $certPath = Join-Path $env:RUNNER_TEMP "windows-signing-cert.pfx"
-          [System.IO.File]::WriteAllBytes($certPath, [System.Convert]::FromBase64String($env:WINDOWS_CERTIFICATE_PFX_BASE64))
-
-          @(
-            "WIN_CSC_LINK=$certPath"
-            "WIN_CSC_KEY_PASSWORD=$env:WINDOWS_CERTIFICATE_PASSWORD"
-            "CSC_LINK=$certPath"
-            "CSC_KEY_PASSWORD=$env:WINDOWS_CERTIFICATE_PASSWORD"
-            "CSC_IDENTITY_AUTO_DISCOVERY=false"
-          ) | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-
       - name: Build installer (macOS)
         if: matrix.os == 'macos-latest'
         shell: bash
         run: |
           ulimit -n 10240
-          ${{ matrix.package_command }}
-
-      - name: Build installer (Windows)
-        if: matrix.os == 'windows-latest'
-        shell: pwsh
-        run: |
           ${{ matrix.package_command }}
 
       - name: Verify macOS code signing and notarization
@@ -169,22 +132,6 @@ jobs:
           xcrun stapler validate "${APP_PATH}"
           xcrun stapler validate "${DMG_PATH}"
 
-      - name: Verify Windows Authenticode signatures
-        if: matrix.os == 'windows-latest'
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = "Stop"
-          $targets = Get-ChildItem -Path "dist/installers" -Filter "*.exe" -File
-          if (-not $targets) {
-            throw "Windows installer (.exe) was not found under dist/installers."
-          }
-
-          foreach ($target in $targets) {
-            $signature = Get-AuthenticodeSignature -FilePath $target.FullName
-            if ($signature.Status -ne "Valid") {
-              throw "Invalid Authenticode signature: $($target.Name) status=$($signature.Status)"
-            }
-          }
 
       - name: Upload macOS installers
         if: matrix.os == 'macos-latest'
@@ -193,17 +140,6 @@ jobs:
           name: installers-macos
           path: |
             dist/installers/*.dmg
-            dist/installers/*.zip
-          if-no-files-found: error
-
-      - name: Upload Windows installers
-        if: matrix.os == 'windows-latest'
-        uses: actions/upload-artifact@v4
-        with:
-          name: installers-windows
-          path: |
-            dist/installers/*.exe
-            dist/installers/*.msi
             dist/installers/*.zip
           if-no-files-found: error
 
@@ -235,7 +171,7 @@ jobs:
           cat > release-notes.md <<'EOF'
           ## Local Playground
 
-          Desktop installers for macOS / Windows are attached to this release.
+          Desktop installers for macOS are attached to this release.
 
           ### Run from Source (Copy & Paste)
 
@@ -253,7 +189,6 @@ jobs:
 
           ### Platform Trust
           - macOS artifacts are Developer ID signed and notarized.
-          - Windows installers are Authenticode signed and timestamped.
           EOF
 
           for asset in "${ASSETS[@]}"; do
