@@ -36,6 +36,7 @@ jobs:
     name: Package (${{ matrix.platform }})
     needs: validate
     runs-on: ${{ matrix.os }}
+    environment: release
     strategy:
       fail-fast: false
       matrix:
