@@ -10,7 +10,15 @@ files:
   - desktop/electron/**
 
 asar: true
+asarUnpack:
+  - node_modules/.prisma/client/*.node
 npmRebuild: false
+
+extraResources:
+  - from: node_modules/.prisma/client
+    to: node_modules/.prisma/client
+    filter:
+      - "**/*"
 
 artifactName: "${productName}-${version}-${os}-${arch}.${ext}"
 

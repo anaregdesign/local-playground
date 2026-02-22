@@ -160,6 +160,7 @@ async function startProductionBackend() {
       ...process.env,
       PORT: String(BACKEND_PORT),
       NODE_ENV: 'production',
+      NODE_PATH: resolveBackendNodePath(appRootPath),
       ELECTRON_RUN_AS_NODE: '1',
     },
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -332,6 +333,19 @@ function resolveRuntimeAppRootPath() {
   }
 
   return path.resolve(__dirname, '..', '..');
+}
+
+function resolveBackendNodePath(appRootPath) {
+  const nodePaths = [path.resolve(appRootPath, 'node_modules')];
+  if (app.isPackaged) {
+    nodePaths.push(path.resolve(process.resourcesPath, 'node_modules'));
+  }
+
+  if (process.env.NODE_PATH) {
+    nodePaths.push(process.env.NODE_PATH);
+  }
+
+  return nodePaths.join(path.delimiter);
 }
 
 function setDockIconIfAvailable() {
