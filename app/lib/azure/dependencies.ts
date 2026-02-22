@@ -19,7 +19,7 @@ type CachedAzureAccessToken = {
 
 export type AzureDependencies = {
   getCredential: () => AzureCredential;
-  authenticateAzure: (scopes: string | ReadonlyArray<string>) => Promise<void>;
+  authenticateAzure: (scope: string) => Promise<void>;
   getAzureBearerToken: (scope: string) => Promise<string>;
   getAzureOpenAIClient: (baseUrl: string) => OpenAI;
 };
@@ -59,13 +59,13 @@ export function createAzureDependencies(
     accessTokenRequestByScope.clear();
   };
 
-  const authenticateAzure = async (scopes: string | ReadonlyArray<string>): Promise<void> => {
-    const normalizedScopes = normalizeAzureScopes(scopes);
-    if (normalizedScopes.length === 0) {
+  const authenticateAzure = async (scope: string): Promise<void> => {
+    const normalizedScope = normalizeAzureScope(scope);
+    if (!normalizedScope) {
       throw new Error("Azure token scope is missing.");
     }
 
-    await getCredential().authenticate(normalizedScopes);
+    await getCredential().authenticate(normalizedScope);
     clearAzureAccessTokenCache();
   };
 
@@ -159,15 +159,6 @@ export function normalizeAzureOpenAIBaseURL(rawValue: string): string {
 
 function normalizeAzureScope(rawValue: string): string {
   return rawValue.trim();
-}
-
-function normalizeAzureScopes(rawValue: string | ReadonlyArray<string>): string[] {
-  const rawScopes = Array.isArray(rawValue) ? rawValue : [rawValue];
-  const normalized = rawScopes
-    .map((scope) => scope.trim())
-    .filter((scope) => scope.length > 0);
-
-  return [...new Set(normalized)];
 }
 
 function mapCachedAzureAccessToken(token: AzureAccessToken): CachedAzureAccessToken {

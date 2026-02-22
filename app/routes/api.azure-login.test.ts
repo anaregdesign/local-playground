@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { AZURE_ARM_SCOPE } from "~/lib/constants";
 
 const { authenticateAzure, logServerRouteEvent } = vi.hoisted(() => ({
   authenticateAzure: vi.fn(async () => undefined),
@@ -47,6 +48,7 @@ describe("/api/azure-login", () => {
     expect(response.status).toBe(200);
     expect(payload.message).toBe("Azure login completed. Azure connections were refreshed.");
     expect(authenticateAzure).toHaveBeenCalledTimes(1);
+    expect(authenticateAzure).toHaveBeenCalledWith(AZURE_ARM_SCOPE);
   });
 
   it("returns 500 when authentication fails", async () => {

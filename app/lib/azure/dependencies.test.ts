@@ -215,12 +215,12 @@ describe("createAzureDependencies", () => {
     });
 
     await dependencies.getAzureBearerToken("scope-a");
-    await dependencies.authenticateAzure([" scope-a ", "scope-a"]);
+    await dependencies.authenticateAzure(" scope-a ");
     const nextToken = await dependencies.getAzureBearerToken("scope-a");
 
     expect(nextToken).toBe("scope-a-token-2");
     expect(authenticate).toHaveBeenCalledTimes(1);
-    expect(authenticate).toHaveBeenCalledWith(["scope-a"]);
+    expect(authenticate).toHaveBeenCalledWith("scope-a");
     expect(getToken).toHaveBeenCalledTimes(2);
   });
 });

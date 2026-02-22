@@ -1,7 +1,5 @@
 import {
   AZURE_ARM_SCOPE,
-  AZURE_COGNITIVE_SERVICES_SCOPE,
-  AZURE_GRAPH_SCOPE,
 } from "~/lib/constants";
 import { getAzureDependencies } from "~/lib/azure/dependencies";
 import {
@@ -26,11 +24,7 @@ export async function action({ request }: Route.ActionArgs) {
 
   try {
     const dependencies = getAzureDependencies();
-    await dependencies.authenticateAzure([
-      AZURE_ARM_SCOPE,
-      AZURE_COGNITIVE_SERVICES_SCOPE,
-      AZURE_GRAPH_SCOPE,
-    ]);
+    await dependencies.authenticateAzure(AZURE_ARM_SCOPE);
 
     return Response.json({
       message: "Azure login completed. Azure connections were refreshed.",
@@ -44,7 +38,7 @@ export async function action({ request }: Route.ActionArgs) {
       statusCode: 500,
       error,
       context: {
-        scopes: [AZURE_ARM_SCOPE, AZURE_COGNITIVE_SERVICES_SCOPE, AZURE_GRAPH_SCOPE],
+        scope: AZURE_ARM_SCOPE,
       },
     });
 
