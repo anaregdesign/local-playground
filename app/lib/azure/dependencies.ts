@@ -67,6 +67,14 @@ export function createAzureDependencies(
 
     await getCredential().authenticate(normalizedScope);
     clearAzureAccessTokenCache();
+
+    const accessToken = await getCredential().getToken(normalizedScope);
+    if (!accessToken?.token) {
+      throw new Error(
+        `Azure credential failed to acquire Azure token (scope: ${normalizedScope}).`,
+      );
+    }
+    accessTokenByScope.set(normalizedScope, mapCachedAzureAccessToken(accessToken));
   };
 
   const getAzureBearerToken = async (scope: string): Promise<string> => {

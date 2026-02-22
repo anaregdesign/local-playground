@@ -897,7 +897,10 @@ export function useWorkspaceController() {
         method: "GET",
       });
 
-      const payload = (await response.json()) as McpServersApiResponse;
+      const payload = await readJsonPayload<McpServersApiResponse>(
+        response,
+        "saved MCP servers",
+      );
       if (requestSeq !== savedMcpRequestSeqRef.current) {
         return;
       }
@@ -957,7 +960,7 @@ export function useWorkspaceController() {
       const response = await fetch("/api/skills", {
         method: "GET",
       });
-      const payload = (await response.json()) as SkillsApiResponse;
+      const payload = await readJsonPayload<SkillsApiResponse>(response, "Skills");
       if (!response.ok) {
         throw new Error(payload.error || "Failed to load Skills.");
       }
@@ -2313,7 +2316,7 @@ export function useWorkspaceController() {
       });
       const errorMessage =
         loadError instanceof Error ? loadError.message : "Failed to load Azure projects.";
-      const nextAuthRequired = isAzureAuthRequired || isLikelyChatAzureAuthError(errorMessage);
+      const nextAuthRequired = isLikelyChatAzureAuthError(errorMessage);
       clearActiveAzureIdentity();
       clearSavedMcpServersState();
       clearThreadsState(
@@ -2829,8 +2832,22 @@ export function useWorkspaceController() {
       }
 
       setSystemNotice(payload.message || "Azure login completed.");
+      setIsAzureAuthRequired(false);
       setAzureConnectionError(null);
-      await loadAzureConnections();
+      let stillAuthRequired = true;
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        stillAuthRequired = await loadAzureConnections();
+        if (!stillAuthRequired) {
+          break;
+        }
+
+        await new Promise((resolve) => {
+          window.setTimeout(resolve, 500);
+        });
+      }
+      if (stillAuthRequired) {
+        setIsAzureAuthRequired(true);
+      }
     } catch (loginError) {
       logHomeError("azure_login_flow_failed", loginError, {
         action: "azure_login",
@@ -4095,6 +4112,30 @@ function describeSavedMcpServerDetail(server: McpServerConfig): string {
   }
 
   return server.url;
+}
+
+async function readJsonPayload<T extends Record<string, unknown>>(
+  response: Response,
+  targetName: string,
+): Promise<T> {
+  const rawPayload = await response.text();
+  const trimmedPayload = rawPayload.trim();
+  if (!trimmedPayload) {
+    return {} as T;
+  }
+
+  try {
+    return JSON.parse(trimmedPayload) as T;
+  } catch {
+    if (response.status === 401) {
+      return { authRequired: true } as unknown as T;
+    }
+
+    const preview = trimmedPayload.length > 160 ? `${trimmedPayload.slice(0, 160)}...` : trimmedPayload;
+    throw new Error(
+      `Failed to parse ${targetName} response (status ${response.status}): ${preview}`,
+    );
+  }
 }
 
 function isLikelyChatAzureAuthError(message: string | null): boolean {

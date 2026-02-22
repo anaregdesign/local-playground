@@ -62,9 +62,7 @@ Then click `Azure Login` in the app `Settings` tab.
 - Per-server MCP headers, Azure auth scope, and timeout controls
 - Default saved MCP profiles (not connected by default):
   - `openai-docs` (`https://developers.openai.com/mcp`)
-  - `microsoft-learn` (`https://learn.microsoft.com/api/mcp`)
   - `workiq` (`npx -y @microsoft/workiq mcp`)
-  - `azure-mcp` (`npx -y @azure/mcp@latest server start`)
   - `playwright` (`npx -y @playwright/mcp@latest`)
 
 ## Developer Details
