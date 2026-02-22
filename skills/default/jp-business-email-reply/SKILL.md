@@ -31,7 +31,18 @@ description: Draft Japanese business email replies by extracting stakeholders, c
 
 不明な項目は推測で断定せず「不明」として扱う。
 
-## 3. 送信者意図の分類
+## 3. 不足情報の逐次確認
+
+- 返信文作成に必要な情報が不足している場合は、メール本文を確定出力せず、ユーザーへ確認プロンプトを出す。
+- 1回のプロンプトでは1項目だけ質問する（逐次確認）。
+- 優先して確認する項目の例:
+  - 自分の署名（氏名、会社名、部署名、役職、連絡先）
+  - 宛名表記（会社名・氏名・敬称）
+  - 返信期限や希望トーン
+  - 日程調整で必須の時間帯・タイムゾーン
+- 推測で埋めない。ユーザー回答が得られたら次の不足項目を確認し、必要情報がそろってから本文生成を再開する。
+
+## 4. 送信者意図の分類
 
 メール内容を解析し、主たる意図を分類する。必要に応じて複数分類も可。
 
@@ -41,7 +52,7 @@ description: Draft Japanese business email replies by extracting stakeholders, c
 - 資料送付依頼
 - その他問い合わせ
 
-## 4. 日程調整の処理
+## 5. 日程調整の処理
 
 意図が日程調整を含む場合は次を実施する。
 
@@ -52,7 +63,7 @@ description: Draft Japanese business email replies by extracting stakeholders, c
 - 確定可能な条件がそろう場合、関係者カレンダーに予定を作成する。
 - 仮予定か確定予定かは、合意状態に応じて判断する。
 
-## 5. 仕様確認の処理
+## 6. 仕様確認の処理
 
 意図が Microsoft 製品の仕様確認を含む場合は次を実施する。
 
@@ -60,7 +71,7 @@ description: Draft Japanese business email replies by extracting stakeholders, c
 - 質問ごとに、根拠に沿って正確に回答する。
 - 不確実な点がある場合は、断定せず「確認のうえ回答する」旨を明記する。
 
-## 6. メール冒頭（日本式フォーマット）
+## 7. メール冒頭（日本式フォーマット）
 
 返信文の冒頭は次の形式を基本とする。
 
@@ -71,14 +82,14 @@ description: Draft Japanese business email replies by extracting stakeholders, c
 
 - `いつもお世話になっております。`
 
-## 7. 本文生成
+## 8. 本文生成
 
 - 日程調整: 候補日時を簡潔な箇条書きで提示する。
 - 仕様確認: 質問ごとに見出しや番号で整理して回答する。
 - 文体: 丁寧かつ簡潔なビジネス文体にする。
 - 冗長な前置きや曖昧な表現を避ける。
 
-## 8. 締め
+## 9. 締め
 
 本文末尾は以下を基本とする。
 
@@ -90,3 +101,5 @@ description: Draft Japanese business email replies by extracting stakeholders, c
 - 出力はそのまま送信前確認に使える日本語メール本文とする。
 - 事実未確認の内容は断定しない。
 - 候補日時は曜日・開始時刻・終了時刻・タイムゾーンを明記する。
+- 必要情報が不足する場合は本文を出力せず、確認質問を返す。
+- 確認質問は1回につき1問にする。
