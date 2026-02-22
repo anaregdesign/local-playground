@@ -15,8 +15,12 @@ asarUnpack:
 npmRebuild: false
 
 extraResources:
-  - from: build
-    to: build
+  - from: build/client
+    to: build/client
+    filter:
+      - "**/*"
+  - from: public
+    to: public
     filter:
       - "**/*"
   - from: node_modules/.prisma/client
