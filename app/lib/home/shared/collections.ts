@@ -13,3 +13,25 @@ export function uniqueStringsCaseInsensitive(values: string[]): string[] {
 
   return unique;
 }
+
+export function readStringList(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const result: string[] = [];
+  for (const entry of value) {
+    if (typeof entry !== "string") {
+      continue;
+    }
+
+    const normalized = entry.trim();
+    if (!normalized) {
+      continue;
+    }
+
+    result.push(normalized);
+  }
+
+  return result;
+}

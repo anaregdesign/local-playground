@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { uniqueStringsCaseInsensitive } from "./collections";
+import { readStringList, uniqueStringsCaseInsensitive } from "./collections";
 import { getFileExtension } from "./files";
 import { createId } from "./ids";
 import { clampNumber } from "./numbers";
@@ -28,6 +28,21 @@ describe("uniqueStringsCaseInsensitive", () => {
       "API",
       "Trace",
     ]);
+  });
+});
+
+describe("readStringList", () => {
+  it("returns trimmed non-empty strings from unknown arrays", () => {
+    expect(readStringList(["  one ", "", " two", 3, null, "three  "])).toEqual([
+      "one",
+      "two",
+      "three",
+    ]);
+  });
+
+  it("returns empty list for non-array values", () => {
+    expect(readStringList(null)).toEqual([]);
+    expect(readStringList("value")).toEqual([]);
   });
 });
 

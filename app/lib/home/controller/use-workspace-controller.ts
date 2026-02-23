@@ -47,6 +47,7 @@ import {
   readAzureSelectionFromUnknown,
   readTenantIdFromUnknown,
 } from "~/lib/home/azure/parsers";
+import { isLikelyChatAzureAuthError } from "~/lib/home/azure/errors";
 import { buildMcpHistoryByTurnId } from "~/lib/home/chat/history";
 import type { DraftChatAttachment } from "~/lib/home/chat/attachments";
 import { formatChatAttachmentSize, readFileAsDataUrl } from "~/lib/home/chat/attachments";
@@ -89,7 +90,10 @@ import {
   parseStdioEnvInput,
 } from "~/lib/home/mcp/stdio-inputs";
 import {
+  describeSavedMcpServer,
+  describeSavedMcpServerDetail,
   isMcpServersAuthRequired,
+  resolveMcpTransportBadge,
   shouldScheduleSavedMcpLoginRetry,
 } from "~/lib/home/mcp/saved-profiles";
 import {
@@ -121,9 +125,11 @@ import type { ThreadSnapshot, ThreadSummary } from "~/lib/home/thread/types";
 import { readSkillCatalogList } from "~/lib/home/skills/parsers";
 import type { SkillCatalogEntry, ThreadSkillSelection } from "~/lib/home/skills/types";
 import { copyTextToClipboard } from "~/lib/home/shared/clipboard";
+import { readStringList } from "~/lib/home/shared/collections";
 import { getFileExtension } from "~/lib/home/shared/files";
 import { createId } from "~/lib/home/shared/ids";
 import { clampNumber } from "~/lib/home/shared/numbers";
+import { readJsonPayload } from "~/lib/home/controller/http";
 import {
   type AzureActionApiResponse,
   type AzureConnectionsApiResponse,
@@ -4056,106 +4062,4 @@ export function useWorkspaceController() {
     },
     playgroundPanelProps,
   };
-}
-
-function readStringList(value: unknown): string[] {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-
-  const result: string[] = [];
-  for (const entry of value) {
-    if (typeof entry !== "string") {
-      continue;
-    }
-
-    const normalized = entry.trim();
-    if (!normalized) {
-      continue;
-    }
-
-    result.push(normalized);
-  }
-
-  return result;
-}
-
-function resolveMcpTransportBadge(server: McpServerConfig): string {
-  if (server.transport === "stdio") {
-    return "STDIO";
-  }
-
-  if (server.transport === "sse") {
-    return "SSE";
-  }
-
-  return "HTTP";
-}
-
-function describeSavedMcpServer(server: McpServerConfig): string {
-  if (server.transport === "stdio") {
-    const argsSuffix = server.args.length > 0 ? ` ${server.args.join(" ")}` : "";
-    const envCount = Object.keys(server.env).length;
-    return `Command: ${server.command}${argsSuffix}; Environment variables: ${envCount}`;
-  }
-
-  const headersCount = Object.keys(server.headers).length;
-  const azureAuthLabel = server.useAzureAuth
-    ? `Azure auth: enabled (${server.azureAuthScope})`
-    : "Azure auth: disabled";
-  return `Transport: ${server.transport}; Headers: ${headersCount}; Timeout: ${server.timeoutSeconds}s; ${azureAuthLabel}`;
-}
-
-function describeSavedMcpServerDetail(server: McpServerConfig): string {
-  if (server.transport === "stdio") {
-    return `Working directory: ${server.cwd ?? "(inherit current workspace)"}`;
-  }
-
-  return server.url;
-}
-
-async function readJsonPayload<T extends Record<string, unknown>>(
-  response: Response,
-  targetName: string,
-): Promise<T> {
-  const rawPayload = await response.text();
-  const trimmedPayload = rawPayload.trim();
-  if (!trimmedPayload) {
-    return {} as T;
-  }
-
-  try {
-    return JSON.parse(trimmedPayload) as T;
-  } catch {
-    if (response.status === 401) {
-      return { authRequired: true } as unknown as T;
-    }
-
-    const preview = trimmedPayload.length > 160 ? `${trimmedPayload.slice(0, 160)}...` : trimmedPayload;
-    throw new Error(
-      `Failed to parse ${targetName} response (status ${response.status}): ${preview}`,
-    );
-  }
-}
-
-function isLikelyChatAzureAuthError(message: string | null): boolean {
-  if (!message) {
-    return false;
-  }
-
-  const normalizedMessage = message.toLowerCase();
-  return [
-    "azure login is required",
-    "defaultazurecredential",
-    "interactivebrowsercredential",
-    "authenticationrequirederror",
-    "automatic authentication has been disabled",
-    "credential",
-    "authentication",
-    "authorization",
-    "unauthorized",
-    "forbidden",
-    "access token",
-    "aadsts",
-  ].some((pattern) => normalizedMessage.includes(pattern));
 }
