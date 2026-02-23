@@ -16,6 +16,7 @@ export type SkillRegistryGroupOption = {
   registryId: SkillRegistryId;
   label: string;
   description: string;
+  registryUrl?: string;
   skillCount: number;
   installedCount: number;
   skills: SkillRegistryEntryOption[];
@@ -55,21 +56,11 @@ export function SkillRegistrySection(props: SkillRegistrySectionProps) {
     onClearSkillRegistrySuccess,
   } = props;
 
-  const totalInstalledCount = skillRegistryGroups.reduce(
-    (sum, registry) => sum + registry.installedCount,
-    0,
-  );
-  const totalSkillCount = skillRegistryGroups.reduce(
-    (sum, registry) => sum + registry.skillCount,
-    0,
-  );
   const collapsibleRegistryGroups: CollapsibleSelectableCardGroup[] = skillRegistryGroups.map(
-    (registry, index) => ({
+    (registry) => ({
       id: registry.registryId,
       label: registry.label,
       description: registry.description,
-      selectedCount: registry.installedCount,
-      totalCount: registry.skillCount,
       items: registry.skills.map((skill) => ({
         id: skill.name,
         name: skill.name,
@@ -80,7 +71,6 @@ export function SkillRegistrySection(props: SkillRegistrySectionProps) {
       })),
       listAriaLabel: `Registry Skills (${registry.label})`,
       emptyHint: `No Skills are currently available from ${registry.label}.`,
-      defaultOpen: registry.installedCount > 0 || index === 0,
       addButtonLabel: "Install",
       selectedButtonLabel: "Remove",
       onToggleItem: (skillName) => {
@@ -88,6 +78,7 @@ export function SkillRegistrySection(props: SkillRegistrySectionProps) {
       },
     }),
   );
+  const registrySourceLinks = dedupeRegistrySourceLinks(skillRegistryGroups);
 
   return (
     <ConfigSection
@@ -95,10 +86,7 @@ export function SkillRegistrySection(props: SkillRegistrySectionProps) {
       title="Install Skills 📦"
       description="Browse supported registries and install or remove Skills under app data skills storage."
     >
-      <div className="selectable-card-header-row">
-        <p className="selectable-card-count">
-          Installed: {totalInstalledCount} / {totalSkillCount}
-        </p>
+      <div className="selectable-card-header-row selectable-card-header-row-right">
         <Button
           type="button"
           appearance="subtle"
@@ -111,6 +99,29 @@ export function SkillRegistrySection(props: SkillRegistrySectionProps) {
           ↻ Reload
         </Button>
       </div>
+      {registrySourceLinks.length > 0 ? (
+        <p className="registry-source-links">
+          <span className="registry-source-links-label">Registry sources:</span>
+          {registrySourceLinks.map((registry, index) => (
+            <span key={registry.url} className="registry-source-link-item">
+              <a
+                className="registry-source-link"
+                href={registry.url}
+                target="_blank"
+                rel="noreferrer"
+                title={`Open ${registry.label} registry source`}
+              >
+                {registry.label}
+              </a>
+              {index < registrySourceLinks.length - 1 ? (
+                <span className="registry-source-link-separator" aria-hidden="true">
+                  ·
+                </span>
+              ) : null}
+            </span>
+          ))}
+        </p>
+      ) : null}
       {isLoadingSkillRegistries ? (
         <p className="azure-loading-notice" role="status" aria-live="polite">
           <Spinner size="tiny" />
@@ -139,4 +150,26 @@ export function SkillRegistrySection(props: SkillRegistrySectionProps) {
       />
     </ConfigSection>
   );
+}
+
+function dedupeRegistrySourceLinks(
+  groups: SkillRegistryGroupOption[],
+): Array<{ label: string; url: string }> {
+  const links = new Map<string, { label: string; url: string }>();
+
+  for (const group of groups) {
+    const normalizedUrl = (group.registryUrl ?? "").trim();
+    if (!normalizedUrl || !/^https?:\/\//.test(normalizedUrl)) {
+      continue;
+    }
+
+    if (!links.has(normalizedUrl)) {
+      links.set(normalizedUrl, {
+        label: group.label,
+        url: normalizedUrl,
+      });
+    }
+  }
+
+  return Array.from(links.values());
 }

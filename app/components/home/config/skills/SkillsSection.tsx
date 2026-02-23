@@ -24,7 +24,6 @@ export type ThreadSkillOption = {
 
 type SkillsSectionProps = {
   skillOptions: ThreadSkillOption[];
-  selectedSkillCount: number;
   isLoadingSkills: boolean;
   isSending: boolean;
   isThreadReadOnly: boolean;
@@ -38,7 +37,6 @@ type SkillsSectionProps = {
 export function SkillsSection(props: SkillsSectionProps) {
   const {
     skillOptions,
-    selectedSkillCount,
     isLoadingSkills,
     isSending,
     isThreadReadOnly,
@@ -62,8 +60,7 @@ export function SkillsSection(props: SkillsSectionProps) {
         readSkillGroupPriority(left) - readSkillGroupPriority(right) ||
         left.localeCompare(right),
     )
-    .map(([groupName, groupSkills], index) => {
-      const selectedCount = groupSkills.filter((skill) => skill.isSelected).length;
+    .map(([groupName, groupSkills]) => {
       const items = groupSkills.map((skill) => ({
         id: skill.location,
         name: skill.name,
@@ -77,12 +74,9 @@ export function SkillsSection(props: SkillsSectionProps) {
         id: groupName,
         label: groupName,
         description: readSkillGroupDescription(groupName),
-        selectedCount,
-        totalCount: items.length,
         items,
         listAriaLabel: `Thread Skills (${groupName})`,
         emptyHint: `No Skills in ${groupName}.`,
-        defaultOpen: selectedCount > 0 || index === 0,
         onToggleItem: onToggleSkill,
       };
       return group;
@@ -99,8 +93,7 @@ export function SkillsSection(props: SkillsSectionProps) {
           This thread is archived and read-only. Restore it from Archives to edit skill selections.
         </p>
       ) : null}
-      <div className="selectable-card-header-row">
-        <p className="selectable-card-count">Enabled: {selectedSkillCount}</p>
+      <div className="selectable-card-header-row selectable-card-header-row-right">
         <Button
           type="button"
           appearance="subtle"

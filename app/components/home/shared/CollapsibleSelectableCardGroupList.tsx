@@ -9,12 +9,9 @@ export type CollapsibleSelectableCardGroup = {
   id: string;
   label: string;
   description?: string;
-  selectedCount: number;
-  totalCount: number;
   items: SelectableCardItem[];
   listAriaLabel: string;
   emptyHint: string;
-  defaultOpen?: boolean;
   addButtonLabel?: string;
   selectedButtonLabel?: string;
   onToggleItem: (id: string) => void;
@@ -39,42 +36,30 @@ export function CollapsibleSelectableCardGroupList(
   return (
     <div className="collapsible-selectable-group-list">
       {visibleGroups.map((group) => (
-        <details
-          key={group.id}
-          className="collapsible-selectable-group"
-          open={group.defaultOpen === true}
-        >
+        <details key={group.id} className="collapsible-selectable-group">
           <summary className="collapsible-selectable-group-summary">
-            <span className="collapsible-selectable-group-heading">
-              <span
-                className="collapsible-selectable-group-chevron symbol-icon-btn"
-                aria-hidden="true"
-              >
-                <span className="symbol-icon-btn-glyph">▸</span>
-              </span>
-              <span className="collapsible-selectable-group-title">
-                {group.label}
-                {group.description ? (
-                  <LabeledTooltip
-                    title={`${group.label} Description`}
-                    lines={[group.description]}
-                    className="setting-group-tooltip-target"
-                  >
-                    <InfoIconButton
-                      className="setting-group-tooltip-icon"
-                      ariaLabel={`${group.label} description`}
-                      title={`${group.label} description`}
-                      onClick={(event) => {
-                        event.preventDefault();
-                        event.stopPropagation();
-                      }}
-                    />
-                  </LabeledTooltip>
-                ) : null}
-              </span>
+            <span className="collapsible-selectable-group-folder symbol-icon-btn" aria-hidden="true">
+              <span className="collapsible-selectable-group-folder-body" />
             </span>
-            <span className="collapsible-selectable-group-count">
-              {group.selectedCount}/{group.totalCount}
+            <span className="collapsible-selectable-group-title">
+              {group.label}
+              {group.description ? (
+                <LabeledTooltip
+                  title={`${group.label} Description`}
+                  lines={[group.description]}
+                  className="setting-group-tooltip-target"
+                >
+                  <InfoIconButton
+                    className="setting-group-tooltip-icon"
+                    ariaLabel={`${group.label} description`}
+                    title={`${group.label} description`}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                    }}
+                  />
+                </LabeledTooltip>
+              ) : null}
             </span>
           </summary>
           <div className="collapsible-selectable-group-content">

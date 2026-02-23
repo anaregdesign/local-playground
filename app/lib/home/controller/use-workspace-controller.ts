@@ -126,6 +126,7 @@ import {
 import type { ThreadSnapshot, ThreadSummary } from "~/lib/home/thread/types";
 import { readSkillCatalogList, readSkillRegistryCatalogList } from "~/lib/home/skills/parsers";
 import {
+  readSkillRegistryOptionById,
   readSkillRegistryLabelFromSkillLocation,
   SKILL_REGISTRY_OPTIONS,
   type SkillRegistryId,
@@ -400,6 +401,9 @@ export function useWorkspaceController() {
   const skillRegistryGroups = useMemo(() => {
     if (skillRegistryCatalogs.length > 0) {
       return skillRegistryCatalogs.map((registry) => ({
+        registryUrl:
+          readSkillRegistryOptionById(registry.registryId)?.sourceUrl ??
+          registry.repositoryUrl,
         registryId: registry.registryId,
         label: registry.registryLabel,
         description: registry.registryDescription,
@@ -425,6 +429,7 @@ export function useWorkspaceController() {
     }
 
     return SKILL_REGISTRY_OPTIONS.map((registry) => ({
+      registryUrl: registry.sourceUrl,
       registryId: registry.id,
       label: registry.label,
       description: registry.description,
@@ -4119,7 +4124,6 @@ export function useWorkspaceController() {
   const skillsTabProps = {
     skillsSectionProps: {
       skillOptions: threadSkillOptions,
-      selectedSkillCount: selectedThreadSkills.length,
       isLoadingSkills,
       isSending,
       isThreadReadOnly: isActiveThreadArchived,
