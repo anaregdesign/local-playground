@@ -1,7 +1,10 @@
+/**
+ * Project maintenance script.
+ */
 import { mkdir, rm } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 import { PrismaClient } from "@prisma/client";
 
 const SQLITE_FILE_NAME = "local-playground.sqlite";
@@ -33,7 +36,7 @@ function resolveDatabaseUrl() {
   }
 
   const databasePath = resolveDefaultDatabaseFilePath();
-  return pathToFileURL(databasePath).toString();
+  return buildPrismaSqliteDatabaseUrl(databasePath);
 }
 
 function resolveDefaultDatabaseFilePath() {
@@ -46,29 +49,8 @@ function resolveDefaultDatabaseFilePath() {
     return path.win32.join(homedir(), LEGACY_CONFIG_DIRECTORY, SQLITE_FILE_NAME);
   }
 
-  if (process.platform === "darwin") {
-    return path.posix.join(
-      homedir(),
-      "Library",
-      "Application Support",
-      WINDOWS_CONFIG_DIRECTORY,
-      SQLITE_FILE_NAME,
-    );
-  }
-
-  if (process.platform === "linux") {
-    const xdgDataHomeDirectory = (process.env.XDG_DATA_HOME ?? "").trim();
-    if (xdgDataHomeDirectory) {
-      return path.posix.join(xdgDataHomeDirectory, WINDOWS_CONFIG_DIRECTORY, SQLITE_FILE_NAME);
-    }
-
-    return path.posix.join(
-      homedir(),
-      ".local",
-      "share",
-      WINDOWS_CONFIG_DIRECTORY,
-      SQLITE_FILE_NAME,
-    );
+  if (process.platform === "darwin" || process.platform === "linux") {
+    return path.posix.join(homedir(), LEGACY_CONFIG_DIRECTORY, SQLITE_FILE_NAME);
   }
 
   return path.posix.join(homedir(), LEGACY_CONFIG_DIRECTORY, SQLITE_FILE_NAME);
@@ -130,7 +112,20 @@ function normalizeDatabaseUrl(databaseUrl) {
 
   const queryIndex = databaseUrl.indexOf("?");
   const query = queryIndex >= 0 ? databaseUrl.slice(queryIndex) : "";
-  return `${pathToFileURL(absolutePath).toString()}${query}`;
+  return `${buildPrismaSqliteDatabaseUrl(absolutePath)}${query}`;
+}
+
+function buildPrismaSqliteDatabaseUrl(databasePath) {
+  if (process.platform === "win32") {
+    const normalizedPath = databasePath.replaceAll("\\", "/");
+    if (/^[A-Za-z]:\//.test(normalizedPath)) {
+      return `file:/${normalizedPath}`;
+    }
+
+    return `file:${normalizedPath.startsWith("/") ? normalizedPath : `/${normalizedPath}`}`;
+  }
+
+  return `file:${databasePath}`;
 }
 
 async function initializeSchema(databaseUrl) {

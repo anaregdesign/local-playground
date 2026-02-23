@@ -1,3 +1,6 @@
+/**
+ * Home UI component module.
+ */
 import type { MouseEventHandler } from "react";
 import { SymbolIconButton } from "~/components/home/shared/SymbolIconButton";
 

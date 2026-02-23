@@ -1,3 +1,6 @@
+/**
+ * React Router configuration module.
+ */
 import type { Config } from "@react-router/dev/config";
 
 export default {

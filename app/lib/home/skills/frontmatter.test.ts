@@ -1,3 +1,6 @@
+/**
+ * Test module verifying frontmatter behavior.
+ */
 import { describe, expect, it } from "vitest";
 import {
   parseSkillFrontmatter,

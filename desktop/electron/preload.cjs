@@ -1,3 +1,6 @@
+/**
+ * Electron desktop-shell module.
+ */
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('desktopApi', {

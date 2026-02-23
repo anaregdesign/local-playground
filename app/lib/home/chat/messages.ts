@@ -1,3 +1,6 @@
+/**
+ * Home runtime support module.
+ */
 import type { ChatAttachment } from "~/lib/home/chat/attachments";
 
 export type ChatRole = "user" | "assistant";

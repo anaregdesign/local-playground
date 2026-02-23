@@ -1,3 +1,6 @@
+/**
+ * Test module verifying clipboard behavior.
+ */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { copyTextToClipboard } from "./clipboard";
 

@@ -1,3 +1,6 @@
+/**
+ * Home UI component module.
+ */
 import type { ComponentProps } from "react";
 import { SkillsSection } from "~/components/home/config/skills/SkillsSection";
 import type { MainViewTab } from "~/lib/home/shared/view-types";

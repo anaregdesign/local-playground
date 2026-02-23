@@ -1,3 +1,6 @@
+/**
+ * Home runtime support module.
+ */
 export type SkillCatalogSource = "workspace" | "codex_home" | "app_data";
 
 export type SkillCatalogEntry = {

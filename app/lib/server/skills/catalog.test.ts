@@ -1,3 +1,6 @@
+/**
+ * Test module verifying catalog behavior.
+ */
 import { mkdtemp, mkdir, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";

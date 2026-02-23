@@ -1,3 +1,6 @@
+/**
+ * Test module verifying profile behavior.
+ */
 import { describe, expect, it } from "vitest";
 import {
   MCP_DEFAULT_AZURE_AUTH_SCOPE,

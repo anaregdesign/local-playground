@@ -1,3 +1,6 @@
+/**
+ * Test module verifying api.azure-selection behavior.
+ */
 import { describe, expect, it } from "vitest";
 import { parseAzureSelectionPreference } from "./api.azure-selection";
 

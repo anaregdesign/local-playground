@@ -1,3 +1,6 @@
+/**
+ * Home controller runtime module.
+ */
 import {
   useEffect,
   useMemo,
@@ -47,6 +50,7 @@ import {
   readAzureSelectionFromUnknown,
   readTenantIdFromUnknown,
 } from "~/lib/home/azure/parsers";
+import { isLikelyChatAzureAuthError } from "~/lib/home/azure/errors";
 import { buildMcpHistoryByTurnId } from "~/lib/home/chat/history";
 import type { DraftChatAttachment } from "~/lib/home/chat/attachments";
 import { formatChatAttachmentSize, readFileAsDataUrl } from "~/lib/home/chat/attachments";
@@ -89,6 +93,8 @@ import {
   parseStdioEnvInput,
 } from "~/lib/home/mcp/stdio-inputs";
 import {
+  buildSavedMcpServerOptions,
+  countSelectedSavedMcpServerOptions,
   isMcpServersAuthRequired,
   shouldScheduleSavedMcpLoginRetry,
 } from "~/lib/home/mcp/saved-profiles";
@@ -121,9 +127,11 @@ import type { ThreadSnapshot, ThreadSummary } from "~/lib/home/thread/types";
 import { readSkillCatalogList } from "~/lib/home/skills/parsers";
 import type { SkillCatalogEntry, ThreadSkillSelection } from "~/lib/home/skills/types";
 import { copyTextToClipboard } from "~/lib/home/shared/clipboard";
+import { readStringList } from "~/lib/home/shared/collections";
 import { getFileExtension } from "~/lib/home/shared/files";
 import { createId } from "~/lib/home/shared/ids";
 import { clampNumber } from "~/lib/home/shared/numbers";
+import { readJsonPayload } from "~/lib/home/controller/http";
 import {
   type AzureActionApiResponse,
   type AzureConnectionsApiResponse,
@@ -136,7 +144,14 @@ import {
   type ThreadsApiResponse,
 } from "~/lib/home/controller/types";
 
+/**
+ * Home runtime controller.
+ * Owns interactive state for Playground/Threads/MCP/Settings and orchestrates server API calls.
+ * This hook intentionally keeps state ownership centralized while delegating pure transforms
+ * to modules under `~/lib/home/*`.
+ */
 export function useWorkspaceController() {
+  // Primary runtime state for Home.
   const [azureConnections, setAzureConnections] = useState<AzureConnectionOption[]>([]);
   const [playgroundAzureDeployments, setPlaygroundAzureDeployments] = useState<string[]>([]);
   const [utilityAzureDeployments, setUtilityAzureDeployments] = useState<string[]>([]);
@@ -230,6 +245,8 @@ export function useWorkspaceController() {
   const [skillsWarning, setSkillsWarning] = useState<string | null>(null);
   const [rightPaneWidth, setRightPaneWidth] = useState(420);
   const [activeResizeHandle, setActiveResizeHandle] = useState<"main" | null>(null);
+
+  // Mutable refs for request sequencing, optimistic state, and debounce timers.
   const endOfMessagesRef = useRef<HTMLDivElement | null>(null);
   const chatInputRef = useRef<HTMLTextAreaElement | null>(null);
   const chatAttachmentInputRef = useRef<HTMLInputElement | null>(null);
@@ -261,6 +278,8 @@ export function useWorkspaceController() {
   const threadSaveSignatureByIdRef = useRef(new Map<string, string>());
   const threadRequestStateByIdRef = useRef<Record<string, ThreadRequestState>>({});
   const threadsRef = useRef<ThreadSnapshot[]>([]);
+
+  // Derived UI state and view models consumed by panel props.
   const isChatLocked = isAzureAuthRequired;
   const activePlaygroundAzureConnection =
     azureConnections.find((connection) => connection.id === selectedPlaygroundAzureConnectionId) ??
@@ -296,31 +315,12 @@ export function useWorkspaceController() {
     () => (lastErrorTurnId ? (mcpHistoryByTurnId.get(lastErrorTurnId) ?? []) : []),
     [lastErrorTurnId, mcpHistoryByTurnId],
   );
-  const savedMcpServerOptions = useMemo(() => {
-    const activeMcpServerKeySet = new Set(mcpServers.map((server) => buildMcpServerKey(server)));
-    return savedMcpServers
-      .map((server) => {
-        const key = buildMcpServerKey(server);
-        return {
-          id: server.id,
-          name: server.name,
-          badge: resolveMcpTransportBadge(server),
-          description: describeSavedMcpServer(server),
-          detail: describeSavedMcpServerDetail(server),
-          isSelected: activeMcpServerKeySet.has(key),
-          isAvailable: true,
-        };
-      })
-      .sort((left, right) => {
-        if (left.isSelected !== right.isSelected) {
-          return left.isSelected ? -1 : 1;
-        }
-
-        return left.name.localeCompare(right.name);
-      });
-  }, [mcpServers, savedMcpServers]);
+  const savedMcpServerOptions = useMemo(
+    () => buildSavedMcpServerOptions(savedMcpServers, mcpServers),
+    [savedMcpServers, mcpServers],
+  );
   const selectedSavedMcpServerCount = useMemo(
-    () => savedMcpServerOptions.filter((server) => server.isSelected).length,
+    () => countSelectedSavedMcpServerOptions(savedMcpServerOptions),
     [savedMcpServerOptions],
   );
   const draftAttachmentTotalSizeBytes = draftAttachments.reduce(
@@ -378,8 +378,8 @@ export function useWorkspaceController() {
         return left.isSelected ? -1 : 1;
       }
 
-        return left.name.localeCompare(right.name);
-      });
+      return left.name.localeCompare(right.name);
+    });
   }, [availableSkillByLocation, availableSkills, selectedThreadSkills]);
   const canSendMessage =
     !isSending &&
@@ -396,6 +396,7 @@ export function useWorkspaceController() {
     !!selectedPlaygroundAzureDeploymentName.trim() &&
     draft.trim().length > 0;
 
+  // Observability helpers for Home runtime events.
   function buildRuntimeLogContext(extra: Record<string, unknown> = {}): Record<string, unknown> {
     return {
       activeMainTab: activeMainTabRef.current,
@@ -450,6 +451,7 @@ export function useWorkspaceController() {
     });
   }
 
+  // Keep refs synchronized with state to avoid stale closures in async handlers.
   useEffect(() => {
     activeMainTabRef.current = activeMainTab;
   }, [activeMainTab]);
@@ -881,6 +883,7 @@ export function useWorkspaceController() {
     isRestoringThread,
   ]);
 
+  // Saved MCP / Skills loading flows.
   async function loadSavedMcpServers() {
     const expectedUserKey = activeWorkspaceUserKeyRef.current.trim();
     if (!expectedUserKey) {
@@ -981,6 +984,7 @@ export function useWorkspaceController() {
     }
   }
 
+  // Timer and reset helpers.
   function clearSavedMcpLoginRetryTimeout() {
     const timeoutId = savedMcpLoginRetryTimeoutRef.current;
     if (timeoutId !== null) {
@@ -1084,6 +1088,7 @@ export function useWorkspaceController() {
     setIsComposing(false);
   }
 
+  // Thread request-state helpers.
   function readThreadRequestState(threadId: string): ThreadRequestState {
     if (!threadId) {
       return HOME_DEFAULT_THREAD_REQUEST_STATE;
@@ -1129,6 +1134,7 @@ export function useWorkspaceController() {
     });
   }
 
+  // Thread snapshot mutation helpers.
   function isArchivedThread(threadIdRaw: string): boolean {
     return isThreadArchivedById(threadsRef.current, threadIdRaw);
   }
@@ -1284,6 +1290,7 @@ export function useWorkspaceController() {
     }, 0);
   }
 
+  // Thread persistence and title-refresh orchestration.
   async function saveThreadSnapshotToDatabase(
     snapshot: ThreadSnapshot,
     signature: string,
@@ -1569,6 +1576,7 @@ export function useWorkspaceController() {
     }
   }
 
+  // Thread lifecycle actions (load/create/rename/archive/switch).
   async function loadThreads(): Promise<void> {
     const expectedUserKey = activeWorkspaceUserKeyRef.current.trim();
     if (!expectedUserKey) {
@@ -1993,6 +2001,7 @@ export function useWorkspaceController() {
     }
   }
 
+  // Azure identity, selection, and deployment discovery.
   async function loadAzureSelectionPreference(
     tenantId: string,
     principalId: string,
@@ -2540,6 +2549,7 @@ export function useWorkspaceController() {
     }
   }
 
+  // MCP save/connect and chat execution flow.
   async function saveMcpServerToConfig(server: McpServerConfig): Promise<{
     profile: McpServerConfig;
     warning: string | null;
@@ -2814,6 +2824,7 @@ export function useWorkspaceController() {
     }
   }
 
+  // UI event handlers bound to panel props.
   async function handleAzureLogin() {
     if (isStartingAzureLogin) {
       return;
@@ -3793,6 +3804,7 @@ export function useWorkspaceController() {
     });
   };
 
+  // Panel prop composition for Home route rendering.
   const settingsTabProps = {
     azureConnectionSectionProps: {
       isAzureAuthRequired,
@@ -4056,106 +4068,4 @@ export function useWorkspaceController() {
     },
     playgroundPanelProps,
   };
-}
-
-function readStringList(value: unknown): string[] {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-
-  const result: string[] = [];
-  for (const entry of value) {
-    if (typeof entry !== "string") {
-      continue;
-    }
-
-    const normalized = entry.trim();
-    if (!normalized) {
-      continue;
-    }
-
-    result.push(normalized);
-  }
-
-  return result;
-}
-
-function resolveMcpTransportBadge(server: McpServerConfig): string {
-  if (server.transport === "stdio") {
-    return "STDIO";
-  }
-
-  if (server.transport === "sse") {
-    return "SSE";
-  }
-
-  return "HTTP";
-}
-
-function describeSavedMcpServer(server: McpServerConfig): string {
-  if (server.transport === "stdio") {
-    const argsSuffix = server.args.length > 0 ? ` ${server.args.join(" ")}` : "";
-    const envCount = Object.keys(server.env).length;
-    return `Command: ${server.command}${argsSuffix}; Environment variables: ${envCount}`;
-  }
-
-  const headersCount = Object.keys(server.headers).length;
-  const azureAuthLabel = server.useAzureAuth
-    ? `Azure auth: enabled (${server.azureAuthScope})`
-    : "Azure auth: disabled";
-  return `Transport: ${server.transport}; Headers: ${headersCount}; Timeout: ${server.timeoutSeconds}s; ${azureAuthLabel}`;
-}
-
-function describeSavedMcpServerDetail(server: McpServerConfig): string {
-  if (server.transport === "stdio") {
-    return `Working directory: ${server.cwd ?? "(inherit current workspace)"}`;
-  }
-
-  return server.url;
-}
-
-async function readJsonPayload<T extends Record<string, unknown>>(
-  response: Response,
-  targetName: string,
-): Promise<T> {
-  const rawPayload = await response.text();
-  const trimmedPayload = rawPayload.trim();
-  if (!trimmedPayload) {
-    return {} as T;
-  }
-
-  try {
-    return JSON.parse(trimmedPayload) as T;
-  } catch {
-    if (response.status === 401) {
-      return { authRequired: true } as unknown as T;
-    }
-
-    const preview = trimmedPayload.length > 160 ? `${trimmedPayload.slice(0, 160)}...` : trimmedPayload;
-    throw new Error(
-      `Failed to parse ${targetName} response (status ${response.status}): ${preview}`,
-    );
-  }
-}
-
-function isLikelyChatAzureAuthError(message: string | null): boolean {
-  if (!message) {
-    return false;
-  }
-
-  const normalizedMessage = message.toLowerCase();
-  return [
-    "azure login is required",
-    "defaultazurecredential",
-    "interactivebrowsercredential",
-    "authenticationrequirederror",
-    "automatic authentication has been disabled",
-    "credential",
-    "authentication",
-    "authorization",
-    "unauthorized",
-    "forbidden",
-    "access token",
-    "aadsts",
-  ].some((pattern) => normalizedMessage.includes(pattern));
 }

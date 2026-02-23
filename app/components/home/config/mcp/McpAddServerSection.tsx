@@ -1,3 +1,6 @@
+/**
+ * Home UI component module.
+ */
 import { FluentUI } from "~/components/home/shared/fluent";
 import { ConfigSection } from "~/components/home/shared/ConfigSection";
 import { AutoDismissStatusMessageList } from "~/components/home/shared/AutoDismissStatusMessageList";

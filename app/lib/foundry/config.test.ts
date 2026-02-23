@@ -1,3 +1,11 @@
+/**
+ * Test module verifying config behavior.
+ */
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { pathToFileURL } from "node:url";
+import { PrismaClient } from "@prisma/client";
 import { describe, expect, it } from "vitest";
 import {
   resolveFoundryDatabaseFilePath,
@@ -25,32 +33,21 @@ describe("resolveFoundryConfigDirectory", () => {
     expect(resolved).toBe("C:\\Users\\hiroki\\.foundry_local_playground");
   });
 
-  it("uses Application Support on macOS", () => {
+  it("uses ~/.foundry_local_playground on macOS", () => {
     const resolved = resolveFoundryConfigDirectory({
       platform: "darwin",
       homeDirectory: "/Users/hiroki",
     });
-    expect(resolved).toBe("/Users/hiroki/Library/Application Support/FoundryLocalPlayground");
+    expect(resolved).toBe("/Users/hiroki/.foundry_local_playground");
   });
 
-  it("uses XDG_DATA_HOME on Linux when available", () => {
+  it("uses ~/.foundry_local_playground on Linux", () => {
     const resolved = resolveFoundryConfigDirectory({
       platform: "linux",
       homeDirectory: "/home/hiroki",
-      xdgDataHomeDirectory: "/home/hiroki/.xdg-data",
     });
 
-    expect(resolved).toBe("/home/hiroki/.xdg-data/FoundryLocalPlayground");
-  });
-
-  it("falls back to ~/.local/share on Linux when XDG_DATA_HOME is missing", () => {
-    const resolved = resolveFoundryConfigDirectory({
-      platform: "linux",
-      homeDirectory: "/home/hiroki",
-      xdgDataHomeDirectory: "",
-    });
-
-    expect(resolved).toBe("/home/hiroki/.local/share/FoundryLocalPlayground");
+    expect(resolved).toBe("/home/hiroki/.foundry_local_playground");
   });
 });
 
@@ -61,9 +58,7 @@ describe("resolveFoundryDatabaseFilePath", () => {
       homeDirectory: "/Users/hiroki",
     });
 
-    expect(resolved).toBe(
-      "/Users/hiroki/Library/Application Support/FoundryLocalPlayground/local-playground.sqlite",
-    );
+    expect(resolved).toBe("/Users/hiroki/.foundry_local_playground/local-playground.sqlite");
   });
 });
 
@@ -74,7 +69,7 @@ describe("resolveFoundrySkillsDirectory", () => {
       homeDirectory: "/Users/hiroki",
     });
 
-    expect(resolved).toBe("/Users/hiroki/Library/Application Support/FoundryLocalPlayground/skills");
+    expect(resolved).toBe("/Users/hiroki/.foundry_local_playground/skills");
   });
 });
 
@@ -87,14 +82,55 @@ describe("resolveFoundryDatabaseUrl", () => {
     expect(resolved).toBe("file:/tmp/custom.sqlite");
   });
 
+  it("normalizes encoded sqlite file URLs for Prisma compatibility", () => {
+    const resolved = resolveFoundryDatabaseUrl({
+      envDatabaseUrl: "file:///tmp/foundry%20playground/custom.sqlite",
+    });
+
+    expect(resolved).toBe("file:/tmp/foundry playground/custom.sqlite");
+  });
+
   it("falls back to file URL derived from resolved database path", () => {
     const resolved = resolveFoundryDatabaseUrl({
       platform: "linux",
       homeDirectory: "/home/hiroki",
     });
 
-    expect(resolved).toBe(
-      "file:///home/hiroki/.local/share/FoundryLocalPlayground/local-playground.sqlite",
+    expect(resolved).toBe("file:/home/hiroki/.foundry_local_playground/local-playground.sqlite");
+  });
+
+  it("returns a sqlite URL that Prisma can connect to even when path has spaces", async () => {
+    const workingDirectory = await mkdtemp(path.join(tmpdir(), "foundry-db-url-"));
+    const databaseFilePath = path.join(
+      workingDirectory,
+      "Application Support",
+      "local-playground.sqlite",
     );
+    await mkdir(path.dirname(databaseFilePath), { recursive: true });
+
+    const encodedFileUrl = pathToFileURL(databaseFilePath).toString();
+    const databaseUrl = resolveFoundryDatabaseUrl({
+      envDatabaseUrl: encodedFileUrl,
+    });
+    expect(databaseUrl.includes("%20")).toBe(false);
+
+    const prisma = new PrismaClient({
+      datasources: {
+        db: {
+          url: databaseUrl,
+        },
+      },
+    });
+
+    try {
+      await prisma.$executeRawUnsafe(`
+        CREATE TABLE IF NOT EXISTS "PrismaConnectionProbe" (
+          "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT
+        )
+      `);
+    } finally {
+      await prisma.$disconnect();
+      await rm(workingDirectory, { recursive: true, force: true });
+    }
   });
 });

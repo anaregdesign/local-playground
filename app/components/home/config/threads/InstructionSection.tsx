@@ -1,3 +1,6 @@
+/**
+ * Home UI component module.
+ */
 import { useMemo } from "react";
 import type { ChangeEvent, RefObject } from "react";
 import { FluentUI } from "~/components/home/shared/fluent";

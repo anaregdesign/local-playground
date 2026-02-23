@@ -1,3 +1,6 @@
+/**
+ * Home runtime support module.
+ */
 import type { McpRpcHistoryEntry } from "~/lib/home/chat/stream";
 
 export function buildMcpHistoryByTurnId(

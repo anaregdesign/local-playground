@@ -1,3 +1,6 @@
+/**
+ * Test module verifying api.thread-title behavior.
+ */
 import { describe, expect, it } from "vitest";
 import {
   extractThreadAutoTitle,

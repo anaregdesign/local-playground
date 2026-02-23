@@ -1,3 +1,6 @@
+/**
+ * API route module for /api/app-event-logs.
+ */
 import { readClientAppEventLogPayload } from "~/lib/observability/app-event-log";
 import { readAzureArmUserContext } from "~/lib/server/auth/azure-user";
 import {

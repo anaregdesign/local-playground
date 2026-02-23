@@ -1,3 +1,6 @@
+/**
+ * API route module for /api/azure-connections.
+ */
 import {
   getAzureDependencies,
   normalizeAzureOpenAIBaseURL,

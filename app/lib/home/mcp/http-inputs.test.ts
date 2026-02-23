@@ -1,3 +1,6 @@
+/**
+ * Test module verifying http-inputs behavior.
+ */
 import { describe, expect, it } from "vitest";
 import {
   parseAzureAuthScopeInput,

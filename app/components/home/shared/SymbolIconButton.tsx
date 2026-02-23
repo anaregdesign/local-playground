@@ -1,3 +1,6 @@
+/**
+ * Home UI component module.
+ */
 import type { MouseEventHandler, ReactNode } from "react";
 import { FluentUI } from "~/components/home/shared/fluent";
 

@@ -1,3 +1,6 @@
+/**
+ * Home UI component module.
+ */
 import type { ComponentProps } from "react";
 import { CopyIconButton } from "~/components/home/shared/CopyIconButton";
 import { FluentUI } from "~/components/home/shared/fluent";

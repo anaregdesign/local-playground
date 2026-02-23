@@ -1,3 +1,6 @@
+/**
+ * Server runtime module.
+ */
 import type { AzureDependencies } from "~/lib/azure/dependencies";
 import { getAzureDependencies } from "~/lib/azure/dependencies";
 import { AZURE_ARM_SCOPE } from "~/lib/constants";

@@ -1,20 +1,17 @@
+/**
+ * Home UI component module.
+ */
 import { FluentUI } from "~/components/home/shared/fluent";
 import { ConfigSection } from "~/components/home/shared/ConfigSection";
 import { StatusMessageList } from "~/components/home/shared/StatusMessageList";
 import { SelectableCardList } from "~/components/home/shared/SelectableCardList";
+import type { SavedMcpServerOption } from "~/lib/home/mcp/saved-profiles";
 
 const { Button, Spinner } = FluentUI;
 
-export type SavedMcpServerOption = {
-  id: string;
-  name: string;
-  badge?: string;
-  description: string;
-  detail: string;
-  isSelected: boolean;
-  isAvailable: boolean;
-};
-
+/**
+ * Props for rendering saved MCP profiles that can be attached/detached from the active thread.
+ */
 export type McpSavedConfigsSectionProps = {
   savedMcpServerOptions: SavedMcpServerOption[];
   selectedSavedMcpServerCount: number;
@@ -26,6 +23,9 @@ export type McpSavedConfigsSectionProps = {
   onReloadSavedMcpServers: () => void;
 };
 
+/**
+ * Section responsible for listing persisted MCP profiles and connecting them to the current thread.
+ */
 export function McpSavedConfigsSection(props: McpSavedConfigsSectionProps) {
   const {
     savedMcpServerOptions,

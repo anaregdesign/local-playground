@@ -1,3 +1,6 @@
+/**
+ * API route module for /api/chat.
+ */
 import type { Route } from "./+types/api.chat";
 import path from "node:path";
 import {

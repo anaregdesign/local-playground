@@ -1,3 +1,6 @@
+/**
+ * Azure integration helper module.
+ */
 import { InteractiveBrowserCredential } from "@azure/identity";
 import OpenAI from "openai";
 import {

@@ -1,3 +1,6 @@
+/**
+ * Root application module.
+ */
 import {
   isRouteErrorResponse,
   Links,

@@ -1,3 +1,6 @@
+/**
+ * Project maintenance script.
+ */
 import { lstat, mkdir, readlink, rm, symlink } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";

@@ -1,3 +1,6 @@
+/**
+ * Home UI component module.
+ */
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { FluentUI } from "~/components/home/shared/fluent";
 import { ConfigSection } from "~/components/home/shared/ConfigSection";

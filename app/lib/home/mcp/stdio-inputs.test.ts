@@ -1,3 +1,6 @@
+/**
+ * Test module verifying stdio-inputs behavior.
+ */
 import { describe, expect, it } from "vitest";
 import {
   formatKeyValueLines,

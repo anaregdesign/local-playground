@@ -1,3 +1,6 @@
+/**
+ * API route module for /api/azure-login.
+ */
 import {
   AZURE_ARM_SCOPE,
 } from "~/lib/constants";

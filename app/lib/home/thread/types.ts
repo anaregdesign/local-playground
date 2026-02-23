@@ -1,3 +1,6 @@
+/**
+ * Home runtime support module.
+ */
 import type { ChatMessage } from "~/lib/home/chat/messages";
 import type { McpRpcHistoryEntry } from "~/lib/home/chat/stream";
 import type { McpServerConfig } from "~/lib/home/mcp/profile";

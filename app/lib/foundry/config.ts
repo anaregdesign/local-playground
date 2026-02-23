@@ -1,6 +1,9 @@
+/**
+ * Foundry local configuration module.
+ */
 import { homedir } from "node:os";
 import path from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 import {
   FOUNDRY_SQLITE_DATABASE_FILE_NAME,
   FOUNDRY_LEGACY_CONFIG_DIRECTORY_NAME,
@@ -18,6 +21,11 @@ type ResolveFoundryConfigDirectoryOptions = {
 type ResolveFoundryDatabaseUrlOptions = ResolveFoundryConfigDirectoryOptions & {
   envDatabaseUrl?: string | null;
   cwd?: string;
+};
+
+type NormalizePrismaSqliteDatabaseUrlOptions = {
+  cwd?: string;
+  platform: NodeJS.Platform;
 };
 
 export function resolveLegacyFoundryConfigDirectory(
@@ -44,29 +52,8 @@ export function resolveFoundryConfigDirectory(
     return path.win32.join(appDataDirectory, FOUNDRY_WINDOWS_CONFIG_DIRECTORY_NAME);
   }
 
-  if (platform === "darwin") {
-    return path.posix.join(
-      homeDirectory,
-      "Library",
-      "Application Support",
-      FOUNDRY_WINDOWS_CONFIG_DIRECTORY_NAME,
-    );
-  }
-
-  if (platform === "linux") {
-    const xdgDataHomeDirectory = (
-      options.xdgDataHomeDirectory ?? process.env.XDG_DATA_HOME ?? ""
-    ).trim();
-    if (xdgDataHomeDirectory) {
-      return path.posix.join(xdgDataHomeDirectory, FOUNDRY_WINDOWS_CONFIG_DIRECTORY_NAME);
-    }
-
-    return path.posix.join(
-      homeDirectory,
-      ".local",
-      "share",
-      FOUNDRY_WINDOWS_CONFIG_DIRECTORY_NAME,
-    );
+  if (platform === "darwin" || platform === "linux") {
+    return path.posix.join(homeDirectory, FOUNDRY_LEGACY_CONFIG_DIRECTORY_NAME);
   }
 
   return resolveLegacyFoundryConfigDirectory(options);
@@ -93,14 +80,87 @@ export function resolveFoundrySkillsDirectory(
 export function resolveFoundryDatabaseUrl(
   options: ResolveFoundryDatabaseUrlOptions = {},
 ): string {
+  const platform = options.platform ?? process.platform;
   const configuredUrl =
     typeof options.envDatabaseUrl === "string" ? options.envDatabaseUrl.trim() : "";
   if (configuredUrl) {
-    return configuredUrl;
+    return normalizePrismaSqliteDatabaseUrl(configuredUrl, {
+      cwd: options.cwd,
+      platform,
+    });
   }
 
   const resolvedPath = resolveFoundryDatabaseFilePath(options);
+  const pathModule = platform === "win32" ? path.win32 : path.posix;
   const fallbackPath =
-    resolvedPath.trim() || path.resolve(options.cwd ?? process.cwd(), "local-playground.sqlite");
-  return pathToFileURL(fallbackPath).toString();
+    resolvedPath.trim() || pathModule.resolve(options.cwd ?? process.cwd(), "local-playground.sqlite");
+  return buildPrismaSqliteDatabaseUrl(fallbackPath, platform);
+}
+
+function normalizePrismaSqliteDatabaseUrl(
+  databaseUrl: string,
+  options: NormalizePrismaSqliteDatabaseUrlOptions,
+): string {
+  if (!databaseUrl.startsWith("file:") || isInMemorySqliteDatabaseUrl(databaseUrl)) {
+    return databaseUrl;
+  }
+
+  const absoluteDatabasePath = resolveSqliteDatabaseFilePath(databaseUrl, options);
+  if (!absoluteDatabasePath) {
+    return databaseUrl;
+  }
+
+  const queryIndex = databaseUrl.indexOf("?");
+  const query = queryIndex >= 0 ? databaseUrl.slice(queryIndex) : "";
+  return `${buildPrismaSqliteDatabaseUrl(absoluteDatabasePath, options.platform)}${query}`;
+}
+
+function isInMemorySqliteDatabaseUrl(databaseUrl: string): boolean {
+  return (
+    databaseUrl === "file:memory" ||
+    databaseUrl === "file::memory:" ||
+    /[?&]mode=memory(?:&|$)/i.test(databaseUrl)
+  );
+}
+
+function resolveSqliteDatabaseFilePath(
+  databaseUrl: string,
+  options: NormalizePrismaSqliteDatabaseUrlOptions,
+): string | null {
+  const pathModule = options.platform === "win32" ? path.win32 : path.posix;
+
+  try {
+    if (databaseUrl.startsWith("file://")) {
+      return fileURLToPath(databaseUrl);
+    }
+  } catch {
+    return null;
+  }
+
+  const withoutPrefix = databaseUrl.slice("file:".length);
+  const queryIndex = withoutPrefix.indexOf("?");
+  const rawPath = (queryIndex >= 0 ? withoutPrefix.slice(0, queryIndex) : withoutPrefix).trim();
+  if (!rawPath || rawPath === ":memory:") {
+    return null;
+  }
+
+  const decodedPath = decodeURIComponent(rawPath);
+  if (pathModule.isAbsolute(decodedPath)) {
+    return pathModule.normalize(decodedPath);
+  }
+
+  return pathModule.resolve(options.cwd ?? process.cwd(), decodedPath);
+}
+
+function buildPrismaSqliteDatabaseUrl(databaseFilePath: string, platform: NodeJS.Platform): string {
+  if (platform === "win32") {
+    const normalizedPath = databaseFilePath.replaceAll("\\", "/");
+    if (/^[A-Za-z]:\//.test(normalizedPath)) {
+      return `file:/${normalizedPath}`;
+    }
+
+    return `file:${normalizedPath.startsWith("/") ? normalizedPath : `/${normalizedPath}`}`;
+  }
+
+  return `file:${databaseFilePath}`;
 }

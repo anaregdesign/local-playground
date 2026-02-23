@@ -1,3 +1,6 @@
+/**
+ * Test module verifying app-event-log behavior.
+ */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const { ensurePersistenceDatabaseReadyMock, appEventLogCreateMock } = vi.hoisted(() => ({

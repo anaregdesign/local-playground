@@ -1,3 +1,6 @@
+/**
+ * Test module verifying api.chat behavior.
+ */
 import { describe, expect, it } from "vitest";
 import { MCP_DEFAULT_AZURE_AUTH_SCOPE } from "~/lib/constants";
 import { chatRouteTestUtils } from "./api.chat";

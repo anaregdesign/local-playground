@@ -1,3 +1,6 @@
+/**
+ * Home runtime support module.
+ */
 import {
   THREAD_MCP_RPC_LOG_ROW_ID_PATTERN,
   THREAD_MCP_SERVER_ROW_ID_PATTERN,

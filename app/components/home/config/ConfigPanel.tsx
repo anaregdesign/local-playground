@@ -1,3 +1,6 @@
+/**
+ * Home UI component module.
+ */
 import type { ComponentProps } from "react";
 import { FluentUI } from "~/components/home/shared/fluent";
 import { McpServersTab } from "~/components/home/config/mcp/McpServersTab";

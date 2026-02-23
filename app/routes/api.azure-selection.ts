@@ -1,3 +1,6 @@
+/**
+ * API route module for /api/azure-selection.
+ */
 import {
   ensurePersistenceDatabaseReady,
   prisma,

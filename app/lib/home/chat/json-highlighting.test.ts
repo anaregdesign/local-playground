@@ -1,3 +1,6 @@
+/**
+ * Test module verifying json-highlighting behavior.
+ */
 import { describe, expect, it } from "vitest";
 import {
   formatJsonForDisplay,

@@ -1,3 +1,6 @@
+/**
+ * Test module verifying dependencies behavior.
+ */
 import { describe, expect, it, vi } from "vitest";
 import {
   AZURE_COGNITIVE_SERVICES_SCOPE,

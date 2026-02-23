@@ -1,3 +1,6 @@
+/**
+ * Server runtime module.
+ */
 import { constants as fsConstants } from "node:fs";
 import { access, mkdir, readdir, readFile, realpath, stat } from "node:fs/promises";
 import { homedir } from "node:os";

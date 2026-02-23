@@ -1,3 +1,6 @@
+/**
+ * Home runtime support module.
+ */
 import {
   ENV_KEY_PATTERN,
   HTTP_HEADER_NAME_PATTERN,
