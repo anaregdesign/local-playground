@@ -1,6 +1,8 @@
 /**
  * Home runtime support module.
  */
+import type { SkillRegistryId } from "~/lib/home/skills/registry";
+
 export type SkillCatalogSource = "workspace" | "codex_home" | "app_data";
 
 export type SkillCatalogEntry = {
@@ -13,4 +15,22 @@ export type SkillCatalogEntry = {
 export type ThreadSkillSelection = {
   name: string;
   location: string;
+};
+
+export type SkillRegistrySkillEntry = {
+  name: string;
+  description: string;
+  remotePath: string;
+  installLocation: string;
+  isInstalled: boolean;
+};
+
+export type SkillRegistryCatalog = {
+  registryId: SkillRegistryId;
+  registryLabel: string;
+  registryDescription: string;
+  repository: string;
+  repositoryUrl: string;
+  sourcePath: string;
+  skills: SkillRegistrySkillEntry[];
 };

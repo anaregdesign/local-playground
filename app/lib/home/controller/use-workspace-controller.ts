@@ -124,8 +124,13 @@ import {
   normalizeThreadAutoTitle,
 } from "~/lib/home/thread/title";
 import type { ThreadSnapshot, ThreadSummary } from "~/lib/home/thread/types";
-import { readSkillCatalogList } from "~/lib/home/skills/parsers";
-import type { SkillCatalogEntry, ThreadSkillSelection } from "~/lib/home/skills/types";
+import { readSkillCatalogList, readSkillRegistryCatalogList } from "~/lib/home/skills/parsers";
+import { SKILL_REGISTRY_OPTIONS, type SkillRegistryId } from "~/lib/home/skills/registry";
+import type {
+  SkillCatalogEntry,
+  SkillRegistryCatalog,
+  ThreadSkillSelection,
+} from "~/lib/home/skills/types";
 import { copyTextToClipboard } from "~/lib/home/shared/clipboard";
 import { readStringList } from "~/lib/home/shared/collections";
 import { getFileExtension } from "~/lib/home/shared/files";
@@ -240,6 +245,14 @@ export function useWorkspaceController() {
   const [threadError, setThreadError] = useState<string | null>(null);
   const [availableSkills, setAvailableSkills] = useState<SkillCatalogEntry[]>([]);
   const [selectedThreadSkills, setSelectedThreadSkills] = useState<ThreadSkillSelection[]>([]);
+  const [skillRegistryCatalogs, setSkillRegistryCatalogs] = useState<SkillRegistryCatalog[]>([]);
+  const [selectedSkillRegistryId, setSelectedSkillRegistryId] = useState<SkillRegistryId>(
+    SKILL_REGISTRY_OPTIONS[0]?.id ?? "openai_curated",
+  );
+  const [isMutatingSkillRegistries, setIsMutatingSkillRegistries] = useState(false);
+  const [skillRegistryError, setSkillRegistryError] = useState<string | null>(null);
+  const [skillRegistryWarning, setSkillRegistryWarning] = useState<string | null>(null);
+  const [skillRegistrySuccess, setSkillRegistrySuccess] = useState<string | null>(null);
   const [isLoadingSkills, setIsLoadingSkills] = useState(false);
   const [skillsError, setSkillsError] = useState<string | null>(null);
   const [skillsWarning, setSkillsWarning] = useState<string | null>(null);
@@ -381,6 +394,52 @@ export function useWorkspaceController() {
       return left.name.localeCompare(right.name);
     });
   }, [availableSkillByLocation, availableSkills, selectedThreadSkills]);
+  const selectedSkillRegistryCatalog = useMemo(
+    () =>
+      skillRegistryCatalogs.find((registry) => registry.registryId === selectedSkillRegistryId) ??
+      skillRegistryCatalogs[0] ??
+      null,
+    [selectedSkillRegistryId, skillRegistryCatalogs],
+  );
+  const skillRegistryOptions = useMemo(() => {
+    if (skillRegistryCatalogs.length > 0) {
+      return skillRegistryCatalogs.map((registry) => ({
+        id: registry.registryId,
+        label: registry.registryLabel,
+        description: registry.registryDescription,
+        skillCount: registry.skills.length,
+        installedCount: registry.skills.filter((skill) => skill.isInstalled).length,
+      }));
+    }
+
+    return SKILL_REGISTRY_OPTIONS.map((registry) => ({
+      id: registry.id,
+      label: registry.label,
+      description: registry.description,
+      skillCount: 0,
+      installedCount: 0,
+    }));
+  }, [skillRegistryCatalogs]);
+  const selectedSkillRegistryDescription = selectedSkillRegistryCatalog?.registryDescription ?? "";
+  const selectedSkillRegistryEntryOptions = useMemo(() => {
+    const skills = selectedSkillRegistryCatalog?.skills ?? [];
+    return [...skills]
+      .sort((left, right) => {
+        if (left.isInstalled !== right.isInstalled) {
+          return left.isInstalled ? -1 : 1;
+        }
+
+        return left.name.localeCompare(right.name);
+      })
+      .map((skill) => ({
+        name: skill.name,
+        description: skill.description,
+        detail: skill.isInstalled
+          ? `Installed: ${skill.installLocation}`
+          : `Source: ${skill.remotePath}`,
+        isInstalled: skill.isInstalled,
+      }));
+  }, [selectedSkillRegistryCatalog]);
   const canSendMessage =
     !isSending &&
     !isSwitchingThread &&
@@ -500,6 +559,21 @@ export function useWorkspaceController() {
   useEffect(() => {
     void loadAvailableSkills();
   }, []);
+
+  useEffect(() => {
+    if (skillRegistryCatalogs.length === 0) {
+      return;
+    }
+
+    const selectedExists = skillRegistryCatalogs.some(
+      (registry) => registry.registryId === selectedSkillRegistryId,
+    );
+    if (selectedExists) {
+      return;
+    }
+
+    setSelectedSkillRegistryId(skillRegistryCatalogs[0].registryId);
+  }, [selectedSkillRegistryId, skillRegistryCatalogs]);
 
   useEffect(() => {
     if (!isAzureAuthRequired) {
@@ -956,6 +1030,9 @@ export function useWorkspaceController() {
     if (options.clearStatus !== false) {
       setSkillsError(null);
       setSkillsWarning(null);
+      setSkillRegistryError(null);
+      setSkillRegistryWarning(null);
+      setSkillRegistrySuccess(null);
     }
     setIsLoadingSkills(true);
 
@@ -968,19 +1045,83 @@ export function useWorkspaceController() {
         throw new Error(payload.error || "Failed to load Skills.");
       }
 
-      const parsedSkills = readSkillCatalogList(payload.skills);
-      const warnings = readStringList(payload.warnings);
-      setAvailableSkills(parsedSkills);
-      setSkillsError(null);
-      setSkillsWarning(warnings.length > 0 ? warnings.slice(0, 2).join("\n") : null);
+      applySkillsApiPayload(payload);
+      setSkillRegistrySuccess(null);
     } catch (loadError) {
       logHomeError("load_skills_failed", loadError, {
         action: "load_skills",
       });
       setAvailableSkills([]);
+      setSkillRegistryCatalogs([]);
       setSkillsError(loadError instanceof Error ? loadError.message : "Failed to load Skills.");
+      setSkillRegistryError(
+        loadError instanceof Error
+          ? loadError.message
+          : "Failed to load Skill registries.",
+      );
     } finally {
       setIsLoadingSkills(false);
+    }
+  }
+
+  function applySkillsApiPayload(payload: SkillsApiResponse) {
+    const parsedSkills = readSkillCatalogList(payload.skills);
+    const parsedRegistryCatalogs = readSkillRegistryCatalogList(payload.registries);
+    const skillWarnings = readStringList(payload.skillWarnings);
+    const registryWarnings = readStringList(payload.registryWarnings);
+
+    setAvailableSkills(parsedSkills);
+    setSkillRegistryCatalogs(parsedRegistryCatalogs);
+    setSkillsError(null);
+    setSkillRegistryError(null);
+    setSkillsWarning(skillWarnings.length > 0 ? skillWarnings.slice(0, 2).join("\n") : null);
+    setSkillRegistryWarning(
+      registryWarnings.length > 0 ? registryWarnings.slice(0, 2).join("\n") : null,
+    );
+  }
+
+  async function updateSkillRegistrySkill(options: {
+    action: "install_registry_skill" | "delete_registry_skill";
+    registryId: SkillRegistryId;
+    skillName: string;
+  }): Promise<void> {
+    setIsMutatingSkillRegistries(true);
+    setSkillRegistryError(null);
+    setSkillRegistrySuccess(null);
+
+    try {
+      const response = await fetch("/api/skills", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          action: options.action,
+          registryId: options.registryId,
+          skillName: options.skillName,
+        }),
+      });
+      const payload = await readJsonPayload<SkillsApiResponse>(response, "Skills");
+      if (!response.ok) {
+        throw new Error(payload.error || "Failed to update Skill registry.");
+      }
+
+      applySkillsApiPayload(payload);
+      const message = typeof payload.message === "string" ? payload.message.trim() : "";
+      setSkillRegistrySuccess(message || null);
+    } catch (error) {
+      logHomeError("update_skill_registry_failed", error, {
+        action: options.action,
+        context: {
+          registryId: options.registryId,
+          skillName: options.skillName,
+        },
+      });
+      setSkillRegistryError(
+        error instanceof Error ? error.message : "Failed to update Skill registry.",
+      );
+    } finally {
+      setIsMutatingSkillRegistries(false);
     }
   }
 
@@ -2913,6 +3054,35 @@ export function useWorkspaceController() {
     void loadAvailableSkills();
   }
 
+  function handleSelectedSkillRegistryChange(registryId: SkillRegistryId) {
+    setSelectedSkillRegistryId(registryId);
+    setSkillRegistryError(null);
+    setSkillRegistrySuccess(null);
+  }
+
+  function handleToggleRegistrySkill(skillNameRaw: string) {
+    const skillName = skillNameRaw.trim();
+    if (!skillName) {
+      return;
+    }
+
+    const selectedRegistryCatalog = selectedSkillRegistryCatalog;
+    if (!selectedRegistryCatalog) {
+      return;
+    }
+
+    const selectedSkill = selectedRegistryCatalog.skills.find((skill) => skill.name === skillName);
+    if (!selectedSkill) {
+      return;
+    }
+
+    void updateSkillRegistrySkill({
+      action: selectedSkill.isInstalled ? "delete_registry_skill" : "install_registry_skill",
+      registryId: selectedRegistryCatalog.registryId,
+      skillName: selectedSkill.name,
+    });
+  }
+
   function handleToggleThreadSkill(locationRaw: string) {
     const location = locationRaw.trim();
     if (!location) {
@@ -3985,6 +4155,26 @@ export function useWorkspaceController() {
       onToggleSkill: handleToggleThreadSkill,
       onClearSkillsWarning: () => {
         setSkillsWarning(null);
+      },
+    },
+    skillRegistrySectionProps: {
+      registryOptions: skillRegistryOptions,
+      selectedRegistryId: selectedSkillRegistryCatalog?.registryId ?? selectedSkillRegistryId,
+      selectedRegistryDescription: selectedSkillRegistryDescription,
+      registrySkillOptions: selectedSkillRegistryEntryOptions,
+      isLoadingSkillRegistries: isLoadingSkills,
+      isMutatingSkillRegistries,
+      skillRegistryError,
+      skillRegistryWarning,
+      skillRegistrySuccess,
+      onSelectedRegistryChange: handleSelectedSkillRegistryChange,
+      onReloadSkillRegistries: handleReloadSkills,
+      onToggleRegistrySkill: handleToggleRegistrySkill,
+      onClearSkillRegistryWarning: () => {
+        setSkillRegistryWarning(null);
+      },
+      onClearSkillRegistrySuccess: () => {
+        setSkillRegistrySuccess(null);
       },
     },
   };

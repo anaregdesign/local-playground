@@ -1304,6 +1304,10 @@ body {
   order: 2;
 }
 
+.setting-group-skill-registry {
+  order: 3;
+}
+
 .setting-group + .setting-group {
   border-top: 1px solid rgba(225, 223, 221, 0.82);
 }
@@ -1371,6 +1375,17 @@ body {
 
 .selectable-card-reload-btn.fui-Button {
   min-height: 1.75rem;
+}
+
+.skill-registry-select.fui-Select {
+  min-width: 220px;
+}
+
+.skill-registry-description {
+  margin: 0;
+  font-size: var(--home-font-size-note);
+  color: var(--text-subtle);
+  line-height: var(--home-line-height-compact);
 }
 
 .selectable-card-list {

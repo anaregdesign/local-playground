@@ -163,3 +163,12 @@ model AppEventLog {
   @@index([level, createdAt])
   @@index([source, category, createdAt])
 }
+
+model SkillRegistryCache {
+  cacheKey   String @id
+  payloadJson String
+  updatedAt  String
+  expiresAt  String
+
+  @@index([expiresAt])
+}

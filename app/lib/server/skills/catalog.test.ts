@@ -162,4 +162,47 @@ describe("discoverSkillCatalog", () => {
     const directoryStats = await stat(appDataSkillsDirectory);
     expect(directoryStats.isDirectory()).toBe(true);
   });
+
+  it("discovers app data skills nested under a registry directory", async () => {
+    const workspaceRoot = await mkdtemp(path.join(tmpdir(), "skill-workspace-"));
+    const codexHome = await mkdtemp(path.join(tmpdir(), "skill-codex-"));
+    const foundryConfigDirectory = await mkdtemp(path.join(tmpdir(), "skill-foundry-"));
+    tempDirectories.push(workspaceRoot, codexHome, foundryConfigDirectory);
+
+    const nestedSkillDirectory = path.join(
+      foundryConfigDirectory,
+      "skills",
+      "openai-curated",
+      "gh-fix-ci",
+    );
+    await mkdir(nestedSkillDirectory, { recursive: true });
+    await writeFile(
+      path.join(nestedSkillDirectory, "SKILL.md"),
+      [
+        "---",
+        "name: gh-fix-ci",
+        "description: GitHub checks troubleshooting workflow",
+        "---",
+        "# Skill",
+      ].join("\n"),
+      "utf8",
+    );
+
+    const result = await discoverSkillCatalog({
+      workspaceRoot,
+      codexHome,
+      foundryConfigDirectory,
+    });
+
+    expect(result.skills).toHaveLength(1);
+    expect(result.skills[0]).toMatchObject({
+      name: "gh-fix-ci",
+      description: "GitHub checks troubleshooting workflow",
+      source: "app_data",
+    });
+    expect(result.skills[0]?.location.endsWith("/skills/openai-curated/gh-fix-ci/SKILL.md")).toBe(
+      true,
+    );
+    expect(result.warnings).toEqual([]);
+  });
 });

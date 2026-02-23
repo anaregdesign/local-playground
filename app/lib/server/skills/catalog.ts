@@ -180,31 +180,48 @@ export function resolveCodexHomeDirectory(codexHome?: string): string {
   return path.resolve(homedir(), ".codex");
 }
 
+const SKILL_DISCOVERY_MAX_DEPTH = 4;
+
 async function readSkillFileCandidates(rootPath: string): Promise<string[]> {
   if (!(await directoryExists(rootPath))) {
     return [];
   }
 
-  const candidates: string[] = [];
-  const rootSkillFile = path.join(rootPath, "SKILL.md");
-  if (await fileExists(rootSkillFile)) {
-    candidates.push(rootSkillFile);
+  const candidates = new Set<string>();
+  await collectSkillFileCandidates(rootPath, 0, candidates);
+  return Array.from(candidates).sort((left, right) => left.localeCompare(right));
+}
+
+async function collectSkillFileCandidates(
+  directoryPath: string,
+  depth: number,
+  candidates: Set<string>,
+): Promise<void> {
+  if (depth > SKILL_DISCOVERY_MAX_DEPTH) {
+    return;
   }
 
-  const entries = await readdir(rootPath, { withFileTypes: true });
+  const skillFile = path.join(directoryPath, "SKILL.md");
+  if (await fileExists(skillFile)) {
+    candidates.add(skillFile);
+  }
+
+  if (depth === SKILL_DISCOVERY_MAX_DEPTH) {
+    return;
+  }
+
+  const entries = await readdir(directoryPath, { withFileTypes: true });
   for (const entry of entries) {
     if (!entry.isDirectory()) {
       continue;
     }
 
-    const childSkillFile = path.join(rootPath, entry.name, "SKILL.md");
-    if (await fileExists(childSkillFile)) {
-      candidates.push(childSkillFile);
-    }
+    await collectSkillFileCandidates(
+      path.join(directoryPath, entry.name),
+      depth + 1,
+      candidates,
+    );
   }
-
-  candidates.sort((left, right) => left.localeCompare(right));
-  return candidates;
 }
 
 async function readSkillFrontmatter(location: string): Promise<
