@@ -51,3 +51,29 @@ export function readSkillRegistryOptionById(
 
   return null;
 }
+
+export function readSkillRegistryLabelFromSkillLocation(
+  location: string,
+): string | null {
+  const normalizedLocation = location.trim().replaceAll("\\", "/");
+  if (!normalizedLocation) {
+    return null;
+  }
+
+  const segments = normalizedLocation.split("/").filter((segment) => segment.length > 0);
+  for (let index = 0; index < segments.length - 1; index += 1) {
+    if (segments[index] !== "skills") {
+      continue;
+    }
+
+    const registryDirectoryName = segments[index + 1] ?? "";
+    const registry = SKILL_REGISTRY_OPTIONS.find(
+      (option) => option.installDirectoryName === registryDirectoryName,
+    );
+    if (registry) {
+      return registry.label;
+    }
+  }
+
+  return null;
+}

@@ -125,7 +125,11 @@ import {
 } from "~/lib/home/thread/title";
 import type { ThreadSnapshot, ThreadSummary } from "~/lib/home/thread/types";
 import { readSkillCatalogList, readSkillRegistryCatalogList } from "~/lib/home/skills/parsers";
-import { SKILL_REGISTRY_OPTIONS, type SkillRegistryId } from "~/lib/home/skills/registry";
+import {
+  readSkillRegistryLabelFromSkillLocation,
+  SKILL_REGISTRY_OPTIONS,
+  type SkillRegistryId,
+} from "~/lib/home/skills/registry";
 import type {
   SkillCatalogEntry,
   SkillRegistryCatalog,
@@ -373,6 +377,7 @@ export function useWorkspaceController() {
         description: skill.description,
         location: skill.location,
         source: skill.source,
+        badge: resolveSkillBadgeLabel(skill.source, skill.location),
         isSelected: selectedThreadSkillLocationSet.has(skill.location),
         isAvailable: true,
       })),
@@ -382,7 +387,8 @@ export function useWorkspaceController() {
           name: selection.name,
           description: "Saved for this thread, but the SKILL.md file is currently unavailable.",
           location: selection.location,
-          source: "workspace" as const,
+          source: "app_data" as const,
+          badge: resolveSkillBadgeLabel("app_data", selection.location),
           isSelected: true,
           isAvailable: false,
         })),
@@ -4258,4 +4264,20 @@ export function useWorkspaceController() {
     },
     playgroundPanelProps,
   };
+}
+
+function resolveSkillBadgeLabel(
+  source: "workspace" | "codex_home" | "app_data",
+  location: string,
+): string {
+  if (source === "workspace") {
+    return "Workspace";
+  }
+
+  if (source === "codex_home") {
+    return "CODEX_HOME";
+  }
+
+  const registryLabel = readSkillRegistryLabelFromSkillLocation(location);
+  return registryLabel ?? "App Data";
 }

@@ -14,6 +14,7 @@ export type ThreadSkillOption = {
   description: string;
   location: string;
   source: SkillCatalogSource;
+  badge: string;
   isSelected: boolean;
   isAvailable: boolean;
 };
@@ -48,12 +49,7 @@ export function SkillsSection(props: SkillsSectionProps) {
   const selectableSkillItems = skillOptions.map((skill) => ({
     id: skill.location,
     name: skill.name,
-    badge:
-      skill.source === "workspace"
-        ? "Workspace"
-        : skill.source === "codex_home"
-          ? "CODEX_HOME"
-          : "App Data",
+    badge: skill.badge,
     description: skill.description,
     detail: skill.location,
     isSelected: skill.isSelected,
