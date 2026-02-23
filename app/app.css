@@ -1513,20 +1513,28 @@ body {
   font-weight: 600;
 }
 
-.selectable-card-description {
-  margin: 0;
-  font-size: var(--home-font-size-caption);
-  color: var(--text-main);
-  line-height: var(--home-line-height-compact);
+.selectable-card-tooltip-target {
+  display: inline-flex;
+  align-items: center;
 }
 
-.selectable-card-detail {
-  margin: 0;
-  font-size: var(--home-font-size-note);
-  color: var(--text-subtle);
-  font-family: "IBM Plex Mono", "SFMono-Regular", Menlo, monospace;
-  line-height: var(--home-line-height-compact);
-  overflow-wrap: anywhere;
+.selectable-card-tooltip-icon {
+  --home-symbol-btn-size: 1.1rem;
+  --home-symbol-glyph-size: 0.72rem;
+  border-radius: var(--home-radius-pill);
+  opacity: 0.78;
+}
+
+.selectable-card-tooltip-icon:hover {
+  color: #1f4e67;
+  opacity: 1;
+}
+
+.selectable-card-tooltip-icon.fui-Button,
+.selectable-card-tooltip-icon.fui-Button:enabled:hover,
+.selectable-card-tooltip-icon.fui-Button:enabled:active {
+  border: 0 !important;
+  background: transparent !important;
 }
 
 .threads-action-row {
