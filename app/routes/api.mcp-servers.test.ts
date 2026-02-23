@@ -220,7 +220,7 @@ describe("mergeDefaultMcpServers", () => {
   it("adds the default vendor profiles when missing", () => {
     const result = mergeDefaultMcpServers([]);
 
-    expect(result).toHaveLength(3);
+    expect(result).toHaveLength(5);
     expect(result).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -233,10 +233,26 @@ describe("mergeDefaultMcpServers", () => {
           timeoutSeconds: MCP_DEFAULT_TIMEOUT_SECONDS,
         }),
         expect.objectContaining({
+          name: MCP_DEFAULT_MICROSOFT_LEARN_SERVER_NAME,
+          transport: "streamable_http",
+          url: MCP_DEFAULT_MICROSOFT_LEARN_SERVER_URL,
+          headers: {},
+          useAzureAuth: false,
+          azureAuthScope: MCP_DEFAULT_AZURE_AUTH_SCOPE,
+          timeoutSeconds: MCP_DEFAULT_TIMEOUT_SECONDS,
+        }),
+        expect.objectContaining({
           name: MCP_DEFAULT_WORKIQ_SERVER_NAME,
           transport: "stdio",
           command: MCP_DEFAULT_WORKIQ_SERVER_COMMAND,
           args: [...MCP_DEFAULT_WORKIQ_SERVER_ARGS],
+          env: {},
+        }),
+        expect.objectContaining({
+          name: MCP_DEFAULT_AZURE_MCP_SERVER_NAME,
+          transport: "stdio",
+          command: MCP_DEFAULT_AZURE_MCP_SERVER_COMMAND,
+          args: [...MCP_DEFAULT_AZURE_MCP_SERVER_ARGS],
           env: {},
         }),
         expect.objectContaining({
@@ -272,6 +288,24 @@ describe("mergeDefaultMcpServers", () => {
         env: {},
       },
       {
+        id: "profile-mslearn",
+        name: "Microsoft Learn (Custom Name)",
+        transport: "streamable_http" as const,
+        url: MCP_DEFAULT_MICROSOFT_LEARN_SERVER_URL,
+        headers: {},
+        useAzureAuth: false,
+        azureAuthScope: MCP_DEFAULT_AZURE_AUTH_SCOPE,
+        timeoutSeconds: MCP_DEFAULT_TIMEOUT_SECONDS,
+      },
+      {
+        id: "profile-azure-mcp",
+        name: "Azure MCP (Custom Name)",
+        transport: "stdio" as const,
+        command: MCP_DEFAULT_AZURE_MCP_SERVER_COMMAND,
+        args: [...MCP_DEFAULT_AZURE_MCP_SERVER_ARGS],
+        env: {},
+      },
+      {
         id: "profile-playwright",
         name: "Playwright (Custom Name)",
         transport: "stdio" as const,
@@ -300,13 +334,22 @@ describe("mergeDefaultMcpServers", () => {
 
     const result = mergeDefaultMcpServers(existing);
 
-    expect(result).toHaveLength(3);
+    expect(result).toHaveLength(5);
     expect(result).toEqual(
       expect.arrayContaining([
         existing[0],
         expect.objectContaining({
           transport: "streamable_http",
           url: MCP_DEFAULT_OPENAI_DOCS_SERVER_URL,
+        }),
+        expect.objectContaining({
+          transport: "streamable_http",
+          url: MCP_DEFAULT_MICROSOFT_LEARN_SERVER_URL,
+        }),
+        expect.objectContaining({
+          transport: "stdio",
+          command: MCP_DEFAULT_AZURE_MCP_SERVER_COMMAND,
+          args: [...MCP_DEFAULT_AZURE_MCP_SERVER_ARGS],
         }),
         expect.objectContaining({
           transport: "stdio",
@@ -317,7 +360,7 @@ describe("mergeDefaultMcpServers", () => {
     );
   });
 
-  it("removes unauthorized-prone legacy defaults", () => {
+  it("keeps microsoft-learn and azure-mcp profiles when already stored", () => {
     const existing = [
       {
         id: "legacy-mslearn",
@@ -349,8 +392,8 @@ describe("mergeDefaultMcpServers", () => {
 
     const result = mergeDefaultMcpServers(existing);
     const names = result.map((entry) => entry.name);
-    expect(names).not.toContain(MCP_DEFAULT_MICROSOFT_LEARN_SERVER_NAME);
-    expect(names).not.toContain(MCP_DEFAULT_AZURE_MCP_SERVER_NAME);
+    expect(names).toContain(MCP_DEFAULT_MICROSOFT_LEARN_SERVER_NAME);
+    expect(names).toContain(MCP_DEFAULT_AZURE_MCP_SERVER_NAME);
     expect(names).toContain("custom-local");
   });
 });

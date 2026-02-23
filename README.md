@@ -62,7 +62,9 @@ Then click `Azure Login` in the app `Settings` tab.
 - Per-server MCP headers, Azure auth scope, and timeout controls
 - Default saved MCP profiles (not connected by default):
   - `openai-docs` (`https://developers.openai.com/mcp`)
+  - `microsoft-learn` (`https://learn.microsoft.com/api/mcp`)
   - `workiq` (`npx -y @microsoft/workiq mcp`)
+  - `azure-mcp` (`npx -y @azure/mcp@latest server start`)
   - `playwright` (`npx -y @playwright/mcp@latest`)
 
 ## Developer Details
@@ -106,8 +108,8 @@ Release builds are signed for OS trust checks:
 
 Configuration directory:
 
-- macOS: `~/Library/Application Support/FoundryLocalPlayground/`
-- Linux: `${XDG_DATA_HOME:-~/.local/share}/FoundryLocalPlayground/`
+- macOS: `~/.foundry_local_playground/`
+- Linux: `~/.foundry_local_playground/`
 - Windows: `%APPDATA%\FoundryLocalPlayground\`
 
 SQLite database:

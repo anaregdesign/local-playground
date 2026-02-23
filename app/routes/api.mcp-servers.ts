@@ -257,12 +257,7 @@ async function writeSavedMcpServers(userId: number, profiles: SavedMcpServerConf
 }
 
 function mergeDefaultMcpServers(currentProfiles: SavedMcpServerConfig[]): SavedMcpServerConfig[] {
-  const removedDefaultProfileMarkers = new Set(
-    buildRemovedDefaultMcpServerProfiles().map((profile) => buildDefaultProfileMarker(profile)),
-  );
-  const mergedProfiles = currentProfiles.filter(
-    (profile) => !removedDefaultProfileMarkers.has(buildDefaultProfileMarker(profile)),
-  );
+  const mergedProfiles = [...currentProfiles];
   const profileKeys = new Set(mergedProfiles.map((profile) => buildProfileKey(profile)));
   for (const profile of buildDefaultMcpServerProfiles()) {
     const profileKey = buildProfileKey(profile);
@@ -275,29 +270,6 @@ function mergeDefaultMcpServers(currentProfiles: SavedMcpServerConfig[]): SavedM
   }
 
   return mergedProfiles;
-}
-
-function buildRemovedDefaultMcpServerProfiles(): SavedMcpServerConfig[] {
-  return [
-    {
-      id: createRandomId(),
-      name: MCP_DEFAULT_MICROSOFT_LEARN_SERVER_NAME,
-      transport: "streamable_http",
-      url: MCP_DEFAULT_MICROSOFT_LEARN_SERVER_URL,
-      headers: {},
-      useAzureAuth: false,
-      azureAuthScope: MCP_DEFAULT_AZURE_AUTH_SCOPE,
-      timeoutSeconds: MCP_DEFAULT_TIMEOUT_SECONDS,
-    },
-    {
-      id: createRandomId(),
-      name: MCP_DEFAULT_AZURE_MCP_SERVER_NAME,
-      transport: "stdio",
-      command: MCP_DEFAULT_AZURE_MCP_SERVER_COMMAND,
-      args: [...MCP_DEFAULT_AZURE_MCP_SERVER_ARGS],
-      env: {},
-    },
-  ];
 }
 
 function buildDefaultMcpServerProfiles(): SavedMcpServerConfig[] {
@@ -314,10 +286,28 @@ function buildDefaultMcpServerProfiles(): SavedMcpServerConfig[] {
     },
     {
       id: createRandomId(),
+      name: MCP_DEFAULT_MICROSOFT_LEARN_SERVER_NAME,
+      transport: "streamable_http",
+      url: MCP_DEFAULT_MICROSOFT_LEARN_SERVER_URL,
+      headers: {},
+      useAzureAuth: false,
+      azureAuthScope: MCP_DEFAULT_AZURE_AUTH_SCOPE,
+      timeoutSeconds: MCP_DEFAULT_TIMEOUT_SECONDS,
+    },
+    {
+      id: createRandomId(),
       name: MCP_DEFAULT_WORKIQ_SERVER_NAME,
       transport: "stdio",
       command: MCP_DEFAULT_WORKIQ_SERVER_COMMAND,
       args: [...MCP_DEFAULT_WORKIQ_SERVER_ARGS],
+      env: {},
+    },
+    {
+      id: createRandomId(),
+      name: MCP_DEFAULT_AZURE_MCP_SERVER_NAME,
+      transport: "stdio",
+      command: MCP_DEFAULT_AZURE_MCP_SERVER_COMMAND,
+      args: [...MCP_DEFAULT_AZURE_MCP_SERVER_ARGS],
       env: {},
     },
     {
@@ -918,10 +908,6 @@ async function readAuthenticatedUser(): Promise<{ id: number } | null> {
 
 function buildProfileKey(profile: SavedMcpServerConfig): string {
   return buildIncomingProfileKey(profile);
-}
-
-function buildDefaultProfileMarker(profile: SavedMcpServerConfig): string {
-  return `${profile.name}\u0000${buildProfileKey(profile)}`;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
