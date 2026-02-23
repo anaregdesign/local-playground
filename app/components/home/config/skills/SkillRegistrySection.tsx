@@ -61,6 +61,8 @@ export function SkillRegistrySection(props: SkillRegistrySectionProps) {
       id: registry.registryId,
       label: registry.label,
       description: registry.description,
+      externalHref: registry.registryUrl,
+      externalLabel: `Open ${registry.label} registry`,
       items: registry.skills.map((skill) => ({
         id: skill.name,
         name: skill.name,
@@ -86,7 +88,34 @@ export function SkillRegistrySection(props: SkillRegistrySectionProps) {
       title="Install Skills 📦"
       description="Browse supported registries and install or remove Skills under app data skills storage."
     >
-      <div className="selectable-card-header-row selectable-card-header-row-right">
+      <div
+        className={`selectable-card-header-row${
+          registrySourceLinks.length > 0 ? "" : " selectable-card-header-row-right"
+        }`}
+      >
+        {registrySourceLinks.length > 0 ? (
+          <p className="registry-source-links">
+            <span className="registry-source-links-label">Registry:</span>
+            {registrySourceLinks.map((registry, index) => (
+              <span key={registry.url} className="registry-source-link-item">
+                <a
+                  className="registry-source-link"
+                  href={registry.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  title={`Open ${registry.label} registry source`}
+                >
+                  {registry.label}
+                </a>
+                {index < registrySourceLinks.length - 1 ? (
+                  <span className="registry-source-link-separator" aria-hidden="true">
+                    ·
+                  </span>
+                ) : null}
+              </span>
+            ))}
+          </p>
+        ) : null}
         <Button
           type="button"
           appearance="subtle"
@@ -99,29 +128,6 @@ export function SkillRegistrySection(props: SkillRegistrySectionProps) {
           ↻ Reload
         </Button>
       </div>
-      {registrySourceLinks.length > 0 ? (
-        <p className="registry-source-links">
-          <span className="registry-source-links-label">Registry sources:</span>
-          {registrySourceLinks.map((registry, index) => (
-            <span key={registry.url} className="registry-source-link-item">
-              <a
-                className="registry-source-link"
-                href={registry.url}
-                target="_blank"
-                rel="noreferrer"
-                title={`Open ${registry.label} registry source`}
-              >
-                {registry.label}
-              </a>
-              {index < registrySourceLinks.length - 1 ? (
-                <span className="registry-source-link-separator" aria-hidden="true">
-                  ·
-                </span>
-              ) : null}
-            </span>
-          ))}
-        </p>
-      ) : null}
       {isLoadingSkillRegistries ? (
         <p className="azure-loading-notice" role="status" aria-live="polite">
           <Spinner size="tiny" />
