@@ -43,11 +43,8 @@ export function CollapsibleSelectableCardGroupList(
         return (
           <details key={group.id} className="collapsible-selectable-group">
             <summary className="collapsible-selectable-group-summary">
-              <span className="collapsible-selectable-group-folder symbol-icon-btn" aria-hidden="true">
-                <span className="collapsible-selectable-group-folder-body" />
-              </span>
-              <span className="collapsible-selectable-group-title">
-                {group.label}
+              <div className="collapsible-selectable-group-title-row">
+                <h4 className="collapsible-selectable-group-title">{group.label}</h4>
                 {group.description ? (
                   <LabeledTooltip
                     title={`${group.label} Description`}
@@ -65,7 +62,7 @@ export function CollapsibleSelectableCardGroupList(
                     />
                   </LabeledTooltip>
                 ) : null}
-              </span>
+              </div>
               <span className="collapsible-selectable-group-summary-actions">
                 {externalHref ? (
                   <a
