@@ -1301,11 +1301,15 @@ body {
 }
 
 .setting-group-thread-skills {
+  gap: 0.34rem;
   order: 2;
+  padding: 0.52rem 0;
 }
 
 .setting-group-skill-registry {
+  gap: 0.34rem;
   order: 3;
+  padding: 0.52rem 0;
 }
 
 .setting-group + .setting-group {
@@ -1364,7 +1368,11 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0.45rem;
+  gap: 0.34rem;
+}
+
+.selectable-card-header-row-right {
+  justify-content: flex-end;
 }
 
 .selectable-card-count {
@@ -1377,16 +1385,51 @@ body {
   min-height: 1.75rem;
 }
 
+.registry-source-links {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.2rem;
+  font-size: var(--home-font-size-note);
+  line-height: var(--home-line-height-compact);
+  color: var(--text-subtle);
+}
+
+.registry-source-links-label {
+  margin-right: 0.14rem;
+}
+
+.registry-source-link-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+}
+
+.registry-source-link {
+  color: #1f4e67;
+  text-decoration: none;
+}
+
+.registry-source-link:hover {
+  color: var(--accent-strong);
+  text-decoration: underline;
+}
+
+.registry-source-link-separator {
+  color: rgba(96, 94, 92, 0.9);
+}
+
 .selectable-card-list {
   display: flex;
   flex-direction: column;
-  gap: 0.42rem;
+  gap: 0.34rem;
 }
 
 .collapsible-selectable-group-list {
   display: flex;
   flex-direction: column;
-  gap: 0.42rem;
+  gap: 0.34rem;
 }
 
 .collapsible-selectable-group {
@@ -1400,9 +1443,9 @@ body {
   cursor: pointer;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 0.42rem;
-  padding: 0.45rem 0.5rem;
+  justify-content: flex-start;
+  gap: 0.36rem;
+  padding: 0.34rem 0.44rem;
   list-style: none;
   font-size: var(--home-font-size-caption);
   font-weight: 700;
@@ -1427,30 +1470,38 @@ body {
   display: none;
 }
 
-.collapsible-selectable-group-heading {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.32rem;
-  min-width: 0;
-}
-
-.collapsible-selectable-group-chevron {
+.collapsible-selectable-group-folder {
   --home-symbol-btn-size: 1.15rem;
-  --home-symbol-glyph-size: 0.76rem;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   color: var(--text-subtle);
-  transition:
-    transform 0.14s ease,
-    color 0.14s ease,
-    opacity 0.14s ease;
+  transition: color 0.14s ease;
   opacity: 0.88;
   pointer-events: none;
 }
 
-.collapsible-selectable-group-chevron .symbol-icon-btn-glyph {
-  transition: transform 0.14s ease;
+.collapsible-selectable-group-folder-body {
+  position: relative;
+  width: 0.82rem;
+  height: 0.58rem;
+  border: 1.4px solid currentColor;
+  border-radius: 0.14rem;
+  background: rgba(15, 108, 189, 0.05);
+  transition: background-color 0.14s ease;
+}
+
+.collapsible-selectable-group-folder-body::before {
+  content: "";
+  position: absolute;
+  left: 0.06rem;
+  top: -0.22rem;
+  width: 0.38rem;
+  height: 0.18rem;
+  border: 1.4px solid currentColor;
+  border-bottom: 0;
+  border-radius: 0.12rem 0.12rem 0 0;
+  background: #fbfdff;
 }
 
 .collapsible-selectable-group-title {
@@ -1458,13 +1509,6 @@ body {
   align-items: center;
   gap: 0.28rem;
   min-width: 0;
-}
-
-.collapsible-selectable-group-count {
-  color: var(--text-subtle);
-  font-size: var(--home-font-size-note);
-  font-weight: 600;
-  white-space: nowrap;
 }
 
 .collapsible-selectable-group[open] > .collapsible-selectable-group-summary {
@@ -1475,26 +1519,26 @@ body {
   background: #e8f3ff;
 }
 
-.collapsible-selectable-group[open] > .collapsible-selectable-group-summary .collapsible-selectable-group-chevron {
+.collapsible-selectable-group[open] > .collapsible-selectable-group-summary .collapsible-selectable-group-folder {
   color: #1f4e67;
   opacity: 1;
 }
 
 .collapsible-selectable-group[open]
   > .collapsible-selectable-group-summary
-  .collapsible-selectable-group-chevron
-  .symbol-icon-btn-glyph {
-  transform: rotate(90deg);
+  .collapsible-selectable-group-folder
+  .collapsible-selectable-group-folder-body {
+  background: rgba(15, 108, 189, 0.12);
 }
 
 .collapsible-selectable-group-content {
-  padding: 0.4rem 0.5rem 0.5rem;
+  padding: 0;
 }
 
 .selectable-card-item {
   border: 1px solid rgba(31, 63, 86, 0.12);
   border-radius: var(--home-radius-sm);
-  padding: 0.45rem 0.5rem;
+  padding: 0.4rem 0.45rem;
   background: #fbfdff;
   display: flex;
   flex-direction: column;
