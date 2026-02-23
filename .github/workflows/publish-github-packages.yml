@@ -184,6 +184,24 @@ jobs:
           xcrun stapler validate "${APP_PATH}"
           xcrun stapler validate "${DMG_PATH}"
 
+      - name: Validate macOS updater metadata
+        if: matrix.os == 'macos-latest'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          LATEST_MAC_YML_PATH="$(find dist/installers -maxdepth 1 -type f -name 'latest-mac*.yml' | head -n 1)"
+          if [ -z "${LATEST_MAC_YML_PATH}" ]; then
+            echo "::error::Updater metadata file (latest-mac.yml) was not found under dist/installers."
+            exit 1
+          fi
+
+          ZIP_PATH="$(find dist/installers -maxdepth 1 -type f -name '*.zip' | head -n 1)"
+          if [ -z "${ZIP_PATH}" ]; then
+            echo "::error::ZIP installer was not found under dist/installers."
+            exit 1
+          fi
+
 
       - name: Upload macOS installers
         if: matrix.os == 'macos-latest'
@@ -193,6 +211,8 @@ jobs:
           path: |
             dist/installers/*.dmg
             dist/installers/*.zip
+            dist/installers/*.yml
+            dist/installers/*.blockmap
           if-no-files-found: error
 
   release:
@@ -209,6 +229,50 @@ jobs:
         with:
           path: release-assets
 
+      - name: Generate release integrity artifacts
+        env:
+          RELEASE_SIGNING_PRIVATE_KEY_PEM: ${{ secrets.RELEASE_SIGNING_PRIVATE_KEY_PEM }}
+          RELEASE_SIGNING_PRIVATE_KEY_PASSPHRASE: ${{ secrets.RELEASE_SIGNING_PRIVATE_KEY_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+
+          mapfile -t INSTALLERS < <(find release-assets -type f \( -name '*.dmg' -o -name '*.zip' -o -name '*.exe' \) | sort)
+          if [ "${#INSTALLERS[@]}" -eq 0 ]; then
+            echo "::error::No installer assets were found for checksum/signature generation."
+            exit 1
+          fi
+
+          CHECKSUM_FILE="release-assets/SHA256SUMS.txt"
+          : > "${CHECKSUM_FILE}"
+
+          for asset in "${INSTALLERS[@]}"; do
+            checksum="$(sha256sum "${asset}" | awk '{print $1}')"
+            asset_name="$(basename "${asset}")"
+            printf '%s  %s\n' "${checksum}" "${asset_name}" >> "${CHECKSUM_FILE}"
+          done
+
+          if [ -n "${RELEASE_SIGNING_PRIVATE_KEY_PEM:-}" ]; then
+            PRIVATE_KEY_PATH="${RUNNER_TEMP}/release-signing-private-key.pem"
+            printf '%s' "${RELEASE_SIGNING_PRIVATE_KEY_PEM}" > "${PRIVATE_KEY_PATH}"
+            chmod 600 "${PRIVATE_KEY_PATH}"
+
+            PASSIN_ARGS=()
+            if [ -n "${RELEASE_SIGNING_PRIVATE_KEY_PASSPHRASE:-}" ]; then
+              PASSIN_ARGS=(-passin env:RELEASE_SIGNING_PRIVATE_KEY_PASSPHRASE)
+            fi
+
+            PUBLIC_KEY_PATH="release-assets/release-signing-key.pem"
+            openssl pkey -in "${PRIVATE_KEY_PATH}" "${PASSIN_ARGS[@]}" -pubout -out "${PUBLIC_KEY_PATH}"
+
+            for asset in "${INSTALLERS[@]}" "${CHECKSUM_FILE}"; do
+              openssl dgst -sha256 -sign "${PRIVATE_KEY_PATH}" "${PASSIN_ARGS[@]}" -out "${asset}.sig" "${asset}"
+            done
+
+            openssl dgst -sha256 -verify "${PUBLIC_KEY_PATH}" -signature "${CHECKSUM_FILE}.sig" "${CHECKSUM_FILE}" >/dev/null
+          else
+            echo "RELEASE_SIGNING_PRIVATE_KEY_PEM is not configured; publishing checksums without detached signatures."
+          fi
+
       - name: Publish release notes and assets
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -223,7 +287,7 @@ jobs:
           cat > release-notes.md <<'EOF'
           ## Local Playground
 
-          Desktop installers for macOS are attached to this release.
+          Desktop installers and updater metadata for macOS are attached to this release.
 
           ### Run from Source (Copy & Paste)
 
@@ -238,6 +302,11 @@ jobs:
           Open: `http://localhost:5173`
 
           ### Installer Assets
+          - Includes `latest-mac.yml` for in-app update checks.
+
+          ### Integrity Assets
+          - `SHA256SUMS.txt` is always published for installer SHA-256 checksums.
+          - `release-signing-key.pem` and detached signatures (`<asset>.sig`) are published only when release signing is configured.
 
           ### Platform Trust
           - macOS artifacts are Developer ID signed and notarized.

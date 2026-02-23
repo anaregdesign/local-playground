@@ -4,7 +4,8 @@
 const path = require('node:path');
 const { existsSync, readFileSync } = require('node:fs');
 const { spawn } = require('node:child_process');
-const { app, BrowserWindow, session, shell } = require('electron');
+const { app, BrowserWindow, dialog, session, shell } = require('electron');
+const { autoUpdater } = require('electron-updater');
 
 const DESKTOP_MODE = process.env.DESKTOP_MODE === 'development' ? 'development' : 'production';
 const BACKEND_DEV_URL = process.env.DESKTOP_BACKEND_URL || 'http://localhost:5173';
@@ -16,6 +17,10 @@ const APP_ICON_PATH = path.resolve(__dirname, 'assets', 'icon.png');
 let mainWindow = null;
 /** @type {import('node:child_process').ChildProcess | null} */
 let backendProcess = null;
+/** @type {NodeJS.Timeout | null} */
+let updateCheckTimer = null;
+let hasShownUpdateAvailableDialog = false;
+let hasShownUpdateReadyDialog = false;
 
 function configureContentSecurityPolicy() {
   const csp = [
@@ -147,6 +152,78 @@ function openInExternalBrowser(url) {
   void shell.openExternal(url).catch((error) => {
     console.error(`[desktop-shell] Failed to open external URL: ${readErrorMessage(error)}`);
   });
+}
+
+function initializeAutoUpdater() {
+  if (DESKTOP_MODE !== 'production' || !app.isPackaged) {
+    return;
+  }
+
+  autoUpdater.on('update-available', () => {
+    if (hasShownUpdateAvailableDialog) {
+      return;
+    }
+
+    hasShownUpdateAvailableDialog = true;
+    void showUpdateDialog({
+      title: 'Update Available',
+      message: 'A new version of Local Playground is available.',
+      detail: 'The update is downloading in the background.',
+      buttons: ['OK'],
+    });
+  });
+
+  autoUpdater.on('update-downloaded', () => {
+    if (hasShownUpdateReadyDialog) {
+      return;
+    }
+
+    hasShownUpdateReadyDialog = true;
+    void showUpdateDialog({
+      title: 'Update Ready',
+      message: 'A new version of Local Playground has been downloaded.',
+      detail: 'Restart now to apply the update.',
+      buttons: ['Restart Now', 'Later'],
+      defaultId: 0,
+      cancelId: 1,
+    }).then((result) => {
+      if (result.response === 0) {
+        autoUpdater.quitAndInstall();
+      }
+    });
+  });
+
+  autoUpdater.on('error', (error) => {
+    console.error(`[desktop-updater] ${readErrorMessage(error)}`);
+  });
+
+  void checkForUpdates();
+  updateCheckTimer = setInterval(() => {
+    void checkForUpdates();
+  }, 4 * 60 * 60 * 1000);
+}
+
+async function checkForUpdates() {
+  try {
+    await autoUpdater.checkForUpdates();
+  } catch (error) {
+    console.error(`[desktop-updater] Failed to check for updates: ${readErrorMessage(error)}`);
+  }
+}
+
+function showUpdateDialog(options) {
+  const targetWindow = mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined;
+  const dialogOptions = {
+    type: 'info',
+    noLink: true,
+    ...options,
+  };
+
+  if (targetWindow) {
+    return dialog.showMessageBox(targetWindow, dialogOptions);
+  }
+
+  return dialog.showMessageBox(dialogOptions);
 }
 
 async function startProductionBackend() {
@@ -382,6 +459,7 @@ app.whenReady().then(async () => {
   }
 
   createMainWindow();
+  initializeAutoUpdater();
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -397,5 +475,10 @@ app.on('window-all-closed', () => {
 });
 
 app.on('before-quit', () => {
+  if (updateCheckTimer) {
+    clearInterval(updateCheckTimer);
+    updateCheckTimer = null;
+  }
+
   stopBackendProcess();
 });
