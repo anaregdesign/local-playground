@@ -99,10 +99,13 @@ Per-OS packaging:
 Pushing a `v*.*.*` tag triggers GitHub Actions to publish installers to GitHub Releases:
 
 - macOS: `.dmg`, `.zip`
+- Integrity assets: `SHA256SUMS.txt` is always published. `release-signing-key.pem` and detached signatures (`*.sig`) are published when release signing is configured.
+- Optional GitHub secrets for release signing: `RELEASE_SIGNING_PRIVATE_KEY_PEM`, `RELEASE_SIGNING_PRIVATE_KEY_PASSPHRASE`
 
 Release builds are signed for OS trust checks:
 
 - macOS: Developer ID code signing + Apple notarization (stapled)
+- Release artifacts: SHA-256 checksums are always available. Detached signature verification is available when `release-signing-key.pem` is published.
 
 ### Persistence Paths
 

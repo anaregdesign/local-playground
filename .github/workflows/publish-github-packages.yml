@@ -209,6 +209,50 @@ jobs:
         with:
           path: release-assets
 
+      - name: Generate release integrity artifacts
+        env:
+          RELEASE_SIGNING_PRIVATE_KEY_PEM: ${{ secrets.RELEASE_SIGNING_PRIVATE_KEY_PEM }}
+          RELEASE_SIGNING_PRIVATE_KEY_PASSPHRASE: ${{ secrets.RELEASE_SIGNING_PRIVATE_KEY_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+
+          mapfile -t INSTALLERS < <(find release-assets -type f \( -name '*.dmg' -o -name '*.zip' -o -name '*.exe' \) | sort)
+          if [ "${#INSTALLERS[@]}" -eq 0 ]; then
+            echo "::error::No installer assets were found for checksum/signature generation."
+            exit 1
+          fi
+
+          CHECKSUM_FILE="release-assets/SHA256SUMS.txt"
+          : > "${CHECKSUM_FILE}"
+
+          for asset in "${INSTALLERS[@]}"; do
+            checksum="$(sha256sum "${asset}" | awk '{print $1}')"
+            asset_name="$(basename "${asset}")"
+            printf '%s  %s\n' "${checksum}" "${asset_name}" >> "${CHECKSUM_FILE}"
+          done
+
+          if [ -n "${RELEASE_SIGNING_PRIVATE_KEY_PEM:-}" ]; then
+            PRIVATE_KEY_PATH="${RUNNER_TEMP}/release-signing-private-key.pem"
+            printf '%s' "${RELEASE_SIGNING_PRIVATE_KEY_PEM}" > "${PRIVATE_KEY_PATH}"
+            chmod 600 "${PRIVATE_KEY_PATH}"
+
+            PASSIN_ARGS=()
+            if [ -n "${RELEASE_SIGNING_PRIVATE_KEY_PASSPHRASE:-}" ]; then
+              PASSIN_ARGS=(-passin env:RELEASE_SIGNING_PRIVATE_KEY_PASSPHRASE)
+            fi
+
+            PUBLIC_KEY_PATH="release-assets/release-signing-key.pem"
+            openssl pkey -in "${PRIVATE_KEY_PATH}" "${PASSIN_ARGS[@]}" -pubout -out "${PUBLIC_KEY_PATH}"
+
+            for asset in "${INSTALLERS[@]}" "${CHECKSUM_FILE}"; do
+              openssl dgst -sha256 -sign "${PRIVATE_KEY_PATH}" "${PASSIN_ARGS[@]}" -out "${asset}.sig" "${asset}"
+            done
+
+            openssl dgst -sha256 -verify "${PUBLIC_KEY_PATH}" -signature "${CHECKSUM_FILE}.sig" "${CHECKSUM_FILE}" >/dev/null
+          else
+            echo "RELEASE_SIGNING_PRIVATE_KEY_PEM is not configured; publishing checksums without detached signatures."
+          fi
+
       - name: Publish release notes and assets
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -238,6 +282,10 @@ jobs:
           Open: `http://localhost:5173`
 
           ### Installer Assets
+
+          ### Integrity Assets
+          - `SHA256SUMS.txt` is always published for installer SHA-256 checksums.
+          - `release-signing-key.pem` and detached signatures (`<asset>.sig`) are published only when release signing is configured.
 
           ### Platform Trust
           - macOS artifacts are Developer ID signed and notarized.
