@@ -1,3 +1,6 @@
+/**
+ * Home runtime support module.
+ */
 import { CLIENT_EVENT_LOG_DEDUPE_WINDOW_MS } from "~/lib/constants";
 import {
   readErrorDetails,

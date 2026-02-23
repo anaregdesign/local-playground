@@ -1,3 +1,6 @@
+/**
+ * Home UI component module.
+ */
 import {
   Fragment,
   type ChangeEvent,

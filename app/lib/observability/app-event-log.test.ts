@@ -1,3 +1,6 @@
+/**
+ * Test module verifying app-event-log behavior.
+ */
 import { describe, expect, it } from "vitest";
 import {
   readClientAppEventLogPayload,

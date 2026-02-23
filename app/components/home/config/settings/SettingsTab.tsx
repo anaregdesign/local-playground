@@ -1,3 +1,6 @@
+/**
+ * Home UI component module.
+ */
 import type { ComponentProps } from "react";
 import { AzureConnectionSection } from "~/components/home/config/settings/AzureConnectionSection";
 import { UtilityModelSection } from "~/components/home/config/settings/UtilityModelSection";

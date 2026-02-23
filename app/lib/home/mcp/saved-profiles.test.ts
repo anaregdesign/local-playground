@@ -1,3 +1,6 @@
+/**
+ * Test module verifying saved-profiles behavior.
+ */
 import { describe, expect, it } from "vitest";
 import {
   buildSavedMcpServerOptions,

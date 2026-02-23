@@ -1,3 +1,6 @@
+/**
+ * Test module verifying app-event-log-client behavior.
+ */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 async function flushMicrotasks(): Promise<void> {

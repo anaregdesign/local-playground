@@ -1,3 +1,6 @@
+/**
+ * Test module verifying stream behavior.
+ */
 import { describe, expect, it } from "vitest";
 import {
   parseSseDataBlock,

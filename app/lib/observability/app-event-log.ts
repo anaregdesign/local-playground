@@ -1,3 +1,6 @@
+/**
+ * Shared observability module.
+ */
 import {
   APP_EVENT_LOG_MAX_CATEGORY_LENGTH,
   APP_EVENT_LOG_MAX_CONTEXT_ARRAY_ITEMS,

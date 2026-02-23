@@ -1,3 +1,6 @@
+/**
+ * Test module verifying parsers behavior.
+ */
 import { describe, expect, it } from "vitest";
 import {
   buildThreadSummary,

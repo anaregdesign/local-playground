@@ -1,3 +1,6 @@
+/**
+ * Desktop renderer module.
+ */
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite";

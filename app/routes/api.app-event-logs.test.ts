@@ -1,3 +1,6 @@
+/**
+ * Test module verifying api.app-event-logs behavior.
+ */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const {

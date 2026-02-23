@@ -1,3 +1,6 @@
+/**
+ * Server runtime module.
+ */
 import { spawn } from "node:child_process";
 import { constants as fsConstants, type Dirent } from "node:fs";
 import { access, lstat, readdir, readFile, realpath, stat } from "node:fs/promises";

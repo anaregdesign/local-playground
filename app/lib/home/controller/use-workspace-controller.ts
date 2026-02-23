@@ -1,3 +1,6 @@
+/**
+ * Home controller runtime module.
+ */
 import {
   useEffect,
   useMemo,
@@ -141,7 +144,14 @@ import {
   type ThreadsApiResponse,
 } from "~/lib/home/controller/types";
 
+/**
+ * Home runtime controller.
+ * Owns interactive state for Playground/Threads/MCP/Settings and orchestrates server API calls.
+ * This hook intentionally keeps state ownership centralized while delegating pure transforms
+ * to modules under `~/lib/home/*`.
+ */
 export function useWorkspaceController() {
+  // Primary runtime state for Home.
   const [azureConnections, setAzureConnections] = useState<AzureConnectionOption[]>([]);
   const [playgroundAzureDeployments, setPlaygroundAzureDeployments] = useState<string[]>([]);
   const [utilityAzureDeployments, setUtilityAzureDeployments] = useState<string[]>([]);
@@ -235,6 +245,8 @@ export function useWorkspaceController() {
   const [skillsWarning, setSkillsWarning] = useState<string | null>(null);
   const [rightPaneWidth, setRightPaneWidth] = useState(420);
   const [activeResizeHandle, setActiveResizeHandle] = useState<"main" | null>(null);
+
+  // Mutable refs for request sequencing, optimistic state, and debounce timers.
   const endOfMessagesRef = useRef<HTMLDivElement | null>(null);
   const chatInputRef = useRef<HTMLTextAreaElement | null>(null);
   const chatAttachmentInputRef = useRef<HTMLInputElement | null>(null);
@@ -266,6 +278,8 @@ export function useWorkspaceController() {
   const threadSaveSignatureByIdRef = useRef(new Map<string, string>());
   const threadRequestStateByIdRef = useRef<Record<string, ThreadRequestState>>({});
   const threadsRef = useRef<ThreadSnapshot[]>([]);
+
+  // Derived UI state and view models consumed by panel props.
   const isChatLocked = isAzureAuthRequired;
   const activePlaygroundAzureConnection =
     azureConnections.find((connection) => connection.id === selectedPlaygroundAzureConnectionId) ??
@@ -364,8 +378,8 @@ export function useWorkspaceController() {
         return left.isSelected ? -1 : 1;
       }
 
-        return left.name.localeCompare(right.name);
-      });
+      return left.name.localeCompare(right.name);
+    });
   }, [availableSkillByLocation, availableSkills, selectedThreadSkills]);
   const canSendMessage =
     !isSending &&
@@ -382,6 +396,7 @@ export function useWorkspaceController() {
     !!selectedPlaygroundAzureDeploymentName.trim() &&
     draft.trim().length > 0;
 
+  // Observability helpers for Home runtime events.
   function buildRuntimeLogContext(extra: Record<string, unknown> = {}): Record<string, unknown> {
     return {
       activeMainTab: activeMainTabRef.current,
@@ -436,6 +451,7 @@ export function useWorkspaceController() {
     });
   }
 
+  // Keep refs synchronized with state to avoid stale closures in async handlers.
   useEffect(() => {
     activeMainTabRef.current = activeMainTab;
   }, [activeMainTab]);
@@ -867,6 +883,7 @@ export function useWorkspaceController() {
     isRestoringThread,
   ]);
 
+  // Saved MCP / Skills loading flows.
   async function loadSavedMcpServers() {
     const expectedUserKey = activeWorkspaceUserKeyRef.current.trim();
     if (!expectedUserKey) {
@@ -967,6 +984,7 @@ export function useWorkspaceController() {
     }
   }
 
+  // Timer and reset helpers.
   function clearSavedMcpLoginRetryTimeout() {
     const timeoutId = savedMcpLoginRetryTimeoutRef.current;
     if (timeoutId !== null) {
@@ -1070,6 +1088,7 @@ export function useWorkspaceController() {
     setIsComposing(false);
   }
 
+  // Thread request-state helpers.
   function readThreadRequestState(threadId: string): ThreadRequestState {
     if (!threadId) {
       return HOME_DEFAULT_THREAD_REQUEST_STATE;
@@ -1115,6 +1134,7 @@ export function useWorkspaceController() {
     });
   }
 
+  // Thread snapshot mutation helpers.
   function isArchivedThread(threadIdRaw: string): boolean {
     return isThreadArchivedById(threadsRef.current, threadIdRaw);
   }
@@ -1270,6 +1290,7 @@ export function useWorkspaceController() {
     }, 0);
   }
 
+  // Thread persistence and title-refresh orchestration.
   async function saveThreadSnapshotToDatabase(
     snapshot: ThreadSnapshot,
     signature: string,
@@ -1555,6 +1576,7 @@ export function useWorkspaceController() {
     }
   }
 
+  // Thread lifecycle actions (load/create/rename/archive/switch).
   async function loadThreads(): Promise<void> {
     const expectedUserKey = activeWorkspaceUserKeyRef.current.trim();
     if (!expectedUserKey) {
@@ -1979,6 +2001,7 @@ export function useWorkspaceController() {
     }
   }
 
+  // Azure identity, selection, and deployment discovery.
   async function loadAzureSelectionPreference(
     tenantId: string,
     principalId: string,
@@ -2526,6 +2549,7 @@ export function useWorkspaceController() {
     }
   }
 
+  // MCP save/connect and chat execution flow.
   async function saveMcpServerToConfig(server: McpServerConfig): Promise<{
     profile: McpServerConfig;
     warning: string | null;
@@ -2800,6 +2824,7 @@ export function useWorkspaceController() {
     }
   }
 
+  // UI event handlers bound to panel props.
   async function handleAzureLogin() {
     if (isStartingAzureLogin) {
       return;
@@ -3779,6 +3804,7 @@ export function useWorkspaceController() {
     });
   };
 
+  // Panel prop composition for Home route rendering.
   const settingsTabProps = {
     azureConnectionSectionProps: {
       isAzureAuthRequired,

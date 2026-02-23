@@ -1,3 +1,6 @@
+/**
+ * API route module for /api/instruction.
+ */
 import type { Route } from "./+types/api.instruction";
 import { Agent, run, user } from "@openai/agents";
 import { OpenAIResponsesModel } from "@openai/agents-openai";

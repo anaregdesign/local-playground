@@ -1,3 +1,7 @@
+/**
+ * Heuristic matcher for auth-related Azure failures from chat/runtime requests.
+ * This is intentionally broad because upstream SDK/provider errors vary by source.
+ */
 export function isLikelyChatAzureAuthError(message: string | null): boolean {
   if (!message) {
     return false;

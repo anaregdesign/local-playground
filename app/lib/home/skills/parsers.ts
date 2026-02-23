@@ -1,3 +1,6 @@
+/**
+ * Home runtime support module.
+ */
 import type { SkillCatalogEntry, SkillCatalogSource, ThreadSkillSelection } from "~/lib/home/skills/types";
 
 export function readSkillCatalogList(value: unknown): SkillCatalogEntry[] {

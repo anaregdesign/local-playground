@@ -1,3 +1,6 @@
+/**
+ * Home UI component module.
+ */
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { CopyIconButton } from "~/components/home/shared/CopyIconButton";

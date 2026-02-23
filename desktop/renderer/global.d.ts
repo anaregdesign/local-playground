@@ -1,3 +1,6 @@
+/**
+ * Desktop renderer module.
+ */
 export {};
 
 declare global {

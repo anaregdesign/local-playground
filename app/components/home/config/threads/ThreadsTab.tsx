@@ -1,3 +1,6 @@
+/**
+ * Home UI component module.
+ */
 import type { ComponentProps } from "react";
 import { InstructionSection } from "~/components/home/config/threads/InstructionSection";
 import {

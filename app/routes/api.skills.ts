@@ -1,3 +1,6 @@
+/**
+ * API route module for /api/skills.
+ */
 import {
   installGlobalServerErrorLogging,
   logServerRouteEvent,

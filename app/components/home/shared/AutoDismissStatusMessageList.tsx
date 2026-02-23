@@ -1,3 +1,6 @@
+/**
+ * Home UI component module.
+ */
 import { useEffect, useMemo } from "react";
 import { StatusMessageList, type StatusMessage } from "~/components/home/shared/StatusMessageList";
 import { AUTO_DISMISS_STATUS_DEFAULT_MS } from "~/lib/constants";

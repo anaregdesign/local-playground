@@ -1,3 +1,6 @@
+/**
+ * Local Playground source module.
+ */
 import logoDark from "./logo-dark.svg";
 import logoLight from "./logo-light.svg";
 

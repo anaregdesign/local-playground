@@ -1,3 +1,6 @@
+/**
+ * Test module verifying main-splitter behavior.
+ */
 import { describe, expect, it } from "vitest";
 import {
   HOME_MAIN_SPLITTER_MIN_LEFT_WIDTH_PX,

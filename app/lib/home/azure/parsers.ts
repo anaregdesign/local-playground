@@ -1,3 +1,6 @@
+/**
+ * Home runtime support module.
+ */
 import type { ReasoningEffort } from "~/lib/home/shared/view-types";
 import { uniqueStringsCaseInsensitive } from "~/lib/home/shared/collections";
 

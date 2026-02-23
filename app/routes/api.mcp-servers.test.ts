@@ -1,3 +1,6 @@
+/**
+ * Test module verifying api.mcp-servers behavior.
+ */
 import { describe, expect, it } from "vitest";
 import {
   MCP_DEFAULT_AZURE_MCP_SERVER_ARGS,

@@ -1,3 +1,6 @@
+/**
+ * Project maintenance script.
+ */
 import { mkdir, rm } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";

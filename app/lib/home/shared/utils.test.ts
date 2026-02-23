@@ -1,3 +1,6 @@
+/**
+ * Test module verifying utils behavior.
+ */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { readStringList, uniqueStringsCaseInsensitive } from "./collections";
 import { getFileExtension } from "./files";

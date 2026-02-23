@@ -1,3 +1,6 @@
+/**
+ * Foundry local configuration module.
+ */
 import { homedir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

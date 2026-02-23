@@ -1,3 +1,6 @@
+/**
+ * Home UI component module.
+ */
 import type { ReactNode } from "react";
 import { InfoIconButton } from "~/components/home/shared/InfoIconButton";
 import { LabeledTooltip } from "~/components/home/shared/LabeledTooltip";

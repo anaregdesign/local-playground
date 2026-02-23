@@ -1,3 +1,6 @@
+/**
+ * API route module for /api/azure-logout.
+ */
 import { resetAzureDependencies } from "~/lib/azure/dependencies";
 import {
   installGlobalServerErrorLogging,

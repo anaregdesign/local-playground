@@ -1,3 +1,6 @@
+/**
+ * Test module verifying server-ids behavior.
+ */
 import { describe, expect, it } from "vitest";
 import {
   buildThreadMcpRpcLogRowId,

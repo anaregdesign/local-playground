@@ -1,3 +1,6 @@
+/**
+ * Home runtime support module.
+ */
 import {
   AGENT_SKILL_DESCRIPTION_MAX_LENGTH,
   AGENT_SKILL_NAME_MAX_LENGTH,

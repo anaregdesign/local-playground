@@ -1,3 +1,6 @@
+/**
+ * Home runtime support module.
+ */
 export type ChatApiResponse = {
   message?: string;
   error?: string;

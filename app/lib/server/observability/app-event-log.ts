@@ -1,3 +1,6 @@
+/**
+ * Server runtime module.
+ */
 import {
   createEventLogId,
   normalizeAppEventLogLevel,

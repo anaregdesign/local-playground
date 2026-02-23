@@ -1,3 +1,6 @@
+/**
+ * Test module verifying history behavior.
+ */
 import { describe, expect, it } from "vitest";
 import type { McpRpcHistoryEntry } from "~/lib/home/chat/stream";
 import {

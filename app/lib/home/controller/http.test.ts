@@ -1,3 +1,6 @@
+/**
+ * Test module verifying http behavior.
+ */
 import { describe, expect, it } from "vitest";
 import { readJsonPayload } from "~/lib/home/controller/http";
 

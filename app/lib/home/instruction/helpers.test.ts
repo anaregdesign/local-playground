@@ -1,3 +1,6 @@
+/**
+ * Test module verifying helpers behavior.
+ */
 import { describe, expect, it } from "vitest";
 import {
   applyInstructionUnifiedDiffPatch,

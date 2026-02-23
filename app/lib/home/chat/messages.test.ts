@@ -1,3 +1,6 @@
+/**
+ * Test module verifying messages behavior.
+ */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createMessage } from "./messages";
 

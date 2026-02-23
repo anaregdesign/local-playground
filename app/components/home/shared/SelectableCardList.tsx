@@ -1,3 +1,6 @@
+/**
+ * Home UI component module.
+ */
 import { FluentUI } from "~/components/home/shared/fluent";
 
 const { Button } = FluentUI;

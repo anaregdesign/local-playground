@@ -1,3 +1,6 @@
+/**
+ * Home runtime support module.
+ */
 import type { ChatAttachment } from "~/lib/home/chat/attachments";
 import type { ChatMessage } from "~/lib/home/chat/messages";
 import type { McpRpcHistoryEntry } from "~/lib/home/chat/stream";

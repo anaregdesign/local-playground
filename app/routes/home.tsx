@@ -1,3 +1,6 @@
+/**
+ * Route composition module.
+ */
 import type { CSSProperties } from "react";
 import { ConfigPanel } from "~/components/home/config/ConfigPanel";
 import { UnauthenticatedPanel } from "~/components/home/authorize/UnauthenticatedPanel";

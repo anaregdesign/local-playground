@@ -1,3 +1,8 @@
+/**
+ * Reads JSON response bodies safely for controller API calls.
+ * Returns an empty object for blank payloads and a synthetic `authRequired` marker
+ * when a 401 response body is not valid JSON.
+ */
 export async function readJsonPayload<T extends Record<string, unknown>>(
   response: Response,
   targetName: string,

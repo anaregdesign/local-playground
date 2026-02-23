@@ -1,3 +1,6 @@
+/**
+ * Test module verifying api.azure-logout behavior.
+ */
 import { describe, expect, it } from "vitest";
 import { action, loader } from "./api.azure-logout";
 

@@ -1,3 +1,6 @@
+/**
+ * Home UI component module.
+ */
 import type { MainViewTab } from "~/lib/home/shared/view-types";
 import {
   McpAddServerSection,

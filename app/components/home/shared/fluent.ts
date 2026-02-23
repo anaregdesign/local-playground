@@ -1,3 +1,6 @@
+/**
+ * Home UI component module.
+ */
 import * as FluentUIComponents from "@fluentui/react-components";
 
 export function resolveFluentUIExports<T extends object>(moduleExports: T): T {

@@ -1,3 +1,6 @@
+/**
+ * Test module verifying snapshot-state behavior.
+ */
 import { describe, expect, it } from "vitest";
 import {
   hasThreadInteraction,

@@ -1,3 +1,6 @@
+/**
+ * Test module verifying api.azure-connections behavior.
+ */
 import { describe, expect, it } from "vitest";
 import {
   readPrincipalDisplayNameFromAccessToken,

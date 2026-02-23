@@ -1,3 +1,6 @@
+/**
+ * Test module verifying config behavior.
+ */
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";

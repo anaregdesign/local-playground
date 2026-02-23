@@ -1,3 +1,6 @@
+/**
+ * Electron desktop-shell module.
+ */
 const path = require('node:path');
 const { existsSync, readFileSync } = require('node:fs');
 const { spawn } = require('node:child_process');

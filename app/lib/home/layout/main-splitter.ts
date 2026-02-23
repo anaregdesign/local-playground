@@ -1,3 +1,6 @@
+/**
+ * Home runtime support module.
+ */
 import {
   HOME_MAIN_SPLITTER_MIN_LEFT_WIDTH_PX,
   HOME_MAIN_SPLITTER_MIN_RIGHT_WIDTH_PX,

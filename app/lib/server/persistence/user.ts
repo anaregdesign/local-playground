@@ -1,3 +1,6 @@
+/**
+ * Server runtime module.
+ */
 import { ensurePersistenceDatabaseReady, prisma } from "~/lib/server/persistence/prisma";
 
 export type UserIdentity = {

@@ -1,3 +1,6 @@
+/**
+ * Deduplicates case-insensitively while preserving the first-seen casing/order.
+ */
 export function uniqueStringsCaseInsensitive(values: string[]): string[] {
   const seen = new Set<string>();
   const unique: string[] = [];
@@ -14,6 +17,9 @@ export function uniqueStringsCaseInsensitive(values: string[]): string[] {
   return unique;
 }
 
+/**
+ * Normalizes unknown arrays into trimmed, non-empty string lists.
+ */
 export function readStringList(value: unknown): string[] {
   if (!Array.isArray(value)) {
     return [];

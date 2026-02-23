@@ -1,3 +1,6 @@
+/**
+ * Home runtime support module.
+ */
 export type ChatAttachment = {
   name: string;
   mimeType: string;

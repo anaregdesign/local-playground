@@ -1,3 +1,6 @@
+/**
+ * API route module for /api/threads.
+ */
 import {
   DEFAULT_AGENT_INSTRUCTION,
   HOME_THREAD_NAME_MAX_LENGTH,

@@ -1,3 +1,6 @@
+/**
+ * Test module verifying errors behavior.
+ */
 import { describe, expect, it } from "vitest";
 import { isLikelyChatAzureAuthError } from "~/lib/home/azure/errors";
 

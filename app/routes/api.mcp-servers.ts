@@ -1,3 +1,6 @@
+/**
+ * API route module for /api/mcp-servers.
+ */
 import {
   ENV_KEY_PATTERN,
   HTTP_HEADER_NAME_PATTERN,

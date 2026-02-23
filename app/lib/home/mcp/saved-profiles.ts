@@ -1,9 +1,15 @@
+/**
+ * Home runtime support module.
+ */
 import { buildMcpServerKey, type McpServerConfig } from "~/lib/home/mcp/profile";
 
 type McpServersAuthLike = {
   authRequired?: boolean;
 };
 
+/**
+ * View model used by `SelectableCardList` in the MCP saved profile section.
+ */
 export type SavedMcpServerOption = {
   id: string;
   name: string;
@@ -14,6 +20,9 @@ export type SavedMcpServerOption = {
   isAvailable: boolean;
 };
 
+/**
+ * Treats either explicit HTTP 401 or server payload `authRequired` as an auth-required state.
+ */
 export function isMcpServersAuthRequired(
   status: number,
   payload: McpServersAuthLike | null | undefined,
@@ -21,6 +30,9 @@ export function isMcpServersAuthRequired(
   return status === 401 || payload?.authRequired === true;
 }
 
+/**
+ * Schedules a retry only when auth was previously required and the workspace identity is known.
+ */
 export function shouldScheduleSavedMcpLoginRetry(
   wasAzureAuthRequired: boolean,
   savedMcpUserKey: string,
@@ -28,6 +40,9 @@ export function shouldScheduleSavedMcpLoginRetry(
   return wasAzureAuthRequired && savedMcpUserKey.trim().length > 0;
 }
 
+/**
+ * Maps persisted MCP profiles into `SelectableCardList` options for the MCP Servers tab.
+ */
 export function buildSavedMcpServerOptions(
   savedMcpServers: McpServerConfig[],
   activeMcpServers: McpServerConfig[],
@@ -55,10 +70,16 @@ export function buildSavedMcpServerOptions(
     });
 }
 
+/**
+ * Returns how many saved MCP options are currently connected to the active thread.
+ */
 export function countSelectedSavedMcpServerOptions(options: SavedMcpServerOption[]): number {
   return options.filter((option) => option.isSelected).length;
 }
 
+/**
+ * Compact transport label used by selectable MCP cards.
+ */
 export function resolveMcpTransportBadge(server: McpServerConfig): string {
   if (server.transport === "stdio") {
     return "STDIO";
@@ -71,6 +92,9 @@ export function resolveMcpTransportBadge(server: McpServerConfig): string {
   return "HTTP";
 }
 
+/**
+ * Human-readable summary line shown under each saved MCP server card.
+ */
 export function describeSavedMcpServer(server: McpServerConfig): string {
   if (server.transport === "stdio") {
     const argsSuffix = server.args.length > 0 ? ` ${server.args.join(" ")}` : "";
@@ -85,6 +109,9 @@ export function describeSavedMcpServer(server: McpServerConfig): string {
   return `Transport: ${server.transport}; Headers: ${headersCount}; Timeout: ${server.timeoutSeconds}s; ${azureAuthLabel}`;
 }
 
+/**
+ * Secondary detail line shown under each saved MCP server card.
+ */
 export function describeSavedMcpServerDetail(server: McpServerConfig): string {
   if (server.transport === "stdio") {
     return `Working directory: ${server.cwd ?? "(inherit current workspace)"}`;
