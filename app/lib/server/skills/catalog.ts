@@ -7,7 +7,6 @@ import { homedir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  AGENT_DEFAULT_SKILLS_DIRECTORY_NAME,
   AGENT_SKILL_FILE_MAX_BYTES,
   AGENT_SKILLS_DIRECTORY_NAME,
 } from "~/lib/constants";
@@ -27,7 +26,6 @@ export type SkillCatalogDiscoveryResult = {
 };
 
 type ResolveSkillCatalogRootsOptions = {
-  workspaceRoot?: string;
   codexHome?: string;
   foundryConfigDirectory?: string;
   platform?: NodeJS.Platform;
@@ -38,11 +36,6 @@ type ResolveSkillCatalogRootsOptions = {
 export function resolveSkillCatalogRoots(
   options: ResolveSkillCatalogRootsOptions = {},
 ): SkillCatalogRoot[] {
-  const workspaceRoot = path.resolve(
-    options.workspaceRoot ?? process.cwd(),
-    AGENT_SKILLS_DIRECTORY_NAME,
-    AGENT_DEFAULT_SKILLS_DIRECTORY_NAME,
-  );
   const codexHomeRoot = path.resolve(
     resolveCodexHomeDirectory(options.codexHome),
     AGENT_SKILLS_DIRECTORY_NAME,
@@ -57,7 +50,6 @@ export function resolveSkillCatalogRoots(
   });
 
   const roots: SkillCatalogRoot[] = [
-    { path: workspaceRoot, source: "workspace", createIfMissing: false },
     { path: codexHomeRoot, source: "codex_home", createIfMissing: false },
     { path: foundrySkillsRoot, source: "app_data", createIfMissing: true },
   ];

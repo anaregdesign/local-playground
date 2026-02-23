@@ -7,6 +7,8 @@ import { constants as fsConstants } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  AGENT_DEFAULT_SKILLS_DIRECTORY_NAME,
+  AGENT_SKILLS_DIRECTORY_NAME,
   AGENT_SKILL_NAME_PATTERN,
   FOUNDRY_SKILLS_DIRECTORY_NAME,
   SKILL_REGISTRY_LIST_CACHE_TTL_MS,
@@ -31,6 +33,7 @@ type ResolveSkillRegistryOptions = {
   platform?: NodeJS.Platform;
   homeDirectory?: string;
   appDataDirectory?: string | null;
+  workspaceRoot?: string;
 };
 
 type SkillRegistryInstallOptions = ResolveSkillRegistryOptions & {
@@ -87,7 +90,7 @@ export async function discoverSkillRegistries(
 
   for (const registry of SKILL_REGISTRY_OPTIONS) {
     try {
-      catalogs.push(await readSkillRegistryCatalog(registry, appDataSkillsRoot));
+      catalogs.push(await readSkillRegistryCatalog(registry, appDataSkillsRoot, options));
     } catch (error) {
       warnings.push(
         `Failed to load ${registry.label} registry: ${readErrorMessage(error)}`,
@@ -135,6 +138,24 @@ export async function installSkillFromRegistry(
       installLocation,
       installed: false,
       skippedAsDuplicate: true,
+    };
+  }
+
+  if (isWorkspaceLocalRegistry(registry)) {
+    const sourceRootPath = normalizeRepoPath(registry.sourcePath);
+    await installWorkspaceLocalSkill({
+      registry,
+      resolveOptions: options,
+      skillName,
+      skillInstallRoot,
+      sourceRootPath,
+    });
+    await invalidateSkillRegistryListCache(registry.id);
+    return {
+      skillName,
+      installLocation,
+      installed: true,
+      skippedAsDuplicate: false,
     };
   }
 
@@ -244,8 +265,9 @@ export async function deleteInstalledSkillFromRegistry(
 async function readSkillRegistryCatalog(
   registry: SkillRegistryOption,
   appDataSkillsRoot: string,
+  options: ResolveSkillRegistryOptions,
 ): Promise<SkillRegistryCatalog> {
-  const skillNames = await readRegistrySkillNames(registry);
+  const skillNames = await readRegistrySkillNames(registry, options);
   const registryInstallRoot = path.join(appDataSkillsRoot, registry.installDirectoryName);
   const installedSkillNames = await readInstalledSkillNames(registryInstallRoot);
   const skills = skillNames.map((skillName) => ({
@@ -269,7 +291,12 @@ async function readSkillRegistryCatalog(
 
 async function readRegistrySkillNames(
   registry: SkillRegistryOption,
+  options: ResolveSkillRegistryOptions,
 ): Promise<string[]> {
+  if (isWorkspaceLocalRegistry(registry)) {
+    return await readWorkspaceLocalSkillNames(registry, options);
+  }
+
   const cacheKey = buildRegistryListCacheKey(registry);
   return await readCacheValue(cacheKey, async () => {
     const endpoint = buildRepositoryContentsApiUrl({
@@ -284,6 +311,163 @@ async function readRegistrySkillNames(
     }
     return names;
   }, SKILL_REGISTRY_LIST_CACHE_TTL_MS);
+}
+
+async function readWorkspaceLocalSkillNames(
+  registry: SkillRegistryOption,
+  options: ResolveSkillRegistryOptions,
+): Promise<string[]> {
+  const workspaceSkillsRoot = await resolveWorkspaceLocalSkillsRoot(options, registry);
+  if (!(await directoryExists(workspaceSkillsRoot))) {
+    return [];
+  }
+
+  const entries = await readdir(workspaceSkillsRoot, { withFileTypes: true });
+  const names = new Set<string>();
+  for (const entry of entries) {
+    if (!entry.isDirectory()) {
+      continue;
+    }
+
+    const normalizedName = normalizeSkillName(entry.name);
+    if (!normalizedName) {
+      continue;
+    }
+
+    const skillLocation = path.join(workspaceSkillsRoot, normalizedName, "SKILL.md");
+    if (!(await fileExists(skillLocation))) {
+      continue;
+    }
+
+    const skillFileContent = await readFile(skillLocation, "utf8").catch(() => "");
+    const frontmatter = parseSkillFrontmatter(skillFileContent);
+    if (!frontmatter) {
+      continue;
+    }
+
+    const validationError = validateSkillFrontmatter(frontmatter, normalizedName);
+    if (validationError) {
+      continue;
+    }
+
+    names.add(normalizedName);
+  }
+
+  return Array.from(names).sort((left, right) => left.localeCompare(right));
+}
+
+async function installWorkspaceLocalSkill(params: {
+  registry: SkillRegistryOption;
+  resolveOptions: ResolveSkillRegistryOptions;
+  skillName: string;
+  skillInstallRoot: string;
+  sourceRootPath: string;
+}): Promise<void> {
+  const sourceSkillsRoot = await resolveWorkspaceLocalSkillsRoot(
+    params.resolveOptions,
+    params.registry,
+  );
+  const sourceSkillRoot = path.join(sourceSkillsRoot, params.skillName);
+  const sourceSkillMarkdownPath = path.join(sourceSkillRoot, "SKILL.md");
+  if (!(await fileExists(sourceSkillMarkdownPath))) {
+    throw new Error(`Skill "${params.skillName}" was not found in ${params.registry.label}.`);
+  }
+
+  const sourceFiles = await collectWorkspaceSkillFiles(sourceSkillRoot);
+  if (sourceFiles.length === 0) {
+    throw new Error(`Skill "${params.skillName}" was not found in ${params.registry.label}.`);
+  }
+
+  await mkdir(params.skillInstallRoot, { recursive: true });
+  const contentChecksumHash = createHash("sha256");
+  const matchingBlobEntries: RegistryBlobEntry[] = [];
+
+  try {
+    for (const sourceFile of sourceFiles) {
+      const destinationPath = path.resolve(params.skillInstallRoot, sourceFile.relativePath);
+      const normalizedRoot = path.resolve(params.skillInstallRoot);
+      if (
+        destinationPath !== normalizedRoot &&
+        !destinationPath.startsWith(`${normalizedRoot}${path.sep}`)
+      ) {
+        throw new Error(`Workspace file path escapes skill root: ${sourceFile.relativePath}`);
+      }
+
+      await mkdir(path.dirname(destinationPath), { recursive: true });
+      const bytes = await readFile(sourceFile.absolutePath);
+      contentChecksumHash.update(sourceFile.relativePath);
+      contentChecksumHash.update("\0");
+      contentChecksumHash.update(bytes);
+      await writeFile(destinationPath, bytes);
+
+      const blobPath = normalizeRepoPath(
+        `${params.sourceRootPath}/${params.skillName}/${sourceFile.relativePath}`,
+      );
+      const blobSha = createHash("sha256").update(bytes).digest("hex");
+      matchingBlobEntries.push({
+        path: blobPath,
+        sha: blobSha,
+      });
+    }
+
+    await validateInstalledSkill(params.skillInstallRoot, params.skillName);
+    await writeInstalledSkillMetadata({
+      skillInstallRoot: params.skillInstallRoot,
+      registry: params.registry,
+      skillName: params.skillName,
+      sourceRootPath: params.sourceRootPath,
+      matchingBlobEntries,
+      contentChecksum: contentChecksumHash.digest("hex"),
+    });
+  } catch (error) {
+    await rm(params.skillInstallRoot, { recursive: true, force: true });
+    throw error;
+  }
+}
+
+async function collectWorkspaceSkillFiles(skillRoot: string): Promise<
+  Array<{
+    relativePath: string;
+    absolutePath: string;
+  }>
+> {
+  const files = new Set<string>();
+  await collectWorkspaceSkillFilesRecursive(skillRoot, "", files);
+  return Array.from(files)
+    .sort((left, right) => left.localeCompare(right))
+    .map((relativePath) => ({
+      relativePath,
+      absolutePath: path.join(skillRoot, relativePath),
+    }));
+}
+
+async function collectWorkspaceSkillFilesRecursive(
+  rootPath: string,
+  relativeDirectoryPath: string,
+  files: Set<string>,
+): Promise<void> {
+  const directoryPath = path.join(rootPath, relativeDirectoryPath);
+  const entries = await readdir(directoryPath, { withFileTypes: true });
+  for (const entry of entries) {
+    const nextRelativePath = relativeDirectoryPath
+      ? path.join(relativeDirectoryPath, entry.name)
+      : entry.name;
+
+    if (!isSafeRelativePath(nextRelativePath)) {
+      continue;
+    }
+
+    if (entry.isDirectory()) {
+      await collectWorkspaceSkillFilesRecursive(rootPath, nextRelativePath, files);
+      continue;
+    }
+
+    if (!entry.isFile()) {
+      continue;
+    }
+
+    files.add(nextRelativePath);
+  }
 }
 
 async function readRegistryBlobEntries(
@@ -377,6 +561,55 @@ async function readInstalledSkillNames(registryInstallRoot: string): Promise<Set
   return names;
 }
 
+function isWorkspaceLocalRegistry(registry: SkillRegistryOption): boolean {
+  return registry.id === "workspace_local";
+}
+
+async function resolveWorkspaceLocalSkillsRoot(
+  options: ResolveSkillRegistryOptions,
+  registry: SkillRegistryOption,
+): Promise<string> {
+  const sourceRootSegments = normalizeRepoPath(registry.sourcePath)
+    .split("/")
+    .filter((segment) => segment.length > 0);
+
+  const configuredWorkspaceRoot =
+    typeof options.workspaceRoot === "string" ? options.workspaceRoot.trim() : "";
+  if (configuredWorkspaceRoot) {
+    return path.resolve(configuredWorkspaceRoot, ...sourceRootSegments);
+  }
+
+  const envWorkspaceRoot =
+    typeof process.env.LOCAL_PLAYGROUND_WORKSPACE_ROOT === "string"
+      ? process.env.LOCAL_PLAYGROUND_WORKSPACE_ROOT.trim()
+      : "";
+  if (envWorkspaceRoot) {
+    return path.resolve(envWorkspaceRoot, ...sourceRootSegments);
+  }
+
+  const fallbackRoot = path.resolve(
+    process.cwd(),
+    AGENT_SKILLS_DIRECTORY_NAME,
+    AGENT_DEFAULT_SKILLS_DIRECTORY_NAME,
+  );
+  if (await directoryExists(fallbackRoot)) {
+    return fallbackRoot;
+  }
+
+  const appRelativeRoot = path.resolve(
+    process.cwd(),
+    "..",
+    "..",
+    AGENT_SKILLS_DIRECTORY_NAME,
+    AGENT_DEFAULT_SKILLS_DIRECTORY_NAME,
+  );
+  if (await directoryExists(appRelativeRoot)) {
+    return appRelativeRoot;
+  }
+
+  return fallbackRoot;
+}
+
 function resolveAppDataSkillsRoot(options: ResolveSkillRegistryOptions): string {
   const configuredFoundryDirectory =
     typeof options.foundryConfigDirectory === "string" ? options.foundryConfigDirectory.trim() : "";
@@ -400,6 +633,10 @@ function resolveAppDataSkillsRoot(options: ResolveSkillRegistryOptions): string 
 }
 
 function buildRepositoryUrl(repository: string): string {
+  if (repository.startsWith("workspace/")) {
+    return `workspace://${repository}`;
+  }
+
   return `https://github.com/${repository}`;
 }
 

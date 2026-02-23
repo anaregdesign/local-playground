@@ -3,6 +3,16 @@
  */
 export const SKILL_REGISTRY_OPTIONS = [
   {
+    id: "workspace_local",
+    label: "Workspace",
+    description: "Local Skill registry from workspace skills/default directory.",
+    repository: "workspace/local",
+    ref: "local",
+    sourcePath: "skills/default",
+    sourceUrl: "workspace://skills/default",
+    installDirectoryName: "workspace-local",
+  },
+  {
     id: "openai_curated",
     label: "OpenAI Curated",
     description: "Official curated Skill registry from openai/skills.",

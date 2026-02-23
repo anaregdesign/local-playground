@@ -241,6 +241,7 @@ async function startProductionBackend() {
       PORT: String(BACKEND_PORT),
       NODE_ENV: 'production',
       NODE_PATH: resolveBackendNodePath(appRootPath),
+      LOCAL_PLAYGROUND_WORKSPACE_ROOT: resolveBackendWorkspaceRoot(appRootPath),
       ELECTRON_RUN_AS_NODE: '1',
     },
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -401,6 +402,14 @@ function resolveReactRouterServeCliPath() {
 
 function resolveBackendWorkingDirectory(appRootPath) {
   return app.isPackaged ? process.resourcesPath : appRootPath;
+}
+
+function resolveBackendWorkspaceRoot(appRootPath) {
+  if (app.isPackaged) {
+    return path.resolve(process.resourcesPath, 'app.asar');
+  }
+
+  return appRootPath;
 }
 
 function resolveServerBuildPath(appRootPath) {

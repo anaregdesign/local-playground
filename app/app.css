@@ -1390,10 +1390,10 @@ body {
 }
 
 .collapsible-selectable-group {
-  border: 1px solid rgba(31, 63, 86, 0.12);
+  border: 0;
   border-radius: var(--home-radius-sm);
-  background: #fbfdff;
-  overflow: hidden;
+  background: transparent;
+  overflow: visible;
 }
 
 .collapsible-selectable-group-summary {
@@ -1407,13 +1407,56 @@ body {
   font-size: var(--home-font-size-caption);
   font-weight: 700;
   color: var(--text-main);
+  transition:
+    background-color 0.14s ease,
+    color 0.14s ease;
+}
+
+.collapsible-selectable-group-summary:hover {
+  background: #edf6ff;
+  color: #1f4e67;
+}
+
+.collapsible-selectable-group-summary:focus-visible {
+  outline: 2px solid rgba(31, 94, 139, 0.28);
+  outline-offset: 2px;
+  border-radius: var(--home-radius-sm);
 }
 
 .collapsible-selectable-group-summary::-webkit-details-marker {
   display: none;
 }
 
+.collapsible-selectable-group-heading {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.32rem;
+  min-width: 0;
+}
+
+.collapsible-selectable-group-chevron {
+  --home-symbol-btn-size: 1.15rem;
+  --home-symbol-glyph-size: 0.76rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-subtle);
+  transition:
+    transform 0.14s ease,
+    color 0.14s ease,
+    opacity 0.14s ease;
+  opacity: 0.88;
+  pointer-events: none;
+}
+
+.collapsible-selectable-group-chevron .symbol-icon-btn-glyph {
+  transition: transform 0.14s ease;
+}
+
 .collapsible-selectable-group-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28rem;
   min-width: 0;
 }
 
@@ -1425,13 +1468,23 @@ body {
 }
 
 .collapsible-selectable-group[open] > .collapsible-selectable-group-summary {
-  border-bottom: 1px solid rgba(31, 63, 86, 0.1);
   background: #f4f9ff;
 }
 
-.collapsible-selectable-group-description {
-  margin: 0;
-  padding: 0.35rem 0.5rem 0;
+.collapsible-selectable-group[open] > .collapsible-selectable-group-summary:hover {
+  background: #e8f3ff;
+}
+
+.collapsible-selectable-group[open] > .collapsible-selectable-group-summary .collapsible-selectable-group-chevron {
+  color: #1f4e67;
+  opacity: 1;
+}
+
+.collapsible-selectable-group[open]
+  > .collapsible-selectable-group-summary
+  .collapsible-selectable-group-chevron
+  .symbol-icon-btn-glyph {
+  transform: rotate(90deg);
 }
 
 .collapsible-selectable-group-content {

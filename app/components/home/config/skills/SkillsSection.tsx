@@ -121,7 +121,7 @@ export function SkillsSection(props: SkillsSectionProps) {
       ) : null}
       <CollapsibleSelectableCardGroupList
         groups={groupedSkills}
-        emptyHint="No Skills discovered in workspace default, CODEX_HOME, or app data skills directories."
+        emptyHint="No Skills discovered in CODEX_HOME or app data skills directories."
         isActionDisabled={isSending || isThreadReadOnly}
       />
       <AutoDismissStatusMessageList
@@ -158,7 +158,7 @@ function readSkillGroupPriority(groupName: string): number {
 function readSkillGroupDescription(groupName: string): string {
   switch (groupName) {
     case "Workspace":
-      return "Skills discovered from workspace default directories.";
+      return "Skills installed from the Workspace registry.";
     case "CODEX_HOME":
       return "Skills discovered from shared CODEX_HOME directories.";
     case "OpenAI Curated":

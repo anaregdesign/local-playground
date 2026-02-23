@@ -28,19 +28,13 @@ describe("resolveCodexHomeDirectory", () => {
 });
 
 describe("resolveSkillCatalogRoots", () => {
-  it("builds workspace default, CODEX_HOME, and app data skill roots", () => {
+  it("builds CODEX_HOME and app data skill roots", () => {
     const roots = resolveSkillCatalogRoots({
-      workspaceRoot: "/repo/project",
       codexHome: "/Users/hiroki/.codex",
       foundryConfigDirectory: "/Users/hiroki/.foundry_local_playground",
     });
 
     expect(roots).toEqual([
-      {
-        path: "/repo/project/skills/default",
-        source: "workspace",
-        createIfMissing: false,
-      },
       {
         path: "/Users/hiroki/.codex/skills",
         source: "codex_home",
@@ -62,11 +56,10 @@ describe("resolveSkillCatalogRoots", () => {
 
     try {
       const roots = resolveSkillCatalogRoots({
-        workspaceRoot: "/repo/project",
         codexHome: "/Users/hiroki/.codex",
       });
 
-      expect(roots[2]).toEqual({
+      expect(roots[1]).toEqual({
         path: "/tmp/skills",
         source: "app_data",
         createIfMissing: true,
@@ -88,13 +81,12 @@ describe("resolveSkillCatalogRoots", () => {
 });
 
 describe("discoverSkillCatalog", () => {
-  it("discovers valid skills from workspace default skills directory", async () => {
-    const workspaceRoot = await mkdtemp(path.join(tmpdir(), "skill-workspace-"));
+  it("discovers valid skills from CODEX_HOME skills directory", async () => {
     const codexHome = await mkdtemp(path.join(tmpdir(), "skill-codex-"));
     const foundryConfigDirectory = await mkdtemp(path.join(tmpdir(), "skill-foundry-"));
-    tempDirectories.push(workspaceRoot, codexHome, foundryConfigDirectory);
+    tempDirectories.push(codexHome, foundryConfigDirectory);
 
-    const skillDirectory = path.join(workspaceRoot, "skills", "default", "local-playground-dev");
+    const skillDirectory = path.join(codexHome, "skills", "local-playground-dev");
     await mkdir(skillDirectory, { recursive: true });
     await writeFile(
       path.join(skillDirectory, "SKILL.md"),
@@ -109,7 +101,6 @@ describe("discoverSkillCatalog", () => {
     );
 
     const result = await discoverSkillCatalog({
-      workspaceRoot,
       codexHome,
       foundryConfigDirectory,
     });
@@ -118,23 +109,21 @@ describe("discoverSkillCatalog", () => {
     expect(result.skills[0]).toMatchObject({
       name: "local-playground-dev",
       description: "Local Playground compliance workflow",
-      source: "workspace",
+      source: "codex_home",
     });
     expect(result.warnings).toEqual([]);
   });
 
   it("reports warnings for invalid frontmatter", async () => {
-    const workspaceRoot = await mkdtemp(path.join(tmpdir(), "skill-invalid-"));
     const codexHome = await mkdtemp(path.join(tmpdir(), "skill-codex-"));
     const foundryConfigDirectory = await mkdtemp(path.join(tmpdir(), "skill-foundry-"));
-    tempDirectories.push(workspaceRoot, codexHome, foundryConfigDirectory);
+    tempDirectories.push(codexHome, foundryConfigDirectory);
 
-    const skillDirectory = path.join(workspaceRoot, "skills", "default", "bad-skill");
+    const skillDirectory = path.join(codexHome, "skills", "bad-skill");
     await mkdir(skillDirectory, { recursive: true });
     await writeFile(path.join(skillDirectory, "SKILL.md"), "# missing frontmatter", "utf8");
 
     const result = await discoverSkillCatalog({
-      workspaceRoot,
       codexHome,
       foundryConfigDirectory,
     });
@@ -144,16 +133,14 @@ describe("discoverSkillCatalog", () => {
   });
 
   it("creates app data skills directory when missing", async () => {
-    const workspaceRoot = await mkdtemp(path.join(tmpdir(), "skill-workspace-"));
     const codexHome = await mkdtemp(path.join(tmpdir(), "skill-codex-"));
     const foundryConfigDirectory = path.join(
       await mkdtemp(path.join(tmpdir(), "skill-foundry-parent-")),
       "nested-config",
     );
-    tempDirectories.push(workspaceRoot, codexHome, path.dirname(foundryConfigDirectory));
+    tempDirectories.push(codexHome, path.dirname(foundryConfigDirectory));
 
     await discoverSkillCatalog({
-      workspaceRoot,
       codexHome,
       foundryConfigDirectory,
     });
@@ -164,10 +151,9 @@ describe("discoverSkillCatalog", () => {
   });
 
   it("discovers app data skills nested under a registry directory", async () => {
-    const workspaceRoot = await mkdtemp(path.join(tmpdir(), "skill-workspace-"));
     const codexHome = await mkdtemp(path.join(tmpdir(), "skill-codex-"));
     const foundryConfigDirectory = await mkdtemp(path.join(tmpdir(), "skill-foundry-"));
-    tempDirectories.push(workspaceRoot, codexHome, foundryConfigDirectory);
+    tempDirectories.push(codexHome, foundryConfigDirectory);
 
     const nestedSkillDirectory = path.join(
       foundryConfigDirectory,
@@ -189,7 +175,6 @@ describe("discoverSkillCatalog", () => {
     );
 
     const result = await discoverSkillCatalog({
-      workspaceRoot,
       codexHome,
       foundryConfigDirectory,
     });
