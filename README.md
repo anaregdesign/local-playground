@@ -94,11 +94,14 @@ Per-OS packaging:
 - `npm run desktop:package:mac`
 - `npm run desktop:package:win`
 
+Packaged desktop builds automatically check GitHub Releases for new versions and show an in-app update prompt in English when an update is available or ready to install.
+
 ### Release Artifacts
 
 Pushing a `v*.*.*` tag triggers GitHub Actions to publish installers to GitHub Releases:
 
 - macOS: `.dmg`, `.zip`
+- Auto-update metadata: `latest-mac.yml` (and related `.blockmap` files when generated)
 - Integrity assets: `SHA256SUMS.txt` is always published. `release-signing-key.pem` and detached signatures (`*.sig`) are published when release signing is configured.
 - Optional GitHub secrets for release signing: `RELEASE_SIGNING_PRIVATE_KEY_PEM`, `RELEASE_SIGNING_PRIVATE_KEY_PASSPHRASE`
 

@@ -184,6 +184,24 @@ jobs:
           xcrun stapler validate "${APP_PATH}"
           xcrun stapler validate "${DMG_PATH}"
 
+      - name: Validate macOS updater metadata
+        if: matrix.os == 'macos-latest'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          LATEST_MAC_YML_PATH="$(find dist/installers -maxdepth 1 -type f -name 'latest-mac*.yml' | head -n 1)"
+          if [ -z "${LATEST_MAC_YML_PATH}" ]; then
+            echo "::error::Updater metadata file (latest-mac.yml) was not found under dist/installers."
+            exit 1
+          fi
+
+          ZIP_PATH="$(find dist/installers -maxdepth 1 -type f -name '*.zip' | head -n 1)"
+          if [ -z "${ZIP_PATH}" ]; then
+            echo "::error::ZIP installer was not found under dist/installers."
+            exit 1
+          fi
+
 
       - name: Upload macOS installers
         if: matrix.os == 'macos-latest'
@@ -193,6 +211,8 @@ jobs:
           path: |
             dist/installers/*.dmg
             dist/installers/*.zip
+            dist/installers/*.yml
+            dist/installers/*.blockmap
           if-no-files-found: error
 
   release:
@@ -267,7 +287,7 @@ jobs:
           cat > release-notes.md <<'EOF'
           ## Local Playground
 
-          Desktop installers for macOS are attached to this release.
+          Desktop installers and updater metadata for macOS are attached to this release.
 
           ### Run from Source (Copy & Paste)
 
@@ -282,6 +302,7 @@ jobs:
           Open: `http://localhost:5173`
 
           ### Installer Assets
+          - Includes `latest-mac.yml` for in-app update checks.
 
           ### Integrity Assets
           - `SHA256SUMS.txt` is always published for installer SHA-256 checksums.
