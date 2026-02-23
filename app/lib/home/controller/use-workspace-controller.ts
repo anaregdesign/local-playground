@@ -90,10 +90,9 @@ import {
   parseStdioEnvInput,
 } from "~/lib/home/mcp/stdio-inputs";
 import {
-  describeSavedMcpServer,
-  describeSavedMcpServerDetail,
+  buildSavedMcpServerOptions,
+  countSelectedSavedMcpServerOptions,
   isMcpServersAuthRequired,
-  resolveMcpTransportBadge,
   shouldScheduleSavedMcpLoginRetry,
 } from "~/lib/home/mcp/saved-profiles";
 import {
@@ -302,31 +301,12 @@ export function useWorkspaceController() {
     () => (lastErrorTurnId ? (mcpHistoryByTurnId.get(lastErrorTurnId) ?? []) : []),
     [lastErrorTurnId, mcpHistoryByTurnId],
   );
-  const savedMcpServerOptions = useMemo(() => {
-    const activeMcpServerKeySet = new Set(mcpServers.map((server) => buildMcpServerKey(server)));
-    return savedMcpServers
-      .map((server) => {
-        const key = buildMcpServerKey(server);
-        return {
-          id: server.id,
-          name: server.name,
-          badge: resolveMcpTransportBadge(server),
-          description: describeSavedMcpServer(server),
-          detail: describeSavedMcpServerDetail(server),
-          isSelected: activeMcpServerKeySet.has(key),
-          isAvailable: true,
-        };
-      })
-      .sort((left, right) => {
-        if (left.isSelected !== right.isSelected) {
-          return left.isSelected ? -1 : 1;
-        }
-
-        return left.name.localeCompare(right.name);
-      });
-  }, [mcpServers, savedMcpServers]);
+  const savedMcpServerOptions = useMemo(
+    () => buildSavedMcpServerOptions(savedMcpServers, mcpServers),
+    [savedMcpServers, mcpServers],
+  );
   const selectedSavedMcpServerCount = useMemo(
-    () => savedMcpServerOptions.filter((server) => server.isSelected).length,
+    () => countSelectedSavedMcpServerOptions(savedMcpServerOptions),
     [savedMcpServerOptions],
   );
   const draftAttachmentTotalSizeBytes = draftAttachments.reduce(

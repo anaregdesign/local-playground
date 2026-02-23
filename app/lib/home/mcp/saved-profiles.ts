@@ -1,7 +1,17 @@
-import type { McpServerConfig } from "~/lib/home/mcp/profile";
+import { buildMcpServerKey, type McpServerConfig } from "~/lib/home/mcp/profile";
 
 type McpServersAuthLike = {
   authRequired?: boolean;
+};
+
+export type SavedMcpServerOption = {
+  id: string;
+  name: string;
+  badge?: string;
+  description: string;
+  detail: string;
+  isSelected: boolean;
+  isAvailable: boolean;
 };
 
 export function isMcpServersAuthRequired(
@@ -16,6 +26,37 @@ export function shouldScheduleSavedMcpLoginRetry(
   savedMcpUserKey: string,
 ): boolean {
   return wasAzureAuthRequired && savedMcpUserKey.trim().length > 0;
+}
+
+export function buildSavedMcpServerOptions(
+  savedMcpServers: McpServerConfig[],
+  activeMcpServers: McpServerConfig[],
+): SavedMcpServerOption[] {
+  const activeMcpServerKeySet = new Set(activeMcpServers.map((server) => buildMcpServerKey(server)));
+  return savedMcpServers
+    .map((server) => {
+      const key = buildMcpServerKey(server);
+      return {
+        id: server.id,
+        name: server.name,
+        badge: resolveMcpTransportBadge(server),
+        description: describeSavedMcpServer(server),
+        detail: describeSavedMcpServerDetail(server),
+        isSelected: activeMcpServerKeySet.has(key),
+        isAvailable: true,
+      };
+    })
+    .sort((left, right) => {
+      if (left.isSelected !== right.isSelected) {
+        return left.isSelected ? -1 : 1;
+      }
+
+      return left.name.localeCompare(right.name);
+    });
+}
+
+export function countSelectedSavedMcpServerOptions(options: SavedMcpServerOption[]): number {
+  return options.filter((option) => option.isSelected).length;
 }
 
 export function resolveMcpTransportBadge(server: McpServerConfig): string {

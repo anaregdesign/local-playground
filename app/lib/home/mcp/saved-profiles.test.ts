@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildSavedMcpServerOptions,
+  countSelectedSavedMcpServerOptions,
   describeSavedMcpServer,
   describeSavedMcpServerDetail,
   isMcpServersAuthRequired,
@@ -133,5 +135,82 @@ describe("describeSavedMcpServerDetail", () => {
         timeoutSeconds: 30,
       }),
     ).toBe("https://example.com/mcp");
+  });
+});
+
+describe("buildSavedMcpServerOptions", () => {
+  it("marks selected servers and sorts selected entries first", () => {
+    const saved = [
+      {
+        id: "s2",
+        name: "zeta",
+        transport: "stdio" as const,
+        command: "npx",
+        args: ["-y", "@playwright/mcp"],
+        env: {},
+      },
+      {
+        id: "s1",
+        name: "alpha",
+        transport: "streamable_http" as const,
+        url: "https://developers.openai.com/mcp",
+        headers: {},
+        useAzureAuth: false,
+        azureAuthScope: "scope",
+        timeoutSeconds: 30,
+      },
+    ];
+    const active = [
+      {
+        id: "a1",
+        name: "alpha-custom-name",
+        transport: "streamable_http" as const,
+        url: "https://developers.openai.com/mcp",
+        headers: {},
+        useAzureAuth: false,
+        azureAuthScope: "scope",
+        timeoutSeconds: 30,
+      },
+    ];
+
+    const options = buildSavedMcpServerOptions(saved, active);
+
+    expect(options).toEqual([
+      expect.objectContaining({
+        id: "s1",
+        name: "alpha",
+        isSelected: true,
+      }),
+      expect.objectContaining({
+        id: "s2",
+        name: "zeta",
+        isSelected: false,
+      }),
+    ]);
+  });
+});
+
+describe("countSelectedSavedMcpServerOptions", () => {
+  it("counts selected options", () => {
+    expect(
+      countSelectedSavedMcpServerOptions([
+        {
+          id: "1",
+          name: "one",
+          description: "desc",
+          detail: "detail",
+          isSelected: true,
+          isAvailable: true,
+        },
+        {
+          id: "2",
+          name: "two",
+          description: "desc",
+          detail: "detail",
+          isSelected: false,
+          isAvailable: true,
+        },
+      ]),
+    ).toBe(1);
   });
 });
