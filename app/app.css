@@ -1377,21 +1377,65 @@ body {
   min-height: 1.75rem;
 }
 
-.skill-registry-select.fui-Select {
-  min-width: 220px;
-}
-
-.skill-registry-description {
-  margin: 0;
-  font-size: var(--home-font-size-note);
-  color: var(--text-subtle);
-  line-height: var(--home-line-height-compact);
-}
-
 .selectable-card-list {
   display: flex;
   flex-direction: column;
   gap: 0.42rem;
+}
+
+.collapsible-selectable-group-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.42rem;
+}
+
+.collapsible-selectable-group {
+  border: 1px solid rgba(31, 63, 86, 0.12);
+  border-radius: var(--home-radius-sm);
+  background: #fbfdff;
+  overflow: hidden;
+}
+
+.collapsible-selectable-group-summary {
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.42rem;
+  padding: 0.45rem 0.5rem;
+  list-style: none;
+  font-size: var(--home-font-size-caption);
+  font-weight: 700;
+  color: var(--text-main);
+}
+
+.collapsible-selectable-group-summary::-webkit-details-marker {
+  display: none;
+}
+
+.collapsible-selectable-group-title {
+  min-width: 0;
+}
+
+.collapsible-selectable-group-count {
+  color: var(--text-subtle);
+  font-size: var(--home-font-size-note);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.collapsible-selectable-group[open] > .collapsible-selectable-group-summary {
+  border-bottom: 1px solid rgba(31, 63, 86, 0.1);
+  background: #f4f9ff;
+}
+
+.collapsible-selectable-group-description {
+  margin: 0;
+  padding: 0.35rem 0.5rem 0;
+}
+
+.collapsible-selectable-group-content {
+  padding: 0.4rem 0.5rem 0.5rem;
 }
 
 .selectable-card-item {

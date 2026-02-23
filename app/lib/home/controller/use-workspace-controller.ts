@@ -250,9 +250,6 @@ export function useWorkspaceController() {
   const [availableSkills, setAvailableSkills] = useState<SkillCatalogEntry[]>([]);
   const [selectedThreadSkills, setSelectedThreadSkills] = useState<ThreadSkillSelection[]>([]);
   const [skillRegistryCatalogs, setSkillRegistryCatalogs] = useState<SkillRegistryCatalog[]>([]);
-  const [selectedSkillRegistryId, setSelectedSkillRegistryId] = useState<SkillRegistryId>(
-    SKILL_REGISTRY_OPTIONS[0]?.id ?? "openai_curated",
-  );
   const [isMutatingSkillRegistries, setIsMutatingSkillRegistries] = useState(false);
   const [skillRegistryError, setSkillRegistryError] = useState<string | null>(null);
   const [skillRegistryWarning, setSkillRegistryWarning] = useState<string | null>(null);
@@ -400,52 +397,42 @@ export function useWorkspaceController() {
       return left.name.localeCompare(right.name);
     });
   }, [availableSkillByLocation, availableSkills, selectedThreadSkills]);
-  const selectedSkillRegistryCatalog = useMemo(
-    () =>
-      skillRegistryCatalogs.find((registry) => registry.registryId === selectedSkillRegistryId) ??
-      skillRegistryCatalogs[0] ??
-      null,
-    [selectedSkillRegistryId, skillRegistryCatalogs],
-  );
-  const skillRegistryOptions = useMemo(() => {
+  const skillRegistryGroups = useMemo(() => {
     if (skillRegistryCatalogs.length > 0) {
       return skillRegistryCatalogs.map((registry) => ({
-        id: registry.registryId,
+        registryId: registry.registryId,
         label: registry.registryLabel,
         description: registry.registryDescription,
         skillCount: registry.skills.length,
         installedCount: registry.skills.filter((skill) => skill.isInstalled).length,
+        skills: [...registry.skills]
+          .sort((left, right) => {
+            if (left.isInstalled !== right.isInstalled) {
+              return left.isInstalled ? -1 : 1;
+            }
+
+            return left.name.localeCompare(right.name);
+          })
+          .map((skill) => ({
+            name: skill.name,
+            description: skill.description,
+            detail: skill.isInstalled
+              ? `Installed: ${skill.installLocation}`
+              : `Source: ${skill.remotePath}`,
+            isInstalled: skill.isInstalled,
+          })),
       }));
     }
 
     return SKILL_REGISTRY_OPTIONS.map((registry) => ({
-      id: registry.id,
+      registryId: registry.id,
       label: registry.label,
       description: registry.description,
       skillCount: 0,
       installedCount: 0,
+      skills: [],
     }));
   }, [skillRegistryCatalogs]);
-  const selectedSkillRegistryDescription = selectedSkillRegistryCatalog?.registryDescription ?? "";
-  const selectedSkillRegistryEntryOptions = useMemo(() => {
-    const skills = selectedSkillRegistryCatalog?.skills ?? [];
-    return [...skills]
-      .sort((left, right) => {
-        if (left.isInstalled !== right.isInstalled) {
-          return left.isInstalled ? -1 : 1;
-        }
-
-        return left.name.localeCompare(right.name);
-      })
-      .map((skill) => ({
-        name: skill.name,
-        description: skill.description,
-        detail: skill.isInstalled
-          ? `Installed: ${skill.installLocation}`
-          : `Source: ${skill.remotePath}`,
-        isInstalled: skill.isInstalled,
-      }));
-  }, [selectedSkillRegistryCatalog]);
   const canSendMessage =
     !isSending &&
     !isSwitchingThread &&
@@ -565,21 +552,6 @@ export function useWorkspaceController() {
   useEffect(() => {
     void loadAvailableSkills();
   }, []);
-
-  useEffect(() => {
-    if (skillRegistryCatalogs.length === 0) {
-      return;
-    }
-
-    const selectedExists = skillRegistryCatalogs.some(
-      (registry) => registry.registryId === selectedSkillRegistryId,
-    );
-    if (selectedExists) {
-      return;
-    }
-
-    setSelectedSkillRegistryId(skillRegistryCatalogs[0].registryId);
-  }, [selectedSkillRegistryId, skillRegistryCatalogs]);
 
   useEffect(() => {
     if (!isAzureAuthRequired) {
@@ -3060,31 +3032,27 @@ export function useWorkspaceController() {
     void loadAvailableSkills();
   }
 
-  function handleSelectedSkillRegistryChange(registryId: SkillRegistryId) {
-    setSelectedSkillRegistryId(registryId);
-    setSkillRegistryError(null);
-    setSkillRegistrySuccess(null);
-  }
-
-  function handleToggleRegistrySkill(skillNameRaw: string) {
+  function handleToggleRegistrySkill(registryId: SkillRegistryId, skillNameRaw: string) {
     const skillName = skillNameRaw.trim();
     if (!skillName) {
       return;
     }
 
-    const selectedRegistryCatalog = selectedSkillRegistryCatalog;
-    if (!selectedRegistryCatalog) {
+    const registryCatalog = skillRegistryCatalogs.find(
+      (registry) => registry.registryId === registryId,
+    );
+    if (!registryCatalog) {
       return;
     }
 
-    const selectedSkill = selectedRegistryCatalog.skills.find((skill) => skill.name === skillName);
+    const selectedSkill = registryCatalog.skills.find((skill) => skill.name === skillName);
     if (!selectedSkill) {
       return;
     }
 
     void updateSkillRegistrySkill({
       action: selectedSkill.isInstalled ? "delete_registry_skill" : "install_registry_skill",
-      registryId: selectedRegistryCatalog.registryId,
+      registryId: registryCatalog.registryId,
       skillName: selectedSkill.name,
     });
   }
@@ -4164,16 +4132,12 @@ export function useWorkspaceController() {
       },
     },
     skillRegistrySectionProps: {
-      registryOptions: skillRegistryOptions,
-      selectedRegistryId: selectedSkillRegistryCatalog?.registryId ?? selectedSkillRegistryId,
-      selectedRegistryDescription: selectedSkillRegistryDescription,
-      registrySkillOptions: selectedSkillRegistryEntryOptions,
+      skillRegistryGroups,
       isLoadingSkillRegistries: isLoadingSkills,
       isMutatingSkillRegistries,
       skillRegistryError,
       skillRegistryWarning,
       skillRegistrySuccess,
-      onSelectedRegistryChange: handleSelectedSkillRegistryChange,
       onReloadSkillRegistries: handleReloadSkills,
       onToggleRegistrySkill: handleToggleRegistrySkill,
       onClearSkillRegistryWarning: () => {
