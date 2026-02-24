@@ -18,9 +18,36 @@ export type DatabaseDebugTableDefinition = {
   fields: DatabaseDebugTableFieldDefinition[];
 };
 
+export const databaseDebugFilterOperatorValues = [
+  "eq",
+  "ne",
+  "contains",
+  "starts_with",
+  "ends_with",
+  "gt",
+  "gte",
+  "lt",
+  "lte",
+  "in",
+  "is_null",
+  "is_not_null",
+] as const;
+
+export type DatabaseDebugFilterOperator =
+  (typeof databaseDebugFilterOperatorValues)[number];
+export type DatabaseDebugFilterMode = "all" | "any";
+export type DatabaseDebugFilterPrimitive = string | number | boolean | null;
+export type DatabaseDebugFilter = {
+  field: string;
+  operator: DatabaseDebugFilterOperator;
+  value?: DatabaseDebugFilterPrimitive | DatabaseDebugFilterPrimitive[];
+};
+
 export type DatabaseDebugTableReadOptions = {
   limit: number;
   offset: number;
+  filterMode: DatabaseDebugFilterMode;
+  filters: DatabaseDebugFilter[];
 };
 
 export type DatabaseDebugTableReadResult = {
@@ -28,6 +55,11 @@ export type DatabaseDebugTableReadResult = {
   purpose: string;
   accumulatesErrors: boolean;
   fields: DatabaseDebugTableFieldDefinition[];
+  filtering: {
+    filterMode: DatabaseDebugFilterMode;
+    filterCount: number;
+    filters: DatabaseDebugFilter[];
+  };
   pagination: {
     limit: number;
     offset: number;
@@ -41,6 +73,10 @@ export type DatabaseDebugTableReadResult = {
 export const databaseDebugDefaultReadLimit = 50;
 export const databaseDebugMaxReadLimit = 200;
 export const databaseDebugMaxReadOffset = 100_000;
+export const databaseDebugMaxReadFilters = 12;
+
+const databaseDebugMaxReadInValues = 50;
+const databaseDebugMaxTextFilterLength = 2_000;
 
 const tableDefinitions: DatabaseDebugTableDefinition[] = [
   {
@@ -759,37 +795,39 @@ export function buildDatabaseDebugTableToolDescription(
       (field) =>
         `- ${field.name} (${field.type}, ${field.nullable ? "nullable" : "required"}): ${field.description}`,
     ),
+    "Query options:",
+    '- `limit` / `offset` for pagination.',
+    '- `filters` for conditional rows (field + operator + value).',
+    `- Supported operators: ${databaseDebugFilterOperatorValues.join(", ")}.`,
+    "- `filterMode`: `all` (AND) or `any` (OR).",
   ];
 
   return lines.join("\n");
 }
 
-export function normalizeDatabaseDebugReadOptions(options: {
-  limit?: number;
-  offset?: number;
-}): DatabaseDebugTableReadOptions {
-  const parsedLimit =
-    typeof options.limit === "number" && Number.isFinite(options.limit)
-      ? Math.trunc(options.limit)
-      : null;
-  const parsedOffset =
-    typeof options.offset === "number" && Number.isFinite(options.offset)
-      ? Math.trunc(options.offset)
-      : null;
-
+export function normalizeDatabaseDebugReadOptions(
+  options: {
+    limit?: unknown;
+    offset?: unknown;
+    filterMode?: unknown;
+    filters?: unknown;
+  } = {},
+  table?: DatabaseDebugTableDefinition,
+): DatabaseDebugTableReadOptions {
+  const parsedLimit = readIntegerOption(options.limit);
+  const parsedOffset = readIntegerOption(options.offset);
   const limitCandidate =
     parsedLimit === null ? databaseDebugDefaultReadLimit : parsedLimit;
   const offsetCandidate = parsedOffset === null ? 0 : parsedOffset;
 
-  const limit = Math.min(
-    databaseDebugMaxReadLimit,
-    Math.max(1, limitCandidate),
-  );
+  const limit = Math.min(databaseDebugMaxReadLimit, Math.max(1, limitCandidate));
   const offset = Math.min(databaseDebugMaxReadOffset, Math.max(0, offsetCandidate));
 
   return {
     limit,
     offset,
+    filterMode: readFilterMode(options.filterMode),
+    filters: readFilters(options.filters, table),
   };
 }
 
@@ -797,9 +835,11 @@ export async function readDatabaseDebugTableRows(
   table: DatabaseDebugTableDefinition,
   options: DatabaseDebugTableReadOptions,
 ): Promise<DatabaseDebugTableReadResult> {
-  const totalRows = await readDatabaseDebugTableRowCount(table.tableName);
+  const whereClause = buildWhereClause(table, options);
+  const totalRows = await readDatabaseDebugTableRowCount(table.tableName, whereClause);
   const rows = await prisma.$queryRawUnsafe<Array<Record<string, unknown>>>(
-    `SELECT * FROM "${table.tableName}" ORDER BY rowid DESC LIMIT ? OFFSET ?`,
+    `SELECT * FROM "${table.tableName}"${whereClause.sql} ORDER BY rowid DESC LIMIT ? OFFSET ?`,
+    ...whereClause.params,
     options.limit,
     options.offset,
   );
@@ -813,6 +853,11 @@ export async function readDatabaseDebugTableRows(
     purpose: table.purpose,
     accumulatesErrors: table.accumulatesErrors,
     fields: table.fields,
+    filtering: {
+      filterMode: options.filterMode,
+      filterCount: options.filters.length,
+      filters: options.filters,
+    },
     pagination: {
       limit: options.limit,
       offset: options.offset,
@@ -824,12 +869,294 @@ export async function readDatabaseDebugTableRows(
   };
 }
 
-async function readDatabaseDebugTableRowCount(tableName: string): Promise<number> {
+type SqlClause = {
+  sql: string;
+  params: unknown[];
+};
+
+async function readDatabaseDebugTableRowCount(
+  tableName: string,
+  whereClause: SqlClause,
+): Promise<number> {
   const result = await prisma.$queryRawUnsafe<Array<{ count?: unknown }>>(
-    `SELECT COUNT(*) AS count FROM "${tableName}"`,
+    `SELECT COUNT(*) AS count FROM "${tableName}"${whereClause.sql}`,
+    ...whereClause.params,
   );
   const countValue = result[0]?.count;
   return readIntegerFromUnknown(countValue);
+}
+
+function buildWhereClause(
+  table: DatabaseDebugTableDefinition,
+  options: DatabaseDebugTableReadOptions,
+): SqlClause {
+  if (options.filters.length === 0) {
+    return { sql: "", params: [] };
+  }
+
+  const fieldNameSet = new Set(table.fields.map((field) => field.name));
+  const clauses: string[] = [];
+  const params: unknown[] = [];
+  for (const filter of options.filters) {
+    if (!fieldNameSet.has(filter.field)) {
+      continue;
+    }
+
+    const column = quoteSqlIdentifier(filter.field);
+    if (filter.operator === "is_null") {
+      clauses.push(`${column} IS NULL`);
+      continue;
+    }
+    if (filter.operator === "is_not_null") {
+      clauses.push(`${column} IS NOT NULL`);
+      continue;
+    }
+
+    if (filter.operator === "in") {
+      if (!Array.isArray(filter.value) || filter.value.length === 0) {
+        continue;
+      }
+
+      const nonNullValues = filter.value.filter(
+        (value): value is string | number | boolean => value !== null,
+      );
+      const includesNull = filter.value.some((value) => value === null);
+      const parts: string[] = [];
+      if (nonNullValues.length > 0) {
+        const placeholders = nonNullValues.map(() => "?").join(", ");
+        parts.push(`${column} IN (${placeholders})`);
+        for (const value of nonNullValues) {
+          params.push(normalizeSqlParameterValue(value));
+        }
+      }
+      if (includesNull) {
+        parts.push(`${column} IS NULL`);
+      }
+      if (parts.length === 1) {
+        clauses.push(parts[0]);
+      } else if (parts.length > 1) {
+        clauses.push(`(${parts.join(" OR ")})`);
+      }
+      continue;
+    }
+
+    if (filter.value === undefined || Array.isArray(filter.value)) {
+      continue;
+    }
+
+    if (filter.operator === "eq") {
+      if (filter.value === null) {
+        clauses.push(`${column} IS NULL`);
+      } else {
+        clauses.push(`${column} = ?`);
+        params.push(normalizeSqlParameterValue(filter.value));
+      }
+      continue;
+    }
+
+    if (filter.operator === "ne") {
+      if (filter.value === null) {
+        clauses.push(`${column} IS NOT NULL`);
+      } else {
+        clauses.push(`${column} <> ?`);
+        params.push(normalizeSqlParameterValue(filter.value));
+      }
+      continue;
+    }
+
+    if (
+      filter.operator === "gt" ||
+      filter.operator === "gte" ||
+      filter.operator === "lt" ||
+      filter.operator === "lte"
+    ) {
+      if (typeof filter.value !== "number") {
+        continue;
+      }
+
+      const operator =
+        filter.operator === "gt"
+          ? ">"
+          : filter.operator === "gte"
+            ? ">="
+            : filter.operator === "lt"
+              ? "<"
+              : "<=";
+      clauses.push(`${column} ${operator} ?`);
+      params.push(filter.value);
+      continue;
+    }
+
+    const escapedText = escapeSqlLikePattern(String(filter.value));
+    const pattern =
+      filter.operator === "contains"
+        ? `%${escapedText}%`
+        : filter.operator === "starts_with"
+          ? `${escapedText}%`
+          : `%${escapedText}`;
+    clauses.push(`LOWER(CAST(${column} AS TEXT)) LIKE LOWER(?) ESCAPE '\\'`);
+    params.push(pattern);
+  }
+
+  if (clauses.length === 0) {
+    return { sql: "", params: [] };
+  }
+
+  return {
+    sql: ` WHERE ${clauses.join(options.filterMode === "any" ? " OR " : " AND ")}`,
+    params,
+  };
+}
+
+function readIntegerOption(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value)
+    ? Math.trunc(value)
+    : null;
+}
+
+function readFilterMode(value: unknown): DatabaseDebugFilterMode {
+  return value === "any" ? "any" : "all";
+}
+
+function readFilters(
+  value: unknown,
+  table?: DatabaseDebugTableDefinition,
+): DatabaseDebugFilter[] {
+  if (!table || !Array.isArray(value)) {
+    return [];
+  }
+
+  const fieldNames = new Set(table.fields.map((field) => field.name));
+  const filters: DatabaseDebugFilter[] = [];
+
+  for (const entry of value) {
+    if (filters.length >= databaseDebugMaxReadFilters) {
+      break;
+    }
+    if (!isRecord(entry)) {
+      continue;
+    }
+
+    const field = typeof entry.field === "string" ? entry.field.trim() : "";
+    if (!field || !fieldNames.has(field)) {
+      continue;
+    }
+
+    const operator = readFilterOperator(entry.operator);
+    if (!operator) {
+      continue;
+    }
+
+    const normalized = readFilterValue(operator, entry.value);
+    if (!normalized.ok) {
+      continue;
+    }
+
+    filters.push({
+      field,
+      operator,
+      ...(normalized.value !== undefined ? { value: normalized.value } : {}),
+    });
+  }
+
+  return filters;
+}
+
+function readFilterOperator(value: unknown): DatabaseDebugFilterOperator | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const normalized = value.trim() as DatabaseDebugFilterOperator;
+  return databaseDebugFilterOperatorValues.includes(normalized)
+    ? normalized
+    : null;
+}
+
+function readFilterValue(
+  operator: DatabaseDebugFilterOperator,
+  value: unknown,
+):
+  | { ok: true; value?: DatabaseDebugFilterPrimitive | DatabaseDebugFilterPrimitive[] }
+  | { ok: false } {
+  if (operator === "is_null" || operator === "is_not_null") {
+    return { ok: true };
+  }
+
+  if (operator === "in") {
+    if (!Array.isArray(value)) {
+      return { ok: false };
+    }
+
+    const values = value
+      .map((entry) => readFilterPrimitive(entry))
+      .filter((entry): entry is DatabaseDebugFilterPrimitive => entry !== undefined)
+      .slice(0, databaseDebugMaxReadInValues);
+
+    return values.length > 0 ? { ok: true, value: values } : { ok: false };
+  }
+
+  const primitive = readFilterPrimitive(value);
+  if (primitive === undefined) {
+    return { ok: false };
+  }
+
+  if (operator === "gt" || operator === "gte" || operator === "lt" || operator === "lte") {
+    return typeof primitive === "number"
+      ? { ok: true, value: primitive }
+      : { ok: false };
+  }
+
+  if (operator === "contains" || operator === "starts_with" || operator === "ends_with") {
+    const textValue = String(primitive);
+    return { ok: true, value: textValue.slice(0, databaseDebugMaxTextFilterLength) };
+  }
+
+  if (typeof primitive === "string") {
+    return { ok: true, value: primitive.slice(0, databaseDebugMaxTextFilterLength) };
+  }
+
+  return { ok: true, value: primitive };
+}
+
+function readFilterPrimitive(value: unknown): DatabaseDebugFilterPrimitive | undefined {
+  if (value === null) {
+    return null;
+  }
+
+  if (typeof value === "string") {
+    return value;
+  }
+
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (typeof value === "boolean") {
+    return value;
+  }
+
+  return undefined;
+}
+
+function quoteSqlIdentifier(identifier: string): string {
+  return `"${identifier.replaceAll('"', '""')}"`;
+}
+
+function normalizeSqlParameterValue(value: string | number | boolean): string | number {
+  if (typeof value === "boolean") {
+    return value ? 1 : 0;
+  }
+
+  return value;
+}
+
+function escapeSqlLikePattern(value: string): string {
+  return value.replaceAll("\\", "\\\\").replaceAll("%", "\\%").replaceAll("_", "\\_");
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object";
 }
 
 function readIntegerFromUnknown(value: unknown): number {

@@ -7,8 +7,10 @@ import * as z from "zod/v4";
 import {
   buildDatabaseDebugTableToolDescription,
   databaseDebugDefaultReadLimit,
+  databaseDebugFilterOperatorValues,
   databaseDebugMaxReadLimit,
   databaseDebugMaxReadOffset,
+  databaseDebugMaxReadFilters,
   listDatabaseDebugTables,
   normalizeDatabaseDebugReadOptions,
   readDatabaseDebugTableRows,
@@ -37,6 +39,37 @@ const tableReadInputSchema = {
     .optional()
     .describe(
       `Pagination offset. Defaults to 0 (max ${databaseDebugMaxReadOffset}).`,
+    ),
+  filterMode: z
+    .enum(["all", "any"])
+    .optional()
+    .describe("How to combine filters: `all` (AND) or `any` (OR). Defaults to `all`."),
+  filters: z
+    .array(
+      z.object({
+        field: z
+          .string()
+          .min(1)
+          .describe("Target field name. Must match one of the table fields."),
+        operator: z
+          .enum(databaseDebugFilterOperatorValues)
+          .describe("Comparison operator."),
+        value: z
+          .union([
+            z.string(),
+            z.number(),
+            z.boolean(),
+            z.null(),
+            z.array(z.union([z.string(), z.number(), z.boolean(), z.null()])),
+          ])
+          .optional()
+          .describe("Filter value (or array for `in`)."),
+      }),
+    )
+    .max(databaseDebugMaxReadFilters)
+    .optional()
+    .describe(
+      `Optional row filters (up to ${databaseDebugMaxReadFilters}). Unsupported/invalid entries are ignored.`,
     ),
 };
 
@@ -145,7 +178,7 @@ function createDatabaseDebugMcpServer(): McpServer {
         inputSchema: tableReadInputSchema,
       },
       async (args) => {
-        const options = normalizeDatabaseDebugReadOptions(args);
+        const options = normalizeDatabaseDebugReadOptions(args, table);
         const result = await readDatabaseDebugTableRows(table, options);
         return buildToolResponse(result);
       },

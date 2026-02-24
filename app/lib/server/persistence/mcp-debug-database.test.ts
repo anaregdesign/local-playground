@@ -7,6 +7,7 @@ import {
   databaseDebugDefaultReadLimit,
   databaseDebugMaxReadLimit,
   databaseDebugMaxReadOffset,
+  databaseDebugMaxReadFilters,
   listDatabaseDebugTables,
   normalizeDatabaseDebugReadOptions,
   readDatabaseDebugTableByToolName,
@@ -45,6 +46,8 @@ describe("mcp-debug-database metadata", () => {
     expect(normalizeDatabaseDebugReadOptions({})).toEqual({
       limit: databaseDebugDefaultReadLimit,
       offset: 0,
+      filterMode: "all",
+      filters: [],
     });
 
     expect(
@@ -55,6 +58,8 @@ describe("mcp-debug-database metadata", () => {
     ).toEqual({
       limit: 1,
       offset: 0,
+      filterMode: "all",
+      filters: [],
     });
 
     expect(
@@ -65,6 +70,74 @@ describe("mcp-debug-database metadata", () => {
     ).toEqual({
       limit: databaseDebugMaxReadLimit,
       offset: databaseDebugMaxReadOffset,
+      filterMode: "all",
+      filters: [],
+    });
+  });
+
+  it("normalizes table-scoped filters and ignores invalid entries", () => {
+    const table = readDatabaseDebugTableByToolName("debug_read_app_event_log_table");
+    expect(table).toBeTruthy();
+
+    const result = normalizeDatabaseDebugReadOptions(
+      {
+        filterMode: "any",
+        filters: [
+          {
+            field: "level",
+            operator: "eq",
+            value: "error",
+          },
+          {
+            field: "statusCode",
+            operator: "gt",
+            value: 499,
+          },
+          {
+            field: "missing",
+            operator: "eq",
+            value: "ignored",
+          },
+          {
+            field: "eventName",
+            operator: "in",
+            value: ["send_message_failed", "chat_stream_execution_failed"],
+          },
+          {
+            field: "eventName",
+            operator: "in",
+            value: new Array(databaseDebugMaxReadFilters + 20).fill("x"),
+          },
+        ],
+      },
+      table!,
+    );
+
+    expect(result.filterMode).toBe("any");
+    expect(result.filters).toEqual(
+      expect.arrayContaining([
+        {
+          field: "level",
+          operator: "eq",
+          value: "error",
+        },
+        {
+          field: "statusCode",
+          operator: "gt",
+          value: 499,
+        },
+        {
+          field: "eventName",
+          operator: "in",
+          value: ["send_message_failed", "chat_stream_execution_failed"],
+        },
+      ]),
+    );
+    expect(result.filters).toHaveLength(4);
+    expect(result.filters[3]).toEqual({
+      field: "eventName",
+      operator: "in",
+      value: new Array(databaseDebugMaxReadFilters + 20).fill("x"),
     });
   });
 });
