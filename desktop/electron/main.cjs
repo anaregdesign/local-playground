@@ -2,6 +2,7 @@
  * Electron desktop-shell module.
  */
 const path = require('node:path');
+const os = require('node:os');
 const { existsSync, readFileSync } = require('node:fs');
 const { spawn } = require('node:child_process');
 const { app, BrowserWindow, dialog, session, shell } = require('electron');
@@ -241,6 +242,7 @@ async function startProductionBackend() {
   const appRootPath = resolveRuntimeAppRootPath();
   const serveCliPath = resolveReactRouterServeCliPath();
   const serverBuildPath = resolveServerBuildPath(appRootPath);
+  const executablePathEnv = resolveBackendExecutablePathEnvironment();
   if (!existsSync(serverBuildPath)) {
     throw new Error(`Server build is missing at ${serverBuildPath}. Run \`npm run build\` first.`);
   }
@@ -249,6 +251,7 @@ async function startProductionBackend() {
     cwd: resolveBackendWorkingDirectory(appRootPath),
     env: {
       ...process.env,
+      [executablePathEnv.key]: executablePathEnv.value,
       PORT: String(BACKEND_PORT),
       NODE_ENV: 'production',
       NODE_PATH: resolveBackendNodePath(appRootPath),
@@ -452,6 +455,70 @@ function resolveBackendNodePath(appRootPath) {
   }
 
   return nodePaths.join(path.delimiter);
+}
+
+function resolveBackendExecutablePathEnvironment() {
+  const key = resolvePathEnvironmentKey();
+  const currentValue = typeof process.env[key] === 'string' ? process.env[key] : '';
+  const pathEntries = currentValue
+    .split(path.delimiter)
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0);
+  const merged = dedupePathEntries(pathEntries.concat(resolveAdditionalExecutablePathEntries()));
+  return {
+    key,
+    value: merged.join(path.delimiter),
+  };
+}
+
+function resolvePathEnvironmentKey() {
+  for (const key of Object.keys(process.env)) {
+    if (key.toUpperCase() === 'PATH') {
+      return key;
+    }
+  }
+
+  return 'PATH';
+}
+
+function dedupePathEntries(entries) {
+  const seen = new Set();
+  const deduped = [];
+  for (const entry of entries) {
+    if (!entry || seen.has(entry)) {
+      continue;
+    }
+
+    seen.add(entry);
+    deduped.push(entry);
+  }
+
+  return deduped;
+}
+
+function resolveAdditionalExecutablePathEntries() {
+  if (process.platform === 'win32') {
+    const programFilesEntries = [
+      typeof process.env.ProgramFiles === 'string' ? process.env.ProgramFiles : '',
+      typeof process.env['ProgramFiles(x86)'] === 'string' ? process.env['ProgramFiles(x86)'] : '',
+    ]
+      .map((entry) => entry.trim())
+      .filter((entry) => entry.length > 0);
+    return dedupePathEntries(programFilesEntries.map((entry) => path.join(entry, 'nodejs')));
+  }
+
+  const homeDirectory = os.homedir();
+  const entries = ['/opt/homebrew/bin', '/usr/local/bin', '/usr/bin', '/bin', '/usr/sbin', '/sbin'];
+  if (homeDirectory) {
+    entries.push(
+      path.join(homeDirectory, '.local', 'bin'),
+      path.join(homeDirectory, '.volta', 'bin'),
+      path.join(homeDirectory, '.asdf', 'shims'),
+      path.join(homeDirectory, '.bun', 'bin'),
+    );
+  }
+
+  return entries;
 }
 
 function setDockIconIfAvailable() {
