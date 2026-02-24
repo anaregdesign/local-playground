@@ -22,6 +22,17 @@ let updateCheckTimer = null;
 let hasShownUpdateAvailableDialog = false;
 let hasShownUpdateReadyDialog = false;
 
+function configureAboutPanel() {
+  if (process.platform !== 'darwin' || typeof app.setAboutPanelOptions !== 'function') {
+    return;
+  }
+
+  const year = new Date().getFullYear();
+  app.setAboutPanelOptions({
+    copyright: `Copyright © ${year} Hiroki Mizukami`,
+  });
+}
+
 function configureContentSecurityPolicy() {
   const csp = [
     "default-src 'self' http: https: data: blob:",
@@ -454,6 +465,7 @@ function setDockIconIfAvailable() {
 app.whenReady().then(async () => {
   configureContentSecurityPolicy();
   setDockIconIfAvailable();
+  configureAboutPanel();
 
   if (DESKTOP_MODE === 'production') {
     try {
