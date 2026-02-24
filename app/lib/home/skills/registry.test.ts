@@ -11,7 +11,7 @@ import {
 
 describe("isSkillRegistryId", () => {
   it("includes known registry ids", () => {
-    expect(isSkillRegistryId("workspace_local")).toBe(true);
+    expect(isSkillRegistryId("openai_curated")).toBe(true);
     expect(isSkillRegistryId("anaregdesign_public")).toBe(true);
     expect(isSkillRegistryId("invalid_registry")).toBe(false);
   });

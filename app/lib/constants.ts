@@ -86,7 +86,6 @@ export const HOME_INITIAL_MESSAGES: ReadonlyArray<never> = [];
  * Changing them affects SKILL.md validation and chat-time skill loading behavior.
  */
 export const AGENT_SKILLS_DIRECTORY_NAME = "skills";
-export const AGENT_DEFAULT_SKILLS_DIRECTORY_NAME = "default";
 export const AGENT_SKILL_NAME_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 export const AGENT_SKILL_NAME_MAX_LENGTH = 64;
 export const AGENT_SKILL_DESCRIPTION_MAX_LENGTH = 1024;

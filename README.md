@@ -103,7 +103,6 @@ Default saved MCP profiles (created if missing):
   - `$CODEX_HOME/skills/`
   - `<foundry-config-dir>/skills/`
 - Registry install/remove flow supports:
-  - Workspace local (`skills/default/`)
   - OpenAI curated (`openai/skills`)
   - Anthropic public (`anthropics/skills`)
   - Anaregdesign public (`anaregdesign/skills`, tagged layout)

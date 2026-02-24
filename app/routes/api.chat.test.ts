@@ -312,11 +312,11 @@ describe("readSkills", () => {
       skills: [
         {
           name: "local-playground-dev",
-          location: "/Users/hiroki/projects/local-playground/skills/default/local-playground-dev/SKILL.md",
+          location: "/Users/hiroki/.codex/skills/local-playground-dev/SKILL.md",
         },
         {
           name: "local-playground-dev",
-          location: "/Users/hiroki/projects/local-playground/skills/default/local-playground-dev/SKILL.md",
+          location: "/Users/hiroki/.codex/skills/local-playground-dev/SKILL.md",
         },
       ],
     });
@@ -326,7 +326,7 @@ describe("readSkills", () => {
       value: [
         {
           name: "local-playground-dev",
-          location: "/Users/hiroki/projects/local-playground/skills/default/local-playground-dev/SKILL.md",
+          location: "/Users/hiroki/.codex/skills/local-playground-dev/SKILL.md",
         },
       ],
     });

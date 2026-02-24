@@ -21,6 +21,8 @@ const {
 
 export type McpAddServerSectionProps = {
   isSending: boolean;
+  isEditingMcpServer: boolean;
+  editingMcpServerName: string | null;
   mcpNameInput: string;
   onMcpNameInputChange: (value: string) => void;
   mcpTransport: McpTransport;
@@ -48,6 +50,7 @@ export type McpAddServerSectionProps = {
   minMcpTimeoutSeconds: number;
   maxMcpTimeoutSeconds: number;
   onAddMcpServer: () => void | Promise<void>;
+  onCancelMcpServerEdit: () => void;
   isSavingMcpServer: boolean;
   mcpFormError: string | null;
   mcpFormWarning: string | null;
@@ -57,6 +60,8 @@ export type McpAddServerSectionProps = {
 export function McpAddServerSection(props: McpAddServerSectionProps) {
   const {
     isSending,
+    isEditingMcpServer,
+    editingMcpServerName,
     mcpNameInput,
     onMcpNameInputChange,
     mcpTransport,
@@ -84,16 +89,26 @@ export function McpAddServerSection(props: McpAddServerSectionProps) {
     minMcpTimeoutSeconds,
     maxMcpTimeoutSeconds,
     onAddMcpServer,
+    onCancelMcpServerEdit,
     isSavingMcpServer,
     mcpFormError,
     mcpFormWarning,
     onClearMcpFormWarning,
   } = props;
+  const trimmedEditingName = editingMcpServerName ? editingMcpServerName.trim() : "";
+  const sectionTitle = isEditingMcpServer ? "Edit MCP Server ✏️" : "Add MCP Server ➕";
+  const sectionDescription = isEditingMcpServer
+    ? `Update the saved MCP profile${trimmedEditingName ? ` "${trimmedEditingName}"` : ""} and keep thread connections in sync.`
+    : "Configure a new MCP server, save it to the database, and connect it to the current thread.";
+  const submitButtonLabel = isEditingMcpServer ? "💾 Save Changes" : "➕ Add Server";
+  const submitButtonTitle = isEditingMcpServer
+    ? "Save updates for this MCP profile."
+    : "Save this MCP server to the database and connect it to the current Agent.";
 
   return (
     <ConfigSection
-      title="Add MCP Server ➕"
-      description="Configure a new MCP server, save it to the database, and connect it to the current thread."
+      title={sectionTitle}
+      description={sectionDescription}
     >
       <Field label="🏷️ Server name (optional)">
         <Input
@@ -264,17 +279,30 @@ export function McpAddServerSection(props: McpAddServerSectionProps) {
           <p className="field-hint">Content-Type: application/json is always included.</p>
         </>
       )}
-      <Button
-        type="button"
-        appearance="primary"
-        title="Save this MCP server to the database and connect it to the current Agent."
-        onClick={() => {
-          void onAddMcpServer();
-        }}
-        disabled={isSending || isSavingMcpServer}
-      >
-        ➕ Add Server
-      </Button>
+      <div className="mcp-form-action-row">
+        <Button
+          type="button"
+          appearance="primary"
+          title={submitButtonTitle}
+          onClick={() => {
+            void onAddMcpServer();
+          }}
+          disabled={isSending || isSavingMcpServer}
+        >
+          {submitButtonLabel}
+        </Button>
+        {isEditingMcpServer ? (
+          <Button
+            type="button"
+            appearance="secondary"
+            title="Cancel editing and reset MCP server form."
+            onClick={onCancelMcpServerEdit}
+            disabled={isSending || isSavingMcpServer}
+          >
+            Cancel Edit
+          </Button>
+        ) : null}
+      </div>
       <AutoDismissStatusMessageList
         messages={[
           { intent: "error", text: mcpFormError },

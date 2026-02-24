@@ -1734,6 +1734,13 @@ body {
   gap: 0.45rem;
 }
 
+.mcp-form-action-row {
+  display: flex;
+  align-items: center;
+  gap: 0.42rem;
+  flex-wrap: wrap;
+}
+
 .threads-action-row .threads-new-btn.fui-Button {
   flex: 1;
 }

@@ -7,8 +7,6 @@ import { constants as fsConstants } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  AGENT_DEFAULT_SKILLS_DIRECTORY_NAME,
-  AGENT_SKILLS_DIRECTORY_NAME,
   AGENT_SKILL_NAME_PATTERN,
   FOUNDRY_SKILLS_DIRECTORY_NAME,
   SKILL_REGISTRY_LIST_CACHE_TTL_MS,
@@ -35,7 +33,6 @@ type ResolveSkillRegistryOptions = {
   platform?: NodeJS.Platform;
   homeDirectory?: string;
   appDataDirectory?: string | null;
-  workspaceRoot?: string;
 };
 
 type SkillRegistryInstallOptions = ResolveSkillRegistryOptions & {
@@ -98,7 +95,7 @@ export async function discoverSkillRegistries(
 
   for (const registry of SKILL_REGISTRY_OPTIONS) {
     try {
-      catalogs.push(await readSkillRegistryCatalog(registry, appDataSkillsRoot, options));
+      catalogs.push(await readSkillRegistryCatalog(registry, appDataSkillsRoot));
     } catch (error) {
       warnings.push(
         `Failed to load ${registry.label} registry: ${readErrorMessage(error)}`,
@@ -148,24 +145,6 @@ export async function installSkillFromRegistry(
       installLocation,
       installed: false,
       skippedAsDuplicate: true,
-    };
-  }
-
-  if (isWorkspaceLocalRegistry(registry)) {
-    const sourceRootPath = normalizeRepoPath(registry.sourcePath);
-    await installWorkspaceLocalSkill({
-      registry,
-      resolveOptions: options,
-      skillName: normalizedSkillName,
-      skillInstallRoot,
-      sourceRootPath,
-    });
-    await invalidateSkillRegistryListCache(registry.id);
-    return {
-      skillName: registrySkillName,
-      installLocation,
-      installed: true,
-      skippedAsDuplicate: false,
     };
   }
 
@@ -278,9 +257,8 @@ export async function deleteInstalledSkillFromRegistry(
 async function readSkillRegistryCatalog(
   registry: SkillRegistryOption,
   appDataSkillsRoot: string,
-  options: ResolveSkillRegistryOptions,
 ): Promise<SkillRegistryCatalog> {
-  const registrySkills = await readRegistrySkills(registry, options);
+  const registrySkills = await readRegistrySkills(registry);
   const registryInstallRoot = path.join(appDataSkillsRoot, registry.installDirectoryName);
   const sourceRootPath = normalizeRepoPath(registry.sourcePath);
   const skills = await Promise.all(
@@ -314,14 +292,7 @@ async function readSkillRegistryCatalog(
   };
 }
 
-async function readRegistrySkills(
-  registry: SkillRegistryOption,
-  options: ResolveSkillRegistryOptions,
-): Promise<RegistryCatalogSkill[]> {
-  if (isWorkspaceLocalRegistry(registry)) {
-    return await readWorkspaceLocalSkills(registry, options);
-  }
-
+async function readRegistrySkills(registry: SkillRegistryOption): Promise<RegistryCatalogSkill[]> {
   if (registry.skillPathLayout === "tagged") {
     return await readTaggedRepositorySkills(registry);
   }
@@ -344,53 +315,6 @@ async function readRegistrySkills(
     }
     return skills;
   }, SKILL_REGISTRY_LIST_CACHE_TTL_MS);
-}
-
-async function readWorkspaceLocalSkills(
-  registry: SkillRegistryOption,
-  options: ResolveSkillRegistryOptions,
-): Promise<RegistryCatalogSkill[]> {
-  const workspaceSkillsRoot = await resolveWorkspaceLocalSkillsRoot(options, registry);
-  if (!(await directoryExists(workspaceSkillsRoot))) {
-    return [];
-  }
-
-  const entries = await readdir(workspaceSkillsRoot, { withFileTypes: true });
-  const skills = new Map<string, RegistryCatalogSkill>();
-  for (const entry of entries) {
-    if (!entry.isDirectory()) {
-      continue;
-    }
-
-    const normalizedName = normalizeSkillName(entry.name);
-    if (!normalizedName) {
-      continue;
-    }
-
-    const skillLocation = path.join(workspaceSkillsRoot, normalizedName, "SKILL.md");
-    if (!(await fileExists(skillLocation))) {
-      continue;
-    }
-
-    const skillFileContent = await readFile(skillLocation, "utf8").catch(() => "");
-    const frontmatter = parseSkillFrontmatter(skillFileContent);
-    if (!frontmatter) {
-      continue;
-    }
-
-    const validationError = validateSkillFrontmatter(frontmatter, normalizedName);
-    if (validationError) {
-      continue;
-    }
-
-    skills.set(normalizedName, {
-      id: normalizedName,
-      name: normalizedName,
-      tag: null,
-    });
-  }
-
-  return Array.from(skills.values()).sort((left, right) => left.name.localeCompare(right.name));
 }
 
 async function readTaggedRepositorySkills(
@@ -450,121 +374,6 @@ async function readTaggedRepositorySkills(
 
     return sortedSkills;
   }, SKILL_REGISTRY_LIST_CACHE_TTL_MS);
-}
-
-async function installWorkspaceLocalSkill(params: {
-  registry: SkillRegistryOption;
-  resolveOptions: ResolveSkillRegistryOptions;
-  skillName: string;
-  skillInstallRoot: string;
-  sourceRootPath: string;
-}): Promise<void> {
-  const sourceSkillsRoot = await resolveWorkspaceLocalSkillsRoot(
-    params.resolveOptions,
-    params.registry,
-  );
-  const sourceSkillRoot = path.join(sourceSkillsRoot, params.skillName);
-  const sourceSkillMarkdownPath = path.join(sourceSkillRoot, "SKILL.md");
-  if (!(await fileExists(sourceSkillMarkdownPath))) {
-    throw new Error(`Skill "${params.skillName}" was not found in ${params.registry.label}.`);
-  }
-
-  const sourceFiles = await collectWorkspaceSkillFiles(sourceSkillRoot);
-  if (sourceFiles.length === 0) {
-    throw new Error(`Skill "${params.skillName}" was not found in ${params.registry.label}.`);
-  }
-
-  await mkdir(params.skillInstallRoot, { recursive: true });
-  const contentChecksumHash = createHash("sha256");
-  const matchingBlobEntries: RegistryBlobEntry[] = [];
-
-  try {
-    for (const sourceFile of sourceFiles) {
-      const destinationPath = path.resolve(params.skillInstallRoot, sourceFile.relativePath);
-      const normalizedRoot = path.resolve(params.skillInstallRoot);
-      if (
-        destinationPath !== normalizedRoot &&
-        !destinationPath.startsWith(`${normalizedRoot}${path.sep}`)
-      ) {
-        throw new Error(`Workspace file path escapes skill root: ${sourceFile.relativePath}`);
-      }
-
-      await mkdir(path.dirname(destinationPath), { recursive: true });
-      const bytes = await readFile(sourceFile.absolutePath);
-      contentChecksumHash.update(sourceFile.relativePath);
-      contentChecksumHash.update("\0");
-      contentChecksumHash.update(bytes);
-      await writeFile(destinationPath, bytes);
-
-      const blobPath = normalizeRepoPath(
-        `${params.sourceRootPath}/${params.skillName}/${sourceFile.relativePath}`,
-      );
-      const blobSha = createHash("sha256").update(bytes).digest("hex");
-      matchingBlobEntries.push({
-        path: blobPath,
-        sha: blobSha,
-      });
-    }
-
-    await validateInstalledSkill(params.skillInstallRoot, params.skillName);
-    await writeInstalledSkillMetadata({
-      skillInstallRoot: params.skillInstallRoot,
-      registry: params.registry,
-      skillName: params.skillName,
-      skillPath: params.skillName,
-      sourceRootPath: params.sourceRootPath,
-      matchingBlobEntries,
-      contentChecksum: contentChecksumHash.digest("hex"),
-    });
-  } catch (error) {
-    await rm(params.skillInstallRoot, { recursive: true, force: true });
-    throw error;
-  }
-}
-
-async function collectWorkspaceSkillFiles(skillRoot: string): Promise<
-  Array<{
-    relativePath: string;
-    absolutePath: string;
-  }>
-> {
-  const files = new Set<string>();
-  await collectWorkspaceSkillFilesRecursive(skillRoot, "", files);
-  return Array.from(files)
-    .sort((left, right) => left.localeCompare(right))
-    .map((relativePath) => ({
-      relativePath,
-      absolutePath: path.join(skillRoot, relativePath),
-    }));
-}
-
-async function collectWorkspaceSkillFilesRecursive(
-  rootPath: string,
-  relativeDirectoryPath: string,
-  files: Set<string>,
-): Promise<void> {
-  const directoryPath = path.join(rootPath, relativeDirectoryPath);
-  const entries = await readdir(directoryPath, { withFileTypes: true });
-  for (const entry of entries) {
-    const nextRelativePath = relativeDirectoryPath
-      ? path.join(relativeDirectoryPath, entry.name)
-      : entry.name;
-
-    if (!isSafeRelativePath(nextRelativePath)) {
-      continue;
-    }
-
-    if (entry.isDirectory()) {
-      await collectWorkspaceSkillFilesRecursive(rootPath, nextRelativePath, files);
-      continue;
-    }
-
-    if (!entry.isFile()) {
-      continue;
-    }
-
-    files.add(nextRelativePath);
-  }
 }
 
 async function readRegistryBlobEntries(
@@ -634,55 +443,6 @@ async function writeInstalledSkillMetadata(options: {
   await writeFile(metadataPath, `${JSON.stringify(metadata, null, 2)}\n`, "utf8");
 }
 
-function isWorkspaceLocalRegistry(registry: SkillRegistryOption): boolean {
-  return registry.id === "workspace_local";
-}
-
-async function resolveWorkspaceLocalSkillsRoot(
-  options: ResolveSkillRegistryOptions,
-  registry: SkillRegistryOption,
-): Promise<string> {
-  const sourceRootSegments = normalizeRepoPath(registry.sourcePath)
-    .split("/")
-    .filter((segment) => segment.length > 0);
-
-  const configuredWorkspaceRoot =
-    typeof options.workspaceRoot === "string" ? options.workspaceRoot.trim() : "";
-  if (configuredWorkspaceRoot) {
-    return path.resolve(configuredWorkspaceRoot, ...sourceRootSegments);
-  }
-
-  const envWorkspaceRoot =
-    typeof process.env.LOCAL_PLAYGROUND_WORKSPACE_ROOT === "string"
-      ? process.env.LOCAL_PLAYGROUND_WORKSPACE_ROOT.trim()
-      : "";
-  if (envWorkspaceRoot) {
-    return path.resolve(envWorkspaceRoot, ...sourceRootSegments);
-  }
-
-  const fallbackRoot = path.resolve(
-    process.cwd(),
-    AGENT_SKILLS_DIRECTORY_NAME,
-    AGENT_DEFAULT_SKILLS_DIRECTORY_NAME,
-  );
-  if (await directoryExists(fallbackRoot)) {
-    return fallbackRoot;
-  }
-
-  const appRelativeRoot = path.resolve(
-    process.cwd(),
-    "..",
-    "..",
-    AGENT_SKILLS_DIRECTORY_NAME,
-    AGENT_DEFAULT_SKILLS_DIRECTORY_NAME,
-  );
-  if (await directoryExists(appRelativeRoot)) {
-    return appRelativeRoot;
-  }
-
-  return fallbackRoot;
-}
-
 function resolveAppDataSkillsRoot(options: ResolveSkillRegistryOptions): string {
   const configuredFoundryDirectory =
     typeof options.foundryConfigDirectory === "string" ? options.foundryConfigDirectory.trim() : "";
@@ -706,10 +466,6 @@ function resolveAppDataSkillsRoot(options: ResolveSkillRegistryOptions): string 
 }
 
 function buildRepositoryUrl(repository: string): string {
-  if (repository.startsWith("workspace/")) {
-    return `workspace://${repository}`;
-  }
-
   return `https://github.com/${repository}`;
 }
 

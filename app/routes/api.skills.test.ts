@@ -24,23 +24,6 @@ describe("parseSkillRegistryActionPayload", () => {
     });
   });
 
-  it("parses a valid workspace install request", () => {
-    const result = parseSkillRegistryActionPayload({
-      action: "install_registry_skill",
-      registryId: "workspace_local",
-      skillName: "local-playground-dev",
-    });
-
-    expect(result).toEqual({
-      ok: true,
-      value: {
-        action: "install_registry_skill",
-        registryId: "workspace_local",
-        skillName: "local-playground-dev",
-      },
-    });
-  });
-
   it("parses a valid delete request", () => {
     const result = parseSkillRegistryActionPayload({
       action: "delete_registry_skill",

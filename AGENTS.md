@@ -168,7 +168,6 @@
   - AI enhancement using currently selected Azure project/deployment
   - diff review (adopt enhanced vs keep original)
 - Skill discovery roots for the app runtime:
-  - workspace defaults: `skills/default/`
   - CODEX_HOME shared skills: `$CODEX_HOME/skills/`
   - app-data shared skills: `<foundry-config-dir>/skills/` (same parent directory as `local-playground.sqlite`)
 

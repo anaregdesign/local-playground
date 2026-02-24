@@ -116,7 +116,7 @@ export async function loader({ request }: Route.LoaderArgs) {
 export async function action({ request }: Route.ActionArgs) {
   installGlobalServerErrorLogging();
 
-  if (request.method !== "POST") {
+  if (request.method !== "POST" && request.method !== "DELETE") {
     return Response.json({ error: "Method not allowed." }, { status: 405 });
   }
 
@@ -149,28 +149,59 @@ export async function action({ request }: Route.ActionArgs) {
     return Response.json({ error: "Invalid JSON body." }, { status: 400 });
   }
 
-  const incomingResult = parseIncomingMcpServer(payload);
-  if (!incomingResult.ok) {
-    await logServerRouteEvent({
-      request,
-      route: "/api/mcp-servers",
-      eventName: "invalid_mcp_server_payload",
-      action: "validate_payload",
-      level: "warning",
-      statusCode: 400,
-      message: incomingResult.error,
-      userId: user.id,
-    });
+  let incomingMcpServer: IncomingMcpServerConfig | null = null;
+  if (request.method === "POST") {
+    const incomingResult = parseIncomingMcpServer(payload);
+    if (!incomingResult.ok) {
+      await logServerRouteEvent({
+        request,
+        route: "/api/mcp-servers",
+        eventName: "invalid_mcp_server_payload",
+        action: "validate_payload",
+        level: "warning",
+        statusCode: 400,
+        message: incomingResult.error,
+        userId: user.id,
+      });
 
-    return Response.json({ error: incomingResult.error }, { status: 400 });
+      return Response.json({ error: incomingResult.error }, { status: 400 });
+    }
+
+    incomingMcpServer = incomingResult.value;
   }
 
   try {
     const currentProfiles = await readSavedMcpServers(user.id);
-    const { profile, profiles, warning } = upsertSavedMcpServer(
-      currentProfiles,
-      incomingResult.value,
-    );
+    if (request.method === "DELETE") {
+      const deleteIdResult = parseDeleteSavedMcpServerPayload(payload);
+      if (!deleteIdResult.ok) {
+        await logServerRouteEvent({
+          request,
+          route: "/api/mcp-servers",
+          eventName: "invalid_mcp_server_delete_payload",
+          action: "validate_payload",
+          level: "warning",
+          statusCode: 400,
+          message: deleteIdResult.error,
+          userId: user.id,
+        });
+        return Response.json({ error: deleteIdResult.error }, { status: 400 });
+      }
+
+      const deleteResult = deleteSavedMcpServer(currentProfiles, deleteIdResult.value);
+      if (!deleteResult.deleted) {
+        return Response.json({ error: "Selected MCP server is not available." }, { status: 404 });
+      }
+
+      await writeSavedMcpServers(user.id, deleteResult.profiles);
+      return Response.json({ profiles: deleteResult.profiles });
+    }
+
+    if (!incomingMcpServer) {
+      return Response.json({ error: "Invalid MCP server payload." }, { status: 400 });
+    }
+
+    const { profile, profiles, warning } = upsertSavedMcpServer(currentProfiles, incomingMcpServer);
     await writeSavedMcpServers(user.id, profiles);
 
     if (warning) {
@@ -344,6 +375,19 @@ function parseIncomingMcpServer(payload: unknown): ParseResult<IncomingMcpServer
   return parseIncomingHttpMcpServer(payload, transport);
 }
 
+function parseDeleteSavedMcpServerPayload(payload: unknown): ParseResult<string> {
+  if (!isRecord(payload)) {
+    return { ok: false, error: "Invalid MCP server payload." };
+  }
+
+  const id = normalizeOptionalId(payload.id);
+  if (!id) {
+    return { ok: false, error: "`id` is required." };
+  }
+
+  return { ok: true, value: id };
+}
+
 function parseIncomingHttpMcpServer(
   payload: Record<string, unknown>,
   transport: "streamable_http" | "sse",
@@ -501,6 +545,17 @@ function upsertSavedMcpServer(
   }
 
   return { profile, profiles, warning };
+}
+
+function deleteSavedMcpServer(
+  currentProfiles: SavedMcpServerConfig[],
+  id: string,
+): { profiles: SavedMcpServerConfig[]; deleted: boolean } {
+  const nextProfiles = currentProfiles.filter((profile) => profile.id !== id);
+  return {
+    profiles: nextProfiles,
+    deleted: nextProfiles.length !== currentProfiles.length,
+  };
 }
 
 function normalizeStoredMcpServer(entry: unknown): SavedMcpServerConfig | null {
@@ -933,6 +988,7 @@ function createRandomId(): string {
 export const mcpServersRouteTestUtils = {
   parseIncomingMcpServer,
   upsertSavedMcpServer,
+  deleteSavedMcpServer,
   buildIncomingProfileKey,
   mergeDefaultMcpServers,
 };

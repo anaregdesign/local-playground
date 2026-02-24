@@ -228,11 +228,13 @@ export function useWorkspaceController() {
     String(MCP_DEFAULT_TIMEOUT_SECONDS),
   );
   const [mcpTransport, setMcpTransport] = useState<McpTransport>(HOME_DEFAULT_MCP_TRANSPORT);
+  const [editingMcpServerId, setEditingMcpServerId] = useState("");
   const [mcpFormError, setMcpFormError] = useState<string | null>(null);
   const [mcpFormWarning, setMcpFormWarning] = useState<string | null>(null);
   const [savedMcpError, setSavedMcpError] = useState<string | null>(null);
   const [isLoadingSavedMcpServers, setIsLoadingSavedMcpServers] = useState(false);
   const [isSavingMcpServer, setIsSavingMcpServer] = useState(false);
+  const [isDeletingSavedMcpServer, setIsDeletingSavedMcpServer] = useState(false);
   const [threadRequestStateById, setThreadRequestStateById] = useState<
     Record<string, ThreadRequestState>
   >({});
@@ -340,6 +342,13 @@ export function useWorkspaceController() {
     () => buildSavedMcpServerOptions(savedMcpServers, mcpServers),
     [savedMcpServers, mcpServers],
   );
+  const editingMcpServer =
+    editingMcpServerId.trim().length > 0
+      ? savedMcpServers.find((server) => server.id === editingMcpServerId) ?? null
+      : null;
+  const isEditingMcpServer = editingMcpServer !== null;
+  const editingMcpServerName = editingMcpServer?.name ?? null;
+  const isMutatingSavedMcpServers = isSavingMcpServer || isDeletingSavedMcpServer;
   const selectedSavedMcpServerCount = useMemo(
     () => countSelectedSavedMcpServerOptions(savedMcpServerOptions),
     [savedMcpServerOptions],
@@ -769,6 +778,17 @@ export function useWorkspaceController() {
   }, []);
 
   useEffect(() => {
+    if (!editingMcpServerId) {
+      return;
+    }
+
+    const targetExists = savedMcpServers.some((server) => server.id === editingMcpServerId);
+    if (!targetExists) {
+      clearMcpServerEditState();
+    }
+  }, [editingMcpServerId, savedMcpServers]);
+
+  useEffect(() => {
     activeThreadIdRef.current = activeThreadId;
   }, [activeThreadId]);
 
@@ -1143,9 +1163,69 @@ export function useWorkspaceController() {
 
   function clearSavedMcpServersState(nextError: string | null = null) {
     clearSavedMcpLoginRetryTimeout();
+    setEditingMcpServerId("");
+    setIsDeletingSavedMcpServer(false);
     setSavedMcpServers([]);
     setSavedMcpError(nextError);
     setIsLoadingSavedMcpServers(false);
+  }
+
+  function resetMcpServerFormInputs() {
+    setMcpNameInput("");
+    setMcpUrlInput("");
+    setMcpCommandInput("");
+    setMcpArgsInput("");
+    setMcpCwdInput("");
+    setMcpEnvInput("");
+    setMcpHeadersInput("");
+    setMcpUseAzureAuthInput(false);
+    setMcpAzureAuthScopeInput(MCP_DEFAULT_AZURE_AUTH_SCOPE);
+    setMcpTimeoutSecondsInput(String(MCP_DEFAULT_TIMEOUT_SECONDS));
+    setMcpTransport(HOME_DEFAULT_MCP_TRANSPORT);
+  }
+
+  function clearMcpServerEditState() {
+    setEditingMcpServerId("");
+    resetMcpServerFormInputs();
+    setMcpFormError(null);
+    setMcpFormWarning(null);
+  }
+
+  function populateMcpServerFormForEdit(server: McpServerConfig) {
+    setMcpNameInput(server.name);
+    setMcpTransport(server.transport);
+    if (server.transport === "stdio") {
+      setMcpCommandInput(server.command);
+      setMcpArgsInput(server.args.length > 0 ? JSON.stringify(server.args) : "");
+      setMcpCwdInput(server.cwd ?? "");
+      setMcpEnvInput(
+        Object.entries(server.env)
+          .sort(([left], [right]) => left.localeCompare(right))
+          .map(([key, value]) => `${key}=${value}`)
+          .join("\n"),
+      );
+      setMcpUrlInput("");
+      setMcpHeadersInput("");
+      setMcpUseAzureAuthInput(false);
+      setMcpAzureAuthScopeInput(MCP_DEFAULT_AZURE_AUTH_SCOPE);
+      setMcpTimeoutSecondsInput(String(MCP_DEFAULT_TIMEOUT_SECONDS));
+      return;
+    }
+
+    setMcpUrlInput(server.url);
+    setMcpHeadersInput(
+      Object.entries(server.headers)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([key, value]) => `${key}=${value}`)
+        .join("\n"),
+    );
+    setMcpUseAzureAuthInput(server.useAzureAuth);
+    setMcpAzureAuthScopeInput(server.azureAuthScope);
+    setMcpTimeoutSecondsInput(String(server.timeoutSeconds));
+    setMcpCommandInput("");
+    setMcpArgsInput("");
+    setMcpCwdInput("");
+    setMcpEnvInput("");
   }
 
   function clearThreadNameSaveTimeout() {
@@ -2716,7 +2796,12 @@ export function useWorkspaceController() {
   }
 
   // MCP save/connect and chat execution flow.
-  async function saveMcpServerToConfig(server: McpServerConfig): Promise<{
+  async function saveMcpServerToConfig(
+    server: McpServerConfig,
+    options: {
+      includeId?: boolean;
+    } = {},
+  ): Promise<{
     profile: McpServerConfig;
     warning: string | null;
   }> {
@@ -2725,10 +2810,14 @@ export function useWorkspaceController() {
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify(serializeMcpServerForSave(server)),
+      body: JSON.stringify(
+        serializeMcpServerForSave(server, {
+          includeId: options.includeId === true,
+        }),
+      ),
     });
 
-    const payload = (await response.json()) as McpServersApiResponse;
+    const payload = await readJsonPayload<McpServersApiResponse>(response, "saved MCP servers");
     if (!response.ok) {
       const authRequired = isMcpServersAuthRequired(response.status, payload);
       if (authRequired) {
@@ -2754,6 +2843,31 @@ export function useWorkspaceController() {
       profile,
       warning: typeof payload.warning === "string" ? payload.warning : null,
     };
+  }
+
+  async function deleteSavedMcpServerFromConfig(serverId: string): Promise<McpServerConfig[]> {
+    const response = await fetch("/api/mcp-servers", {
+      method: "DELETE",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        id: serverId,
+      }),
+    });
+
+    const payload = await readJsonPayload<McpServersApiResponse>(response, "saved MCP servers");
+    if (!response.ok) {
+      const authRequired = isMcpServersAuthRequired(response.status, payload);
+      if (authRequired) {
+        setIsAzureAuthRequired(true);
+        throw new Error("Azure login is required. Open Settings and sign in to edit MCP servers.");
+      }
+
+      throw new Error(payload.error || "Failed to delete MCP server.");
+    }
+
+    return readMcpServerList(payload.profiles);
   }
 
   function connectMcpServerToAgent(serverToConnect: McpServerConfig) {
@@ -3074,6 +3188,87 @@ export function useWorkspaceController() {
   function handleReloadSavedMcpServers() {
     setSavedMcpError(null);
     void loadSavedMcpServers();
+  }
+
+  function handleCancelMcpServerEdit() {
+    clearMcpServerEditState();
+    setSavedMcpError(null);
+  }
+
+  function handleEditSavedMcpServer(serverIdRaw: string) {
+    if (isArchivedThread(activeThreadIdRef.current)) {
+      setSavedMcpError("Archived thread is read-only. Restore it from Archives to edit MCP servers.");
+      return;
+    }
+
+    const serverId = serverIdRaw.trim();
+    if (!serverId) {
+      return;
+    }
+
+    const selected = savedMcpServers.find((server) => server.id === serverId);
+    if (!selected) {
+      setSavedMcpError("Selected MCP server is not available.");
+      return;
+    }
+
+    setEditingMcpServerId(serverId);
+    populateMcpServerFormForEdit(selected);
+    setMcpFormError(null);
+    setMcpFormWarning(null);
+    setSavedMcpError(null);
+  }
+
+  async function handleDeleteSavedMcpServer(serverIdRaw: string) {
+    if (isArchivedThread(activeThreadIdRef.current)) {
+      setSavedMcpError("Archived thread is read-only. Restore it from Archives to edit MCP servers.");
+      return;
+    }
+
+    if (isDeletingSavedMcpServer) {
+      return;
+    }
+
+    const serverId = serverIdRaw.trim();
+    if (!serverId) {
+      return;
+    }
+
+    const selected = savedMcpServers.find((server) => server.id === serverId);
+    if (!selected) {
+      setSavedMcpError("Selected MCP server is not available.");
+      return;
+    }
+
+    setIsDeletingSavedMcpServer(true);
+    setSavedMcpError(null);
+
+    try {
+      const nextSavedProfiles = await deleteSavedMcpServerFromConfig(serverId);
+      setSavedMcpServers(nextSavedProfiles);
+
+      const deletedKey = buildMcpServerKey(selected);
+      setMcpServers((current) =>
+        current.filter((server) => buildMcpServerKey(server) !== deletedKey),
+      );
+
+      if (editingMcpServerId === serverId) {
+        clearMcpServerEditState();
+      }
+    } catch (deleteError) {
+      logHomeError("delete_mcp_server_failed", deleteError, {
+        action: "delete_saved_mcp_server",
+        context: {
+          serverId,
+          serverName: selected.name,
+        },
+      });
+      setSavedMcpError(
+        deleteError instanceof Error ? deleteError.message : "Failed to delete MCP server.",
+      );
+    } finally {
+      setIsDeletingSavedMcpServer(false);
+    }
   }
 
   function handleReloadSkills() {
@@ -3721,11 +3916,23 @@ export function useWorkspaceController() {
       return;
     }
 
+    const editingServerId = editingMcpServerId.trim();
+    const isEditing = editingServerId.length > 0;
+    const editingServer = isEditing
+      ? savedMcpServers.find((server) => server.id === editingServerId) ?? null
+      : null;
+    if (isEditing && !editingServer) {
+      setEditingMcpServerId("");
+      setMcpFormError("Selected MCP server is not available.");
+      return;
+    }
+
     const rawName = mcpNameInput.trim();
     setMcpFormError(null);
     setMcpFormWarning(null);
 
-    let serverToAdd: McpServerConfig;
+    let serverToSave: McpServerConfig;
+    const serverId = isEditing ? editingServerId : createId("mcp");
 
     if (mcpTransport === "stdio") {
       const command = mcpCommandInput.trim();
@@ -3754,14 +3961,14 @@ export function useWorkspaceController() {
       const cwd = mcpCwdInput.trim();
       const name = rawName || command;
 
-      serverToAdd = {
+      serverToSave = {
         name,
         transport: "stdio",
         command,
         args: argsResult.value,
         cwd: cwd || undefined,
         env: envResult.value,
-        id: createId("mcp"),
+        id: serverId,
       };
     } else {
       const rawUrl = mcpUrlInput.trim();
@@ -3811,8 +4018,8 @@ export function useWorkspaceController() {
         return;
       }
 
-      serverToAdd = {
-        id: createId("mcp"),
+      serverToSave = {
+        id: serverId,
         name,
         url: normalizedUrl,
         transport: mcpTransport,
@@ -3823,21 +4030,48 @@ export function useWorkspaceController() {
       };
     }
 
-    const existingServerIndex = mcpServers.findIndex(
-      (server) => buildMcpServerKey(server) === buildMcpServerKey(serverToAdd),
-    );
-    const existingServerName =
-      existingServerIndex >= 0 ? (mcpServers[existingServerIndex]?.name ?? "") : "";
+    const existingServerIndex = isEditing
+      ? -1
+      : mcpServers.findIndex(
+          (server) => buildMcpServerKey(server) === buildMcpServerKey(serverToSave),
+        );
+    const existingServerName = existingServerIndex >= 0 ? (mcpServers[existingServerIndex]?.name ?? "") : "";
 
     setIsSavingMcpServer(true);
     let saveWarning: string | null = null;
-    let savedProfileName = serverToAdd.name;
+    let savedProfile = serverToSave;
     try {
-      const saveResult = await saveMcpServerToConfig(serverToAdd);
+      const saveResult = await saveMcpServerToConfig(serverToSave, {
+        includeId: isEditing,
+      });
       saveWarning = saveResult.warning;
-      savedProfileName = saveResult.profile.name;
+      savedProfile = saveResult.profile;
 
-      connectMcpServerToAgent({ ...serverToAdd, name: savedProfileName });
+      if (isEditing && editingServer) {
+        const previousServerKey = buildMcpServerKey(editingServer);
+        const nextServerKey = buildMcpServerKey(savedProfile);
+        setMcpServers((current) => {
+          const filtered = current.filter(
+            (server) => buildMcpServerKey(server) !== previousServerKey,
+          );
+          if (filtered.length === current.length) {
+            return current;
+          }
+
+          const nextIndex = filtered.findIndex(
+            (server) => buildMcpServerKey(server) === nextServerKey,
+          );
+          if (nextIndex >= 0) {
+            return filtered.map((server, index) =>
+              index === nextIndex ? { ...server, name: savedProfile.name } : server,
+            );
+          }
+
+          return [...filtered, savedProfile];
+        });
+      } else {
+        connectMcpServerToAgent(savedProfile);
+      }
 
       setSavedMcpError(null);
     } catch (saveError) {
@@ -3851,10 +4085,21 @@ export function useWorkspaceController() {
     }
 
     setMcpFormError(null);
-    if (existingServerIndex >= 0) {
+    if (isEditing) {
+      setMcpFormWarning(saveWarning);
+      if (saveWarning) {
+        logHomeWarning("mcp_server_edit_warning", saveWarning, {
+          action: "save_mcp_server",
+          context: {
+            savedProfileName: savedProfile.name,
+            transport: savedProfile.transport,
+          },
+        });
+      }
+    } else if (existingServerIndex >= 0) {
       const fallbackLocalWarning =
-        existingServerName && existingServerName !== savedProfileName
-          ? `An MCP server with the same configuration already exists. Renamed it from "${existingServerName}" to "${savedProfileName}".`
+        existingServerName && existingServerName !== savedProfile.name
+          ? `An MCP server with the same configuration already exists. Renamed it from "${existingServerName}" to "${savedProfile.name}".`
           : "An MCP server with the same configuration already exists. Reused the existing entry.";
       const warningToShow = saveWarning ?? fallbackLocalWarning;
       setMcpFormWarning(warningToShow);
@@ -3862,8 +4107,8 @@ export function useWorkspaceController() {
         action: "save_mcp_server",
         context: {
           existingServerName,
-          savedProfileName,
-          transport: serverToAdd.transport,
+          savedProfileName: savedProfile.name,
+          transport: serverToSave.transport,
         },
       });
     } else {
@@ -3872,23 +4117,14 @@ export function useWorkspaceController() {
         logHomeWarning("mcp_server_save_warning", saveWarning, {
           action: "save_mcp_server",
           context: {
-            savedProfileName,
-            transport: serverToAdd.transport,
+            savedProfileName: savedProfile.name,
+            transport: serverToSave.transport,
           },
         });
       }
     }
-    setMcpNameInput("");
-    setMcpUrlInput("");
-    setMcpCommandInput("");
-    setMcpArgsInput("");
-    setMcpCwdInput("");
-    setMcpEnvInput("");
-    setMcpHeadersInput("");
-    setMcpUseAzureAuthInput(false);
-    setMcpAzureAuthScopeInput(MCP_DEFAULT_AZURE_AUTH_SCOPE);
-    setMcpTimeoutSecondsInput(String(MCP_DEFAULT_TIMEOUT_SECONDS));
-    setMcpTransport(HOME_DEFAULT_MCP_TRANSPORT);
+    setEditingMcpServerId("");
+    resetMcpServerFormInputs();
   }
 
   function handleToggleSavedMcpServer(serverIdRaw: string) {
@@ -4047,9 +4283,16 @@ export function useWorkspaceController() {
     isSending,
     isThreadReadOnly: isActiveThreadArchived,
     isLoadingSavedMcpServers,
+    isMutatingSavedMcpServers,
     savedMcpError,
     onToggleSavedMcpServer: handleToggleSavedMcpServer,
+    onEditSavedMcpServer: handleEditSavedMcpServer,
+    onDeleteSavedMcpServer: (serverId: string) => {
+      void handleDeleteSavedMcpServer(serverId);
+    },
     onReloadSavedMcpServers: handleReloadSavedMcpServers,
+    isEditingMcpServer,
+    editingMcpServerName,
     mcpNameInput,
     onMcpNameInputChange: setMcpNameInput,
     mcpTransport,
@@ -4085,6 +4328,7 @@ export function useWorkspaceController() {
     minMcpTimeoutSeconds: MCP_TIMEOUT_SECONDS_MIN,
     maxMcpTimeoutSeconds: MCP_TIMEOUT_SECONDS_MAX,
     onAddMcpServer: handleAddMcpServer,
+    onCancelMcpServerEdit: handleCancelMcpServerEdit,
     isSavingMcpServer,
     mcpFormError,
     mcpFormWarning,
