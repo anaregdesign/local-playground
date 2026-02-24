@@ -13,6 +13,15 @@ npm run dev
 
 Open `http://localhost:5173`. If the sign-in-required screen appears, click `Azure Login` and complete browser authentication.
 
+## Project Site (GitHub Pages)
+
+The project page publishes simple product overview, screenshots, and latest release downloads:
+
+- `macOS` download links
+- `Windows` download links (`x64`, `arm64`)
+
+URL: `https://anaregdesign.github.io/local-playground/`
+
 ### Optional: Enable Local Codex Skill (Contributors)
 
 If you are developing this repository with Codex and want policy checks from `local-playground-dev`:

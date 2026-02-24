@@ -1,0 +1,166 @@
+:root {
+  --bg-0: #f8fcfb;
+  --bg-1: #ecf6f4;
+  --text: #152129;
+  --muted: #4e606c;
+  --brand: #0f766e;
+  --brand-dark: #0d5f58;
+  --ink: #111827;
+  --soft-shadow: 0 18px 48px rgba(15, 39, 64, 0.12);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  color: var(--text);
+  font-family: "Segoe UI", "Yu Gothic UI", "Hiragino Kaku Gothic ProN", "Meiryo", sans-serif;
+  background:
+    radial-gradient(1200px 460px at -10% -10%, #d5efe9 0%, transparent 65%),
+    linear-gradient(180deg, var(--bg-1) 0%, var(--bg-0) 100%);
+  min-height: 100vh;
+}
+
+.page {
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 42px 18px 36px;
+}
+
+.hero {
+  text-align: center;
+  margin-bottom: 26px;
+}
+
+.logo {
+  display: block;
+  margin: 4px auto 12px;
+}
+
+h1 {
+  margin: 0;
+  font-size: clamp(36px, 6.2vw, 68px);
+  line-height: 1.03;
+  letter-spacing: -0.02em;
+}
+
+.headline-sub {
+  margin: 8px 0 0;
+  font-size: clamp(17px, 2.4vw, 24px);
+  font-weight: 700;
+  color: var(--brand-dark);
+}
+
+.headline-sub a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.jp-subtitle {
+  margin: 10px auto 0;
+  display: inline-block;
+  padding: 7px 14px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.92), rgba(255, 255, 255, 0.78));
+  color: #0a1f26;
+  font-size: clamp(14px, 1.9vw, 18px);
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  box-shadow: 0 8px 24px rgba(15, 39, 64, 0.12);
+}
+
+.jp-subtitle::before {
+  content: "";
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 10px;
+  border-radius: 999px;
+  background: #d5202a;
+  vertical-align: middle;
+}
+
+.downloads {
+  margin-top: 14px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+  max-width: 740px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.download-group {
+  text-align: center;
+}
+
+h2 {
+  margin: 0 0 10px;
+  font-size: 17px;
+  letter-spacing: 0.01em;
+}
+
+.download-links {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.download-pill {
+  text-decoration: none;
+  font-weight: 700;
+  font-size: 14px;
+  color: #fff;
+  background: linear-gradient(120deg, var(--brand), var(--brand-dark));
+  border-radius: 999px;
+  padding: 11px 16px;
+  min-width: 92px;
+  text-align: center;
+  transition: transform 0.12s ease, filter 0.12s ease;
+}
+
+.download-pill:hover {
+  filter: brightness(0.96);
+  transform: translateY(-1px);
+}
+
+.download-pill.is-disabled {
+  opacity: 0.35;
+}
+
+.release-meta {
+  margin: 14px 0 0;
+  text-align: center;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.release-meta a {
+  color: var(--ink);
+  font-weight: 700;
+}
+
+.all-releases {
+  margin: 8px 0 0;
+  text-align: center;
+  font-size: 13px;
+}
+
+.link-sep {
+  margin: 0 8px;
+  color: var(--muted);
+}
+
+.all-releases a {
+  color: var(--ink);
+  text-decoration: none;
+}
+
+@media (max-width: 940px) {
+  .downloads {
+    grid-template-columns: 1fr;
+  }
+}
