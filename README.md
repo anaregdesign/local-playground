@@ -58,7 +58,7 @@ Then click `Azure Login` in the app `Settings` tab.
 - Markdown rendering and JSON syntax highlighting for fast response inspection
 - Agent Instruction local file load/save (client-side save dialog) and enhance workflow with diff review
 - Skills panel in `Threads` tab for `agentskills`-compatible `SKILL.md` selection
-- Skills registry install/remove workflow for Workspace local skills (`skills/default/`) plus `openai/skills (.curated)` and `anthropics/skills`, cached locally in SQLite
+- Skills registry install/remove workflow for Workspace local skills (`skills/default/`) plus `openai/skills (.curated)`, `anthropics/skills`, and tagged paths from `anaregdesign/skills (skills/<tag>/<skill-name>)`, cached locally in SQLite
 - Dedicated `Utility Model` selection (deployment + reasoning effort) for instruction enhancement workflows
 - Per-server MCP headers, Azure auth scope, and timeout controls
 - Default saved MCP profiles (not connected by default):
@@ -132,6 +132,7 @@ Skill directories loaded by the app:
     - `<config-directory>/skills/workspace-local/<skill-name>/`
     - `<config-directory>/skills/openai-curated/<skill-name>/`
     - `<config-directory>/skills/anthropic-public/<skill-name>/`
+    - `<config-directory>/skills/anaregdesign-public/<tag>/<skill-name>/`
   - Workspace registry source: `<workspace>/skills/default/` (install source only, not auto-loaded directly)
 
 Development-only project skills:

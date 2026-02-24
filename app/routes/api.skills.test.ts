@@ -58,6 +58,23 @@ describe("parseSkillRegistryActionPayload", () => {
     });
   });
 
+  it("parses a valid tagged-registry install request", () => {
+    const result = parseSkillRegistryActionPayload({
+      action: "install_registry_skill",
+      registryId: "anaregdesign_public",
+      skillName: "finance/nisa-growth-tech",
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      value: {
+        action: "install_registry_skill",
+        registryId: "anaregdesign_public",
+        skillName: "finance/nisa-growth-tech",
+      },
+    });
+  });
+
   it("rejects invalid payloads", () => {
     expect(parseSkillRegistryActionPayload(null)).toEqual({
       ok: false,
@@ -95,6 +112,18 @@ describe("parseSkillRegistryActionPayload", () => {
     ).toEqual({
       ok: false,
       error: "`skillName` must be lower-case kebab-case.",
+    });
+
+    expect(
+      parseSkillRegistryActionPayload({
+        action: "install_registry_skill",
+        registryId: "anaregdesign_public",
+        skillName: "nisa-growth-tech",
+      }),
+    ).toEqual({
+      ok: false,
+      error:
+        "`skillName` must be `<tag>/<skill-name>`, and `<skill-name>` must be lower-case kebab-case.",
     });
   });
 });

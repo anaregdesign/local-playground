@@ -151,15 +151,15 @@ function readSkillRegistrySkillEntryList(value: unknown): SkillRegistrySkillEntr
   }
 
   const entries: SkillRegistrySkillEntry[] = [];
-  const seenByName = new Set<string>();
+  const seenById = new Set<string>();
 
   for (const entry of value) {
     const parsed = readSkillRegistrySkillEntryFromUnknown(entry);
-    if (!parsed || seenByName.has(parsed.name)) {
+    if (!parsed || seenById.has(parsed.id)) {
       continue;
     }
 
-    seenByName.add(parsed.name);
+    seenById.add(parsed.id);
     entries.push(parsed);
   }
 
@@ -171,18 +171,30 @@ function readSkillRegistrySkillEntryFromUnknown(value: unknown): SkillRegistrySk
     return null;
   }
 
+  const id = readTrimmedString(value.id);
   const name = readTrimmedString(value.name);
   const description = readTrimmedString(value.description);
+  const tag = readNullableTrimmedString(value.tag);
   const remotePath = readTrimmedString(value.remotePath);
   const installLocation = readTrimmedString(value.installLocation);
   const isInstalled = readBoolean(value.isInstalled);
-  if (!name || !description || !remotePath || !installLocation || isInstalled === null) {
+  if (
+    !id ||
+    !name ||
+    !description ||
+    tag === undefined ||
+    !remotePath ||
+    !installLocation ||
+    isInstalled === null
+  ) {
     return null;
   }
 
   return {
+    id,
     name,
     description,
+    tag,
     remotePath,
     installLocation,
     isInstalled,
@@ -207,6 +219,19 @@ function readSkillRegistryId(value: unknown): SkillRegistryCatalog["registryId"]
 
 function readTrimmedString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function readNullableTrimmedString(value: unknown): string | null | undefined {
+  if (value === null) {
+    return null;
+  }
+
+  if (typeof value !== "string") {
+    return undefined;
+  }
+
+  const normalized = value.trim();
+  return normalized ? normalized : null;
 }
 
 function readBoolean(value: unknown): boolean | null {

@@ -18,8 +18,10 @@ export type ThreadSkillSelection = {
 };
 
 export type SkillRegistrySkillEntry = {
+  id: string;
   name: string;
   description: string;
+  tag: string | null;
   remotePath: string;
   installLocation: string;
   isInstalled: boolean;

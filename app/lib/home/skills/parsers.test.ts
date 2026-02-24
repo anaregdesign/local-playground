@@ -84,7 +84,7 @@ describe("readThreadSkillSelectionList", () => {
 });
 
 describe("readSkillRegistryCatalogList", () => {
-  it("parses catalogs and de-duplicates by registry id and skill name", () => {
+  it("parses catalogs and de-duplicates by registry id and skill id", () => {
     const result = readSkillRegistryCatalogList([
       {
         registryId: "openai_curated",
@@ -95,16 +95,20 @@ describe("readSkillRegistryCatalogList", () => {
         sourcePath: "skills/.curated",
         skills: [
           {
+            id: "gh-fix-ci",
             name: "gh-fix-ci",
             description: "Fix CI checks",
+            tag: null,
             remotePath: "skills/.curated/gh-fix-ci",
             installLocation:
               "/Users/hiroki/.foundry_local_playground/skills/openai-curated/gh-fix-ci/SKILL.md",
             isInstalled: false,
           },
           {
+            id: "gh-fix-ci",
             name: "gh-fix-ci",
             description: "duplicate",
+            tag: null,
             remotePath: "skills/.curated/gh-fix-ci",
             installLocation:
               "/Users/hiroki/.foundry_local_playground/skills/openai-curated/gh-fix-ci/SKILL.md",
@@ -130,8 +134,10 @@ describe("readSkillRegistryCatalogList", () => {
         sourcePath: "skills",
         skills: [
           {
+            id: "pdf",
             name: "pdf",
             description: "Work with PDF files",
+            tag: null,
             remotePath: "skills/pdf",
             installLocation:
               "/Users/hiroki/.foundry_local_playground/skills/anthropic-public/pdf/SKILL.md",
@@ -148,6 +154,36 @@ describe("readSkillRegistryCatalogList", () => {
         sourcePath: "skills",
         skills: [],
       },
+      {
+        registryId: "anaregdesign_public",
+        registryLabel: "Anaregdesign Public",
+        registryDescription: "Tagged skills",
+        repository: "anaregdesign/skills",
+        repositoryUrl: "https://github.com/anaregdesign/skills",
+        sourcePath: "skills",
+        skills: [
+          {
+            id: "example/python-current-time",
+            name: "python-current-time",
+            description: "Read current time",
+            tag: "example",
+            remotePath: "skills/example/python-current-time",
+            installLocation:
+              "/Users/hiroki/.foundry_local_playground/skills/anaregdesign-public/example/python-current-time/SKILL.md",
+            isInstalled: false,
+          },
+          {
+            id: "finance/nisa-growth-tech",
+            name: "nisa-growth-tech",
+            description: "NISA helper",
+            tag: "finance",
+            remotePath: "skills/finance/nisa-growth-tech",
+            installLocation:
+              "/Users/hiroki/.foundry_local_playground/skills/anaregdesign-public/finance/nisa-growth-tech/SKILL.md",
+            isInstalled: true,
+          },
+        ],
+      },
     ]);
 
     expect(result).toEqual([
@@ -160,8 +196,10 @@ describe("readSkillRegistryCatalogList", () => {
         sourcePath: "skills/.curated",
         skills: [
           {
+            id: "gh-fix-ci",
             name: "gh-fix-ci",
             description: "Fix CI checks",
+            tag: null,
             remotePath: "skills/.curated/gh-fix-ci",
             installLocation:
               "/Users/hiroki/.foundry_local_playground/skills/openai-curated/gh-fix-ci/SKILL.md",
@@ -178,11 +216,43 @@ describe("readSkillRegistryCatalogList", () => {
         sourcePath: "skills",
         skills: [
           {
+            id: "pdf",
             name: "pdf",
             description: "Work with PDF files",
+            tag: null,
             remotePath: "skills/pdf",
             installLocation:
               "/Users/hiroki/.foundry_local_playground/skills/anthropic-public/pdf/SKILL.md",
+            isInstalled: true,
+          },
+        ],
+      },
+      {
+        registryId: "anaregdesign_public",
+        registryLabel: "Anaregdesign Public",
+        registryDescription: "Tagged skills",
+        repository: "anaregdesign/skills",
+        repositoryUrl: "https://github.com/anaregdesign/skills",
+        sourcePath: "skills",
+        skills: [
+          {
+            id: "example/python-current-time",
+            name: "python-current-time",
+            description: "Read current time",
+            tag: "example",
+            remotePath: "skills/example/python-current-time",
+            installLocation:
+              "/Users/hiroki/.foundry_local_playground/skills/anaregdesign-public/example/python-current-time/SKILL.md",
+            isInstalled: false,
+          },
+          {
+            id: "finance/nisa-growth-tech",
+            name: "nisa-growth-tech",
+            description: "NISA helper",
+            tag: "finance",
+            remotePath: "skills/finance/nisa-growth-tech",
+            installLocation:
+              "/Users/hiroki/.foundry_local_playground/skills/anaregdesign-public/finance/nisa-growth-tech/SKILL.md",
             isInstalled: true,
           },
         ],

@@ -415,14 +415,20 @@ export function useWorkspaceController() {
               return left.isInstalled ? -1 : 1;
             }
 
+            const byTag = (left.tag ?? "").localeCompare(right.tag ?? "");
+            if (byTag !== 0) {
+              return byTag;
+            }
+
             return left.name.localeCompare(right.name);
           })
           .map((skill) => ({
+            id: skill.id,
             name: skill.name,
             description: skill.description,
             detail: skill.isInstalled
-              ? `Installed: ${skill.installLocation}`
-              : `Source: ${skill.remotePath}`,
+              ? `${skill.tag ? `Tag: ${skill.tag} · ` : ""}Installed: ${skill.installLocation}`
+              : `${skill.tag ? `Tag: ${skill.tag} · ` : ""}Source: ${skill.remotePath}`,
             isInstalled: skill.isInstalled,
           })),
       }));
@@ -3037,9 +3043,9 @@ export function useWorkspaceController() {
     void loadAvailableSkills();
   }
 
-  function handleToggleRegistrySkill(registryId: SkillRegistryId, skillNameRaw: string) {
-    const skillName = skillNameRaw.trim();
-    if (!skillName) {
+  function handleToggleRegistrySkill(registryId: SkillRegistryId, skillIdRaw: string) {
+    const skillId = skillIdRaw.trim();
+    if (!skillId) {
       return;
     }
 
@@ -3050,7 +3056,7 @@ export function useWorkspaceController() {
       return;
     }
 
-    const selectedSkill = registryCatalog.skills.find((skill) => skill.name === skillName);
+    const selectedSkill = registryCatalog.skills.find((skill) => skill.id === skillId);
     if (!selectedSkill) {
       return;
     }
@@ -3058,7 +3064,7 @@ export function useWorkspaceController() {
     void updateSkillRegistrySkill({
       action: selectedSkill.isInstalled ? "delete_registry_skill" : "install_registry_skill",
       registryId: registryCatalog.registryId,
-      skillName: selectedSkill.name,
+      skillName: selectedSkill.id,
     });
   }
 

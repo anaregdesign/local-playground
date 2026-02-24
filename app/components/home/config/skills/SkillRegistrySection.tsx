@@ -23,6 +23,7 @@ export type SkillRegistryGroupOption = {
 };
 
 export type SkillRegistryEntryOption = {
+  id: string;
   name: string;
   description: string;
   detail: string;
@@ -37,7 +38,7 @@ type SkillRegistrySectionProps = {
   skillRegistryWarning: string | null;
   skillRegistrySuccess: string | null;
   onReloadSkillRegistries: () => void;
-  onToggleRegistrySkill: (registryId: SkillRegistryId, skillName: string) => void;
+  onToggleRegistrySkill: (registryId: SkillRegistryId, skillId: string) => void;
   onClearSkillRegistryWarning: () => void;
   onClearSkillRegistrySuccess: () => void;
 };
@@ -64,7 +65,7 @@ export function SkillRegistrySection(props: SkillRegistrySectionProps) {
       externalHref: registry.registryUrl,
       externalLabel: `Open ${registry.label} registry`,
       items: registry.skills.map((skill) => ({
-        id: skill.name,
+        id: skill.id,
         name: skill.name,
         description: skill.description,
         detail: skill.detail,
@@ -75,8 +76,8 @@ export function SkillRegistrySection(props: SkillRegistrySectionProps) {
       emptyHint: `No Skills are currently available from ${registry.label}.`,
       addButtonLabel: "Install",
       selectedButtonLabel: "Remove",
-      onToggleItem: (skillName) => {
-        onToggleRegistrySkill(registry.registryId, skillName);
+      onToggleItem: (skillId) => {
+        onToggleRegistrySkill(registry.registryId, skillId);
       },
     }),
   );

@@ -86,6 +86,7 @@ describe("cache key helpers", () => {
       sourcePath: "skills/.curated",
       sourceUrl: "https://github.com/openai/skills/tree/main/skills/.curated",
       installDirectoryName: "openai-curated",
+      skillPathLayout: "flat",
     });
     const treeCacheKey = buildRegistryTreeCacheKey({
       id: "openai_curated",
@@ -96,6 +97,7 @@ describe("cache key helpers", () => {
       sourcePath: "skills/.curated",
       sourceUrl: "https://github.com/openai/skills/tree/main/skills/.curated",
       installDirectoryName: "openai-curated",
+      skillPathLayout: "flat",
     });
 
     expect(listCacheKey).toContain("skill_registry_list:");

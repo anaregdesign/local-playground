@@ -1,8 +1,12 @@
 /**
  * API route module for /api/skills.
  */
-import { AGENT_SKILL_NAME_PATTERN } from "~/lib/constants";
-import { isSkillRegistryId, type SkillRegistryId } from "~/lib/home/skills/registry";
+import {
+  isSkillRegistryId,
+  parseSkillRegistrySkillName,
+  readSkillRegistrySkillNameValidationMessage,
+  type SkillRegistryId,
+} from "~/lib/home/skills/registry";
 import {
   installGlobalServerErrorLogging,
   logServerRouteEvent,
@@ -187,10 +191,11 @@ function parseSkillRegistryActionPayload(payload: unknown): ParseResult<SkillReg
   }
 
   const skillName = readTrimmedString(payload.skillName);
-  if (!skillName || !AGENT_SKILL_NAME_PATTERN.test(skillName)) {
+  const parsedSkillName = parseSkillRegistrySkillName(registryId, skillName);
+  if (!parsedSkillName) {
     return {
       ok: false,
-      error: "`skillName` must be lower-case kebab-case.",
+      error: readSkillRegistrySkillNameValidationMessage(registryId),
     };
   }
 
@@ -199,7 +204,7 @@ function parseSkillRegistryActionPayload(payload: unknown): ParseResult<SkillReg
     value: {
       action,
       registryId,
-      skillName,
+      skillName: parsedSkillName.normalizedSkillName,
     },
   };
 }
