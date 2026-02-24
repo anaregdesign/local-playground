@@ -109,17 +109,25 @@ Default saved MCP profiles (created if missing):
 
 ## Screenshots
 
-### Playground
+### Overview
 
-![Local Playground playground view](docs/images/local-playground-chat-log.png)
+![Local Playground overview](docs/images/local-playground-desktop.png)
 
-### Settings
+### Playground Chat
 
-![Local Playground settings view](docs/images/local-playground-settings.png)
+![Local Playground playground chat](docs/images/local-playground-chat-log.png)
 
 ### MCP Servers
 
 ![Local Playground MCP servers view](docs/images/local-playground-mcp-servers.png)
+
+### Skills
+
+![Local Playground skills view](docs/images/local-playground-skills.png)
+
+### Responsive Layout
+
+![Local Playground responsive layout](docs/images/local-playground-mobile.png)
 
 ## Minimal Code Example (Try MCP Quickly)
 
