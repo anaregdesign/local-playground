@@ -7,9 +7,8 @@ import { fileURLToPath } from "node:url";
 import { PrismaClient } from "@prisma/client";
 import { resolveFoundryDatabaseUrl } from "~/lib/foundry/config";
 
-if (!process.env.DATABASE_URL) {
-  process.env.DATABASE_URL = resolveDatabaseUrl();
-}
+const resolvedDatabaseUrl = resolveDatabaseUrl();
+process.env.DATABASE_URL = resolvedDatabaseUrl;
 
 const globalForPrisma = globalThis as typeof globalThis & {
   __localPlaygroundPrisma?: PrismaClient;
@@ -20,7 +19,7 @@ export const prisma =
   new PrismaClient({
     datasources: {
       db: {
-        url: process.env.DATABASE_URL ?? resolveDatabaseUrl(),
+        url: resolvedDatabaseUrl,
       },
     },
   });
@@ -34,7 +33,7 @@ let ensureDatabaseReadyPromise: Promise<void> | null = null;
 export async function ensurePersistenceDatabaseReady(): Promise<void> {
   if (!ensureDatabaseReadyPromise) {
     ensureDatabaseReadyPromise = (async () => {
-      await ensureDatabaseParentDirectoryExists(process.env.DATABASE_URL ?? resolveDatabaseUrl());
+      await ensureDatabaseParentDirectoryExists(resolvedDatabaseUrl);
       await ensureDatabaseSchema();
     })().catch((error) => {
       ensureDatabaseReadyPromise = null;
@@ -105,11 +104,24 @@ function resolveSqliteDatabaseFilePath(databaseUrl: string): string | null {
   }
 
   const decodedPath = decodeURIComponent(rawPath);
+  if (process.platform === "win32") {
+    const windowsPath = normalizeWindowsAbsolutePath(decodedPath);
+    if (path.win32.isAbsolute(windowsPath)) {
+      return windowsPath;
+    }
+  }
+
   if (path.isAbsolute(decodedPath)) {
     return decodedPath;
   }
 
   return path.resolve(decodedPath);
+}
+
+function normalizeWindowsAbsolutePath(filePath: string): string {
+  const withBackslashes = filePath.replaceAll("/", "\\");
+  const driveNormalized = withBackslashes.replace(/^\\([A-Za-z]:\\)/, "$1");
+  return path.win32.normalize(driveNormalized);
 }
 
 async function ensureDatabaseSchema(): Promise<void> {
