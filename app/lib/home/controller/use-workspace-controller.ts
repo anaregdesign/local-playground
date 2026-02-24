@@ -1845,9 +1845,12 @@ export function useWorkspaceController() {
   }
 
   async function handleCreateThread() {
-    await createThreadAndSwitch({
+    const created = await createThreadAndSwitch({
       name: "",
     });
+    if (created) {
+      setActiveMainTab("threads");
+    }
   }
 
   async function handleThreadRename(threadIdRaw: string, nextNameRaw: string): Promise<void> {
@@ -4046,6 +4049,9 @@ export function useWorkspaceController() {
     },
   };
 
+  const isThreadOperationBusy =
+    isLoadingThreads || isSwitchingThread || isCreatingThread || isDeletingThread || isRestoringThread;
+
   const threadsTabProps = {
     instructionSectionProps: {
       agentInstruction,
@@ -4164,6 +4170,12 @@ export function useWorkspaceController() {
     mcpHistoryByTurnId,
     isSending,
     isThreadReadOnly: isActiveThreadArchived,
+    activeThreadName: activeThreadNameInput,
+    isThreadOperationBusy,
+    isCreatingThread,
+    onCreateThread: () => {
+      void handleCreateThread();
+    },
     onCopyMessage: handleCopyMessage,
     onCopyMcpLog: handleCopyMcpLog,
     sendProgressMessages,

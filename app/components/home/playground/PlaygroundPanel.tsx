@@ -84,12 +84,16 @@ type PlaygroundPanelProps<
   mcpHistoryByTurnId: Map<string, TMcpRpcHistoryEntry[]>;
   isSending: boolean;
   isThreadReadOnly: boolean;
+  activeThreadName: string;
+  isThreadOperationBusy: boolean;
+  isCreatingThread: boolean;
   renderMessageContent: (message: TMessage) => ReactNode;
   renderTurnMcpLog: (
     entries: TMcpRpcHistoryEntry[],
     isLive: boolean,
     onCopy: (text: string) => void,
   ) => ReactNode;
+  onCreateThread: () => void;
   onCopyMessage: (content: string) => void;
   onCopyMcpLog: (content: string) => void;
   sendProgressMessages: string[];
@@ -149,8 +153,12 @@ export function PlaygroundPanel<
     mcpHistoryByTurnId,
     isSending,
     isThreadReadOnly,
+    activeThreadName,
+    isThreadOperationBusy,
+    isCreatingThread,
     renderMessageContent,
     renderTurnMcpLog,
+    onCreateThread,
     onCopyMessage,
     onCopyMcpLog,
     sendProgressMessages,
@@ -387,9 +395,28 @@ export function PlaygroundPanel<
       <header className="chat-header">
         <div className="chat-header-row">
           <div className="chat-header-main">
-            <div className="chat-header-title">
-              <img className="chat-header-symbol" src="/foundry-symbol.svg" alt="" aria-hidden="true" />
-              <h1>Local Playground</h1>
+            <div className="chat-header-title-row">
+              <div className="chat-header-title">
+                <img className="chat-header-symbol" src="/foundry-symbol.svg" alt="" aria-hidden="true" />
+                <h1>Local Playground</h1>
+              </div>
+              <div className="chat-thread-header-controls">
+                <span className="chat-thread-name-label" title={activeThreadName}>
+                  {activeThreadName}
+                </span>
+                <Button
+                  type="button"
+                  appearance="subtle"
+                  size="small"
+                  className="chat-thread-new-btn"
+                  aria-label="Create new thread"
+                  title="Create a new thread and switch to Threads."
+                  onClick={onCreateThread}
+                  disabled={isThreadOperationBusy}
+                >
+                  {isCreatingThread ? "…" : "+"}
+                </Button>
+              </div>
             </div>
           </div>
         </div>

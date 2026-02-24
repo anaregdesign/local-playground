@@ -257,12 +257,23 @@ body {
 
 .chat-header-main {
   min-width: 0;
+  flex: 1 1 auto;
+  width: 100%;
 }
 
 .chat-header-title {
   display: inline-flex;
   align-items: center;
   gap: 0.56rem;
+  flex: 0 0 auto;
+}
+
+.chat-header-title-row {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  min-width: 0;
+  width: 100%;
 }
 
 .chat-header-symbol {
@@ -277,6 +288,49 @@ body {
   font-size: 1.2rem;
   font-weight: 700;
   letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.chat-thread-header-controls {
+  margin-top: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.45rem;
+  margin-left: auto;
+  flex: 0 1 460px;
+  max-width: 420px;
+}
+
+.chat-thread-name-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-main);
+  font-size: 0.95rem;
+  line-height: 1.35;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: right;
+}
+
+.chat-thread-new-btn.fui-Button {
+  min-width: 1.85rem;
+  width: 1.85rem;
+  height: 1.85rem;
+  min-height: 1.85rem;
+  padding: 0;
+  border-radius: var(--home-radius-sm);
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.chat-thread-new-btn.fui-Button .fui-Button__content {
+  line-height: 1;
 }
 
 .chat-header p {
@@ -2153,6 +2207,15 @@ body {
 
   .chat-shell {
     height: auto;
+  }
+
+  .chat-thread-header-controls {
+    flex: 1 1 auto;
+    max-width: 100%;
+  }
+
+  .chat-header-title-row {
+    flex-wrap: wrap;
   }
 
   .side-shell {
