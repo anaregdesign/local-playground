@@ -1,6 +1,9 @@
 /**
  * Test module verifying api.chat behavior.
  */
+import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { MCP_DEFAULT_AZURE_AUTH_SCOPE } from "~/lib/constants";
 import { chatRouteTestUtils } from "./api.chat";
@@ -17,6 +20,8 @@ const {
   normalizeMcpInitializeNullOptionals,
   normalizeMcpListToolsNullOptionals,
   readProgressEventFromRunStreamEvent,
+  buildStdioSpawnEnvironment,
+  resolveExecutableCommand,
 } = chatRouteTestUtils;
 
 describe("readWebSearchEnabled", () => {
@@ -269,6 +274,35 @@ describe("readMcpServers", () => {
       error:
         'mcpServers[0].headers cannot include "Content-Type". It is fixed to "application/json".',
     });
+  });
+});
+
+describe("stdio command resolution", () => {
+  it("builds stdio env with PATH", () => {
+    const env = buildStdioSpawnEnvironment({});
+    expect(typeof env.PATH).toBe("string");
+    expect((env.PATH ?? "").length).toBeGreaterThan(0);
+  });
+
+  it("resolves a command from PATH entries", () => {
+    const tempDirectory = mkdtempSync(path.join(os.tmpdir(), "local-playground-chat-"));
+    try {
+      const commandName = process.platform === "win32" ? "demo-tool.cmd" : "demo-tool";
+      const commandPath = path.join(tempDirectory, commandName);
+      writeFileSync(
+        commandPath,
+        process.platform === "win32" ? "@echo off\r\necho demo\r\n" : "#!/bin/sh\necho demo\n",
+        "utf8",
+      );
+      if (process.platform !== "win32") {
+        chmodSync(commandPath, 0o755);
+      }
+
+      const resolved = resolveExecutableCommand("demo-tool", { PATH: tempDirectory });
+      expect(resolved).toBe(commandPath);
+    } finally {
+      rmSync(tempDirectory, { recursive: true, force: true });
+    }
   });
 });
 

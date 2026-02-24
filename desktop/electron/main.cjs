@@ -2,8 +2,9 @@
  * Electron desktop-shell module.
  */
 const path = require('node:path');
+const os = require('node:os');
 const { existsSync, readFileSync } = require('node:fs');
-const { spawn } = require('node:child_process');
+const { spawn, spawnSync } = require('node:child_process');
 const { app, BrowserWindow, dialog, session, shell } = require('electron');
 const { autoUpdater } = require('electron-updater');
 
@@ -12,6 +13,8 @@ const BACKEND_DEV_URL = process.env.DESKTOP_BACKEND_URL || 'http://localhost:517
 const BACKEND_PORT = Number.parseInt(process.env.DESKTOP_BACKEND_PORT || '5180', 10);
 const BACKEND_URL = `http://localhost:${BACKEND_PORT}`;
 const APP_ICON_PATH = path.resolve(__dirname, 'assets', 'icon.png');
+const SHELL_PATH_START_MARKER = '__LOCAL_PLAYGROUND_PATH_START__';
+const SHELL_PATH_END_MARKER = '__LOCAL_PLAYGROUND_PATH_END__';
 
 /** @type {BrowserWindow | null} */
 let mainWindow = null;
@@ -241,6 +244,7 @@ async function startProductionBackend() {
   const appRootPath = resolveRuntimeAppRootPath();
   const serveCliPath = resolveReactRouterServeCliPath();
   const serverBuildPath = resolveServerBuildPath(appRootPath);
+  const executablePathEnv = resolveBackendExecutablePathEnvironment();
   if (!existsSync(serverBuildPath)) {
     throw new Error(`Server build is missing at ${serverBuildPath}. Run \`npm run build\` first.`);
   }
@@ -249,6 +253,8 @@ async function startProductionBackend() {
     cwd: resolveBackendWorkingDirectory(appRootPath),
     env: {
       ...process.env,
+      [executablePathEnv.key]: executablePathEnv.value,
+      ...(process.platform === 'win32' ? {} : { PATH: executablePathEnv.value }),
       PORT: String(BACKEND_PORT),
       NODE_ENV: 'production',
       NODE_PATH: resolveBackendNodePath(appRootPath),
@@ -452,6 +458,130 @@ function resolveBackendNodePath(appRootPath) {
   }
 
   return nodePaths.join(path.delimiter);
+}
+
+function resolveBackendExecutablePathEnvironment() {
+  const key = resolvePathEnvironmentKey();
+  const currentValue = typeof process.env[key] === 'string' ? process.env[key] : '';
+  const pathEntries = currentValue
+    .split(path.delimiter)
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0);
+  const merged = dedupePathEntries(
+    pathEntries
+      .concat(resolveShellExecutablePathEntries())
+      .concat(resolveAdditionalExecutablePathEntries()),
+  );
+  return {
+    key,
+    value: merged.join(path.delimiter),
+  };
+}
+
+function resolvePathEnvironmentKey() {
+  for (const key of Object.keys(process.env)) {
+    if (key.toUpperCase() === 'PATH') {
+      return key;
+    }
+  }
+
+  return 'PATH';
+}
+
+function dedupePathEntries(entries) {
+  const seen = new Set();
+  const deduped = [];
+  for (const entry of entries) {
+    if (!entry || seen.has(entry)) {
+      continue;
+    }
+
+    seen.add(entry);
+    deduped.push(entry);
+  }
+
+  return deduped;
+}
+
+function resolveAdditionalExecutablePathEntries() {
+  if (process.platform === 'win32') {
+    const programFilesEntries = [
+      typeof process.env.ProgramFiles === 'string' ? process.env.ProgramFiles : '',
+      typeof process.env['ProgramFiles(x86)'] === 'string' ? process.env['ProgramFiles(x86)'] : '',
+    ]
+      .map((entry) => entry.trim())
+      .filter((entry) => entry.length > 0);
+    return dedupePathEntries(programFilesEntries.map((entry) => path.join(entry, 'nodejs')));
+  }
+
+  const homeDirectory = os.homedir();
+  const entries = ['/opt/homebrew/bin', '/usr/local/bin', '/usr/bin', '/bin', '/usr/sbin', '/sbin'];
+  if (homeDirectory) {
+    entries.push(
+      path.join(homeDirectory, '.local', 'bin'),
+      path.join(homeDirectory, '.volta', 'bin'),
+      path.join(homeDirectory, '.asdf', 'shims'),
+      path.join(homeDirectory, '.bun', 'bin'),
+    );
+  }
+
+  return entries;
+}
+
+function resolveShellExecutablePathEntries() {
+  if (process.platform === 'win32') {
+    return [];
+  }
+
+  const shellPath = typeof process.env.SHELL === 'string' ? process.env.SHELL.trim() : '';
+  if (!shellPath) {
+    return [];
+  }
+
+  const command = `printf "%s%s%s" "${SHELL_PATH_START_MARKER}" "$PATH" "${SHELL_PATH_END_MARKER}"`;
+  const interactiveLoginEntries = readShellExecutablePathEntries(shellPath, ['-i', '-l', '-c', command]);
+  if (interactiveLoginEntries.length > 0) {
+    return interactiveLoginEntries;
+  }
+
+  return readShellExecutablePathEntries(shellPath, ['-l', '-c', command]);
+}
+
+function readShellExecutablePathEntries(shellPath, args) {
+  try {
+    const result = spawnSync(shellPath, args, {
+      env: process.env,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+      timeout: 4_000,
+      maxBuffer: 512 * 1024,
+    });
+
+    if (result.error || result.status !== 0) {
+      return [];
+    }
+
+    const stdout = typeof result.stdout === 'string' ? result.stdout : '';
+    const start = stdout.indexOf(SHELL_PATH_START_MARKER);
+    const end = stdout.indexOf(SHELL_PATH_END_MARKER, start + SHELL_PATH_START_MARKER.length);
+    if (start < 0 || end < 0) {
+      return [];
+    }
+
+    const pathValue = stdout
+      .slice(start + SHELL_PATH_START_MARKER.length, end)
+      .trim();
+    if (!pathValue) {
+      return [];
+    }
+
+    return pathValue
+      .split(path.delimiter)
+      .map((entry) => entry.trim())
+      .filter((entry) => entry.length > 0);
+  } catch {
+    return [];
+  }
 }
 
 function setDockIconIfAvailable() {
