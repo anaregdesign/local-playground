@@ -14,6 +14,7 @@ export default [
   route("api/instruction", "routes/api.instruction.ts"),
   route("api/thread-title", "routes/api.thread-title.ts"),
   route("api/mcp-servers", "routes/api.mcp-servers.ts"),
+  route("mcp", "routes/mcp.ts"),
   route("api/threads", "routes/api.threads.ts"),
   route("api/skills", "routes/api.skills.ts"),
 ] satisfies RouteConfig;
