@@ -199,6 +199,9 @@ async function initializeSchema(databaseUrl) {
         "name" TEXT NOT NULL,
         "createdAt" TEXT NOT NULL,
         "updatedAt" TEXT NOT NULL,
+        "deletedAt" TEXT,
+        "reasoningEffort" TEXT NOT NULL DEFAULT 'none',
+        "webSearchEnabled" BOOLEAN NOT NULL DEFAULT false,
         FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE CASCADE
       )
     `);

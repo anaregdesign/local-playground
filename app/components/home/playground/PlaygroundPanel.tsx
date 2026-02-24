@@ -21,6 +21,7 @@ const {
   Button,
   Select,
   Spinner,
+  Switch,
   Textarea,
 } = FluentUI;
 type ChatRole = "user" | "assistant";
@@ -135,6 +136,8 @@ type PlaygroundPanelProps<
   reasoningEffort: ReasoningEffort;
   reasoningEffortOptions: ReasoningEffort[];
   onReasoningEffortChange: (value: ReasoningEffort) => void;
+  webSearchEnabled: boolean;
+  onWebSearchEnabledChange: (value: boolean) => void;
   maxChatAttachmentFiles: number;
   canSendMessage: boolean;
   selectedSkills: ThreadSkillLike[];
@@ -200,6 +203,8 @@ export function PlaygroundPanel<
     reasoningEffort,
     reasoningEffortOptions,
     onReasoningEffortChange,
+    webSearchEnabled,
+    onWebSearchEnabledChange,
     maxChatAttachmentFiles,
     canSendMessage,
     selectedSkills,
@@ -686,6 +691,23 @@ export function PlaygroundPanel<
                         ))}
                       </optgroup>
                     </Select>
+                  </div>,
+                )}
+                {renderLabeledTooltip(
+                  "Web Search",
+                  ["Enable Azure web-search-preview tool for this thread."],
+                  <div className="chat-quick-control chat-quick-toggle-control">
+                    <Switch
+                      id="chat-web-search-preview"
+                      className="chat-web-search-toggle"
+                      aria-label="Web Search"
+                      label="Web Search"
+                      checked={webSearchEnabled}
+                      onChange={(_, data) => {
+                        onWebSearchEnabledChange(data.checked === true);
+                      }}
+                      disabled={isSending}
+                    />
                   </div>,
                 )}
               </div>

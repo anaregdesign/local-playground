@@ -58,6 +58,8 @@ model Thread {
   createdAt    String
   updatedAt    String
   deletedAt    String?
+  reasoningEffort String          @default("none")
+  webSearchEnabled Boolean        @default(false)
   user         User               @relation(fields: [userId], references: [id], onDelete: Cascade)
   instruction  ThreadInstruction?
   messages     ThreadMessage[]

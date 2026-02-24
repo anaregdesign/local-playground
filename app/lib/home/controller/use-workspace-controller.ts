@@ -21,7 +21,9 @@ import {
   HOME_CHAT_INPUT_MAX_HEIGHT_PX,
   HOME_CHAT_INPUT_MIN_HEIGHT_PX,
   HOME_DEFAULT_MCP_TRANSPORT,
+  HOME_DEFAULT_REASONING_EFFORT,
   HOME_DEFAULT_UTILITY_REASONING_EFFORT,
+  HOME_DEFAULT_WEB_SEARCH_ENABLED,
   HOME_DEFAULT_THREAD_REQUEST_STATE,
   HOME_INITIAL_MESSAGES,
   HOME_MAIN_SPLITTER_MIN_RIGHT_WIDTH_PX,
@@ -115,6 +117,7 @@ import {
   cloneMessages,
   cloneThreadSkillSelections,
   hasThreadInteraction,
+  hasThreadPersistableState,
   isThreadArchivedById,
   isThreadSnapshotArchived,
   upsertThreadSnapshot,
@@ -189,7 +192,10 @@ export function useWorkspaceController() {
     null,
   );
   const [isAzureAuthRequired, setIsAzureAuthRequired] = useState(false);
-  const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffort>("none");
+  const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffort>(
+    HOME_DEFAULT_REASONING_EFFORT,
+  );
+  const [webSearchEnabled, setWebSearchEnabled] = useState(HOME_DEFAULT_WEB_SEARCH_ENABLED);
   const [utilityReasoningEffort, setUtilityReasoningEffort] = useState<ReasoningEffort>(
     HOME_DEFAULT_UTILITY_REASONING_EFFORT,
   );
@@ -805,7 +811,7 @@ export function useWorkspaceController() {
     }
 
     const snapshot = buildThreadSnapshotFromCurrentState(baseThread);
-    if (!hasThreadInteraction(snapshot)) {
+    if (!shouldPersistThreadSnapshot(snapshot)) {
       return;
     }
     const signature = buildThreadSaveSignature(snapshot);
@@ -825,6 +831,8 @@ export function useWorkspaceController() {
     };
   }, [
     activeThreadId,
+    reasoningEffort,
+    webSearchEnabled,
     agentInstruction,
     messages,
     mcpServers,
@@ -862,7 +870,7 @@ export function useWorkspaceController() {
     if (!baseThread) {
       return;
     }
-    if (!hasThreadInteraction(baseThread)) {
+    if (!shouldPersistThreadSnapshot(baseThread)) {
       return;
     }
 
@@ -1200,6 +1208,8 @@ export function useWorkspaceController() {
     setMcpRpcHistory([]);
     setMcpServers([]);
     setSelectedThreadSkills([]);
+    setReasoningEffort(HOME_DEFAULT_REASONING_EFFORT);
+    setWebSearchEnabled(HOME_DEFAULT_WEB_SEARCH_ENABLED);
     setAgentInstruction(DEFAULT_AGENT_INSTRUCTION);
     setLoadedInstructionFileName(null);
     setInstructionFileError(null);
@@ -1282,6 +1292,20 @@ export function useWorkspaceController() {
     return draftName.slice(0, HOME_THREAD_NAME_MAX_LENGTH);
   }
 
+  function shouldPersistThreadSnapshot(
+    snapshot: Pick<
+      ThreadSnapshot,
+      "id" | "messages" | "reasoningEffort" | "webSearchEnabled"
+    > &
+      Partial<Pick<ThreadSnapshot, "skillSelections">>,
+  ): boolean {
+    if (hasThreadPersistableState(snapshot)) {
+      return true;
+    }
+
+    return threadSaveSignatureByIdRef.current.has(snapshot.id);
+  }
+
   function createLocalThreadSnapshot(options: {
     name?: string;
   } = {}): ThreadSnapshot {
@@ -1295,6 +1319,8 @@ export function useWorkspaceController() {
       createdAt: now,
       updatedAt: now,
       deletedAt: null,
+      reasoningEffort: HOME_DEFAULT_REASONING_EFFORT,
+      webSearchEnabled: HOME_DEFAULT_WEB_SEARCH_ENABLED,
       agentInstruction: DEFAULT_AGENT_INSTRUCTION,
       messages: [],
       mcpServers: [],
@@ -1314,6 +1340,8 @@ export function useWorkspaceController() {
       ...base,
       name: resolveThreadNameForSave(base.name, includeDraftName),
       updatedAt: new Date().toISOString(),
+      reasoningEffort,
+      webSearchEnabled,
       agentInstruction,
       messages: cloneMessages(messages),
       mcpServers: cloneMcpServers(mcpServers),
@@ -1400,6 +1428,8 @@ export function useWorkspaceController() {
     setMcpServers(clonedMcpServers);
     setMcpRpcHistory(clonedMcpRpcHistory);
     setSelectedThreadSkills(clonedSkillSelections);
+    setReasoningEffort(thread.reasoningEffort);
+    setWebSearchEnabled(thread.webSearchEnabled);
     setAgentInstruction(thread.agentInstruction);
     setLoadedInstructionFileName(null);
     setInstructionFileError(null);
@@ -1431,7 +1461,7 @@ export function useWorkspaceController() {
   ): Promise<boolean> {
     const showBusy = options.showBusy !== false;
     const reportError = options.reportError !== false;
-    if (!hasThreadInteraction(snapshot)) {
+    if (!shouldPersistThreadSnapshot(snapshot)) {
       return true;
     }
     const expectedUserKey = activeWorkspaceUserKeyRef.current.trim();
@@ -1521,7 +1551,7 @@ export function useWorkspaceController() {
     if (!snapshot) {
       return;
     }
-    if (!hasThreadInteraction(snapshot)) {
+    if (!shouldPersistThreadSnapshot(snapshot)) {
       return;
     }
 
@@ -1553,7 +1583,7 @@ export function useWorkspaceController() {
     const snapshot = buildThreadSnapshotFromCurrentState(baseThread, {
       includeDraftName: true,
     });
-    if (!hasThreadInteraction(snapshot)) {
+    if (!shouldPersistThreadSnapshot(snapshot)) {
       return true;
     }
     const signature = buildThreadSaveSignature(snapshot);
@@ -1583,7 +1613,7 @@ export function useWorkspaceController() {
     if (!baseThread || baseThread.name === normalizedName) {
       return;
     }
-    if (!hasThreadInteraction(baseThread)) {
+    if (!shouldPersistThreadSnapshot(baseThread)) {
       return;
     }
 
@@ -1808,10 +1838,13 @@ export function useWorkspaceController() {
     try {
       const currentThreadId = activeThreadIdRef.current.trim();
       const currentThread = threadsRef.current.find((thread) => thread.id === currentThreadId);
+      const currentThreadSnapshot =
+        currentThread ? buildThreadSnapshotFromCurrentState(currentThread) : null;
 
       if (
         currentThread &&
-        !hasThreadInteraction(currentThread) &&
+        currentThreadSnapshot &&
+        !hasThreadPersistableState(currentThreadSnapshot) &&
         !threadSaveSignatureByIdRef.current.has(currentThread.id)
       ) {
         applyThreadSnapshotToState(currentThread);
@@ -2865,6 +2898,7 @@ export function useWorkspaceController() {
             deploymentName,
           },
           reasoningEffort,
+          webSearchEnabled,
           agentInstruction: requestAgentInstruction,
           skills: requestSkillSelections,
           mcpServers: requestMcpServers.map((server) =>
@@ -3346,6 +3380,16 @@ export function useWorkspaceController() {
   function handleUtilityReasoningEffortChange(nextValue: ReasoningEffort) {
     setUtilityReasoningEffort(nextValue);
     setInstructionEnhanceError(null);
+  }
+
+  function handleReasoningEffortChange(nextValue: ReasoningEffort) {
+    setReasoningEffort(nextValue);
+    setUiError(null);
+  }
+
+  function handleWebSearchEnabledChange(nextValue: boolean) {
+    setWebSearchEnabled(nextValue);
+    setUiError(null);
   }
 
   function handleAgentInstructionChange(value: string) {
@@ -4218,7 +4262,9 @@ export function useWorkspaceController() {
     onDeploymentChange: handleChatDeploymentChange,
     reasoningEffort,
     reasoningEffortOptions,
-    onReasoningEffortChange: setReasoningEffort,
+    onReasoningEffortChange: handleReasoningEffortChange,
+    webSearchEnabled,
+    onWebSearchEnabledChange: handleWebSearchEnabledChange,
     maxChatAttachmentFiles: CHAT_ATTACHMENT_MAX_FILES,
     canSendMessage,
     selectedSkills: selectedThreadSkills,

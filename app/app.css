@@ -1139,6 +1139,28 @@ body {
   min-width: 0;
 }
 
+.chat-quick-toggle-control {
+  min-height: 32px;
+}
+
+.chat-web-search-toggle.fui-Switch {
+  border-radius: 10px;
+  background: #f5f7fa;
+  padding: 0.24rem 0.5rem;
+  transition: background-color 0.14s ease;
+}
+
+.chat-web-search-toggle.fui-Switch:hover,
+.chat-web-search-toggle.fui-Switch:focus-within {
+  background: #ffffff;
+}
+
+.chat-web-search-toggle .fui-Switch__label {
+  color: #1f4e67;
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
 .chat-attach-btn.fui-Button {
   min-width: 2rem !important;
   width: 2rem !important;

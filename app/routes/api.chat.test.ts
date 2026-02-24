@@ -7,6 +7,7 @@ import { chatRouteTestUtils } from "./api.chat";
 
 const {
   readTemperature,
+  readWebSearchEnabled,
   readAttachments,
   hasNonPdfAttachments,
   readSkills,
@@ -17,6 +18,19 @@ const {
   normalizeMcpListToolsNullOptionals,
   readProgressEventFromRunStreamEvent,
 } = chatRouteTestUtils;
+
+describe("readWebSearchEnabled", () => {
+  it("defaults to false for omitted or invalid values", () => {
+    expect(readWebSearchEnabled({})).toBe(false);
+    expect(readWebSearchEnabled({ webSearchEnabled: "true" })).toBe(false);
+    expect(readWebSearchEnabled({ webSearchEnabled: 1 })).toBe(false);
+  });
+
+  it("accepts explicit boolean flags", () => {
+    expect(readWebSearchEnabled({ webSearchEnabled: true })).toBe(true);
+    expect(readWebSearchEnabled({ webSearchEnabled: false })).toBe(false);
+  });
+});
 
 describe("attachment tool routing", () => {
   it("treats non-pdf attachments as code-interpreter targets", () => {

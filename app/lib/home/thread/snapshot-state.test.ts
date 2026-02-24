@@ -3,6 +3,7 @@
  */
 import { describe, expect, it } from "vitest";
 import {
+  hasThreadPersistableState,
   hasThreadInteraction,
   isThreadArchivedById,
   isThreadSnapshotArchived,
@@ -39,6 +40,38 @@ describe("hasThreadInteraction", () => {
             attachments: [],
           },
         ],
+      }),
+    ).toBe(true);
+  });
+});
+
+describe("hasThreadPersistableState", () => {
+  it("returns false when only default thread settings are present", () => {
+    expect(
+      hasThreadPersistableState({
+        messages: [],
+        reasoningEffort: "none",
+        webSearchEnabled: false,
+      }),
+    ).toBe(false);
+  });
+
+  it("returns true when reasoning effort differs from default", () => {
+    expect(
+      hasThreadPersistableState({
+        messages: [],
+        reasoningEffort: "medium",
+        webSearchEnabled: false,
+      }),
+    ).toBe(true);
+  });
+
+  it("returns true when web search is enabled", () => {
+    expect(
+      hasThreadPersistableState({
+        messages: [],
+        reasoningEffort: "none",
+        webSearchEnabled: true,
       }),
     ).toBe(true);
   });
