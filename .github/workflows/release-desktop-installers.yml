@@ -41,6 +41,9 @@ jobs:
           - os: macos-latest
             platform: macOS
             package_command: npm run desktop:package:mac
+          - os: windows-latest
+            platform: Windows
+            package_command: npm run desktop:package:win:portable
 
     steps:
       - name: Checkout
@@ -124,11 +127,23 @@ jobs:
             exit 1
           fi
 
+      - name: Disable Windows code-signing auto-discovery
+        if: matrix.os == 'windows-latest'
+        shell: bash
+        run: |
+          echo "CSC_IDENTITY_AUTO_DISCOVERY=false" >> "${GITHUB_ENV}"
+
       - name: Build installer (macOS)
         if: matrix.os == 'macos-latest'
         shell: bash
         run: |
           ulimit -n 10240
+          ${{ matrix.package_command }}
+
+      - name: Build executable (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: bash
+        run: |
           ${{ matrix.package_command }}
 
       - name: Notarize and staple macOS DMG
@@ -212,6 +227,15 @@ jobs:
             dist/installers/*.blockmap
           if-no-files-found: error
 
+      - name: Upload Windows executable
+        if: matrix.os == 'windows-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: installers-windows
+          path: |
+            dist/installers/*.exe
+          if-no-files-found: error
+
   release:
     name: Publish Release Assets
     needs: package-installers
@@ -284,7 +308,9 @@ jobs:
           cat > release-notes.md <<'EOF'
           ## Local Playground
 
-          Desktop installers and updater metadata for macOS are attached to this release.
+          Desktop artifacts are attached to this release:
+          - macOS installers and updater metadata
+          - Windows portable executable (`.exe`, unsigned)
 
           ### Run from Source (Copy & Paste)
 
@@ -307,6 +333,7 @@ jobs:
 
           ### Platform Trust
           - macOS artifacts are Developer ID signed and notarized.
+          - Windows portable executable is intentionally unsigned.
           EOF
 
           for asset in "${ASSETS[@]}"; do

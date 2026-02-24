@@ -21,6 +21,7 @@
     "desktop:package": "npm run build && npm run desktop:package:base",
     "desktop:package:mac": "npm run build && npm run desktop:package:base -- --mac dmg zip",
     "desktop:package:win": "npm run build && npm run desktop:package:base -- --win nsis",
+    "desktop:package:win:portable": "npm run build && npm run desktop:package:base -- --win portable",
     "dev:db:init": "node scripts/dev-db-init.mjs",
     "skill:enable": "node scripts/enable-local-playground-skill.mjs",
     "typecheck": "npm run prisma:generate && npm run typecheck:core",
