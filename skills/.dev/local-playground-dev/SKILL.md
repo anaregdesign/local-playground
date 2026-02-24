@@ -39,7 +39,7 @@ Run this loop for every implementation task.
 
 ## 2) Enforce Core Architecture Constraints
 
-- Keep UI terminology consistent: `Playground`, `Threads`, `MCP Servers`, `Settings`.
+- Keep UI terminology consistent: `Playground`, `Threads`, `MCP Servers`, `Skills`, `Settings`.
 - Keep Home route modules in `app/routes/` as visual composition and panel wiring only.
 - Keep Home runtime ownership in `app/lib/home/controller/`.
 - Map each change to the approved `home` structure:
@@ -48,6 +48,7 @@ Run this loop for every implementation task.
   - `app/components/home/config/`: right-pane panel shell and tab wiring.
   - `app/components/home/config/threads/`: Threads tab and sections.
   - `app/components/home/config/mcp/`: MCP Servers tab and sections.
+  - `app/components/home/config/skills/`: Skills tab and sections.
   - `app/components/home/config/settings/`: Settings tab and sections.
   - `app/components/home/shared/`: reusable primitives and shared types.
   - `app/lib/home/*`: runtime helpers and pure transforms.
@@ -61,6 +62,7 @@ Run this loop for every implementation task.
 - Persist that state to SQLite via delayed writes (debounced/autosave), not eager write-on-every-change.
 - Treat DB as durable snapshot storage; treat React state as the immediate source of truth during interaction.
 - Implement persistence from controller logic under `app/lib/home/controller/`.
+- Local development debugging may use the web server MCP endpoint at `/mcp`, including DB table inspection, but keep that workflow development-only.
 
 ## 4) Enforce Shared-Component-First Policy
 
@@ -80,10 +82,17 @@ Run this loop for every implementation task.
 After UI/API changes, run:
 
 ```bash
+npm run quality:gate
+```
+
+Equivalent expanded checks for troubleshooting:
+
+```bash
 npm audit --omit=dev
-npm run typecheck
-npm run build
-npm run test
+npm run prisma:generate
+npm run typecheck:core
+npm run test:core
+npm run build:core
 ```
 
 After refactors:

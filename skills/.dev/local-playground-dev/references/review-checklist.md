@@ -82,6 +82,7 @@ git diff --name-only
    - Config panel shell -> `app/components/home/config/`
    - Threads tab/sections -> `app/components/home/config/threads/`
    - MCP tab/sections -> `app/components/home/config/mcp/`
+   - Skills tab/sections -> `app/components/home/config/skills/`
    - Settings tab/sections -> `app/components/home/config/settings/`
    - Reusable primitives -> `app/components/home/shared/`
 3. Confirm naming conventions:
@@ -141,6 +142,7 @@ Keep interactive state responsive and persistence stable.
 2. Confirm DB writes use delayed persistence (debounce/autosave), not eager write-on-every-change.
 3. Confirm persistence orchestration lives in controller code (`app/lib/home/controller/`) or controller-adjacent runtime modules.
 4. Treat SQLite records as durable snapshots, not as the immediate interaction source.
+5. For debug tooling, `/mcp` endpoint usage (including DB table inspection) is treated as development-only workflow.
 
 ### Pass Criteria
 
@@ -174,6 +176,7 @@ Preserve desktop-first two-pane UX and responsive behavior.
 
 1. Verify layout keeps:
    - left `Playground`, right tabbed panel
+   - right panel tabs include `Threads`, `MCP Servers`, `Skills`, `Settings`
    - vertical splitter on desktop
    - stacked layout at narrow widths (`<= 980px`)
 2. Verify minimum widths are preserved:
@@ -190,10 +193,17 @@ Preserve desktop-first two-pane UX and responsive behavior.
 Run all commands:
 
 ```bash
+npm run quality:gate
+```
+
+Expanded equivalent:
+
+```bash
 npm audit --omit=dev
-npm run typecheck
-npm run build
-npm run test
+npm run prisma:generate
+npm run typecheck:core
+npm run test:core
+npm run build:core
 ```
 
 ### Pass Criteria

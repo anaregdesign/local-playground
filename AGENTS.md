@@ -9,7 +9,7 @@
 - Before starting development, install the project skill with Codex standard setup by placing it under `$CODEX_HOME/skills/`.
 - If `CODEX_HOME` is not set, set it first (example: `export CODEX_HOME="$HOME/.codex"`).
 - Recommended setup command:
-  - `mkdir -p "$CODEX_HOME/skills" && ln -sfn "$(pwd)/skills/.dev/local-playground-dev" "$CODEX_HOME/skills/local-playground-dev"`
+  - `export CODEX_HOME="${CODEX_HOME:-$HOME/.codex}" && npm run skill:enable`
 - Restart Codex (or start a new session) after installing/updating the skill.
 
 # Implementation Policy
@@ -23,14 +23,14 @@
 ## Product Identity
 
 - App name is `Local Playground`.
-- Keep terminology consistent in UI/docs: `Playground`, `Threads`, `MCP Servers`, `Settings`.
+- Keep terminology consistent in UI/docs: `Playground`, `Threads`, `MCP Servers`, `Skills`, `Settings`.
 - Keep a desktop-first UX while preserving responsive behavior.
 
 ## Layout / UX
 
 - Main layout is two-pane:
   - Left pane: always-visible `Playground` chat area.
-  - Right pane: tabbed side panel (`Threads`, `MCP Servers`, `Settings`).
+  - Right pane: tabbed side panel (`Threads`, `MCP Servers`, `Skills`, `Settings`).
 - Keep the vertical splitter between left/right panes resizable.
 - Keep right-pane width bounded for desktop usability:
   - right pane minimum: `320px`
@@ -55,12 +55,13 @@
   - `app/components/home/config/` for right-pane configuration panel
   - `app/components/home/config/threads/` for Threads tab and its sections
   - `app/components/home/config/mcp/` for MCP Servers tab and its sections
+  - `app/components/home/config/skills/` for Skills tab and its sections
   - `app/components/home/config/settings/` for Settings tab and its sections
   - `app/components/home/shared/` for reusable UI primitives and shared types
 - Naming conventions:
   - `*Panel`: top-level pane container (`UnauthenticatedPanel`, `PlaygroundPanel`, `ConfigPanel`)
-  - `*Tab`: tab content root under a panel (`ThreadsTab`, `McpServersTab`, `SettingsTab`)
-  - `*Section`: vertically segmented form/content block inside a tab (`InstructionSection`, `ThreadsManageSection`, `McpAddServerSection`)
+  - `*Tab`: tab content root under a panel (`ThreadsTab`, `McpServersTab`, `SkillsTab`, `SettingsTab`)
+  - `*Section`: vertically segmented form/content block inside a tab (`InstructionSection`, `ThreadsManageSection`, `SkillsSection`, `McpAddServerSection`)
   - Shared primitives should use purpose-based names (`ConfigSection`, `StatusMessageList`, `AutoDismissStatusMessageList`, `LabeledTooltip`, `CopyIconButton`)
 - Place top-level panel components as siblings under `app/components/home/*` according to DOM hierarchy.
   - Do not place one top-level panel inside another panel directory (for example, auth panel under `playground/`).
@@ -197,6 +198,8 @@
 ## MCP Debugging UX
 
 - Keep MCP visibility high; this app is an MCP debugging workbench.
+- During local development, the web server `/mcp` endpoint hosts an MCP server and may be used for debugging, including inspecting all SQLite tables.
+- Treat `/mcp` database-table inspection as a development/debug workflow, not a production access pattern.
 - Show MCP Operation Log inline in Playground per dialog turn.
 - Do not render MCP log blocks when a turn has no MCP operations.
 - Default MCP log panels to collapsed.
@@ -236,10 +239,8 @@
 ## Quality Gates
 
 - After UI/API changes, run:
-  - `npm audit --omit=dev`
-  - `npm run typecheck`
-  - `npm run build`
-  - `npm run test`
+  - `npm run quality:gate`
+  - (`quality:gate` runs `npm audit --omit=dev`, `npm run prisma:generate`, `npm run typecheck:core`, `npm run test:core`, `npm run build:core`)
 - After refactors, remove dead code:
   - unused components/files
   - unused CSS selectors in `app/app.css`

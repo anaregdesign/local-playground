@@ -19,8 +19,7 @@ If you are developing this repository with Codex and want policy checks from `lo
 
 ```bash
 export CODEX_HOME="${CODEX_HOME:-$HOME/.codex}"
-mkdir -p "$CODEX_HOME/skills"
-ln -sfn "$(pwd)/skills/.dev/local-playground-dev" "$CODEX_HOME/skills/local-playground-dev"
+npm run skill:enable
 ```
 
 After updating the skill link, restart Codex (or start a new session).
@@ -87,6 +86,7 @@ After updating the skill link, restart Codex (or start a new session).
 - Optional Azure Bearer token injection per server (`Authorization: Bearer <token>`).
 - Timeout range: `1-600` seconds.
 - MCP operation logs are shown inline per turn and collapsed by default.
+- During local development, the web server `/mcp` endpoint hosts an MCP server and can be used for debugging (including inspecting SQLite tables).
 
 Default saved MCP profiles (created if missing):
 
@@ -174,7 +174,17 @@ SQLite database:
 - `npm run start`
 - `npm run typecheck`
 - `npm run test`
+- `npm run quality:gate`
 - `npm run desktop:dev`
+- `npm run skill:enable`
+
+`quality:gate` runs the same checks as CI:
+
+- `npm audit --omit=dev`
+- `npm run prisma:generate`
+- `npm run typecheck:core`
+- `npm run test:core`
+- `npm run build:core`
 
 ## License
 
