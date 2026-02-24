@@ -1139,20 +1139,28 @@ body {
   min-width: 0;
 }
 
-.chat-quick-toggle-control {
+.quick-control-frame {
+  display: inline-flex;
+  align-items: center;
   min-height: 32px;
 }
 
-.chat-web-search-toggle.fui-Switch {
+.chat-quick-control-frame-switch {
   border-radius: 10px;
   background: #f5f7fa;
-  padding: 0.24rem 0.5rem;
+  padding: 0 0.5rem;
   transition: background-color 0.14s ease;
 }
 
-.chat-web-search-toggle.fui-Switch:hover,
-.chat-web-search-toggle.fui-Switch:focus-within {
+.chat-quick-control-frame-switch:hover,
+.chat-quick-control-frame-switch:focus-within {
   background: #ffffff;
+}
+
+.chat-web-search-toggle.fui-Switch {
+  min-height: 32px;
+  padding: 0;
+  background: transparent;
 }
 
 .chat-web-search-toggle .fui-Switch__label {

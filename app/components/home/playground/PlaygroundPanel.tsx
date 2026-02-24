@@ -14,6 +14,7 @@ import { FluentUI } from "~/components/home/shared/fluent";
 import { LabeledTooltip } from "~/components/home/shared/LabeledTooltip";
 import { AutoDismissStatusMessageList } from "~/components/home/shared/AutoDismissStatusMessageList";
 import { StatusMessageList } from "~/components/home/shared/StatusMessageList";
+import { QuickControlFrame } from "~/components/home/shared/QuickControlFrame";
 import type { ReasoningEffort } from "~/lib/home/shared/view-types";
 import { formatChatAttachmentSize } from "~/lib/home/chat/attachments";
 
@@ -675,39 +676,43 @@ export function PlaygroundPanel<
                   "Reasoning Effort",
                   ["Controls how much internal reasoning the model uses."],
                   <div className="chat-quick-control">
-                    <Select
-                      id="chat-reasoning-effort"
-                      aria-label="Reasoning Effort"
-                      title="Reasoning effort level for the model."
-                      value={reasoningEffort}
-                      onChange={(event) => onReasoningEffortChange(event.target.value as ReasoningEffort)}
-                      disabled={isSending}
-                    >
-                      <optgroup label="Reasoning effort">
-                        {reasoningEffortOptions.map((option) => (
-                          <option key={option} value={option}>
-                            {option}
-                          </option>
-                        ))}
-                      </optgroup>
-                    </Select>
+                    <QuickControlFrame className="chat-quick-control-frame">
+                      <Select
+                        id="chat-reasoning-effort"
+                        aria-label="Reasoning Effort"
+                        title="Reasoning effort level for the model."
+                        value={reasoningEffort}
+                        onChange={(event) => onReasoningEffortChange(event.target.value as ReasoningEffort)}
+                        disabled={isSending}
+                      >
+                        <optgroup label="Reasoning effort">
+                          {reasoningEffortOptions.map((option) => (
+                            <option key={option} value={option}>
+                              {option}
+                            </option>
+                          ))}
+                        </optgroup>
+                      </Select>
+                    </QuickControlFrame>
                   </div>,
                 )}
                 {renderLabeledTooltip(
                   "Web Search",
                   ["Enable Azure web-search-preview tool for this thread."],
-                  <div className="chat-quick-control chat-quick-toggle-control">
-                    <Switch
-                      id="chat-web-search-preview"
-                      className="chat-web-search-toggle"
-                      aria-label="Web Search"
-                      label="Web Search"
-                      checked={webSearchEnabled}
-                      onChange={(_, data) => {
-                        onWebSearchEnabledChange(data.checked === true);
-                      }}
-                      disabled={isSending}
-                    />
+                  <div className="chat-quick-control">
+                    <QuickControlFrame className="chat-quick-control-frame chat-quick-control-frame-switch">
+                      <Switch
+                        id="chat-web-search-preview"
+                        className="chat-web-search-toggle"
+                        aria-label="Web Search"
+                        label="Web Search"
+                        checked={webSearchEnabled}
+                        onChange={(_, data) => {
+                          onWebSearchEnabledChange(data.checked === true);
+                        }}
+                        disabled={isSending}
+                      />
+                    </QuickControlFrame>
                   </div>,
                 )}
               </div>
