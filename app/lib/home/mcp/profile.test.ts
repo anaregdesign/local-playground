@@ -178,6 +178,33 @@ describe("MCP profile helpers", () => {
     });
   });
 
+  it("includes id when requested for edit flow", () => {
+    const payload = serializeMcpServerForSave(
+      {
+        id: "http-1",
+        name: "Remote",
+        transport: "streamable_http",
+        url: "https://example.com/mcp",
+        headers: {},
+        useAzureAuth: false,
+        azureAuthScope: MCP_DEFAULT_AZURE_AUTH_SCOPE,
+        timeoutSeconds: MCP_DEFAULT_TIMEOUT_SECONDS,
+      },
+      { includeId: true },
+    );
+
+    expect(payload).toEqual({
+      id: "http-1",
+      name: "Remote",
+      transport: "streamable_http",
+      url: "https://example.com/mcp",
+      headers: {},
+      useAzureAuth: false,
+      azureAuthScope: MCP_DEFAULT_AZURE_AUTH_SCOPE,
+      timeoutSeconds: MCP_DEFAULT_TIMEOUT_SECONDS,
+    });
+  });
+
   it("upserts by id", () => {
     const current = [
       {

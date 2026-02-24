@@ -22,11 +22,16 @@ export function McpServersTab(props: McpServersTabProps) {
     savedMcpServerOptions,
     selectedSavedMcpServerCount,
     isLoadingSavedMcpServers,
+    isMutatingSavedMcpServers,
     savedMcpError,
     onToggleSavedMcpServer,
+    onEditSavedMcpServer,
+    onDeleteSavedMcpServer,
     onReloadSavedMcpServers,
     isSending,
     isThreadReadOnly,
+    isEditingMcpServer,
+    editingMcpServerName,
     mcpNameInput,
     onMcpNameInputChange,
     mcpTransport,
@@ -54,6 +59,7 @@ export function McpServersTab(props: McpServersTabProps) {
     minMcpTimeoutSeconds,
     maxMcpTimeoutSeconds,
     onAddMcpServer,
+    onCancelMcpServerEdit,
     isSavingMcpServer,
     mcpFormError,
     mcpFormWarning,
@@ -76,12 +82,17 @@ export function McpServersTab(props: McpServersTabProps) {
           isSending={isSending}
           isThreadReadOnly={isThreadReadOnly}
           isLoadingSavedMcpServers={isLoadingSavedMcpServers}
+          isMutatingSavedMcpServers={isMutatingSavedMcpServers}
           savedMcpError={savedMcpError}
           onToggleSavedMcpServer={onToggleSavedMcpServer}
+          onEditSavedMcpServer={onEditSavedMcpServer}
+          onDeleteSavedMcpServer={onDeleteSavedMcpServer}
           onReloadSavedMcpServers={onReloadSavedMcpServers}
         />
         <McpAddServerSection
           isSending={isSending}
+          isEditingMcpServer={isEditingMcpServer}
+          editingMcpServerName={editingMcpServerName}
           mcpNameInput={mcpNameInput}
           onMcpNameInputChange={onMcpNameInputChange}
           mcpTransport={mcpTransport}
@@ -109,6 +120,7 @@ export function McpServersTab(props: McpServersTabProps) {
           minMcpTimeoutSeconds={minMcpTimeoutSeconds}
           maxMcpTimeoutSeconds={maxMcpTimeoutSeconds}
           onAddMcpServer={onAddMcpServer}
+          onCancelMcpServerEdit={onCancelMcpServerEdit}
           isSavingMcpServer={isSavingMcpServer}
           mcpFormError={mcpFormError}
           mcpFormWarning={mcpFormWarning}

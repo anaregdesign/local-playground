@@ -35,9 +35,10 @@ export type McpStdioServerConfig = {
 
 export type McpServerConfig = McpHttpServerConfig | McpStdioServerConfig;
 
-export type SaveMcpServerRequest =
-  | Omit<McpHttpServerConfig, "id">
-  | Omit<McpStdioServerConfig, "id">;
+type SaveMcpHttpServerRequest = Omit<McpHttpServerConfig, "id"> & { id?: string };
+type SaveMcpStdioServerRequest = Omit<McpStdioServerConfig, "id"> & { id?: string };
+
+export type SaveMcpServerRequest = SaveMcpHttpServerRequest | SaveMcpStdioServerRequest;
 
 export function buildMcpServerKey(server: McpServerConfig): string {
   if (server.transport === "stdio") {
@@ -145,9 +146,15 @@ export function readMcpServerFromUnknown(value: unknown): McpServerConfig | null
   };
 }
 
-export function serializeMcpServerForSave(server: McpServerConfig): SaveMcpServerRequest {
+export function serializeMcpServerForSave(
+  server: McpServerConfig,
+  options: {
+    includeId?: boolean;
+  } = {},
+): SaveMcpServerRequest {
+  const includeId = options.includeId === true;
   if (server.transport === "stdio") {
-    return {
+    const payload: SaveMcpStdioServerRequest = {
       name: server.name,
       transport: server.transport,
       command: server.command,
@@ -155,9 +162,10 @@ export function serializeMcpServerForSave(server: McpServerConfig): SaveMcpServe
       cwd: server.cwd,
       env: server.env,
     };
+    return includeId ? { ...payload, id: server.id } : payload;
   }
 
-  return {
+  const payload: SaveMcpHttpServerRequest = {
     name: server.name,
     transport: server.transport,
     url: server.url,
@@ -166,6 +174,7 @@ export function serializeMcpServerForSave(server: McpServerConfig): SaveMcpServe
     azureAuthScope: server.azureAuthScope,
     timeoutSeconds: server.timeoutSeconds,
   };
+  return includeId ? { ...payload, id: server.id } : payload;
 }
 
 export function upsertMcpServer(current: McpServerConfig[], profile: McpServerConfig): McpServerConfig[] {

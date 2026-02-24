@@ -13,7 +13,6 @@ files:
   - package.json
   - build/**
   - desktop/electron/**
-  - skills/default/**
 
 asar: true
 asarUnpack:

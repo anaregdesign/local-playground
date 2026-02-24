@@ -21,7 +21,7 @@ describe("hasThreadInteraction", () => {
         skillSelections: [
           {
             name: "local-playground-dev",
-            location: "/repo/skills/default/local-playground-dev/SKILL.md",
+            location: "/repo/skills/local-playground-dev/SKILL.md",
           },
         ],
       }),

@@ -5,6 +5,7 @@ import { FluentUI } from "~/components/home/shared/fluent";
 import { ConfigSection } from "~/components/home/shared/ConfigSection";
 import { StatusMessageList } from "~/components/home/shared/StatusMessageList";
 import { SelectableCardList } from "~/components/home/shared/SelectableCardList";
+import type { ContextActionMenuItem } from "~/components/home/shared/ContextActionMenu";
 import type { SavedMcpServerOption } from "~/lib/home/mcp/saved-profiles";
 
 const { Button, Spinner } = FluentUI;
@@ -18,8 +19,11 @@ export type McpSavedConfigsSectionProps = {
   isSending: boolean;
   isThreadReadOnly: boolean;
   isLoadingSavedMcpServers: boolean;
+  isMutatingSavedMcpServers: boolean;
   savedMcpError: string | null;
   onToggleSavedMcpServer: (id: string) => void;
+  onEditSavedMcpServer: (id: string) => void;
+  onDeleteSavedMcpServer: (id: string) => void;
   onReloadSavedMcpServers: () => void;
 };
 
@@ -33,8 +37,11 @@ export function McpSavedConfigsSection(props: McpSavedConfigsSectionProps) {
     isSending,
     isThreadReadOnly,
     isLoadingSavedMcpServers,
+    isMutatingSavedMcpServers,
     savedMcpError,
     onToggleSavedMcpServer,
+    onEditSavedMcpServer,
+    onDeleteSavedMcpServer,
     onReloadSavedMcpServers,
   } = props;
 
@@ -58,7 +65,7 @@ export function McpSavedConfigsSection(props: McpSavedConfigsSectionProps) {
           title="Reload saved MCP servers."
           aria-label="Reload saved MCP servers"
           onClick={onReloadSavedMcpServers}
-          disabled={isSending || isLoadingSavedMcpServers}
+          disabled={isSending || isLoadingSavedMcpServers || isMutatingSavedMcpServers}
         >
           ↻ Reload
         </Button>
@@ -73,8 +80,35 @@ export function McpSavedConfigsSection(props: McpSavedConfigsSectionProps) {
         items={savedMcpServerOptions}
         listAriaLabel="Saved MCP Servers"
         emptyHint="No saved MCP servers."
-        isActionDisabled={isSending || isThreadReadOnly}
+        isActionDisabled={isSending || isThreadReadOnly || isMutatingSavedMcpServers}
         onToggleItem={onToggleSavedMcpServer}
+        buildContextMenuItems={(item) => {
+          const itemName = item.name.trim() || "MCP server";
+          const isContextActionDisabled =
+            isSending || isThreadReadOnly || isMutatingSavedMcpServers;
+          const contextMenuItems: ContextActionMenuItem[] = [
+            {
+              id: "edit",
+              label: "Edit",
+              title: `Edit ${itemName}`,
+              disabled: isContextActionDisabled,
+              onSelect: () => {
+                onEditSavedMcpServer(item.id);
+              },
+            },
+            {
+              id: "delete",
+              label: "Delete",
+              title: `Delete ${itemName}`,
+              intent: "danger",
+              disabled: isContextActionDisabled,
+              onSelect: () => {
+                onDeleteSavedMcpServer(item.id);
+              },
+            },
+          ];
+          return contextMenuItems;
+        }}
       />
       <StatusMessageList messages={[{ intent: "error", text: savedMcpError }]} />
     </ConfigSection>

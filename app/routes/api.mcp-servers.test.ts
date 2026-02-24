@@ -21,7 +21,7 @@ import {
 } from "~/lib/constants";
 import { mcpServersRouteTestUtils } from "./api.mcp-servers";
 
-const { parseIncomingMcpServer, upsertSavedMcpServer, mergeDefaultMcpServers } =
+const { parseIncomingMcpServer, upsertSavedMcpServer, deleteSavedMcpServer, mergeDefaultMcpServers } =
   mcpServersRouteTestUtils;
 
 describe("parseIncomingMcpServer", () => {
@@ -216,6 +216,57 @@ describe("upsertSavedMcpServer", () => {
     expect(result.profiles).toHaveLength(2);
     expect(result.profile.id).toBe("profile-2");
     expect(result.warning).toBeNull();
+  });
+});
+
+describe("deleteSavedMcpServer", () => {
+  it("deletes a profile when id matches", () => {
+    const currentProfiles = [
+      {
+        id: "profile-1",
+        name: "A",
+        transport: "streamable_http" as const,
+        url: "https://example.com/a",
+        headers: {},
+        useAzureAuth: false,
+        azureAuthScope: MCP_DEFAULT_AZURE_AUTH_SCOPE,
+        timeoutSeconds: MCP_DEFAULT_TIMEOUT_SECONDS,
+      },
+      {
+        id: "profile-2",
+        name: "B",
+        transport: "stdio" as const,
+        command: "node",
+        args: ["server.js"],
+        env: {},
+      },
+    ];
+
+    const result = deleteSavedMcpServer(currentProfiles, "profile-1");
+
+    expect(result.deleted).toBe(true);
+    expect(result.profiles).toHaveLength(1);
+    expect(result.profiles[0].id).toBe("profile-2");
+  });
+
+  it("returns unchanged profiles when id does not exist", () => {
+    const currentProfiles = [
+      {
+        id: "profile-1",
+        name: "A",
+        transport: "streamable_http" as const,
+        url: "https://example.com/a",
+        headers: {},
+        useAzureAuth: false,
+        azureAuthScope: MCP_DEFAULT_AZURE_AUTH_SCOPE,
+        timeoutSeconds: MCP_DEFAULT_TIMEOUT_SECONDS,
+      },
+    ];
+
+    const result = deleteSavedMcpServer(currentProfiles, "missing-id");
+
+    expect(result.deleted).toBe(false);
+    expect(result.profiles).toEqual(currentProfiles);
   });
 });
 

@@ -3,6 +3,10 @@
  */
 import { InfoIconButton } from "~/components/home/shared/InfoIconButton";
 import { LabeledTooltip } from "~/components/home/shared/LabeledTooltip";
+import {
+  ContextActionMenu,
+  type ContextActionMenuItem,
+} from "~/components/home/shared/ContextActionMenu";
 import { FluentUI } from "~/components/home/shared/fluent";
 
 const { Button } = FluentUI;
@@ -25,6 +29,7 @@ type SelectableCardListProps = {
   onToggleItem: (id: string) => void;
   addButtonLabel?: string;
   selectedButtonLabel?: string;
+  buildContextMenuItems?: (item: SelectableCardItem) => ContextActionMenuItem[];
 };
 
 export function SelectableCardList(props: SelectableCardListProps) {
@@ -36,6 +41,7 @@ export function SelectableCardList(props: SelectableCardListProps) {
     onToggleItem,
     addButtonLabel = "Add",
     selectedButtonLabel = "Added",
+    buildContextMenuItems,
   } = props;
 
   if (items.length === 0) {
@@ -48,10 +54,11 @@ export function SelectableCardList(props: SelectableCardListProps) {
         const description = item.description.trim();
         const detail = item.detail.trim();
         const tooltipLines = [description, detail].filter((line) => line.length > 0);
+        const contextMenuItems = buildContextMenuItems ? buildContextMenuItems(item) : [];
 
-        return (
+        const renderCardContent = (key?: string) => (
           <article
-            key={item.id}
+            key={key}
             role="listitem"
             className={`selectable-card-item${item.isSelected ? " is-selected" : ""}${
               item.isAvailable ? "" : " is-unavailable"
@@ -91,6 +98,20 @@ export function SelectableCardList(props: SelectableCardListProps) {
             </div>
           </article>
         );
+
+        if (contextMenuItems.length > 0) {
+          return (
+            <ContextActionMenu
+              key={item.id}
+              menuLabel={`Actions for ${item.name}`}
+              items={contextMenuItems}
+            >
+              {renderCardContent()}
+            </ContextActionMenu>
+          );
+        }
+
+        return renderCardContent(item.id);
       })}
     </div>
   );

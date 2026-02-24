@@ -14,7 +14,7 @@ describe("readSkillCatalogList", () => {
       {
         name: "local-playground-dev",
         description: "Local Playground workflow",
-        location: "/repo/skills/default/local-playground-dev/SKILL.md",
+        location: "/repo/skills/local-playground-dev/SKILL.md",
         source: "workspace",
       },
       {
@@ -38,7 +38,7 @@ describe("readSkillCatalogList", () => {
       {
         name: "local-playground-dev",
         description: "Local Playground workflow",
-        location: "/repo/skills/default/local-playground-dev/SKILL.md",
+        location: "/repo/skills/local-playground-dev/SKILL.md",
         source: "workspace",
       },
       {
@@ -62,11 +62,11 @@ describe("readThreadSkillSelectionList", () => {
     const result = readThreadSkillSelectionList([
       {
         name: "local-playground-dev",
-        location: "/repo/skills/default/local-playground-dev/SKILL.md",
+        location: "/repo/skills/local-playground-dev/SKILL.md",
       },
       {
         name: "duplicate",
-        location: "/repo/skills/default/local-playground-dev/SKILL.md",
+        location: "/repo/skills/local-playground-dev/SKILL.md",
       },
       {
         name: "",
@@ -77,7 +77,7 @@ describe("readThreadSkillSelectionList", () => {
     expect(result).toEqual([
       {
         name: "local-playground-dev",
-        location: "/repo/skills/default/local-playground-dev/SKILL.md",
+        location: "/repo/skills/local-playground-dev/SKILL.md",
       },
     ]);
   });
