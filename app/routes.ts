@@ -5,6 +5,8 @@ import { type RouteConfig, index, route } from "@react-router/dev/routes";
 
 export default [
   index("routes/home.tsx"),
+  route(".well-known/*", "routes/well-known.ts"),
+  route("mcp/.well-known/*", "routes/mcp.well-known.ts"),
   route("api/azure-connections", "routes/api.azure-connections.ts"),
   route("api/azure-selection", "routes/api.azure-selection.ts"),
   route("api/chat", "routes/api.chat.ts"),
