@@ -2,9 +2,12 @@
  * Home UI component module.
  */
 import { AutoDismissStatusMessageList } from "~/components/home/shared/AutoDismissStatusMessageList";
+import {
+  CollapsibleSelectableCardGroupList,
+  type CollapsibleSelectableCardGroup,
+} from "~/components/home/shared/CollapsibleSelectableCardGroupList";
 import { ConfigSection } from "~/components/home/shared/ConfigSection";
 import { FluentUI } from "~/components/home/shared/fluent";
-import { SelectableCardList } from "~/components/home/shared/SelectableCardList";
 import type { SkillCatalogSource } from "~/lib/home/skills/types";
 
 const { Button, Spinner } = FluentUI;
@@ -14,13 +17,13 @@ export type ThreadSkillOption = {
   description: string;
   location: string;
   source: SkillCatalogSource;
+  badge: string;
   isSelected: boolean;
   isAvailable: boolean;
 };
 
 type SkillsSectionProps = {
   skillOptions: ThreadSkillOption[];
-  selectedSkillCount: number;
   isLoadingSkills: boolean;
   isSending: boolean;
   isThreadReadOnly: boolean;
@@ -34,7 +37,6 @@ type SkillsSectionProps = {
 export function SkillsSection(props: SkillsSectionProps) {
   const {
     skillOptions,
-    selectedSkillCount,
     isLoadingSkills,
     isSending,
     isThreadReadOnly,
@@ -45,20 +47,40 @@ export function SkillsSection(props: SkillsSectionProps) {
     onClearSkillsWarning,
   } = props;
 
-  const selectableSkillItems = skillOptions.map((skill) => ({
-    id: skill.location,
-    name: skill.name,
-    badge:
-      skill.source === "workspace"
-        ? "Workspace"
-        : skill.source === "codex_home"
-          ? "CODEX_HOME"
-          : "App Data",
-    description: skill.description,
-    detail: skill.location,
-    isSelected: skill.isSelected,
-    isAvailable: skill.isAvailable,
-  }));
+  const groupedSkillMap = new Map<string, ThreadSkillOption[]>();
+  for (const skill of skillOptions) {
+    const groupName = skill.badge || "Skills";
+    const list = groupedSkillMap.get(groupName) ?? [];
+    list.push(skill);
+    groupedSkillMap.set(groupName, list);
+  }
+  const groupedSkills = Array.from(groupedSkillMap.entries())
+    .sort(
+      ([left], [right]) =>
+        readSkillGroupPriority(left) - readSkillGroupPriority(right) ||
+        left.localeCompare(right),
+    )
+    .map(([groupName, groupSkills]) => {
+      const items = groupSkills.map((skill) => ({
+        id: skill.location,
+        name: skill.name,
+        description: skill.description,
+        detail: skill.location,
+        isSelected: skill.isSelected,
+        isAvailable: skill.isAvailable,
+      }));
+
+      const group: CollapsibleSelectableCardGroup = {
+        id: groupName,
+        label: groupName,
+        description: readSkillGroupDescription(groupName),
+        items,
+        listAriaLabel: `Thread Skills (${groupName})`,
+        emptyHint: `No Skills in ${groupName}.`,
+        onToggleItem: onToggleSkill,
+      };
+      return group;
+    });
 
   return (
     <ConfigSection
@@ -71,8 +93,7 @@ export function SkillsSection(props: SkillsSectionProps) {
           This thread is archived and read-only. Restore it from Archives to edit skill selections.
         </p>
       ) : null}
-      <div className="selectable-card-header-row">
-        <p className="selectable-card-count">Enabled: {selectedSkillCount}</p>
+      <div className="selectable-card-header-row selectable-card-header-row-right">
         <Button
           type="button"
           appearance="subtle"
@@ -91,12 +112,10 @@ export function SkillsSection(props: SkillsSectionProps) {
           Loading Skills...
         </p>
       ) : null}
-      <SelectableCardList
-        items={selectableSkillItems}
-        listAriaLabel="Thread Skills"
-        emptyHint="No Skills discovered in workspace default, CODEX_HOME, or app data skills directories."
+      <CollapsibleSelectableCardGroupList
+        groups={groupedSkills}
+        emptyHint="No Skills discovered in CODEX_HOME or app data skills directories."
         isActionDisabled={isSending || isThreadReadOnly}
-        onToggleItem={onToggleSkill}
       />
       <AutoDismissStatusMessageList
         messages={[
@@ -110,4 +129,38 @@ export function SkillsSection(props: SkillsSectionProps) {
       />
     </ConfigSection>
   );
+}
+
+function readSkillGroupPriority(groupName: string): number {
+  switch (groupName) {
+    case "Workspace":
+      return 1;
+    case "CODEX_HOME":
+      return 2;
+    case "OpenAI Curated":
+      return 3;
+    case "Anthropic Public":
+      return 4;
+    case "App Data":
+      return 5;
+    default:
+      return 9;
+  }
+}
+
+function readSkillGroupDescription(groupName: string): string {
+  switch (groupName) {
+    case "Workspace":
+      return "Skills installed from the Workspace registry.";
+    case "CODEX_HOME":
+      return "Skills discovered from shared CODEX_HOME directories.";
+    case "OpenAI Curated":
+      return "Skills installed from openai/skills (.curated).";
+    case "Anthropic Public":
+      return "Skills installed from anthropics/skills.";
+    case "App Data":
+      return "Skills discovered from app data shared directories.";
+    default:
+      return "";
+  }
 }

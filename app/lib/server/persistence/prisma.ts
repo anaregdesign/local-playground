@@ -118,6 +118,7 @@ async function ensureDatabaseSchema(): Promise<void> {
   await ensureMcpServerProfileSchema();
   await ensureThreadSchema();
   await ensureAppEventLogSchema();
+  await ensureSkillRegistryCacheSchema();
 }
 
 async function ensureUserSchema(): Promise<void> {
@@ -243,11 +244,23 @@ async function ensureThreadSchema(): Promise<void> {
       "createdAt" TEXT NOT NULL,
       "updatedAt" TEXT NOT NULL,
       "deletedAt" TEXT,
+      "reasoningEffort" TEXT NOT NULL DEFAULT 'none',
+      "webSearchEnabled" BOOLEAN NOT NULL DEFAULT false,
       FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE CASCADE
     )
   `);
 
   await ensureTableColumn("Thread", "deletedAt", "TEXT");
+  await ensureTableColumn(
+    "Thread",
+    "reasoningEffort",
+    "TEXT NOT NULL DEFAULT 'none'",
+  );
+  await ensureTableColumn(
+    "Thread",
+    "webSearchEnabled",
+    "BOOLEAN NOT NULL DEFAULT false",
+  );
 
   await prisma.$executeRawUnsafe(`
     CREATE INDEX IF NOT EXISTS "Thread_userId_updatedAt_idx"
@@ -391,5 +404,21 @@ async function ensureAppEventLogSchema(): Promise<void> {
   await prisma.$executeRawUnsafe(`
     CREATE INDEX IF NOT EXISTS "AppEventLog_source_category_createdAt_idx"
     ON "AppEventLog" ("source", "category", "createdAt")
+  `);
+}
+
+async function ensureSkillRegistryCacheSchema(): Promise<void> {
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS "SkillRegistryCache" (
+      "cacheKey" TEXT NOT NULL PRIMARY KEY,
+      "payloadJson" TEXT NOT NULL,
+      "updatedAt" TEXT NOT NULL,
+      "expiresAt" TEXT NOT NULL
+    )
+  `);
+
+  await prisma.$executeRawUnsafe(`
+    CREATE INDEX IF NOT EXISTS "SkillRegistryCache_expiresAt_idx"
+    ON "SkillRegistryCache" ("expiresAt")
   `);
 }

@@ -3,6 +3,7 @@
  */
 import {
   DEFAULT_AGENT_INSTRUCTION,
+  HOME_DEFAULT_REASONING_EFFORT,
   HOME_THREAD_NAME_MAX_LENGTH,
   THREAD_DEFAULT_NAME,
 } from "~/lib/constants";
@@ -22,7 +23,10 @@ import {
   buildThreadMcpServerRowId,
   buildThreadSkillSelectionRowId,
 } from "~/lib/home/thread/server-ids";
-import { hasThreadInteraction } from "~/lib/home/thread/snapshot-state";
+import {
+  hasThreadInteraction,
+  hasThreadPersistableState,
+} from "~/lib/home/thread/snapshot-state";
 import type { ThreadSnapshot } from "~/lib/home/thread/types";
 import type { Route } from "./+types/api.threads";
 
@@ -368,9 +372,6 @@ async function saveThreadSnapshot(
   snapshot: ThreadSnapshot,
 ): Promise<ThreadSnapshot | null> {
   await ensurePersistenceDatabaseReady();
-  if (!hasThreadInteraction(snapshot)) {
-    return null;
-  }
 
   let existing = await prisma.thread.findFirst({
     where: {
@@ -385,6 +386,10 @@ async function saveThreadSnapshot(
   });
 
   if (!existing) {
+    if (!hasThreadPersistableState(snapshot)) {
+      return null;
+    }
+
     const now = new Date().toISOString();
     const createdAt = snapshot.createdAt || now;
     const nextName = normalizeThreadName(snapshot.name) || THREAD_DEFAULT_NAME;
@@ -398,6 +403,8 @@ async function saveThreadSnapshot(
           createdAt,
           updatedAt: now,
           deletedAt: null,
+          reasoningEffort: snapshot.reasoningEffort,
+          webSearchEnabled: snapshot.webSearchEnabled,
         },
       });
 
@@ -431,6 +438,8 @@ async function saveThreadSnapshot(
       data: {
         name: nextName,
         updatedAt,
+        reasoningEffort: snapshot.reasoningEffort,
+        webSearchEnabled: snapshot.webSearchEnabled,
       },
     });
 
@@ -661,6 +670,8 @@ function mapStoredThreadToSnapshot(value: {
   createdAt: string;
   updatedAt: string;
   deletedAt: string | null;
+  reasoningEffort: string;
+  webSearchEnabled: boolean;
   instruction: {
     content: string;
   } | null;
@@ -712,6 +723,8 @@ function mapStoredThreadToSnapshot(value: {
       createdAt: value.createdAt,
       updatedAt: value.updatedAt,
       deletedAt: value.deletedAt,
+      reasoningEffort: readThreadReasoningEffort(value.reasoningEffort),
+      webSearchEnabled: value.webSearchEnabled === true,
       agentInstruction: value.instruction?.content ?? DEFAULT_AGENT_INSTRUCTION,
       messages: value.messages.map((message) => ({
         id: message.id,
@@ -813,6 +826,14 @@ function readThreadIdFromActionPayload(value: unknown): string {
 
 function normalizeThreadName(value: string): string {
   return value.trim().slice(0, HOME_THREAD_NAME_MAX_LENGTH);
+}
+
+function readThreadReasoningEffort(value: string): ThreadSnapshot["reasoningEffort"] {
+  if (value === "none" || value === "low" || value === "medium" || value === "high") {
+    return value;
+  }
+
+  return HOME_DEFAULT_REASONING_EFFORT;
 }
 
 async function readAuthenticatedUser(): Promise<{ id: number } | null> {

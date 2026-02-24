@@ -21,7 +21,9 @@ import {
   HOME_CHAT_INPUT_MAX_HEIGHT_PX,
   HOME_CHAT_INPUT_MIN_HEIGHT_PX,
   HOME_DEFAULT_MCP_TRANSPORT,
+  HOME_DEFAULT_REASONING_EFFORT,
   HOME_DEFAULT_UTILITY_REASONING_EFFORT,
+  HOME_DEFAULT_WEB_SEARCH_ENABLED,
   HOME_DEFAULT_THREAD_REQUEST_STATE,
   HOME_INITIAL_MESSAGES,
   HOME_MAIN_SPLITTER_MIN_RIGHT_WIDTH_PX,
@@ -115,6 +117,7 @@ import {
   cloneMessages,
   cloneThreadSkillSelections,
   hasThreadInteraction,
+  hasThreadPersistableState,
   isThreadArchivedById,
   isThreadSnapshotArchived,
   upsertThreadSnapshot,
@@ -124,8 +127,18 @@ import {
   normalizeThreadAutoTitle,
 } from "~/lib/home/thread/title";
 import type { ThreadSnapshot, ThreadSummary } from "~/lib/home/thread/types";
-import { readSkillCatalogList } from "~/lib/home/skills/parsers";
-import type { SkillCatalogEntry, ThreadSkillSelection } from "~/lib/home/skills/types";
+import { readSkillCatalogList, readSkillRegistryCatalogList } from "~/lib/home/skills/parsers";
+import {
+  readSkillRegistryOptionById,
+  readSkillRegistryLabelFromSkillLocation,
+  SKILL_REGISTRY_OPTIONS,
+  type SkillRegistryId,
+} from "~/lib/home/skills/registry";
+import type {
+  SkillCatalogEntry,
+  SkillRegistryCatalog,
+  ThreadSkillSelection,
+} from "~/lib/home/skills/types";
 import { copyTextToClipboard } from "~/lib/home/shared/clipboard";
 import { readStringList } from "~/lib/home/shared/collections";
 import { getFileExtension } from "~/lib/home/shared/files";
@@ -179,7 +192,10 @@ export function useWorkspaceController() {
     null,
   );
   const [isAzureAuthRequired, setIsAzureAuthRequired] = useState(false);
-  const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffort>("none");
+  const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffort>(
+    HOME_DEFAULT_REASONING_EFFORT,
+  );
+  const [webSearchEnabled, setWebSearchEnabled] = useState(HOME_DEFAULT_WEB_SEARCH_ENABLED);
   const [utilityReasoningEffort, setUtilityReasoningEffort] = useState<ReasoningEffort>(
     HOME_DEFAULT_UTILITY_REASONING_EFFORT,
   );
@@ -240,6 +256,11 @@ export function useWorkspaceController() {
   const [threadError, setThreadError] = useState<string | null>(null);
   const [availableSkills, setAvailableSkills] = useState<SkillCatalogEntry[]>([]);
   const [selectedThreadSkills, setSelectedThreadSkills] = useState<ThreadSkillSelection[]>([]);
+  const [skillRegistryCatalogs, setSkillRegistryCatalogs] = useState<SkillRegistryCatalog[]>([]);
+  const [isMutatingSkillRegistries, setIsMutatingSkillRegistries] = useState(false);
+  const [skillRegistryError, setSkillRegistryError] = useState<string | null>(null);
+  const [skillRegistryWarning, setSkillRegistryWarning] = useState<string | null>(null);
+  const [skillRegistrySuccess, setSkillRegistrySuccess] = useState<string | null>(null);
   const [isLoadingSkills, setIsLoadingSkills] = useState(false);
   const [skillsError, setSkillsError] = useState<string | null>(null);
   const [skillsWarning, setSkillsWarning] = useState<string | null>(null);
@@ -360,6 +381,7 @@ export function useWorkspaceController() {
         description: skill.description,
         location: skill.location,
         source: skill.source,
+        badge: resolveSkillBadgeLabel(skill.source, skill.location),
         isSelected: selectedThreadSkillLocationSet.has(skill.location),
         isAvailable: true,
       })),
@@ -369,7 +391,8 @@ export function useWorkspaceController() {
           name: selection.name,
           description: "Saved for this thread, but the SKILL.md file is currently unavailable.",
           location: selection.location,
-          source: "workspace" as const,
+          source: "app_data" as const,
+          badge: resolveSkillBadgeLabel("app_data", selection.location),
           isSelected: true,
           isAvailable: false,
         })),
@@ -381,6 +404,52 @@ export function useWorkspaceController() {
       return left.name.localeCompare(right.name);
     });
   }, [availableSkillByLocation, availableSkills, selectedThreadSkills]);
+  const skillRegistryGroups = useMemo(() => {
+    if (skillRegistryCatalogs.length > 0) {
+      return skillRegistryCatalogs.map((registry) => ({
+        registryUrl:
+          readSkillRegistryOptionById(registry.registryId)?.sourceUrl ??
+          registry.repositoryUrl,
+        registryId: registry.registryId,
+        label: registry.registryLabel,
+        description: registry.registryDescription,
+        skillCount: registry.skills.length,
+        installedCount: registry.skills.filter((skill) => skill.isInstalled).length,
+        skills: [...registry.skills]
+          .sort((left, right) => {
+            if (left.isInstalled !== right.isInstalled) {
+              return left.isInstalled ? -1 : 1;
+            }
+
+            const byTag = (left.tag ?? "").localeCompare(right.tag ?? "");
+            if (byTag !== 0) {
+              return byTag;
+            }
+
+            return left.name.localeCompare(right.name);
+          })
+          .map((skill) => ({
+            id: skill.id,
+            name: skill.name,
+            description: skill.description,
+            detail: skill.isInstalled
+              ? `${skill.tag ? `Tag: ${skill.tag} · ` : ""}Installed: ${skill.installLocation}`
+              : `${skill.tag ? `Tag: ${skill.tag} · ` : ""}Source: ${skill.remotePath}`,
+            isInstalled: skill.isInstalled,
+          })),
+      }));
+    }
+
+    return SKILL_REGISTRY_OPTIONS.map((registry) => ({
+      registryUrl: registry.sourceUrl,
+      registryId: registry.id,
+      label: registry.label,
+      description: registry.description,
+      skillCount: 0,
+      installedCount: 0,
+      skills: [],
+    }));
+  }, [skillRegistryCatalogs]);
   const canSendMessage =
     !isSending &&
     !isSwitchingThread &&
@@ -742,7 +811,7 @@ export function useWorkspaceController() {
     }
 
     const snapshot = buildThreadSnapshotFromCurrentState(baseThread);
-    if (!hasThreadInteraction(snapshot)) {
+    if (!shouldPersistThreadSnapshot(snapshot)) {
       return;
     }
     const signature = buildThreadSaveSignature(snapshot);
@@ -762,6 +831,8 @@ export function useWorkspaceController() {
     };
   }, [
     activeThreadId,
+    reasoningEffort,
+    webSearchEnabled,
     agentInstruction,
     messages,
     mcpServers,
@@ -799,7 +870,7 @@ export function useWorkspaceController() {
     if (!baseThread) {
       return;
     }
-    if (!hasThreadInteraction(baseThread)) {
+    if (!shouldPersistThreadSnapshot(baseThread)) {
       return;
     }
 
@@ -956,6 +1027,9 @@ export function useWorkspaceController() {
     if (options.clearStatus !== false) {
       setSkillsError(null);
       setSkillsWarning(null);
+      setSkillRegistryError(null);
+      setSkillRegistryWarning(null);
+      setSkillRegistrySuccess(null);
     }
     setIsLoadingSkills(true);
 
@@ -968,19 +1042,83 @@ export function useWorkspaceController() {
         throw new Error(payload.error || "Failed to load Skills.");
       }
 
-      const parsedSkills = readSkillCatalogList(payload.skills);
-      const warnings = readStringList(payload.warnings);
-      setAvailableSkills(parsedSkills);
-      setSkillsError(null);
-      setSkillsWarning(warnings.length > 0 ? warnings.slice(0, 2).join("\n") : null);
+      applySkillsApiPayload(payload);
+      setSkillRegistrySuccess(null);
     } catch (loadError) {
       logHomeError("load_skills_failed", loadError, {
         action: "load_skills",
       });
       setAvailableSkills([]);
+      setSkillRegistryCatalogs([]);
       setSkillsError(loadError instanceof Error ? loadError.message : "Failed to load Skills.");
+      setSkillRegistryError(
+        loadError instanceof Error
+          ? loadError.message
+          : "Failed to load Skill registries.",
+      );
     } finally {
       setIsLoadingSkills(false);
+    }
+  }
+
+  function applySkillsApiPayload(payload: SkillsApiResponse) {
+    const parsedSkills = readSkillCatalogList(payload.skills);
+    const parsedRegistryCatalogs = readSkillRegistryCatalogList(payload.registries);
+    const skillWarnings = readStringList(payload.skillWarnings);
+    const registryWarnings = readStringList(payload.registryWarnings);
+
+    setAvailableSkills(parsedSkills);
+    setSkillRegistryCatalogs(parsedRegistryCatalogs);
+    setSkillsError(null);
+    setSkillRegistryError(null);
+    setSkillsWarning(skillWarnings.length > 0 ? skillWarnings.slice(0, 2).join("\n") : null);
+    setSkillRegistryWarning(
+      registryWarnings.length > 0 ? registryWarnings.slice(0, 2).join("\n") : null,
+    );
+  }
+
+  async function updateSkillRegistrySkill(options: {
+    action: "install_registry_skill" | "delete_registry_skill";
+    registryId: SkillRegistryId;
+    skillName: string;
+  }): Promise<void> {
+    setIsMutatingSkillRegistries(true);
+    setSkillRegistryError(null);
+    setSkillRegistrySuccess(null);
+
+    try {
+      const response = await fetch("/api/skills", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          action: options.action,
+          registryId: options.registryId,
+          skillName: options.skillName,
+        }),
+      });
+      const payload = await readJsonPayload<SkillsApiResponse>(response, "Skills");
+      if (!response.ok) {
+        throw new Error(payload.error || "Failed to update Skill registry.");
+      }
+
+      applySkillsApiPayload(payload);
+      const message = typeof payload.message === "string" ? payload.message.trim() : "";
+      setSkillRegistrySuccess(message || null);
+    } catch (error) {
+      logHomeError("update_skill_registry_failed", error, {
+        action: options.action,
+        context: {
+          registryId: options.registryId,
+          skillName: options.skillName,
+        },
+      });
+      setSkillRegistryError(
+        error instanceof Error ? error.message : "Failed to update Skill registry.",
+      );
+    } finally {
+      setIsMutatingSkillRegistries(false);
     }
   }
 
@@ -1070,6 +1208,8 @@ export function useWorkspaceController() {
     setMcpRpcHistory([]);
     setMcpServers([]);
     setSelectedThreadSkills([]);
+    setReasoningEffort(HOME_DEFAULT_REASONING_EFFORT);
+    setWebSearchEnabled(HOME_DEFAULT_WEB_SEARCH_ENABLED);
     setAgentInstruction(DEFAULT_AGENT_INSTRUCTION);
     setLoadedInstructionFileName(null);
     setInstructionFileError(null);
@@ -1152,6 +1292,20 @@ export function useWorkspaceController() {
     return draftName.slice(0, HOME_THREAD_NAME_MAX_LENGTH);
   }
 
+  function shouldPersistThreadSnapshot(
+    snapshot: Pick<
+      ThreadSnapshot,
+      "id" | "messages" | "reasoningEffort" | "webSearchEnabled"
+    > &
+      Partial<Pick<ThreadSnapshot, "skillSelections">>,
+  ): boolean {
+    if (hasThreadPersistableState(snapshot)) {
+      return true;
+    }
+
+    return threadSaveSignatureByIdRef.current.has(snapshot.id);
+  }
+
   function createLocalThreadSnapshot(options: {
     name?: string;
   } = {}): ThreadSnapshot {
@@ -1165,6 +1319,8 @@ export function useWorkspaceController() {
       createdAt: now,
       updatedAt: now,
       deletedAt: null,
+      reasoningEffort: HOME_DEFAULT_REASONING_EFFORT,
+      webSearchEnabled: HOME_DEFAULT_WEB_SEARCH_ENABLED,
       agentInstruction: DEFAULT_AGENT_INSTRUCTION,
       messages: [],
       mcpServers: [],
@@ -1184,6 +1340,8 @@ export function useWorkspaceController() {
       ...base,
       name: resolveThreadNameForSave(base.name, includeDraftName),
       updatedAt: new Date().toISOString(),
+      reasoningEffort,
+      webSearchEnabled,
       agentInstruction,
       messages: cloneMessages(messages),
       mcpServers: cloneMcpServers(mcpServers),
@@ -1270,6 +1428,8 @@ export function useWorkspaceController() {
     setMcpServers(clonedMcpServers);
     setMcpRpcHistory(clonedMcpRpcHistory);
     setSelectedThreadSkills(clonedSkillSelections);
+    setReasoningEffort(thread.reasoningEffort);
+    setWebSearchEnabled(thread.webSearchEnabled);
     setAgentInstruction(thread.agentInstruction);
     setLoadedInstructionFileName(null);
     setInstructionFileError(null);
@@ -1301,7 +1461,7 @@ export function useWorkspaceController() {
   ): Promise<boolean> {
     const showBusy = options.showBusy !== false;
     const reportError = options.reportError !== false;
-    if (!hasThreadInteraction(snapshot)) {
+    if (!shouldPersistThreadSnapshot(snapshot)) {
       return true;
     }
     const expectedUserKey = activeWorkspaceUserKeyRef.current.trim();
@@ -1391,7 +1551,7 @@ export function useWorkspaceController() {
     if (!snapshot) {
       return;
     }
-    if (!hasThreadInteraction(snapshot)) {
+    if (!shouldPersistThreadSnapshot(snapshot)) {
       return;
     }
 
@@ -1423,7 +1583,7 @@ export function useWorkspaceController() {
     const snapshot = buildThreadSnapshotFromCurrentState(baseThread, {
       includeDraftName: true,
     });
-    if (!hasThreadInteraction(snapshot)) {
+    if (!shouldPersistThreadSnapshot(snapshot)) {
       return true;
     }
     const signature = buildThreadSaveSignature(snapshot);
@@ -1453,7 +1613,7 @@ export function useWorkspaceController() {
     if (!baseThread || baseThread.name === normalizedName) {
       return;
     }
-    if (!hasThreadInteraction(baseThread)) {
+    if (!shouldPersistThreadSnapshot(baseThread)) {
       return;
     }
 
@@ -1678,10 +1838,13 @@ export function useWorkspaceController() {
     try {
       const currentThreadId = activeThreadIdRef.current.trim();
       const currentThread = threadsRef.current.find((thread) => thread.id === currentThreadId);
+      const currentThreadSnapshot =
+        currentThread ? buildThreadSnapshotFromCurrentState(currentThread) : null;
 
       if (
         currentThread &&
-        !hasThreadInteraction(currentThread) &&
+        currentThreadSnapshot &&
+        !hasThreadPersistableState(currentThreadSnapshot) &&
         !threadSaveSignatureByIdRef.current.has(currentThread.id)
       ) {
         applyThreadSnapshotToState(currentThread);
@@ -1715,9 +1878,12 @@ export function useWorkspaceController() {
   }
 
   async function handleCreateThread() {
-    await createThreadAndSwitch({
+    const created = await createThreadAndSwitch({
       name: "",
     });
+    if (created) {
+      setActiveMainTab("threads");
+    }
   }
 
   async function handleThreadRename(threadIdRaw: string, nextNameRaw: string): Promise<void> {
@@ -2732,6 +2898,7 @@ export function useWorkspaceController() {
             deploymentName,
           },
           reasoningEffort,
+          webSearchEnabled,
           agentInstruction: requestAgentInstruction,
           skills: requestSkillSelections,
           mcpServers: requestMcpServers.map((server) =>
@@ -2911,6 +3078,31 @@ export function useWorkspaceController() {
 
   function handleReloadSkills() {
     void loadAvailableSkills();
+  }
+
+  function handleToggleRegistrySkill(registryId: SkillRegistryId, skillIdRaw: string) {
+    const skillId = skillIdRaw.trim();
+    if (!skillId) {
+      return;
+    }
+
+    const registryCatalog = skillRegistryCatalogs.find(
+      (registry) => registry.registryId === registryId,
+    );
+    if (!registryCatalog) {
+      return;
+    }
+
+    const selectedSkill = registryCatalog.skills.find((skill) => skill.id === skillId);
+    if (!selectedSkill) {
+      return;
+    }
+
+    void updateSkillRegistrySkill({
+      action: selectedSkill.isInstalled ? "delete_registry_skill" : "install_registry_skill",
+      registryId: registryCatalog.registryId,
+      skillName: selectedSkill.id,
+    });
   }
 
   function handleToggleThreadSkill(locationRaw: string) {
@@ -3188,6 +3380,16 @@ export function useWorkspaceController() {
   function handleUtilityReasoningEffortChange(nextValue: ReasoningEffort) {
     setUtilityReasoningEffort(nextValue);
     setInstructionEnhanceError(null);
+  }
+
+  function handleReasoningEffortChange(nextValue: ReasoningEffort) {
+    setReasoningEffort(nextValue);
+    setUiError(null);
+  }
+
+  function handleWebSearchEnabledChange(nextValue: boolean) {
+    setWebSearchEnabled(nextValue);
+    setUiError(null);
   }
 
   function handleAgentInstructionChange(value: string) {
@@ -3891,6 +4093,9 @@ export function useWorkspaceController() {
     },
   };
 
+  const isThreadOperationBusy =
+    isLoadingThreads || isSwitchingThread || isCreatingThread || isDeletingThread || isRestoringThread;
+
   const threadsTabProps = {
     instructionSectionProps: {
       agentInstruction,
@@ -3975,7 +4180,6 @@ export function useWorkspaceController() {
   const skillsTabProps = {
     skillsSectionProps: {
       skillOptions: threadSkillOptions,
-      selectedSkillCount: selectedThreadSkills.length,
       isLoadingSkills,
       isSending,
       isThreadReadOnly: isActiveThreadArchived,
@@ -3987,6 +4191,22 @@ export function useWorkspaceController() {
         setSkillsWarning(null);
       },
     },
+    skillRegistrySectionProps: {
+      skillRegistryGroups,
+      isLoadingSkillRegistries: isLoadingSkills,
+      isMutatingSkillRegistries,
+      skillRegistryError,
+      skillRegistryWarning,
+      skillRegistrySuccess,
+      onReloadSkillRegistries: handleReloadSkills,
+      onToggleRegistrySkill: handleToggleRegistrySkill,
+      onClearSkillRegistryWarning: () => {
+        setSkillRegistryWarning(null);
+      },
+      onClearSkillRegistrySuccess: () => {
+        setSkillRegistrySuccess(null);
+      },
+    },
   };
 
   const playgroundPanelProps = {
@@ -3994,6 +4214,12 @@ export function useWorkspaceController() {
     mcpHistoryByTurnId,
     isSending,
     isThreadReadOnly: isActiveThreadArchived,
+    activeThreadName: activeThreadNameInput,
+    isThreadOperationBusy,
+    isCreatingThread,
+    onCreateThread: () => {
+      void handleCreateThread();
+    },
     onCopyMessage: handleCopyMessage,
     onCopyMcpLog: handleCopyMcpLog,
     sendProgressMessages,
@@ -4036,7 +4262,9 @@ export function useWorkspaceController() {
     onDeploymentChange: handleChatDeploymentChange,
     reasoningEffort,
     reasoningEffortOptions,
-    onReasoningEffortChange: setReasoningEffort,
+    onReasoningEffortChange: handleReasoningEffortChange,
+    webSearchEnabled,
+    onWebSearchEnabledChange: handleWebSearchEnabledChange,
     maxChatAttachmentFiles: CHAT_ATTACHMENT_MAX_FILES,
     canSendMessage,
     selectedSkills: selectedThreadSkills,
@@ -4068,4 +4296,20 @@ export function useWorkspaceController() {
     },
     playgroundPanelProps,
   };
+}
+
+function resolveSkillBadgeLabel(
+  source: "workspace" | "codex_home" | "app_data",
+  location: string,
+): string {
+  if (source === "workspace") {
+    return "Workspace";
+  }
+
+  if (source === "codex_home") {
+    return "CODEX_HOME";
+  }
+
+  const registryLabel = readSkillRegistryLabelFromSkillLocation(location);
+  return registryLabel ?? "App Data";
 }

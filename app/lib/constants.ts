@@ -74,7 +74,9 @@ export const CHAT_ATTACHMENT_ALLOWED_EXTENSIONS = new Set([
 ]);
 export const DEFAULT_AGENT_INSTRUCTION = "You are a concise assistant for a local playground app.";
 export const HOME_REASONING_EFFORT_OPTIONS = ["none", "low", "medium", "high"] as const;
+export const HOME_DEFAULT_REASONING_EFFORT = "none" as const;
 export const HOME_DEFAULT_UTILITY_REASONING_EFFORT = "high" as const;
+export const HOME_DEFAULT_WEB_SEARCH_ENABLED = false;
 export const HOME_DEFAULT_MCP_TRANSPORT = "streamable_http" as const;
 export const HOME_INITIAL_MESSAGES: ReadonlyArray<never> = [];
 
@@ -106,6 +108,8 @@ export const AGENT_SKILL_SCRIPT_ARG_MAX_LENGTH = 512;
 export const AGENT_SKILL_SCRIPT_TIMEOUT_MS = 20_000;
 export const AGENT_SKILL_SCRIPT_TIMEOUT_MAX_MS = 120_000;
 export const AGENT_SKILL_SCRIPT_OUTPUT_MAX_CHARS = 24_000;
+export const SKILL_REGISTRY_LIST_CACHE_TTL_MS = 5 * 60_000;
+export const SKILL_REGISTRY_TREE_CACHE_TTL_MS = 10 * 60_000;
 
 /**
  * Impact scope:

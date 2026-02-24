@@ -22,6 +22,17 @@ let updateCheckTimer = null;
 let hasShownUpdateAvailableDialog = false;
 let hasShownUpdateReadyDialog = false;
 
+function configureAboutPanel() {
+  if (process.platform !== 'darwin' || typeof app.setAboutPanelOptions !== 'function') {
+    return;
+  }
+
+  const year = new Date().getFullYear();
+  app.setAboutPanelOptions({
+    copyright: `Copyright © ${year} Hiroki Mizukami`,
+  });
+}
+
 function configureContentSecurityPolicy() {
   const csp = [
     "default-src 'self' http: https: data: blob:",
@@ -241,6 +252,7 @@ async function startProductionBackend() {
       PORT: String(BACKEND_PORT),
       NODE_ENV: 'production',
       NODE_PATH: resolveBackendNodePath(appRootPath),
+      LOCAL_PLAYGROUND_WORKSPACE_ROOT: resolveBackendWorkspaceRoot(appRootPath),
       ELECTRON_RUN_AS_NODE: '1',
     },
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -403,6 +415,14 @@ function resolveBackendWorkingDirectory(appRootPath) {
   return app.isPackaged ? process.resourcesPath : appRootPath;
 }
 
+function resolveBackendWorkspaceRoot(appRootPath) {
+  if (app.isPackaged) {
+    return path.resolve(process.resourcesPath, 'app.asar');
+  }
+
+  return appRootPath;
+}
+
 function resolveServerBuildPath(appRootPath) {
   if (app.isPackaged) {
     return path.resolve(process.resourcesPath, 'app.asar', 'build', 'server', 'index.js');
@@ -445,6 +465,7 @@ function setDockIconIfAvailable() {
 app.whenReady().then(async () => {
   configureContentSecurityPolicy();
   setDockIconIfAvailable();
+  configureAboutPanel();
 
   if (DESKTOP_MODE === 'production') {
     try {

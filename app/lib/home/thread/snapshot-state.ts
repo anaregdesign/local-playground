@@ -1,6 +1,10 @@
 /**
  * Home runtime support module.
  */
+import {
+  HOME_DEFAULT_REASONING_EFFORT,
+  HOME_DEFAULT_WEB_SEARCH_ENABLED,
+} from "~/lib/constants";
 import type { McpServerConfig } from "~/lib/home/mcp/profile";
 import type { ChatMessage } from "~/lib/home/chat/messages";
 import type { McpRpcHistoryEntry } from "~/lib/home/chat/stream";
@@ -45,6 +49,8 @@ export function buildThreadSaveSignature(snapshot: ThreadSnapshot): string {
   return JSON.stringify({
     name: snapshot.name,
     deletedAt: snapshot.deletedAt,
+    reasoningEffort: snapshot.reasoningEffort,
+    webSearchEnabled: snapshot.webSearchEnabled,
     agentInstruction: snapshot.agentInstruction,
     messages: snapshot.messages,
     mcpServers: snapshot.mcpServers,
@@ -62,6 +68,20 @@ export function hasThreadInteraction(
   }
 
   return (snapshot.skillSelections?.length ?? 0) > 0;
+}
+
+export function hasThreadPersistableState(
+  snapshot: Pick<ThreadSnapshot, "messages" | "reasoningEffort" | "webSearchEnabled"> &
+    Partial<Pick<ThreadSnapshot, "skillSelections">>,
+): boolean {
+  if (hasThreadInteraction(snapshot)) {
+    return true;
+  }
+
+  return (
+    snapshot.reasoningEffort !== HOME_DEFAULT_REASONING_EFFORT ||
+    snapshot.webSearchEnabled !== HOME_DEFAULT_WEB_SEARCH_ENABLED
+  );
 }
 
 export function isThreadSnapshotArchived(

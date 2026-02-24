@@ -71,7 +71,11 @@ export type ThreadsApiResponse = {
  */
 export type SkillsApiResponse = {
   skills?: unknown;
+  registries?: unknown;
+  skillWarnings?: unknown;
+  registryWarnings?: unknown;
   warnings?: unknown;
+  message?: string;
   error?: string;
 };
 

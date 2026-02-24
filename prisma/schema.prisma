@@ -58,6 +58,8 @@ model Thread {
   createdAt    String
   updatedAt    String
   deletedAt    String?
+  reasoningEffort String          @default("none")
+  webSearchEnabled Boolean        @default(false)
   user         User               @relation(fields: [userId], references: [id], onDelete: Cascade)
   instruction  ThreadInstruction?
   messages     ThreadMessage[]
@@ -162,4 +164,13 @@ model AppEventLog {
   @@index([createdAt])
   @@index([level, createdAt])
   @@index([source, category, createdAt])
+}
+
+model SkillRegistryCache {
+  cacheKey   String @id
+  payloadJson String
+  updatedAt  String
+  expiresAt  String
+
+  @@index([expiresAt])
 }

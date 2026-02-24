@@ -6,6 +6,7 @@ import type { ChatMessage } from "~/lib/home/chat/messages";
 import type { McpRpcHistoryEntry } from "~/lib/home/chat/stream";
 import { readMcpRpcHistoryEntryFromUnknown } from "~/lib/home/chat/stream";
 import { readMcpServerFromUnknown } from "~/lib/home/mcp/profile";
+import type { ReasoningEffort } from "~/lib/home/shared/view-types";
 import { readThreadSkillSelectionList } from "~/lib/home/skills/parsers";
 import type { ThreadSnapshot, ThreadSummary } from "~/lib/home/thread/types";
 
@@ -50,7 +51,17 @@ export function readThreadSnapshotFromUnknown(
   const createdAt = readTrimmedString(value.createdAt);
   const updatedAt = readTrimmedString(value.updatedAt);
   const deletedAt = readNullableTrimmedString(value.deletedAt);
-  if (!id || !name || !createdAt || !updatedAt || deletedAt === undefined) {
+  const reasoningEffort = readReasoningEffortFromUnknown(value.reasoningEffort);
+  const webSearchEnabled = readBooleanFromUnknown(value.webSearchEnabled);
+  if (
+    !id ||
+    !name ||
+    !createdAt ||
+    !updatedAt ||
+    deletedAt === undefined ||
+    !reasoningEffort ||
+    webSearchEnabled === null
+  ) {
     return null;
   }
 
@@ -70,6 +81,8 @@ export function readThreadSnapshotFromUnknown(
     createdAt,
     updatedAt,
     deletedAt,
+    reasoningEffort,
+    webSearchEnabled,
     agentInstruction,
     messages,
     mcpServers,
@@ -257,6 +270,18 @@ function readSafeInteger(value: unknown): number | null {
   }
 
   return value;
+}
+
+function readReasoningEffortFromUnknown(value: unknown): ReasoningEffort | null {
+  if (value === "none" || value === "low" || value === "medium" || value === "high") {
+    return value;
+  }
+
+  return null;
+}
+
+function readBooleanFromUnknown(value: unknown): boolean | null {
+  return typeof value === "boolean" ? value : null;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

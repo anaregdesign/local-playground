@@ -16,6 +16,8 @@ describe("readThreadSnapshotFromUnknown", () => {
       createdAt: "2026-02-20T00:00:00.000Z",
       updatedAt: "2026-02-20T00:00:00.000Z",
       deletedAt: null,
+      reasoningEffort: "none",
+      webSearchEnabled: false,
       agentInstruction: "You are concise.",
       messages: [
         {
@@ -62,6 +64,8 @@ describe("readThreadSnapshotFromUnknown", () => {
 
     expect(parsed).not.toBeNull();
     expect(parsed?.id).toBe("thread-1");
+    expect(parsed?.reasoningEffort).toBe("none");
+    expect(parsed?.webSearchEnabled).toBe(false);
     expect(parsed?.messages).toHaveLength(1);
     expect(parsed?.mcpServers).toHaveLength(1);
     expect(parsed?.mcpRpcHistory).toHaveLength(1);
@@ -77,6 +81,8 @@ describe("readThreadSnapshotFromUnknown", () => {
         createdAt: "2026-02-20T00:00:00.000Z",
         updatedAt: "2026-02-20T00:00:00.000Z",
         deletedAt: "",
+        reasoningEffort: "none",
+        webSearchEnabled: false,
       }),
     ).toBeNull();
   });
@@ -91,6 +97,8 @@ describe("readThreadSnapshotList", () => {
         createdAt: "2026-02-20T00:00:00.000Z",
         updatedAt: "2026-02-20T00:00:00.000Z",
         deletedAt: null,
+        reasoningEffort: "none",
+        webSearchEnabled: false,
         agentInstruction: "Instruction",
         skillSelections: [],
       },
@@ -100,6 +108,8 @@ describe("readThreadSnapshotList", () => {
         createdAt: "2026-02-20T00:00:00.000Z",
         updatedAt: "2026-02-20T00:00:00.000Z",
         deletedAt: null,
+        reasoningEffort: "none",
+        webSearchEnabled: false,
         agentInstruction: "Instruction",
         skillSelections: [],
       },
@@ -121,6 +131,8 @@ describe("buildThreadSummary", () => {
       createdAt: "2026-02-20T00:00:00.000Z",
       updatedAt: "2026-02-20T00:00:00.000Z",
       deletedAt: null,
+      reasoningEffort: "none",
+      webSearchEnabled: false,
       agentInstruction: "Instruction",
       messages: [
         {

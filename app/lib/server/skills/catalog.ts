@@ -7,7 +7,6 @@ import { homedir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  AGENT_DEFAULT_SKILLS_DIRECTORY_NAME,
   AGENT_SKILL_FILE_MAX_BYTES,
   AGENT_SKILLS_DIRECTORY_NAME,
 } from "~/lib/constants";
@@ -27,7 +26,6 @@ export type SkillCatalogDiscoveryResult = {
 };
 
 type ResolveSkillCatalogRootsOptions = {
-  workspaceRoot?: string;
   codexHome?: string;
   foundryConfigDirectory?: string;
   platform?: NodeJS.Platform;
@@ -38,11 +36,6 @@ type ResolveSkillCatalogRootsOptions = {
 export function resolveSkillCatalogRoots(
   options: ResolveSkillCatalogRootsOptions = {},
 ): SkillCatalogRoot[] {
-  const workspaceRoot = path.resolve(
-    options.workspaceRoot ?? process.cwd(),
-    AGENT_SKILLS_DIRECTORY_NAME,
-    AGENT_DEFAULT_SKILLS_DIRECTORY_NAME,
-  );
   const codexHomeRoot = path.resolve(
     resolveCodexHomeDirectory(options.codexHome),
     AGENT_SKILLS_DIRECTORY_NAME,
@@ -57,7 +50,6 @@ export function resolveSkillCatalogRoots(
   });
 
   const roots: SkillCatalogRoot[] = [
-    { path: workspaceRoot, source: "workspace", createIfMissing: false },
     { path: codexHomeRoot, source: "codex_home", createIfMissing: false },
     { path: foundrySkillsRoot, source: "app_data", createIfMissing: true },
   ];
@@ -180,31 +172,48 @@ export function resolveCodexHomeDirectory(codexHome?: string): string {
   return path.resolve(homedir(), ".codex");
 }
 
+const SKILL_DISCOVERY_MAX_DEPTH = 4;
+
 async function readSkillFileCandidates(rootPath: string): Promise<string[]> {
   if (!(await directoryExists(rootPath))) {
     return [];
   }
 
-  const candidates: string[] = [];
-  const rootSkillFile = path.join(rootPath, "SKILL.md");
-  if (await fileExists(rootSkillFile)) {
-    candidates.push(rootSkillFile);
+  const candidates = new Set<string>();
+  await collectSkillFileCandidates(rootPath, 0, candidates);
+  return Array.from(candidates).sort((left, right) => left.localeCompare(right));
+}
+
+async function collectSkillFileCandidates(
+  directoryPath: string,
+  depth: number,
+  candidates: Set<string>,
+): Promise<void> {
+  if (depth > SKILL_DISCOVERY_MAX_DEPTH) {
+    return;
   }
 
-  const entries = await readdir(rootPath, { withFileTypes: true });
+  const skillFile = path.join(directoryPath, "SKILL.md");
+  if (await fileExists(skillFile)) {
+    candidates.add(skillFile);
+  }
+
+  if (depth === SKILL_DISCOVERY_MAX_DEPTH) {
+    return;
+  }
+
+  const entries = await readdir(directoryPath, { withFileTypes: true });
   for (const entry of entries) {
     if (!entry.isDirectory()) {
       continue;
     }
 
-    const childSkillFile = path.join(rootPath, entry.name, "SKILL.md");
-    if (await fileExists(childSkillFile)) {
-      candidates.push(childSkillFile);
-    }
+    await collectSkillFileCandidates(
+      path.join(directoryPath, entry.name),
+      depth + 1,
+      candidates,
+    );
   }
-
-  candidates.sort((left, right) => left.localeCompare(right));
-  return candidates;
 }
 
 async function readSkillFrontmatter(location: string): Promise<

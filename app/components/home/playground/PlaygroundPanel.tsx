@@ -14,6 +14,7 @@ import { FluentUI } from "~/components/home/shared/fluent";
 import { LabeledTooltip } from "~/components/home/shared/LabeledTooltip";
 import { AutoDismissStatusMessageList } from "~/components/home/shared/AutoDismissStatusMessageList";
 import { StatusMessageList } from "~/components/home/shared/StatusMessageList";
+import { QuickControlFrame } from "~/components/home/shared/QuickControlFrame";
 import type { ReasoningEffort } from "~/lib/home/shared/view-types";
 import { formatChatAttachmentSize } from "~/lib/home/chat/attachments";
 
@@ -21,6 +22,7 @@ const {
   Button,
   Select,
   Spinner,
+  Switch,
   Textarea,
 } = FluentUI;
 type ChatRole = "user" | "assistant";
@@ -84,12 +86,16 @@ type PlaygroundPanelProps<
   mcpHistoryByTurnId: Map<string, TMcpRpcHistoryEntry[]>;
   isSending: boolean;
   isThreadReadOnly: boolean;
+  activeThreadName: string;
+  isThreadOperationBusy: boolean;
+  isCreatingThread: boolean;
   renderMessageContent: (message: TMessage) => ReactNode;
   renderTurnMcpLog: (
     entries: TMcpRpcHistoryEntry[],
     isLive: boolean,
     onCopy: (text: string) => void,
   ) => ReactNode;
+  onCreateThread: () => void;
   onCopyMessage: (content: string) => void;
   onCopyMcpLog: (content: string) => void;
   sendProgressMessages: string[];
@@ -131,6 +137,8 @@ type PlaygroundPanelProps<
   reasoningEffort: ReasoningEffort;
   reasoningEffortOptions: ReasoningEffort[];
   onReasoningEffortChange: (value: ReasoningEffort) => void;
+  webSearchEnabled: boolean;
+  onWebSearchEnabledChange: (value: boolean) => void;
   maxChatAttachmentFiles: number;
   canSendMessage: boolean;
   selectedSkills: ThreadSkillLike[];
@@ -149,8 +157,12 @@ export function PlaygroundPanel<
     mcpHistoryByTurnId,
     isSending,
     isThreadReadOnly,
+    activeThreadName,
+    isThreadOperationBusy,
+    isCreatingThread,
     renderMessageContent,
     renderTurnMcpLog,
+    onCreateThread,
     onCopyMessage,
     onCopyMcpLog,
     sendProgressMessages,
@@ -192,6 +204,8 @@ export function PlaygroundPanel<
     reasoningEffort,
     reasoningEffortOptions,
     onReasoningEffortChange,
+    webSearchEnabled,
+    onWebSearchEnabledChange,
     maxChatAttachmentFiles,
     canSendMessage,
     selectedSkills,
@@ -387,9 +401,28 @@ export function PlaygroundPanel<
       <header className="chat-header">
         <div className="chat-header-row">
           <div className="chat-header-main">
-            <div className="chat-header-title">
-              <img className="chat-header-symbol" src="/foundry-symbol.svg" alt="" aria-hidden="true" />
-              <h1>Local Playground</h1>
+            <div className="chat-header-title-row">
+              <div className="chat-header-title">
+                <img className="chat-header-symbol" src="/foundry-symbol.svg" alt="" aria-hidden="true" />
+                <h1>Local Playground</h1>
+              </div>
+              <div className="chat-thread-header-controls">
+                <span className="chat-thread-name-label" title={activeThreadName}>
+                  {activeThreadName}
+                </span>
+                <Button
+                  type="button"
+                  appearance="subtle"
+                  size="small"
+                  className="chat-thread-new-btn"
+                  aria-label="Create new thread"
+                  title="Create a new thread and switch to Threads."
+                  onClick={onCreateThread}
+                  disabled={isThreadOperationBusy}
+                >
+                  {isCreatingThread ? "…" : "+"}
+                </Button>
+              </div>
             </div>
           </div>
         </div>
@@ -643,22 +676,43 @@ export function PlaygroundPanel<
                   "Reasoning Effort",
                   ["Controls how much internal reasoning the model uses."],
                   <div className="chat-quick-control">
-                    <Select
-                      id="chat-reasoning-effort"
-                      aria-label="Reasoning Effort"
-                      title="Reasoning effort level for the model."
-                      value={reasoningEffort}
-                      onChange={(event) => onReasoningEffortChange(event.target.value as ReasoningEffort)}
-                      disabled={isSending}
-                    >
-                      <optgroup label="Reasoning effort">
-                        {reasoningEffortOptions.map((option) => (
-                          <option key={option} value={option}>
-                            {option}
-                          </option>
-                        ))}
-                      </optgroup>
-                    </Select>
+                    <QuickControlFrame className="chat-quick-control-frame">
+                      <Select
+                        id="chat-reasoning-effort"
+                        aria-label="Reasoning Effort"
+                        title="Reasoning effort level for the model."
+                        value={reasoningEffort}
+                        onChange={(event) => onReasoningEffortChange(event.target.value as ReasoningEffort)}
+                        disabled={isSending}
+                      >
+                        <optgroup label="Reasoning effort">
+                          {reasoningEffortOptions.map((option) => (
+                            <option key={option} value={option}>
+                              {option}
+                            </option>
+                          ))}
+                        </optgroup>
+                      </Select>
+                    </QuickControlFrame>
+                  </div>,
+                )}
+                {renderLabeledTooltip(
+                  "Web Search",
+                  ["Enable Azure web-search-preview tool for this thread."],
+                  <div className="chat-quick-control">
+                    <QuickControlFrame className="chat-quick-control-frame chat-quick-control-frame-switch">
+                      <Switch
+                        id="chat-web-search-preview"
+                        className="chat-web-search-toggle"
+                        aria-label="Web Search"
+                        label="Web Search"
+                        checked={webSearchEnabled}
+                        onChange={(_, data) => {
+                          onWebSearchEnabledChange(data.checked === true);
+                        }}
+                        disabled={isSending}
+                      />
+                    </QuickControlFrame>
                   </div>,
                 )}
               </div>

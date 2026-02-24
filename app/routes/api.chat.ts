@@ -136,6 +136,7 @@ type ChatExecutionOptions = {
   attachments: ClientAttachment[];
   history: ClientMessage[];
   reasoningEffort: ReasoningEffort;
+  webSearchEnabled: boolean;
   temperature: number | null;
   agentInstruction: string;
   skills: ClientSkillSelection[];
@@ -237,6 +238,8 @@ type SkillToolLogHandlers = {
 
 let codeInterpreterAttachmentAvailabilityCache: CodeInterpreterAttachmentAvailabilityCache | null =
   null;
+const WEB_SEARCH_PREVIEW_TOOL_NAME = "web_search_preview";
+const WEB_SEARCH_PREVIEW_CONTEXT_SIZE = "medium";
 
 export function loader({}: Route.LoaderArgs) {
   installGlobalServerErrorLogging();
@@ -316,6 +319,7 @@ export async function action({ request }: Route.ActionArgs) {
     return Response.json({ error: attachmentsResult.error }, { status: 400 });
   }
   const reasoningEffort = readReasoningEffort(payload);
+  const webSearchEnabled = readWebSearchEnabled(payload);
   const temperatureResult = readTemperature(payload);
   if (!temperatureResult.ok) {
     await logServerRouteEvent({
@@ -403,6 +407,7 @@ export async function action({ request }: Route.ActionArgs) {
     attachments: attachmentsResult.value,
     history,
     reasoningEffort,
+    webSearchEnabled,
     temperature: temperatureResult.value,
     agentInstruction,
     skills: skillsResult.value,
@@ -585,6 +590,10 @@ async function executeChat(
       azureOpenAIClient,
       options.azureConfig.deploymentName,
     );
+    const webSearchTools = options.webSearchEnabled ? [buildWebSearchPreviewTool()] : [];
+    if (options.webSearchEnabled) {
+      emitProgress({ message: "Enabling web-search-preview tool..." });
+    }
     const useCodeInterpreter = shouldEnableCodeInterpreter(options);
     let codeInterpreterEnabledForRun = false;
     if (useCodeInterpreter) {
@@ -642,6 +651,7 @@ async function executeChat(
         },
       },
       tools: [
+        ...webSearchTools,
         ...(enableCodeInterpreterTool
           ? [
               codeInterpreterTool({
@@ -845,6 +855,18 @@ function wantsEventStream(request: Request): boolean {
     typeof acceptHeader === "string" &&
     acceptHeader.toLowerCase().includes("text/event-stream")
   );
+}
+
+function buildWebSearchPreviewTool() {
+  return {
+    type: "hosted_tool" as const,
+    name: WEB_SEARCH_PREVIEW_TOOL_NAME,
+    providerData: {
+      type: "web_search_preview",
+      name: WEB_SEARCH_PREVIEW_TOOL_NAME,
+      search_context_size: WEB_SEARCH_PREVIEW_CONTEXT_SIZE,
+    },
+  };
 }
 
 function shouldEnableCodeInterpreter(options: ChatExecutionOptions): boolean {
@@ -1440,6 +1462,14 @@ function readReasoningEffort(payload: unknown): ReasoningEffort {
     return value;
   }
   return "none";
+}
+
+function readWebSearchEnabled(payload: unknown): boolean {
+  if (!isRecord(payload) || payload.webSearchEnabled === undefined) {
+    return false;
+  }
+
+  return payload.webSearchEnabled === true;
 }
 
 function readTemperature(payload: unknown): ParseResult<number | null> {
@@ -3430,6 +3460,7 @@ function readErrorMessage(error: unknown): string {
 
 export const chatRouteTestUtils = {
   readTemperature,
+  readWebSearchEnabled,
   readAttachments,
   hasNonPdfAttachments,
   readSkills,
