@@ -101,17 +101,27 @@ function normalizePrismaSqliteDatabaseUrl(
   databaseUrl: string,
   options: NormalizePrismaSqliteDatabaseUrlOptions,
 ): string {
-  if (!databaseUrl.startsWith("file:") || isInMemorySqliteDatabaseUrl(databaseUrl)) {
-    return databaseUrl;
+  const trimmedUrl = databaseUrl.trim();
+  if (!trimmedUrl) {
+    return trimmedUrl;
   }
 
-  const absoluteDatabasePath = resolveSqliteDatabaseFilePath(databaseUrl, options);
+  if (!trimmedUrl.startsWith("file:") || isInMemorySqliteDatabaseUrl(trimmedUrl)) {
+    const pathModule = options.platform === "win32" ? path.win32 : path.posix;
+    if (pathModule.isAbsolute(trimmedUrl)) {
+      return buildPrismaSqliteDatabaseUrl(pathModule.normalize(trimmedUrl), options.platform);
+    }
+
+    return trimmedUrl;
+  }
+
+  const absoluteDatabasePath = resolveSqliteDatabaseFilePath(trimmedUrl, options);
   if (!absoluteDatabasePath) {
-    return databaseUrl;
+    return trimmedUrl;
   }
 
-  const queryIndex = databaseUrl.indexOf("?");
-  const query = queryIndex >= 0 ? databaseUrl.slice(queryIndex) : "";
+  const queryIndex = trimmedUrl.indexOf("?");
+  const query = queryIndex >= 0 ? trimmedUrl.slice(queryIndex) : "";
   return `${buildPrismaSqliteDatabaseUrl(absoluteDatabasePath, options.platform)}${query}`;
 }
 
@@ -156,7 +166,7 @@ function buildPrismaSqliteDatabaseUrl(databaseFilePath: string, platform: NodeJS
   if (platform === "win32") {
     const normalizedPath = databaseFilePath.replaceAll("\\", "/");
     if (/^[A-Za-z]:\//.test(normalizedPath)) {
-      return `file:/${normalizedPath}`;
+      return `file:${normalizedPath}`;
     }
 
     return `file:${normalizedPath.startsWith("/") ? normalizedPath : `/${normalizedPath}`}`;
