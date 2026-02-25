@@ -253,7 +253,7 @@ async function resolveSkillResourceFilePath(
     throw new Error(`Skill does not include ${kind} directory.`);
   }
 
-  const normalizedRelativePath = normalizeSkillRelativePath(relativePath);
+  const normalizedRelativePath = normalizeSkillRelativePath(relativePath, kind);
   const candidatePath = path.resolve(resourceDirectory, normalizedRelativePath);
   if (!isPathWithin(candidatePath, resourceDirectory)) {
     throw new Error(`Skill ${kind} path must stay inside the skill directory.`);
@@ -291,7 +291,7 @@ function resolveSkillResourceDirectory(skillRoot: string, kind: SkillResourceKin
   return path.resolve(normalizedSkillRoot, SKILL_RESOURCE_DIRECTORY_BY_KIND[kind]);
 }
 
-function normalizeSkillRelativePath(value: string): string {
+function normalizeSkillRelativePath(value: string, kind: SkillResourceKind): string {
   const normalized = value.replace(/\\/g, "/").trim();
   if (!normalized) {
     throw new Error("Skill path is required.");
@@ -312,7 +312,13 @@ function normalizeSkillRelativePath(value: string): string {
     throw new Error("Skill path contains invalid segments.");
   }
 
-  return path.join(...segments);
+  const resourceDirectoryName = SKILL_RESOURCE_DIRECTORY_BY_KIND[kind];
+  const relativeSegments = segments[0] === resourceDirectoryName ? segments.slice(1) : segments;
+  if (relativeSegments.length === 0) {
+    throw new Error("Skill path must target a file.");
+  }
+
+  return path.join(...relativeSegments);
 }
 
 function normalizeMaxBytes(value: number | undefined, kind: "references" | "assets"): number {

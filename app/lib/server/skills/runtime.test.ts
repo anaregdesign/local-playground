@@ -74,6 +74,20 @@ describe("readSkillResourceText", () => {
 
     expect(content).toBe("line1\nline2");
   });
+
+  it("accepts references-prefixed paths", async () => {
+    const skillRoot = await createTempSkillRoot();
+    await mkdir(path.join(skillRoot, "references"), { recursive: true });
+    await writeFile(path.join(skillRoot, "references", "guide.md"), "line1\nline2", "utf8");
+
+    const content = await readSkillResourceText({
+      skillRoot,
+      kind: "references",
+      relativePath: "references/guide.md",
+    });
+
+    expect(content).toBe("line1\nline2");
+  });
 });
 
 describe("readSkillResourceBuffer", () => {
@@ -105,6 +119,28 @@ describe("runSkillScript", () => {
     const result = await runSkillScript({
       skillRoot,
       relativePath: "echo.mjs",
+      args: ["one", "two"],
+      timeoutMs: 2_000,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toBe("one,two");
+    expect(result.stderr).toBe("");
+    expect(result.timedOut).toBe(false);
+  });
+
+  it("accepts scripts-prefixed paths", async () => {
+    const skillRoot = await createTempSkillRoot();
+    await mkdir(path.join(skillRoot, "scripts"), { recursive: true });
+    await writeFile(
+      path.join(skillRoot, "scripts", "echo.mjs"),
+      "process.stdout.write(process.argv.slice(2).join(','));",
+      "utf8",
+    );
+
+    const result = await runSkillScript({
+      skillRoot,
+      relativePath: "scripts/echo.mjs",
       args: ["one", "two"],
       timeoutMs: 2_000,
     });
