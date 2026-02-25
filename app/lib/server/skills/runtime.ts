@@ -28,7 +28,8 @@ const SKILL_RESOURCE_DIRECTORY_BY_KIND = {
 } as const;
 
 // agentskills.io defines scripts/references/assets as canonical directories.
-// resources/ is intentionally treated as a compatibility fallback for non-conformant skills.
+// resources/ is a non-standard optional directory used by some skills.
+// Include it when SKILL.md guidance and resource discovery indicate it is required.
 const SKILL_RESOURCE_DIRECTORY_CANDIDATES_BY_KIND = {
   scripts: [AGENT_SKILL_SCRIPTS_DIRECTORY_NAME],
   references: [AGENT_SKILL_REFERENCES_DIRECTORY_NAME, AGENT_SKILL_RESOURCES_DIRECTORY_NAME],
@@ -267,7 +268,7 @@ async function resolveSkillResourceFilePath(
   relativePath: string,
 ): Promise<string> {
   const resourceDirectories = await resolveSkillResourceDirectories(skillRoot, kind);
-  if (resourceDirectories.length === 0 && kind === "scripts") {
+  if (resourceDirectories.length === 0) {
     throw new Error(buildSkillMissingDirectoryError(kind));
   }
 
@@ -292,21 +293,6 @@ async function resolveSkillResourceFilePath(
     } catch (error) {
       lastError = error;
       continue;
-    }
-  }
-
-  if (kind !== "scripts") {
-    const normalizedSkillRoot = path.resolve(skillRoot);
-    const candidatePath = path.resolve(normalizedSkillRoot, normalizedRelativePath);
-    if (!isPathWithin(candidatePath, normalizedSkillRoot)) {
-      throw new Error(`Skill ${kind} path must stay inside the skill directory.`);
-    }
-
-    try {
-      await assertReadableSkillResourcePath(candidatePath, normalizedSkillRoot, kind);
-      return candidatePath;
-    } catch (error) {
-      lastError = error;
     }
   }
 

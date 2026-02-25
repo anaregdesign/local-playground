@@ -3036,9 +3036,9 @@ function buildAgentInstructionWithSkills(
     normalizedBaseInstruction,
     "",
     "<skills_context>",
-    "The runtime supports agentskills-compatible Skill directories (SKILL.md + scripts/references/assets, with resources/ and skill-root fallback for references/assets).",
+    "The runtime supports agentskills-compatible Skill directories (SKILL.md + scripts/references/assets). Some skills may also define non-standard directories like resources/.",
     "Use skill_list_resources before reading/running files when paths are unknown.",
-    "Use skill_read_reference for references/, skill_read_asset for assets/, and skill_run_script for scripts/.",
+    "Follow each SKILL.md guide and use the needed paths from skill_list_resources with skill_read_reference, skill_read_asset, and skill_run_script.",
   ];
 
   if (runtime.availableSkills.length > 0) {

@@ -45,7 +45,7 @@ describe("inspectSkillResourceManifest", () => {
     expect(manifest.assets.map((entry) => entry.path)).toEqual(["template.json"]);
   });
 
-  it("uses resources as a fallback for references and assets", async () => {
+  it("includes resources as an additional directory for references and assets", async () => {
     const skillRoot = await createTempSkillRoot();
     await mkdir(path.join(skillRoot, "scripts"), { recursive: true });
     await mkdir(path.join(skillRoot, "resources"), { recursive: true });
@@ -105,7 +105,7 @@ describe("readSkillResourceText", () => {
     expect(content).toBe("line1\nline2");
   });
 
-  it("falls back to resources when references directory is missing", async () => {
+  it("reads references from resources directory when requested", async () => {
     const skillRoot = await createTempSkillRoot();
     await mkdir(path.join(skillRoot, "resources"), { recursive: true });
     await writeFile(path.join(skillRoot, "resources", "guide.md"), "resource guide", "utf8");
@@ -119,18 +119,6 @@ describe("readSkillResourceText", () => {
     expect(content).toBe("resource guide");
   });
 
-  it("falls back to skill root when references and resources are missing", async () => {
-    const skillRoot = await createTempSkillRoot();
-    await writeFile(path.join(skillRoot, "guide.md"), "root guide", "utf8");
-
-    const content = await readSkillResourceText({
-      skillRoot,
-      kind: "references",
-      relativePath: "guide.md",
-    });
-
-    expect(content).toBe("root guide");
-  });
 });
 
 describe("readSkillResourceBuffer", () => {
@@ -148,7 +136,7 @@ describe("readSkillResourceBuffer", () => {
     expect([...buffer]).toEqual([0, 1, 2, 3]);
   });
 
-  it("falls back to resources when assets directory is missing", async () => {
+  it("reads assets from resources directory when requested", async () => {
     const skillRoot = await createTempSkillRoot();
     await mkdir(path.join(skillRoot, "resources"), { recursive: true });
     await writeFile(path.join(skillRoot, "resources", "bytes.bin"), Buffer.from([4, 5, 6, 7]));
@@ -162,18 +150,6 @@ describe("readSkillResourceBuffer", () => {
     expect([...buffer]).toEqual([4, 5, 6, 7]);
   });
 
-  it("falls back to skill root when assets and resources are missing", async () => {
-    const skillRoot = await createTempSkillRoot();
-    await writeFile(path.join(skillRoot, "bytes.bin"), Buffer.from([8, 9, 10, 11]));
-
-    const buffer = await readSkillResourceBuffer({
-      skillRoot,
-      kind: "assets",
-      relativePath: "bytes.bin",
-    });
-
-    expect([...buffer]).toEqual([8, 9, 10, 11]);
-  });
 });
 
 describe("runSkillScript", () => {
