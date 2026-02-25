@@ -332,7 +332,21 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG_NAME: ${{ github.ref_name }}
         run: |
-          mapfile -t ASSETS < <(find release-assets -type f | sort)
+          mapfile -t ASSETS < <(
+            find release-assets -type f \
+              \( -name '*.dmg' \
+              -o -name '*.zip' \
+              -o -name '*.exe' \
+              -o -name 'latest*.yml' \
+              -o -name '*.blockmap' \
+              -o -name 'SHA256SUMS.txt' \
+              -o -name 'SHA256SUMS.txt.sig' \
+              -o -name 'release-signing-key.pem' \
+              -o -name '*.dmg.sig' \
+              -o -name '*.zip.sig' \
+              -o -name '*.exe.sig' \) \
+              | sort
+          )
           if [ "${#ASSETS[@]}" -eq 0 ]; then
             echo "No installer assets were found."
             exit 1
