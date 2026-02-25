@@ -170,6 +170,7 @@ Per-OS packaging:
 
 - `npm run desktop:package:mac`
 - `npm run desktop:package:win`
+- `npm run desktop:package:win:all`
 - `npm run desktop:package:win:portable`
 
 ## Data Paths

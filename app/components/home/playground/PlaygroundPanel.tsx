@@ -45,6 +45,17 @@ type ThreadSkillLike = {
   location: string;
 };
 
+type DesktopUpdaterStatusLike = {
+  supported: boolean;
+  checking: boolean;
+  updateAvailable: boolean;
+  updateDownloaded: boolean;
+  currentVersion: string;
+  availableVersion: string;
+  errorMessage: string;
+  lastCheckedAt: string;
+};
+
 type AzureConnectionLike = {
   id: string;
   projectName: string;
@@ -86,6 +97,9 @@ type PlaygroundPanelProps<
   mcpHistoryByTurnId: Map<string, TMcpRpcHistoryEntry[]>;
   isSending: boolean;
   isThreadReadOnly: boolean;
+  desktopUpdaterStatus: DesktopUpdaterStatusLike;
+  isApplyingDesktopUpdate: boolean;
+  onApplyDesktopUpdate: () => void;
   activeThreadName: string;
   isThreadOperationBusy: boolean;
   isCreatingThread: boolean;
@@ -157,6 +171,9 @@ export function PlaygroundPanel<
     mcpHistoryByTurnId,
     isSending,
     isThreadReadOnly,
+    desktopUpdaterStatus,
+    isApplyingDesktopUpdate,
+    onApplyDesktopUpdate,
     activeThreadName,
     isThreadOperationBusy,
     isCreatingThread,
@@ -406,6 +423,24 @@ export function PlaygroundPanel<
                 <img className="chat-header-symbol" src="/foundry-symbol.svg" alt="" aria-hidden="true" />
                 <h1>Local Playground</h1>
               </div>
+              {desktopUpdaterStatus.updateDownloaded ? (
+                <Button
+                  type="button"
+                  appearance="subtle"
+                  size="small"
+                  className="chat-header-upgrade-btn"
+                  aria-label="Upgrade app"
+                  title={
+                    desktopUpdaterStatus.availableVersion
+                      ? `Restart and apply version ${desktopUpdaterStatus.availableVersion}.`
+                      : "Restart and apply the downloaded update."
+                  }
+                  onClick={onApplyDesktopUpdate}
+                  disabled={isApplyingDesktopUpdate}
+                >
+                  {isApplyingDesktopUpdate ? "Upgrading…" : "Upgrade"}
+                </Button>
+              ) : null}
               <div className="chat-thread-header-controls">
                 <span className="chat-thread-name-label" title={activeThreadName}>
                   {activeThreadName}

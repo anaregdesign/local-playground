@@ -302,6 +302,17 @@ body {
   max-width: 420px;
 }
 
+.chat-header-upgrade-btn.fui-Button {
+  min-height: 1.85rem;
+  height: 1.85rem;
+  padding: 0 0.62rem;
+  border-radius: var(--home-radius-sm);
+  font-size: 0.8rem;
+  line-height: 1;
+  white-space: nowrap;
+  flex: 0 0 auto;
+}
+
 .chat-thread-name-label {
   flex: 1 1 auto;
   min-width: 0;
@@ -2249,6 +2260,10 @@ body {
   .chat-thread-header-controls {
     flex: 1 1 auto;
     max-width: 100%;
+  }
+
+  .chat-header-upgrade-btn.fui-Button {
+    margin-left: auto;
   }
 
   .chat-header-title-row {

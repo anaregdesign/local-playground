@@ -43,7 +43,7 @@ jobs:
             package_command: npm run desktop:package:mac
           - os: windows-latest
             platform: Windows
-            package_command: npm run desktop:package:win:portable:all
+            package_command: npm run desktop:package:win:all
 
     steps:
       - name: Checkout
@@ -140,7 +140,7 @@ jobs:
           ulimit -n 10240
           ${{ matrix.package_command }}
 
-      - name: Build executables (Windows x64 + arm64)
+      - name: Build installers (Windows x64 + arm64)
         if: matrix.os == 'windows-latest'
         shell: bash
         run: |
@@ -154,6 +154,8 @@ jobs:
 
           WINDOWS_X64_EXE="$(find dist/installers -maxdepth 1 -type f -name '*-win-x64.exe' | head -n 1)"
           WINDOWS_ARM64_EXE="$(find dist/installers -maxdepth 1 -type f -name '*-win-arm64.exe' | head -n 1)"
+          WINDOWS_LATEST_YML_PATH="$(find dist/installers -maxdepth 1 -type f -name 'latest*.yml' | head -n 1)"
+          WINDOWS_BLOCKMAP_COUNT="$(find dist/installers -maxdepth 1 -type f -name '*.blockmap' | wc -l | tr -d ' ')"
 
           if [ -z "${WINDOWS_X64_EXE}" ]; then
             echo "::error::Windows x64 installer was not found under dist/installers."
@@ -162,6 +164,16 @@ jobs:
 
           if [ -z "${WINDOWS_ARM64_EXE}" ]; then
             echo "::error::Windows arm64 installer was not found under dist/installers."
+            exit 1
+          fi
+
+          if [ -z "${WINDOWS_LATEST_YML_PATH}" ]; then
+            echo "::error::Windows updater metadata file (latest.yml) was not found under dist/installers."
+            exit 1
+          fi
+
+          if [ "${WINDOWS_BLOCKMAP_COUNT}" -lt 1 ]; then
+            echo "::error::Windows updater blockmap files were not found under dist/installers."
             exit 1
           fi
 
@@ -246,13 +258,15 @@ jobs:
             dist/installers/*.blockmap
           if-no-files-found: error
 
-      - name: Upload Windows executable
+      - name: Upload Windows installers
         if: matrix.os == 'windows-latest'
         uses: actions/upload-artifact@v4
         with:
           name: installers-windows
           path: |
             dist/installers/*.exe
+            dist/installers/*.yml
+            dist/installers/*.blockmap
           if-no-files-found: error
 
   release:
@@ -329,7 +343,7 @@ jobs:
 
           Desktop artifacts are attached to this release:
           - macOS installers and updater metadata
-          - Windows portable executables (`.exe`, x64 + arm64, unsigned)
+          - Windows NSIS installers and updater metadata (`.exe`, `latest.yml`, `.blockmap`)
 
           ### Run from Source (Copy & Paste)
 
@@ -344,7 +358,7 @@ jobs:
           Open: `http://localhost:5173`
 
           ### Installer Assets
-          - Includes `latest-mac.yml` for in-app update checks.
+          - Includes updater metadata (`latest-mac.yml`, `latest.yml`) for in-app update checks.
 
           ### Integrity Assets
           - `SHA256SUMS.txt` is always published for installer SHA-256 checksums.
@@ -352,7 +366,7 @@ jobs:
 
           ### Platform Trust
           - macOS artifacts are Developer ID signed and notarized.
-          - Windows portable executables are intentionally unsigned.
+          - Windows artifacts are currently unsigned.
           EOF
 
           for asset in "${ASSETS[@]}"; do

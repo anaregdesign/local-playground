@@ -5,7 +5,7 @@ const path = require('node:path');
 const os = require('node:os');
 const { existsSync, readFileSync } = require('node:fs');
 const { spawn, spawnSync } = require('node:child_process');
-const { app, BrowserWindow, dialog, session, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, session, shell } = require('electron');
 const { autoUpdater } = require('electron-updater');
 
 const DESKTOP_MODE = process.env.DESKTOP_MODE === 'development' ? 'development' : 'production';
@@ -22,8 +22,31 @@ let mainWindow = null;
 let backendProcess = null;
 /** @type {NodeJS.Timeout | null} */
 let updateCheckTimer = null;
-let hasShownUpdateAvailableDialog = false;
-let hasShownUpdateReadyDialog = false;
+
+const DESKTOP_UPDATER_STATUS_CHANNEL = 'desktop:updater-status';
+const DESKTOP_GET_UPDATER_STATUS_CHANNEL = 'desktop:get-updater-status';
+const DESKTOP_QUIT_AND_INSTALL_CHANNEL = 'desktop:quit-and-install-update';
+
+/** @type {{
+ *   supported: boolean;
+ *   checking: boolean;
+ *   updateAvailable: boolean;
+ *   updateDownloaded: boolean;
+ *   currentVersion: string;
+ *   availableVersion: string;
+ *   errorMessage: string;
+ *   lastCheckedAt: string;
+ * }} */
+let desktopUpdaterState = {
+  supported: false,
+  checking: false,
+  updateAvailable: false,
+  updateDownloaded: false,
+  currentVersion: app.getVersion(),
+  availableVersion: '',
+  errorMessage: '',
+  lastCheckedAt: '',
+};
 
 function configureAboutPanel() {
   if (process.platform !== 'darwin' || typeof app.setAboutPanelOptions !== 'function') {
@@ -77,6 +100,7 @@ function createMainWindow({ loadAppUrl = true } = {}) {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
+      preload: path.resolve(__dirname, 'preload.cjs'),
     },
   };
 
@@ -110,6 +134,8 @@ function createMainWindow({ loadAppUrl = true } = {}) {
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
+
+  publishDesktopUpdaterStatus();
 }
 
 function configureExternalLinkHandling(appOrigin) {
@@ -168,47 +194,140 @@ function openInExternalBrowser(url) {
   });
 }
 
+function readUpdaterVersion(value) {
+  if (!value || typeof value !== 'object') {
+    return '';
+  }
+
+  if (typeof value.version === 'string') {
+    return value.version.trim();
+  }
+
+  return '';
+}
+
+function buildDesktopUpdaterStatusPayload() {
+  return {
+    supported: desktopUpdaterState.supported,
+    checking: desktopUpdaterState.checking,
+    updateAvailable: desktopUpdaterState.updateAvailable,
+    updateDownloaded: desktopUpdaterState.updateDownloaded,
+    currentVersion: desktopUpdaterState.currentVersion,
+    availableVersion: desktopUpdaterState.availableVersion,
+    errorMessage: desktopUpdaterState.errorMessage,
+    lastCheckedAt: desktopUpdaterState.lastCheckedAt,
+  };
+}
+
+function publishDesktopUpdaterStatus() {
+  const payload = buildDesktopUpdaterStatusPayload();
+  for (const browserWindow of BrowserWindow.getAllWindows()) {
+    if (browserWindow.isDestroyed()) {
+      continue;
+    }
+
+    browserWindow.webContents.send(DESKTOP_UPDATER_STATUS_CHANNEL, payload);
+  }
+}
+
+function setDesktopUpdaterState(patch) {
+  desktopUpdaterState = {
+    ...desktopUpdaterState,
+    ...patch,
+  };
+  publishDesktopUpdaterStatus();
+}
+
+function registerDesktopIpcHandlers() {
+  ipcMain.removeHandler(DESKTOP_GET_UPDATER_STATUS_CHANNEL);
+  ipcMain.handle(DESKTOP_GET_UPDATER_STATUS_CHANNEL, async () => {
+    return buildDesktopUpdaterStatusPayload();
+  });
+
+  ipcMain.removeHandler(DESKTOP_QUIT_AND_INSTALL_CHANNEL);
+  ipcMain.handle(DESKTOP_QUIT_AND_INSTALL_CHANNEL, async () => {
+    if (!desktopUpdaterState.supported) {
+      throw new Error('Auto update is unavailable in this environment.');
+    }
+
+    if (!desktopUpdaterState.updateDownloaded) {
+      throw new Error('No downloaded update is ready to install.');
+    }
+
+    autoUpdater.quitAndInstall();
+  });
+}
+
 function initializeAutoUpdater() {
   if (DESKTOP_MODE !== 'production' || !app.isPackaged) {
+    setDesktopUpdaterState({
+      supported: false,
+      checking: false,
+      updateAvailable: false,
+      updateDownloaded: false,
+      availableVersion: '',
+      errorMessage: '',
+      lastCheckedAt: '',
+    });
     return;
   }
 
-  autoUpdater.on('update-available', () => {
-    if (hasShownUpdateAvailableDialog) {
-      return;
-    }
+  autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = false;
 
-    hasShownUpdateAvailableDialog = true;
-    void showUpdateDialog({
-      title: 'Update Available',
-      message: 'A new version of Local Playground is available.',
-      detail: 'The update is downloading in the background.',
-      buttons: ['OK'],
+  setDesktopUpdaterState({
+    supported: true,
+    checking: false,
+    updateAvailable: false,
+    updateDownloaded: false,
+    availableVersion: '',
+    errorMessage: '',
+    lastCheckedAt: '',
+  });
+
+  autoUpdater.on('checking-for-update', () => {
+    setDesktopUpdaterState({
+      checking: true,
+      errorMessage: '',
     });
   });
 
-  autoUpdater.on('update-downloaded', () => {
-    if (hasShownUpdateReadyDialog) {
-      return;
-    }
+  autoUpdater.on('update-available', (info) => {
+    setDesktopUpdaterState({
+      checking: false,
+      updateAvailable: true,
+      updateDownloaded: false,
+      availableVersion: readUpdaterVersion(info),
+      errorMessage: '',
+    });
+  });
 
-    hasShownUpdateReadyDialog = true;
-    void showUpdateDialog({
-      title: 'Update Ready',
-      message: 'A new version of Local Playground has been downloaded.',
-      detail: 'Restart now to apply the update.',
-      buttons: ['Restart Now', 'Later'],
-      defaultId: 0,
-      cancelId: 1,
-    }).then((result) => {
-      if (result.response === 0) {
-        autoUpdater.quitAndInstall();
-      }
+  autoUpdater.on('update-not-available', (info) => {
+    setDesktopUpdaterState({
+      checking: false,
+      updateAvailable: false,
+      updateDownloaded: false,
+      availableVersion: readUpdaterVersion(info),
+      errorMessage: '',
+    });
+  });
+
+  autoUpdater.on('update-downloaded', (info) => {
+    setDesktopUpdaterState({
+      checking: false,
+      updateAvailable: true,
+      updateDownloaded: true,
+      availableVersion: readUpdaterVersion(info),
+      errorMessage: '',
     });
   });
 
   autoUpdater.on('error', (error) => {
     console.error(`[desktop-updater] ${readErrorMessage(error)}`);
+    setDesktopUpdaterState({
+      checking: false,
+      errorMessage: readErrorMessage(error),
+    });
   });
 
   void checkForUpdates();
@@ -220,24 +339,17 @@ function initializeAutoUpdater() {
 async function checkForUpdates() {
   try {
     await autoUpdater.checkForUpdates();
+    setDesktopUpdaterState({
+      lastCheckedAt: new Date().toISOString(),
+    });
   } catch (error) {
     console.error(`[desktop-updater] Failed to check for updates: ${readErrorMessage(error)}`);
+    setDesktopUpdaterState({
+      checking: false,
+      errorMessage: readErrorMessage(error),
+      lastCheckedAt: new Date().toISOString(),
+    });
   }
-}
-
-function showUpdateDialog(options) {
-  const targetWindow = mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined;
-  const dialogOptions = {
-    type: 'info',
-    noLink: true,
-    ...options,
-  };
-
-  if (targetWindow) {
-    return dialog.showMessageBox(targetWindow, dialogOptions);
-  }
-
-  return dialog.showMessageBox(dialogOptions);
 }
 
 async function startProductionBackend() {
@@ -596,6 +708,7 @@ app.whenReady().then(async () => {
   configureContentSecurityPolicy();
   setDockIconIfAvailable();
   configureAboutPanel();
+  registerDesktopIpcHandlers();
 
   if (DESKTOP_MODE === 'production') {
     try {

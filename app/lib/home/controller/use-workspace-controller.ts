@@ -144,6 +144,11 @@ import { readStringList } from "~/lib/home/shared/collections";
 import { getFileExtension } from "~/lib/home/shared/files";
 import { createId } from "~/lib/home/shared/ids";
 import { clampNumber } from "~/lib/home/shared/numbers";
+import {
+  getDefaultDesktopUpdaterStatus,
+  readDesktopApi,
+  readDesktopUpdaterStatusFromUnknown,
+} from "~/lib/home/controller/desktop-updater";
 import { readJsonPayload } from "~/lib/home/controller/http";
 import {
   type AzureActionApiResponse,
@@ -266,6 +271,10 @@ export function useWorkspaceController() {
   const [isLoadingSkills, setIsLoadingSkills] = useState(false);
   const [skillsError, setSkillsError] = useState<string | null>(null);
   const [skillsWarning, setSkillsWarning] = useState<string | null>(null);
+  const [desktopUpdaterStatus, setDesktopUpdaterStatus] = useState(
+    getDefaultDesktopUpdaterStatus,
+  );
+  const [isApplyingDesktopUpdate, setIsApplyingDesktopUpdate] = useState(false);
   const [rightPaneWidth, setRightPaneWidth] = useState(420);
   const [activeResizeHandle, setActiveResizeHandle] = useState<"main" | null>(null);
 
@@ -556,6 +565,49 @@ export function useWorkspaceController() {
         source: "home",
       }),
     );
+  }, []);
+
+  useEffect(() => {
+    const desktopApi = readDesktopApi();
+    if (!desktopApi) {
+      setDesktopUpdaterStatus(getDefaultDesktopUpdaterStatus());
+      return;
+    }
+
+    let isActive = true;
+
+    const applyStatusPayload = (payload: unknown) => {
+      const parsed = readDesktopUpdaterStatusFromUnknown(payload);
+      if (!parsed || !isActive) {
+        return;
+      }
+
+      setDesktopUpdaterStatus(parsed);
+    };
+
+    void desktopApi
+      .getUpdaterStatus()
+      .then((payload) => {
+        applyStatusPayload(payload);
+      })
+      .catch((error) => {
+        logHomeWarning(
+          "desktop_updater_status_read_failed",
+          error instanceof Error ? error.message : "Unknown error.",
+          {
+          location: "controller.desktopUpdater",
+          },
+        );
+      });
+
+    const unsubscribe = desktopApi.onUpdaterStatus((payload) => {
+      applyStatusPayload(payload);
+    });
+
+    return () => {
+      isActive = false;
+      unsubscribe();
+    };
   }, []);
 
   useEffect(() => {
@@ -4166,6 +4218,29 @@ export function useWorkspaceController() {
     setMcpServers((current) => current.filter((server) => server.id !== id));
   }
 
+  async function handleApplyDesktopUpdate() {
+    const desktopApi = readDesktopApi();
+    if (!desktopApi || !desktopUpdaterStatus.updateDownloaded || isApplyingDesktopUpdate) {
+      return;
+    }
+
+    setIsApplyingDesktopUpdate(true);
+    setUiError(null);
+    try {
+      await desktopApi.quitAndInstallUpdate();
+    } catch (error) {
+      logHomeError("desktop_update_apply_failed", error, {
+        action: "desktop_updater.quitAndInstallUpdate",
+        location: "controller.desktopUpdater",
+        context: {
+          availableVersion: desktopUpdaterStatus.availableVersion,
+        },
+      });
+      setUiError(error instanceof Error ? error.message : "Failed to apply desktop update.");
+      setIsApplyingDesktopUpdate(false);
+    }
+  }
+
   function handleMainSplitterPointerDown(event: ReactPointerEvent<HTMLDivElement>) {
     event.preventDefault();
     const layoutElement = layoutRef.current;
@@ -4458,6 +4533,11 @@ export function useWorkspaceController() {
     mcpHistoryByTurnId,
     isSending,
     isThreadReadOnly: isActiveThreadArchived,
+    desktopUpdaterStatus,
+    isApplyingDesktopUpdate,
+    onApplyDesktopUpdate: () => {
+      void handleApplyDesktopUpdate();
+    },
     activeThreadName: activeThreadNameInput,
     isThreadOperationBusy,
     isCreatingThread,

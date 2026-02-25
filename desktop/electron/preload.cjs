@@ -4,6 +4,22 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('desktopApi', {
+  async getUpdaterStatus() {
+    return ipcRenderer.invoke('desktop:get-updater-status');
+  },
+  onUpdaterStatus(listener) {
+    const handler = (_event, payload) => {
+      listener(payload);
+    };
+
+    ipcRenderer.on('desktop:updater-status', handler);
+    return () => {
+      ipcRenderer.removeListener('desktop:updater-status', handler);
+    };
+  },
+  async quitAndInstallUpdate() {
+    return ipcRenderer.invoke('desktop:quit-and-install-update');
+  },
   async getServerStatus() {
     return ipcRenderer.invoke('desktop:get-server-status');
   },
