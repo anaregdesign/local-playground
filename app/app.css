@@ -1087,6 +1087,103 @@ body {
   box-shadow: none;
 }
 
+.chat-command-menu {
+  border: 1px solid #d6dfeb;
+  border-radius: 12px;
+  background: #ffffff;
+  overflow: hidden;
+}
+
+.chat-command-empty {
+  margin: 0;
+  padding: 0.52rem 0.7rem;
+  color: var(--text-subtle);
+  font-size: var(--home-font-size-caption);
+}
+
+.chat-command-list {
+  margin: 0;
+  padding: 0.18rem;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.12rem;
+  max-height: 230px;
+  overflow-y: auto;
+}
+
+.chat-command-option {
+  margin: 0;
+}
+
+.chat-command-item {
+  width: 100%;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  padding: 0.42rem 0.52rem 0.4rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.13rem;
+  cursor: pointer;
+}
+
+.chat-command-item:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+
+.chat-command-item:enabled:hover,
+.chat-command-item.is-highlighted {
+  background: #eff5fb;
+}
+
+.chat-command-item-title-row {
+  display: flex;
+  align-items: center;
+  gap: 0.34rem;
+}
+
+.chat-command-item-label {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #1f4968;
+}
+
+.chat-command-item-state {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.15rem;
+  padding: 0 0.38rem;
+  border-radius: 999px;
+  background: #e7f4ea;
+  color: #1e5a3f;
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  text-transform: uppercase;
+}
+
+.chat-command-item-state-unavailable {
+  background: #f6edeb;
+  color: #8a332f;
+}
+
+.chat-command-item-description {
+  color: #2c4557;
+  font-size: var(--home-font-size-caption);
+  line-height: 1.32;
+}
+
+.chat-command-item-detail {
+  color: #5f7486;
+  font-size: var(--home-font-size-note);
+  font-family: "IBM Plex Mono", "SFMono-Regular", Menlo, monospace;
+  overflow-wrap: anywhere;
+}
+
 .chat-composer-input.fui-Textarea,
 .chat-composer-input.fui-Textarea:hover,
 .chat-composer-input.fui-Textarea:focus-within {

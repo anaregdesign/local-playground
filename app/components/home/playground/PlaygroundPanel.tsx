@@ -8,6 +8,7 @@ import {
   type KeyboardEvent,
   type ReactNode,
   type RefObject,
+  type SyntheticEvent,
 } from "react";
 import { CopyIconButton } from "~/components/home/shared/CopyIconButton";
 import { FluentUI } from "~/components/home/shared/fluent";
@@ -43,6 +44,23 @@ type ChatAttachmentLike = {
 type ThreadSkillLike = {
   name: string;
   location: string;
+};
+
+type ChatCommandSuggestionLike = {
+  id: string;
+  label: string;
+  description: string;
+  detail: string;
+  isSelected: boolean;
+  isAvailable: boolean;
+};
+
+type ChatCommandMenuLike = {
+  keyword: string;
+  query: string;
+  emptyHint: string;
+  highlightedIndex: number;
+  suggestions: ChatCommandSuggestionLike[];
 };
 
 type DesktopUpdaterStatusLike = {
@@ -129,10 +147,14 @@ type PlaygroundPanelProps<
   chatAttachments: ChatAttachmentLike[];
   chatAttachmentError: string | null;
   onDraftChange: (event: ChangeEvent<HTMLTextAreaElement>, value: string) => void;
+  onInputSelect: (event: SyntheticEvent<HTMLTextAreaElement>) => void;
   onOpenChatAttachmentPicker: () => void;
   onChatAttachmentFileChange: (event: ChangeEvent<HTMLInputElement>) => void;
   onRemoveChatAttachment: (id: string) => void;
   onInputKeyDown: (event: KeyboardEvent<HTMLTextAreaElement>) => void;
+  chatCommandMenu: ChatCommandMenuLike | null;
+  onSelectChatCommandSuggestion: (id: string) => void;
+  onHighlightChatCommandSuggestion: (index: number) => void;
   onCompositionStart: () => void;
   onCompositionEnd: () => void;
   isChatLocked: boolean;
@@ -199,10 +221,14 @@ export function PlaygroundPanel<
     chatAttachments,
     chatAttachmentError,
     onDraftChange,
+    onInputSelect,
     onOpenChatAttachmentPicker,
     onChatAttachmentFileChange,
     onRemoveChatAttachment,
     onInputKeyDown,
+    chatCommandMenu,
+    onSelectChatCommandSuggestion,
+    onHighlightChatCommandSuggestion,
     onCompositionStart,
     onCompositionEnd,
     isChatLocked,
@@ -230,6 +256,11 @@ export function PlaygroundPanel<
     mcpServers,
     onRemoveMcpServer,
   } = props;
+  const chatCommandListboxId = "chat-command-listbox";
+  const activeChatCommandOptionId =
+    chatCommandMenu && chatCommandMenu.suggestions.length > 0
+      ? `chat-command-option-${chatCommandMenu.highlightedIndex}`
+      : undefined;
 
   function renderLabeledTooltip(
     title: string,
@@ -374,6 +405,76 @@ export function PlaygroundPanel<
             </div>
           ))}
         </div>
+      </section>
+    );
+  }
+
+  function renderChatCommandMenu() {
+    if (!chatCommandMenu) {
+      return null;
+    }
+
+    if (chatCommandMenu.suggestions.length === 0) {
+      return (
+        <section className="chat-command-menu" aria-label={`Command suggestions for ${chatCommandMenu.keyword}`}>
+          <p className="chat-command-empty" role="status">
+            {chatCommandMenu.emptyHint}
+          </p>
+        </section>
+      );
+    }
+
+    return (
+      <section className="chat-command-menu" aria-label={`Command suggestions for ${chatCommandMenu.keyword}`}>
+        <ul
+          id={chatCommandListboxId}
+          className="chat-command-list"
+          role="listbox"
+          aria-label={`Command suggestions for ${chatCommandMenu.keyword}`}
+        >
+          {chatCommandMenu.suggestions.map((suggestion, index) => {
+            const isHighlighted = index === chatCommandMenu.highlightedIndex;
+            const isUnavailable = !suggestion.isAvailable;
+            return (
+              <li
+                key={`${chatCommandMenu.keyword}:${suggestion.id}`}
+                id={`chat-command-option-${index}`}
+                role="option"
+                aria-selected={isHighlighted}
+                className="chat-command-option"
+              >
+                <button
+                  type="button"
+                  className={`chat-command-item${isHighlighted ? " is-highlighted" : ""}`}
+                  onMouseDown={(event) => {
+                    event.preventDefault();
+                  }}
+                  onMouseEnter={() => {
+                    onHighlightChatCommandSuggestion(index);
+                  }}
+                  onClick={() => {
+                    onSelectChatCommandSuggestion(suggestion.id);
+                  }}
+                  disabled={isUnavailable}
+                >
+                  <span className="chat-command-item-title-row">
+                    <span className="chat-command-item-label">{suggestion.label}</span>
+                    {suggestion.isSelected ? (
+                      <span className="chat-command-item-state">Added</span>
+                    ) : null}
+                    {isUnavailable ? (
+                      <span className="chat-command-item-state chat-command-item-state-unavailable">
+                        Unavailable
+                      </span>
+                    ) : null}
+                  </span>
+                  <span className="chat-command-item-description">{suggestion.description}</span>
+                  <span className="chat-command-item-detail">{suggestion.detail}</span>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
       </section>
     );
   }
@@ -579,15 +680,21 @@ export function PlaygroundPanel<
               className="chat-composer-input"
               placeholder="Type a message..."
               title="Message input. Enter sends, Shift+Enter inserts a new line."
+              aria-haspopup={chatCommandMenu ? "listbox" : undefined}
+              aria-expanded={chatCommandMenu ? true : undefined}
+              aria-controls={chatCommandMenu ? chatCommandListboxId : undefined}
+              aria-activedescendant={activeChatCommandOptionId}
               value={draft}
               onChange={(event, data) => {
                 onDraftChange(event, data.value);
               }}
+              onSelect={onInputSelect}
               onKeyDown={onInputKeyDown}
               onCompositionStart={onCompositionStart}
               onCompositionEnd={onCompositionEnd}
               disabled={isSending || isChatLocked || isThreadReadOnly}
             />
+            {renderChatCommandMenu()}
             <div className="chat-composer-actions">
               <div className="chat-quick-controls">
                 {renderLabeledTooltip(

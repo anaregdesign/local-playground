@@ -143,6 +143,7 @@ type ChatExecutionOptions = {
   temperature: number | null;
   agentInstruction: string;
   skills: ClientSkillSelection[];
+  explicitSkillLocations: string[];
   azureConfig: ResolvedAzureConfig;
   mcpServers: ClientMcpServerConfig[];
 };
@@ -219,6 +220,7 @@ type ActiveSkillRuntimeEntry = {
   name: string;
   description: string;
   location: string;
+  preloadedGuideMarkdown: string | null;
   skillRoot: string;
   scripts: SkillResourceFileEntry[];
   references: SkillResourceFileEntry[];
@@ -356,6 +358,20 @@ export async function action({ request }: Route.ActionArgs) {
 
     return Response.json({ error: skillsResult.error }, { status: 400 });
   }
+  const explicitSkillLocationsResult = readExplicitSkillLocations(payload);
+  if (!explicitSkillLocationsResult.ok) {
+    await logServerRouteEvent({
+      request,
+      route: "/api/chat",
+      eventName: "invalid_explicit_skill_locations_payload",
+      action: "validate_payload",
+      level: "warning",
+      statusCode: 400,
+      message: explicitSkillLocationsResult.error,
+    });
+
+    return Response.json({ error: explicitSkillLocationsResult.error }, { status: 400 });
+  }
   const azureConfigResult = readAzureConfig(payload);
   if (!azureConfigResult.ok) {
     await logServerRouteEvent({
@@ -418,6 +434,7 @@ export async function action({ request }: Route.ActionArgs) {
     temperature: temperatureResult.value,
     agentInstruction,
     skills: skillsResult.value,
+    explicitSkillLocations: explicitSkillLocationsResult.value,
     azureConfig,
     mcpServers: mcpServersResult.value,
   };
@@ -478,6 +495,10 @@ async function executeChat(
       record,
     });
   };
+  const nextMcpRpcSequence = () => {
+    mcpRpcSequence += 1;
+    return mcpRpcSequence;
+  };
 
   try {
     if (hasMcpServers) {
@@ -493,10 +514,7 @@ async function executeChat(
         isMcp: true,
       });
 
-      const connectSequence = (() => {
-        mcpRpcSequence += 1;
-        return mcpRpcSequence;
-      })();
+      const connectSequence = nextMcpRpcSequence();
       const connectRequestId = buildMcpRpcRequestId(serverConfig.name, connectSequence);
       const connectStartedAt = new Date().toISOString();
       const connectRequest: JsonRpcRequestPayload = {
@@ -525,10 +543,7 @@ async function executeChat(
           },
         });
         instrumentedServer = instrumentMcpServer(server, {
-          nextSequence: () => {
-            mcpRpcSequence += 1;
-            return mcpRpcSequence;
-          },
+          nextSequence: nextMcpRpcSequence,
           onRecord: emitMcpRpcRecord,
         });
 
@@ -584,7 +599,13 @@ async function executeChat(
       });
     }
 
-    const skillRuntime = await buildSkillRuntimeContext(options.skills);
+    const skillRuntime = await buildSkillRuntimeContext(options.skills, {
+      explicitSkillLocations: options.explicitSkillLocations,
+    });
+    emitSkillActivationOperationLogs(skillRuntime, {
+      nextSequence: nextMcpRpcSequence,
+      onRecord: emitMcpRpcRecord,
+    });
     const skillWarnings = collectSkillRuntimeWarnings(skillRuntime);
     if (skillWarnings.length > 0) {
       emitProgress({
@@ -641,10 +662,7 @@ async function executeChat(
     const enableCodeInterpreterTool =
       codeInterpreterEnabledForRun && codeInterpreterContainerId.length > 0;
     const skillTools = buildSkillTools(skillRuntime.activeSkills, {
-      nextSequence: () => {
-        mcpRpcSequence += 1;
-        return mcpRpcSequence;
-      },
+      nextSequence: nextMcpRpcSequence,
       onRecord: emitMcpRpcRecord,
     });
 
@@ -1587,6 +1605,61 @@ function readSkills(payload: unknown): ParseResult<ClientSkillSelection[]> {
   };
 }
 
+function readExplicitSkillLocations(payload: unknown): ParseResult<string[]> {
+  if (!isRecord(payload) || payload.explicitSkillLocations === undefined) {
+    return { ok: true, value: [] };
+  }
+
+  const value = payload.explicitSkillLocations;
+  if (!Array.isArray(value)) {
+    return { ok: false, error: "`explicitSkillLocations` must be an array." };
+  }
+
+  if (value.length > CHAT_MAX_ACTIVE_SKILLS) {
+    return {
+      ok: false,
+      error: `You can specify up to ${CHAT_MAX_ACTIVE_SKILLS} explicit Skill locations per message.`,
+    };
+  }
+
+  const result: string[] = [];
+  const seen = new Set<string>();
+  for (const [index, entry] of value.entries()) {
+    if (typeof entry !== "string") {
+      return {
+        ok: false,
+        error: `explicitSkillLocations[${index}] must be a string.`,
+      };
+    }
+
+    const location = entry.trim();
+    if (!location) {
+      return {
+        ok: false,
+        error: `explicitSkillLocations[${index}] is required.`,
+      };
+    }
+
+    if (location.length > 4096) {
+      return {
+        ok: false,
+        error: `explicitSkillLocations[${index}] is too long.`,
+      };
+    }
+
+    if (seen.has(location)) {
+      continue;
+    }
+    seen.add(location);
+    result.push(location);
+  }
+
+  return {
+    ok: true,
+    value: result,
+  };
+}
+
 function readAzureConfig(payload: unknown): ParseResult<ResolvedAzureConfig> {
   if (!isRecord(payload)) {
     return { ok: false, error: "`azureConfig` is required." };
@@ -2451,6 +2524,9 @@ function describeMcpServer(config: ClientMcpServerConfig): string {
 
 async function buildSkillRuntimeContext(
   selectedSkills: ClientSkillSelection[],
+  options: {
+    explicitSkillLocations?: string[];
+  } = {},
 ): Promise<SkillRuntimeContext> {
   const warnings: string[] = [];
   if (selectedSkills.length === 0) {
@@ -2460,10 +2536,26 @@ async function buildSkillRuntimeContext(
     };
   }
 
+  const explicitSkillLocationSet = new Set(
+    (options.explicitSkillLocations ?? [])
+      .map((location) => location.trim())
+      .filter((location) => location.length > 0),
+  );
   const activeSkills: ActiveSkillRuntimeEntry[] = [];
   for (const selectedSkill of selectedSkills) {
     try {
       const frontmatter = await readSkillFrontmatter(selectedSkill.location);
+      const shouldPreloadGuide = explicitSkillLocationSet.has(selectedSkill.location);
+      let preloadedGuideMarkdown: string | null = null;
+      if (shouldPreloadGuide) {
+        try {
+          preloadedGuideMarkdown = await readSkillMarkdown(selectedSkill.location);
+        } catch (error) {
+          warnings.push(
+            `Failed to preload full Skill guide for ${frontmatter.name}: ${readErrorMessage(error)}`,
+          );
+        }
+      }
 
       const resources = await inspectSkillResourceManifest(selectedSkill.location).catch((error) => {
         warnings.push(
@@ -2476,6 +2568,7 @@ async function buildSkillRuntimeContext(
         name: frontmatter.name,
         description: frontmatter.description,
         location: selectedSkill.location,
+        preloadedGuideMarkdown,
         skillRoot: resources.skillRoot,
         scripts: resources.scripts,
         references: resources.references,
@@ -3081,6 +3174,56 @@ function collectSkillRuntimeWarnings(runtime: SkillRuntimeContext): string[] {
     .filter((warning) => warning.length > 0);
 }
 
+function emitSkillActivationOperationLogs(
+  runtime: SkillRuntimeContext,
+  handlers: {
+    nextSequence: () => number;
+    onRecord: (record: McpRpcRecord) => void;
+  },
+): void {
+  for (const skill of runtime.activeSkills) {
+    const sequence = handlers.nextSequence();
+    const requestId = buildMcpRpcRequestId(skill.name, sequence);
+    const startedAt = new Date().toISOString();
+    const requestPayload: JsonRpcRequestPayload = {
+      jsonrpc: "2.0",
+      id: requestId,
+      method: "skill/activate",
+      params: {
+        name: skill.name,
+        location: skill.location,
+        preloadMode: skill.preloadedGuideMarkdown ? "full_guide" : "frontmatter_only",
+      },
+    };
+    const responsePayload: JsonRpcResponsePayload = {
+      jsonrpc: "2.0",
+      id: requestId,
+      result: {
+        status: "active",
+        preloadedFullGuide: skill.preloadedGuideMarkdown !== null,
+        resources: {
+          scripts: skill.scripts.length,
+          references: skill.references.length,
+          assets: skill.assets.length,
+        },
+      },
+    };
+
+    handlers.onRecord({
+      id: requestId,
+      sequence,
+      operationType: "skill",
+      serverName: skill.name,
+      method: "skill/activate",
+      startedAt,
+      completedAt: new Date().toISOString(),
+      request: requestPayload,
+      response: responsePayload,
+      isError: false,
+    });
+  }
+}
+
 function buildAgentInstructionWithSkills(
   baseInstruction: string,
   runtime: SkillRuntimeContext,
@@ -3090,22 +3233,35 @@ function buildAgentInstructionWithSkills(
     return normalizedBaseInstruction;
   }
 
+  const preloadedGuideSkillCount = runtime.activeSkills.filter(
+    (skill) => skill.preloadedGuideMarkdown !== null,
+  ).length;
   const lines: string[] = [
     normalizedBaseInstruction,
     "",
     "<skills_context>",
     "The runtime supports agentskills-compatible Skill directories (SKILL.md + scripts/references/assets). Some skills may also define non-standard directories like resources/.",
-    "Active skills are preloaded with frontmatter only (name + description).",
-    "Call skill_read_guide only when exact SKILL.md instructions are needed for the current task.",
+    preloadedGuideSkillCount > 0
+      ? "Skills explicitly selected in this turn are preloaded with full SKILL.md content."
+      : "Active skills are preloaded with frontmatter only (name + description).",
+    preloadedGuideSkillCount > 0 && preloadedGuideSkillCount < runtime.activeSkills.length
+      ? "Other active skills are preloaded with frontmatter only (name + description)."
+      : null,
+    "Call skill_read_guide only when exact SKILL.md instructions are needed for the current task or to read a specific range.",
     "Use skill_list_resources before reading/running files when paths are unknown.",
     "Follow each SKILL.md guide and use the needed paths from skill_list_resources with skill_read_guide, skill_read_reference, skill_read_asset, and skill_run_script.",
-  ];
+  ].filter((line): line is string => line !== null);
 
   lines.push("<active_skills>");
   for (const skill of runtime.activeSkills) {
     lines.push(`<<<ACTIVE_SKILL_FRONTMATTER name="${skill.name}" location="${skill.location}">>>`);
     lines.push(`description: ${truncateSkillDescription(skill.description)}`);
     lines.push("<<<END_ACTIVE_SKILL_FRONTMATTER>>>");
+    if (skill.preloadedGuideMarkdown !== null) {
+      lines.push(`<<<ACTIVE_SKILL_GUIDE name="${skill.name}" location="${skill.location}">>>`);
+      lines.push(skill.preloadedGuideMarkdown);
+      lines.push("<<<END_ACTIVE_SKILL_GUIDE>>>");
+    }
     lines.push(
       ...buildSkillPromptResourcePreview({
         heading: "scripts",
@@ -3753,6 +3909,7 @@ export const chatRouteTestUtils = {
   readAttachments,
   hasNonPdfAttachments,
   readSkills,
+  readExplicitSkillLocations,
   readMcpServers,
   buildMcpHttpRequestHeaders,
   normalizeMcpMetaNulls,

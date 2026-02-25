@@ -7,6 +7,7 @@ import {
   useRef,
   useState,
   type PointerEvent as ReactPointerEvent,
+  type SyntheticEvent,
 } from "react";
 import type { MainViewTab, McpTransport, ReasoningEffort } from "~/lib/home/shared/view-types";
 import {
@@ -56,6 +57,10 @@ import { isLikelyChatAzureAuthError } from "~/lib/home/azure/errors";
 import { buildMcpHistoryByTurnId } from "~/lib/home/chat/history";
 import type { DraftChatAttachment } from "~/lib/home/chat/attachments";
 import { formatChatAttachmentSize, readFileAsDataUrl } from "~/lib/home/chat/attachments";
+import {
+  readChatCommandMatchAtCursor,
+  replaceChatCommandToken,
+} from "~/lib/home/chat/commands";
 import type { ChatMessage } from "~/lib/home/chat/messages";
 import { createMessage } from "~/lib/home/chat/messages";
 import type { ChatApiResponse, McpRpcHistoryEntry } from "~/lib/home/chat/stream";
@@ -162,6 +167,22 @@ import {
   type ThreadsApiResponse,
 } from "~/lib/home/controller/types";
 
+type ChatCommandSuggestion = {
+  id: string;
+  label: string;
+  description: string;
+  detail: string;
+  isSelected: boolean;
+  isAvailable: boolean;
+};
+
+type ChatCommandProvider = {
+  keyword: string;
+  emptyHint: string;
+  readSuggestions: (query: string) => ChatCommandSuggestion[];
+  applySuggestion: (suggestion: ChatCommandSuggestion) => void;
+};
+
 /**
  * Home runtime controller.
  * Owns interactive state for Playground/Threads/MCP/Settings and orchestrates server API calls.
@@ -178,6 +199,9 @@ export function useWorkspaceController() {
   );
   const [messages, setMessages] = useState<ChatMessage[]>([...HOME_INITIAL_MESSAGES]);
   const [draft, setDraft] = useState("");
+  const [draftExplicitSkillLocations, setDraftExplicitSkillLocations] = useState<string[]>([]);
+  const [chatComposerCursorIndex, setChatComposerCursorIndex] = useState(0);
+  const [chatCommandHighlightedIndex, setChatCommandHighlightedIndex] = useState(0);
   const [draftAttachments, setDraftAttachments] = useState<DraftChatAttachment[]>([]);
   const [chatAttachmentError, setChatAttachmentError] = useState<string | null>(null);
   const [activeMainTab, setActiveMainTab] = useState<MainViewTab>("threads");
@@ -281,6 +305,7 @@ export function useWorkspaceController() {
   // Mutable refs for request sequencing, optimistic state, and debounce timers.
   const endOfMessagesRef = useRef<HTMLDivElement | null>(null);
   const chatInputRef = useRef<HTMLTextAreaElement | null>(null);
+  const pendingChatCommandCursorIndexRef = useRef<number | null>(null);
   const chatAttachmentInputRef = useRef<HTMLInputElement | null>(null);
   const instructionFileInputRef = useRef<HTMLInputElement | null>(null);
   const layoutRef = useRef<HTMLDivElement | null>(null);
@@ -422,6 +447,48 @@ export function useWorkspaceController() {
       return left.name.localeCompare(right.name);
     });
   }, [availableSkillByLocation, availableSkills, selectedThreadSkills]);
+  const chatCommandProviders: ChatCommandProvider[] = [
+    {
+      keyword: "$",
+      emptyHint: "No matching Skills.",
+      readSuggestions: (query) => readSkillCommandSuggestions(threadSkillOptions, query),
+      applySuggestion: (suggestion) => {
+        if (!suggestion.isAvailable) {
+          return;
+        }
+
+        handleAddThreadSkill(suggestion.id);
+      },
+    },
+  ];
+  const chatCommandKeywords = chatCommandProviders.map((provider) => provider.keyword);
+  const activeChatCommandMatch = readChatCommandMatchAtCursor({
+    value: draft,
+    cursorIndex: chatComposerCursorIndex,
+    keywords: chatCommandKeywords,
+  });
+  const activeChatCommandProvider = activeChatCommandMatch
+    ? (chatCommandProviders.find((provider) => provider.keyword === activeChatCommandMatch.keyword) ??
+      null)
+    : null;
+  const activeChatCommandSuggestions =
+    activeChatCommandMatch && activeChatCommandProvider
+      ? activeChatCommandProvider.readSuggestions(activeChatCommandMatch.query)
+      : [];
+  const activeChatCommandHighlightIndex =
+    activeChatCommandSuggestions.length > 0
+      ? clampNumber(chatCommandHighlightedIndex, 0, activeChatCommandSuggestions.length - 1)
+      : 0;
+  const activeChatCommandMenu =
+    activeChatCommandMatch && activeChatCommandProvider
+      ? {
+          keyword: activeChatCommandMatch.keyword,
+          query: activeChatCommandMatch.query,
+          emptyHint: activeChatCommandProvider.emptyHint,
+          highlightedIndex: activeChatCommandHighlightIndex,
+          suggestions: activeChatCommandSuggestions,
+        }
+      : null;
   const skillRegistryGroups = useMemo(() => {
     if (skillRegistryCatalogs.length > 0) {
       return skillRegistryCatalogs.map((registry) => ({
@@ -622,6 +689,44 @@ export function useWorkspaceController() {
 
     resizeChatInput(input);
   }, [draft]);
+
+  useEffect(() => {
+    const pendingCursorIndex = pendingChatCommandCursorIndexRef.current;
+    if (pendingCursorIndex === null) {
+      return;
+    }
+
+    const input = chatInputRef.current;
+    if (!input) {
+      return;
+    }
+
+    const nextCursorIndex = clampNumber(pendingCursorIndex, 0, draft.length);
+    input.focus();
+    input.setSelectionRange(nextCursorIndex, nextCursorIndex);
+    pendingChatCommandCursorIndexRef.current = null;
+    setChatComposerCursorIndex(nextCursorIndex);
+  }, [draft]);
+
+  useEffect(() => {
+    setChatCommandHighlightedIndex(0);
+  }, [
+    activeChatCommandMatch?.keyword,
+    activeChatCommandMatch?.query,
+    activeChatCommandMatch?.rangeStart,
+    activeChatCommandMatch?.rangeEnd,
+  ]);
+
+  useEffect(() => {
+    if (activeChatCommandSuggestions.length === 0) {
+      setChatCommandHighlightedIndex(0);
+      return;
+    }
+
+    setChatCommandHighlightedIndex((current) =>
+      clampNumber(current, 0, activeChatCommandSuggestions.length - 1),
+    );
+  }, [activeChatCommandSuggestions.length]);
 
   useEffect(() => {
     void loadAzureConnections();
@@ -1352,6 +1457,7 @@ export function useWorkspaceController() {
     setInstructionEnhancingThreadId("");
     setInstructionEnhanceComparison(null);
     setDraft("");
+    setDraftExplicitSkillLocations([]);
     setDraftAttachments([]);
     setChatAttachmentError(null);
     setUiError(null);
@@ -1571,6 +1677,7 @@ export function useWorkspaceController() {
     setInstructionEnhanceSuccess(null);
     setInstructionEnhanceComparison(null);
     setDraft("");
+    setDraftExplicitSkillLocations([]);
     setDraftAttachments([]);
     setChatAttachmentError(null);
     setUiError(null);
@@ -3001,6 +3108,14 @@ export function useWorkspaceController() {
     );
     const requestMcpServers = cloneMcpServers(mcpServers);
     const requestSkillSelections = cloneThreadSkillSelections(selectedThreadSkills);
+    const requestExplicitSkillLocationSet = new Set(
+      draftExplicitSkillLocations
+        .map((location) => location.trim())
+        .filter((location) => location.length > 0),
+    );
+    const requestExplicitSkillLocations = requestSkillSelections
+      .filter((selection) => requestExplicitSkillLocationSet.has(selection.location))
+      .map((selection) => selection.location);
     const requestAgentInstruction = agentInstruction;
     const userMessage: ChatMessage = createMessage(
       "user",
@@ -3026,6 +3141,7 @@ export function useWorkspaceController() {
 
     appendMessageToThreadState(threadId, userMessage);
     setDraft("");
+    setDraftExplicitSkillLocations([]);
     setDraftAttachments([]);
     setChatAttachmentError(null);
     setUiError(null);
@@ -3067,6 +3183,7 @@ export function useWorkspaceController() {
           webSearchEnabled,
           agentInstruction: requestAgentInstruction,
           skills: requestSkillSelections,
+          explicitSkillLocations: requestExplicitSkillLocations,
           mcpServers: requestMcpServers.map((server) =>
             server.transport === "stdio"
               ? {
@@ -3352,6 +3469,33 @@ export function useWorkspaceController() {
     });
   }
 
+  function handleAddThreadSkill(locationRaw: string) {
+    const location = locationRaw.trim();
+    if (!location) {
+      return;
+    }
+
+    setSelectedThreadSkills((current) => {
+      if (current.some((selection) => selection.location === location)) {
+        return current;
+      }
+
+      const skill = availableSkillByLocation.get(location);
+      if (!skill) {
+        return current;
+      }
+
+      return [
+        ...current,
+        {
+          name: skill.name,
+          location: skill.location,
+        },
+      ];
+    });
+    setSkillsError(null);
+  }
+
   function handleToggleThreadSkill(locationRaw: string) {
     const location = locationRaw.trim();
     if (!location) {
@@ -3377,7 +3521,44 @@ export function useWorkspaceController() {
         },
       ];
     });
+    setDraftExplicitSkillLocations((current) =>
+      current.filter((selectionLocation) => selectionLocation !== location),
+    );
     setSkillsError(null);
+  }
+
+  function handleSelectActiveChatCommandSuggestion(suggestionIdRaw: string) {
+    const suggestionId = suggestionIdRaw.trim();
+    if (!suggestionId || !activeChatCommandMatch || !activeChatCommandProvider) {
+      return;
+    }
+
+    const suggestion =
+      activeChatCommandSuggestions.find((entry) => entry.id === suggestionId) ?? null;
+    if (!suggestion || !suggestion.isAvailable) {
+      return;
+    }
+
+    activeChatCommandProvider.applySuggestion(suggestion);
+    setDraftExplicitSkillLocations((current) => {
+      if (current.includes(suggestion.id)) {
+        return current;
+      }
+
+      return [...current, suggestion.id];
+    });
+
+    const nextDraft = replaceChatCommandToken({
+      value: draft,
+      rangeStart: activeChatCommandMatch.rangeStart,
+      rangeEnd: activeChatCommandMatch.rangeEnd,
+      replacement: "",
+    });
+    pendingChatCommandCursorIndexRef.current = nextDraft.cursorIndex;
+    setDraft(nextDraft.value);
+    setChatComposerCursorIndex(nextDraft.cursorIndex);
+    setChatCommandHighlightedIndex(0);
+    setChatAttachmentError(null);
   }
 
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -3397,6 +3578,45 @@ export function useWorkspaceController() {
   function handleInputKeyDown(event: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (event.nativeEvent.isComposing || isComposing || event.nativeEvent.keyCode === 229) {
       return;
+    }
+
+    if (activeChatCommandMenu && activeChatCommandMenu.suggestions.length > 0) {
+      if (event.key === "ArrowDown") {
+        event.preventDefault();
+        setChatCommandHighlightedIndex((current) => {
+          const total = activeChatCommandMenu.suggestions.length;
+          if (total <= 0) {
+            return 0;
+          }
+
+          return (current + 1) % total;
+        });
+        return;
+      }
+
+      if (event.key === "ArrowUp") {
+        event.preventDefault();
+        setChatCommandHighlightedIndex((current) => {
+          const total = activeChatCommandMenu.suggestions.length;
+          if (total <= 0) {
+            return 0;
+          }
+
+          return (current - 1 + total) % total;
+        });
+        return;
+      }
+
+      if (event.key === "Enter" && !event.shiftKey) {
+        const activeSuggestion = activeChatCommandMenu.suggestions[activeChatCommandHighlightIndex];
+        if (!activeSuggestion) {
+          return;
+        }
+
+        event.preventDefault();
+        handleSelectActiveChatCommandSuggestion(activeSuggestion.id);
+        return;
+      }
     }
 
     if (event.key === "Enter" && !event.shiftKey) {
@@ -3419,9 +3639,16 @@ export function useWorkspaceController() {
       return;
     }
 
+    const cursorIndex = event.currentTarget.selectionStart ?? value.length;
     setDraft(value);
+    setChatComposerCursorIndex(cursorIndex);
     setChatAttachmentError(null);
     resizeChatInput(event.currentTarget);
+  }
+
+  function handleInputSelect(event: SyntheticEvent<HTMLTextAreaElement>) {
+    const target = event.currentTarget;
+    setChatComposerCursorIndex(target.selectionStart ?? target.value.length);
   }
 
   function handleOpenChatAttachmentPicker() {
@@ -4565,10 +4792,14 @@ export function useWorkspaceController() {
     chatAttachments: draftAttachments,
     chatAttachmentError,
     onDraftChange: handleDraftChange,
+    onInputSelect: handleInputSelect,
     onOpenChatAttachmentPicker: handleOpenChatAttachmentPicker,
     onChatAttachmentFileChange: handleChatAttachmentFileChange,
     onRemoveChatAttachment: handleRemoveDraftAttachment,
     onInputKeyDown: handleInputKeyDown,
+    chatCommandMenu: activeChatCommandMenu,
+    onSelectChatCommandSuggestion: handleSelectActiveChatCommandSuggestion,
+    onHighlightChatCommandSuggestion: setChatCommandHighlightedIndex,
     onCompositionStart: () => setIsComposing(true),
     onCompositionEnd: () => setIsComposing(false),
     isChatLocked,
@@ -4636,4 +4867,45 @@ function resolveSkillBadgeLabel(
 
   const registryLabel = readSkillRegistryLabelFromSkillLocation(location);
   return registryLabel ?? "App Data";
+}
+
+function readSkillCommandSuggestions(
+  skillOptions: Array<{
+    name: string;
+    description: string;
+    location: string;
+    badge: string;
+    isSelected: boolean;
+    isAvailable: boolean;
+  }>,
+  queryRaw: string,
+): ChatCommandSuggestion[] {
+  const query = queryRaw.trim().toLowerCase();
+  const maxSuggestions = 12;
+
+  return skillOptions
+    .filter((skill) => {
+      if (!skill.isAvailable) {
+        return false;
+      }
+
+      if (!query) {
+        return true;
+      }
+
+      return (
+        skill.name.toLowerCase().includes(query) ||
+        skill.description.toLowerCase().includes(query) ||
+        skill.location.toLowerCase().includes(query)
+      );
+    })
+    .slice(0, maxSuggestions)
+    .map((skill) => ({
+      id: skill.location,
+      label: skill.name,
+      description: skill.description,
+      detail: `${skill.badge} · ${skill.location}`,
+      isSelected: skill.isSelected,
+      isAvailable: skill.isAvailable,
+    }));
 }

@@ -14,6 +14,7 @@ const {
   readAttachments,
   hasNonPdfAttachments,
   readSkills,
+  readExplicitSkillLocations,
   readMcpServers,
   buildMcpHttpRequestHeaders,
   normalizeMcpMetaNulls,
@@ -341,6 +342,33 @@ describe("readSkills", () => {
     expect(readSkills({ skills: [{ location: "/tmp/SKILL.md" }] })).toEqual({
       ok: false,
       error: "skills[0].name is required.",
+    });
+  });
+});
+
+describe("readExplicitSkillLocations", () => {
+  it("parses and de-duplicates explicit skill locations", () => {
+    const result = readExplicitSkillLocations({
+      explicitSkillLocations: [
+        " /Users/hiroki/.codex/skills/local-playground-dev/SKILL.md ",
+        "/Users/hiroki/.codex/skills/local-playground-dev/SKILL.md",
+      ],
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      value: ["/Users/hiroki/.codex/skills/local-playground-dev/SKILL.md"],
+    });
+  });
+
+  it("rejects invalid payloads", () => {
+    expect(readExplicitSkillLocations({ explicitSkillLocations: "invalid" })).toEqual({
+      ok: false,
+      error: "`explicitSkillLocations` must be an array.",
+    });
+    expect(readExplicitSkillLocations({ explicitSkillLocations: [1] })).toEqual({
+      ok: false,
+      error: "explicitSkillLocations[0] must be a string.",
     });
   });
 });
