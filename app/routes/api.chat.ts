@@ -443,6 +443,7 @@ export async function action({ request }: Route.ActionArgs) {
       context: {
         deploymentName: azureConfig.deploymentName,
         mcpServerCount: executionOptions.mcpServers.length,
+        maxRunTurns: CHAT_MAX_RUN_TURNS,
       },
     });
 
@@ -832,6 +833,7 @@ function streamChatResponse(options: ChatExecutionOptions): Response {
           context: {
             deploymentName: options.azureConfig.deploymentName,
             mcpServerCount: options.mcpServers.length,
+            maxRunTurns: CHAT_MAX_RUN_TURNS,
           },
         });
 
@@ -3442,6 +3444,9 @@ function buildUpstreamErrorMessage(error: unknown, deploymentName: string): stri
   }
   if (error.message.includes("Model behavior error")) {
     return `${error.message} Verify your model/deployment supports the selected reasoning effort.`;
+  }
+  if (error.message.includes("Max turns (")) {
+    return `${error.message} Try reducing active MCP servers or skills, or retry the request.`;
   }
 
   return error.message;
