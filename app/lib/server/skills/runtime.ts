@@ -10,6 +10,7 @@ import {
   AGENT_SKILL_ASSETS_DIRECTORY_NAME,
   AGENT_SKILL_REFERENCE_FILE_MAX_BYTES,
   AGENT_SKILL_REFERENCES_DIRECTORY_NAME,
+  AGENT_SKILL_RESOURCES_DIRECTORY_NAME,
   AGENT_SKILL_RESOURCE_MAX_FILES_PER_DIRECTORY,
   AGENT_SKILL_RESOURCE_PATH_MAX_LENGTH,
   AGENT_SKILL_SCRIPT_ARG_MAX_LENGTH,
@@ -24,6 +25,14 @@ const SKILL_RESOURCE_DIRECTORY_BY_KIND = {
   scripts: AGENT_SKILL_SCRIPTS_DIRECTORY_NAME,
   references: AGENT_SKILL_REFERENCES_DIRECTORY_NAME,
   assets: AGENT_SKILL_ASSETS_DIRECTORY_NAME,
+} as const;
+
+// agentskills.io defines scripts/references/assets as canonical directories.
+// resources/ is intentionally treated as a compatibility fallback for non-conformant skills.
+const SKILL_RESOURCE_DIRECTORY_CANDIDATES_BY_KIND = {
+  scripts: [AGENT_SKILL_SCRIPTS_DIRECTORY_NAME],
+  references: [AGENT_SKILL_REFERENCES_DIRECTORY_NAME, AGENT_SKILL_RESOURCES_DIRECTORY_NAME],
+  assets: [AGENT_SKILL_ASSETS_DIRECTORY_NAME, AGENT_SKILL_RESOURCES_DIRECTORY_NAME],
 } as const;
 
 export type SkillResourceKind = keyof typeof SKILL_RESOURCE_DIRECTORY_BY_KIND;
@@ -69,6 +78,11 @@ type ListedSkillResourceFiles = {
 type PendingDirectory = {
   absolutePath: string;
   relativePath: string;
+};
+
+type SkillResourceDirectoryResolution = {
+  name: string;
+  absolutePath: string;
 };
 
 export async function inspectSkillResourceManifest(skillLocation: string): Promise<SkillResourceManifest> {
@@ -163,8 +177,8 @@ async function listSkillResourceFiles(
   skillRoot: string,
   kind: SkillResourceKind,
 ): Promise<ListedSkillResourceFiles> {
-  const baseDirectory = resolveSkillResourceDirectory(skillRoot, kind);
-  if (!(await directoryExists(baseDirectory))) {
+  const baseDirectories = await resolveSkillResourceDirectories(skillRoot, kind);
+  if (baseDirectories.length === 0) {
     return {
       files: [],
       truncated: false,
@@ -172,12 +186,11 @@ async function listSkillResourceFiles(
   }
 
   const files: SkillResourceFileEntry[] = [];
-  const pendingDirectories: PendingDirectory[] = [
-    {
-      absolutePath: baseDirectory,
-      relativePath: "",
-    },
-  ];
+  const seenFilePaths = new Set<string>();
+  const pendingDirectories: PendingDirectory[] = baseDirectories.map((directory) => ({
+    absolutePath: directory.absolutePath,
+    relativePath: "",
+  }));
   let truncated = false;
 
   while (pendingDirectories.length > 0) {
@@ -220,6 +233,11 @@ async function listSkillResourceFiles(
         continue;
       }
 
+      if (seenFilePaths.has(childRelativePath)) {
+        continue;
+      }
+      seenFilePaths.add(childRelativePath);
+
       files.push({
         path: childRelativePath,
         sizeBytes: fileStats.size,
@@ -248,17 +266,61 @@ async function resolveSkillResourceFilePath(
   kind: SkillResourceKind,
   relativePath: string,
 ): Promise<string> {
-  const resourceDirectory = resolveSkillResourceDirectory(skillRoot, kind);
-  if (!(await directoryExists(resourceDirectory))) {
-    throw new Error(`Skill does not include ${kind} directory.`);
+  const resourceDirectories = await resolveSkillResourceDirectories(skillRoot, kind);
+  if (resourceDirectories.length === 0 && kind === "scripts") {
+    throw new Error(buildSkillMissingDirectoryError(kind));
   }
 
-  const normalizedRelativePath = normalizeSkillRelativePath(relativePath, kind);
-  const candidatePath = path.resolve(resourceDirectory, normalizedRelativePath);
-  if (!isPathWithin(candidatePath, resourceDirectory)) {
-    throw new Error(`Skill ${kind} path must stay inside the skill directory.`);
+  const normalizedRelativePath = normalizeSkillRelativePath(relativePath);
+  const relativePathSegments = normalizedRelativePath.split("/");
+  let lastError: unknown = null;
+
+  for (const resourceDirectory of resourceDirectories) {
+    const candidateRelativePath = normalizeSkillRelativePathForDirectory(
+      relativePathSegments,
+      kind,
+      resourceDirectory.name,
+    );
+    const candidatePath = path.resolve(resourceDirectory.absolutePath, candidateRelativePath);
+    if (!isPathWithin(candidatePath, resourceDirectory.absolutePath)) {
+      throw new Error(`Skill ${kind} path must stay inside the skill directory.`);
+    }
+
+    try {
+      await assertReadableSkillResourcePath(candidatePath, resourceDirectory.absolutePath, kind);
+      return candidatePath;
+    } catch (error) {
+      lastError = error;
+      continue;
+    }
   }
 
+  if (kind !== "scripts") {
+    const normalizedSkillRoot = path.resolve(skillRoot);
+    const candidatePath = path.resolve(normalizedSkillRoot, normalizedRelativePath);
+    if (!isPathWithin(candidatePath, normalizedSkillRoot)) {
+      throw new Error(`Skill ${kind} path must stay inside the skill directory.`);
+    }
+
+    try {
+      await assertReadableSkillResourcePath(candidatePath, normalizedSkillRoot, kind);
+      return candidatePath;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  if (lastError instanceof Error) {
+    throw lastError;
+  }
+  throw new Error(`Skill ${kind} path was not found.`);
+}
+
+async function assertReadableSkillResourcePath(
+  candidatePath: string,
+  scopeDirectory: string,
+  kind: SkillResourceKind,
+): Promise<void> {
   await access(candidatePath, fsConstants.R_OK);
 
   const fileStats = await lstat(candidatePath);
@@ -270,28 +332,73 @@ async function resolveSkillResourceFilePath(
     throw new Error(`Skill ${kind} path must target a file.`);
   }
 
-  const [resourceDirectoryRealPath, candidateRealPath] = await Promise.all([
-    realpath(resourceDirectory).catch(() => resourceDirectory),
+  const [scopeDirectoryRealPath, candidateRealPath] = await Promise.all([
+    realpath(scopeDirectory).catch(() => scopeDirectory),
     realpath(candidatePath).catch(() => candidatePath),
   ]);
 
-  if (!isPathWithin(candidateRealPath, resourceDirectoryRealPath)) {
+  if (!isPathWithin(candidateRealPath, scopeDirectoryRealPath)) {
     throw new Error(`Skill ${kind} path must stay inside the skill directory.`);
   }
-
-  return candidatePath;
 }
 
-function resolveSkillResourceDirectory(skillRoot: string, kind: SkillResourceKind): string {
+async function resolveSkillResourceDirectories(
+  skillRoot: string,
+  kind: SkillResourceKind,
+): Promise<SkillResourceDirectoryResolution[]> {
   const normalizedSkillRoot = skillRoot.trim();
   if (!normalizedSkillRoot) {
     throw new Error("Skill root is required.");
   }
 
-  return path.resolve(normalizedSkillRoot, SKILL_RESOURCE_DIRECTORY_BY_KIND[kind]);
+  const directoryNames = SKILL_RESOURCE_DIRECTORY_CANDIDATES_BY_KIND[kind];
+  const resolutions = await Promise.all(
+    directoryNames.map(async (directoryName) => {
+      const absolutePath = path.resolve(normalizedSkillRoot, directoryName);
+      const exists = await directoryExists(absolutePath);
+      return {
+        name: directoryName,
+        absolutePath,
+        exists,
+      };
+    }),
+  );
+
+  return resolutions
+    .filter((resolution) => resolution.exists)
+    .map((resolution) => ({
+      name: resolution.name,
+      absolutePath: resolution.absolutePath,
+    }));
 }
 
-function normalizeSkillRelativePath(value: string, kind: SkillResourceKind): string {
+function buildSkillMissingDirectoryError(kind: SkillResourceKind): string {
+  const names = SKILL_RESOURCE_DIRECTORY_CANDIDATES_BY_KIND[kind];
+  if (names.length === 1) {
+    return `Skill does not include ${names[0]} directory.`;
+  }
+
+  return `Skill does not include ${names.join(" or ")} directory.`;
+}
+
+function normalizeSkillRelativePathForDirectory(
+  pathSegments: string[],
+  kind: SkillResourceKind,
+  directoryName: string,
+): string {
+  const canonicalDirectoryName = SKILL_RESOURCE_DIRECTORY_BY_KIND[kind];
+  const relativeSegments =
+    pathSegments[0] === canonicalDirectoryName || pathSegments[0] === directoryName
+      ? pathSegments.slice(1)
+      : pathSegments;
+  if (relativeSegments.length === 0) {
+    throw new Error("Skill path must target a file.");
+  }
+
+  return path.join(...relativeSegments);
+}
+
+function normalizeSkillRelativePath(value: string): string {
   const normalized = value.replace(/\\/g, "/").trim();
   if (!normalized) {
     throw new Error("Skill path is required.");
@@ -311,14 +418,7 @@ function normalizeSkillRelativePath(value: string, kind: SkillResourceKind): str
   if (segments.some((segment) => !segment || segment === "." || segment === "..")) {
     throw new Error("Skill path contains invalid segments.");
   }
-
-  const resourceDirectoryName = SKILL_RESOURCE_DIRECTORY_BY_KIND[kind];
-  const relativeSegments = segments[0] === resourceDirectoryName ? segments.slice(1) : segments;
-  if (relativeSegments.length === 0) {
-    throw new Error("Skill path must target a file.");
-  }
-
-  return path.join(...relativeSegments);
+  return normalized;
 }
 
 function normalizeMaxBytes(value: number | undefined, kind: "references" | "assets"): number {
