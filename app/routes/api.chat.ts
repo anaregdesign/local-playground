@@ -75,8 +75,8 @@ import {
   TEMPERATURE_MIN,
 } from "~/lib/constants";
 import type { AzureDependencies } from "~/lib/azure/dependencies";
-import type { SkillCatalogEntry, ThreadSkillSelection } from "~/lib/home/skills/types";
-import { discoverSkillCatalog, readSkillMarkdown } from "~/lib/server/skills/catalog";
+import type { ThreadSkillSelection } from "~/lib/home/skills/types";
+import { readSkillFrontmatter, readSkillMarkdown } from "~/lib/server/skills/catalog";
 import {
   inspectSkillResourceManifest,
   readSkillResourceBuffer,
@@ -219,7 +219,6 @@ type ActiveSkillRuntimeEntry = {
   name: string;
   description: string;
   location: string;
-  content: string;
   skillRoot: string;
   scripts: SkillResourceFileEntry[];
   references: SkillResourceFileEntry[];
@@ -235,7 +234,6 @@ const shellPathEndMarker = "__LOCAL_PLAYGROUND_PATH_END__";
 let cachedShellExecutablePathEntries: string[] | null = null;
 let cachedRuntimeExecutablePathEntries: string[] | null = null;
 type SkillRuntimeContext = {
-  availableSkills: SkillCatalogEntry[];
   activeSkills: ActiveSkillRuntimeEntry[];
   warnings: string[];
 };
@@ -2454,53 +2452,30 @@ function describeMcpServer(config: ClientMcpServerConfig): string {
 async function buildSkillRuntimeContext(
   selectedSkills: ClientSkillSelection[],
 ): Promise<SkillRuntimeContext> {
-  let availableSkills: SkillCatalogEntry[] = [];
-  let warnings: string[] = [];
-  try {
-    const discovery = await discoverSkillCatalog();
-    availableSkills = discovery.skills;
-    warnings = [...discovery.warnings];
-  } catch (error) {
-    warnings = [`Failed to discover skills: ${readErrorMessage(error)}`];
-  }
+  const warnings: string[] = [];
   if (selectedSkills.length === 0) {
     return {
-      availableSkills,
       activeSkills: [],
       warnings,
     };
   }
 
-  const availableSkillByLocation = new Map(
-    availableSkills.map((skill) => [skill.location, skill] as const),
-  );
   const activeSkills: ActiveSkillRuntimeEntry[] = [];
   for (const selectedSkill of selectedSkills) {
-    const availableSkill = availableSkillByLocation.get(selectedSkill.location);
-    if (!availableSkill) {
-      warnings.push(`Skill not found: ${selectedSkill.name}`);
-      continue;
-    }
-
     try {
-      const content = (await readSkillMarkdown(availableSkill.location)).trim();
-      if (!content) {
-        warnings.push(`Skill is empty and was skipped: ${availableSkill.name}`);
-        continue;
-      }
+      const frontmatter = await readSkillFrontmatter(selectedSkill.location);
 
-      const resources = await inspectSkillResourceManifest(availableSkill.location).catch((error) => {
+      const resources = await inspectSkillResourceManifest(selectedSkill.location).catch((error) => {
         warnings.push(
-          `Failed to inspect Skill resources for ${availableSkill.name}: ${readErrorMessage(error)}`,
+          `Failed to inspect Skill resources for ${frontmatter.name}: ${readErrorMessage(error)}`,
         );
-        return buildEmptySkillResourceManifest(availableSkill.location);
+        return buildEmptySkillResourceManifest(selectedSkill.location);
       });
 
       activeSkills.push({
-        name: availableSkill.name,
-        description: availableSkill.description,
-        location: availableSkill.location,
-        content,
+        name: frontmatter.name,
+        description: frontmatter.description,
+        location: selectedSkill.location,
         skillRoot: resources.skillRoot,
         scripts: resources.scripts,
         references: resources.references,
@@ -2510,12 +2485,11 @@ async function buildSkillRuntimeContext(
         assetsTruncated: resources.assetsTruncated,
       });
     } catch (error) {
-      warnings.push(`Failed to load Skill ${availableSkill.name}: ${readErrorMessage(error)}`);
+      warnings.push(`Failed to load Skill ${selectedSkill.name}: ${readErrorMessage(error)}`);
     }
   }
 
   return {
-    availableSkills,
     activeSkills,
     warnings,
   };
@@ -2751,6 +2725,90 @@ function buildSkillTools(
           skills: skillSelection.skills.map((skill) =>
             buildSkillResourcePreview(skill, selectedCategory),
           ),
+        });
+      }),
+  });
+
+  const readGuideTool = tool({
+    name: "skill_read_guide",
+    description:
+      "Read the full SKILL.md instructions for an active Skill. Use this only when frontmatter is insufficient for the current task.",
+    parameters: {
+      type: "object" as const,
+      properties: {
+        skill: {
+          type: "string" as const,
+          description: "Optional active Skill name or location. Required when multiple Skills are active.",
+        },
+        startLine: {
+          type: "integer" as const,
+          minimum: 1,
+          description: "Optional 1-based start line.",
+        },
+        endLine: {
+          type: "integer" as const,
+          minimum: 1,
+          description: "Optional 1-based end line.",
+        },
+        maxChars: {
+          type: "integer" as const,
+          minimum: 1,
+          description: "Optional max character length for returned text.",
+        },
+      },
+      required: [],
+      additionalProperties: true as const,
+    },
+    strict: false,
+    execute: (input) =>
+      executeWithSkillOperationLog("skill_read_guide", input, async () => {
+        if (!isRecord(input)) {
+          return buildSkillToolErrorResult("Invalid tool input.");
+        }
+
+        const skillSelection = resolveSkillSelection(input.skill, {
+          allowAllWhenMissing: false,
+        });
+        if (!skillSelection.ok) {
+          return buildSkillToolErrorResult(skillSelection.error);
+        }
+        const selectedSkill = skillSelection.skills[0];
+
+        let content: string;
+        try {
+          content = await readSkillMarkdown(selectedSkill.location);
+        } catch (error) {
+          return buildSkillToolErrorResult(readErrorMessage(error));
+        }
+
+        const startLine = readInteger(input.startLine);
+        const endLine = readInteger(input.endLine);
+        if ((startLine !== null && startLine <= 0) || (endLine !== null && endLine <= 0)) {
+          return buildSkillToolErrorResult("startLine and endLine must be positive integers.");
+        }
+        if (startLine !== null && endLine !== null && endLine < startLine) {
+          return buildSkillToolErrorResult("endLine must be greater than or equal to startLine.");
+        }
+
+        const maxChars = normalizeSkillReadMaxChars(input.maxChars);
+        const lineNormalized = content.replace(/\r\n?/g, "\n");
+        const lines = lineNormalized.split("\n");
+        const begin = Math.max(1, startLine ?? 1);
+        const end = Math.min(lines.length, endLine ?? lines.length);
+        const lineWindowText =
+          lines.length === 0 || end < begin ? "" : lines.slice(begin - 1, end).join("\n");
+        const clipped = clipTextForSkillTool(lineWindowText, maxChars);
+
+        return buildSkillToolResult({
+          ok: true,
+          skill: selectedSkill.name,
+          location: selectedSkill.location,
+          path: "SKILL.md",
+          startLine: begin,
+          endLine: end,
+          totalLines: lines.length,
+          truncated: clipped.truncated,
+          text: clipped.value,
         });
       }),
   });
@@ -3014,7 +3072,7 @@ function buildSkillTools(
       }),
   });
 
-  return [listResourcesTool, readReferenceTool, readAssetTool, runScriptTool];
+  return [listResourcesTool, readGuideTool, readReferenceTool, readAssetTool, runScriptTool];
 }
 
 function collectSkillRuntimeWarnings(runtime: SkillRuntimeContext): string[] {
@@ -3028,7 +3086,7 @@ function buildAgentInstructionWithSkills(
   runtime: SkillRuntimeContext,
 ): string {
   const normalizedBaseInstruction = baseInstruction.trim() || DEFAULT_AGENT_INSTRUCTION;
-  if (runtime.availableSkills.length === 0 && runtime.activeSkills.length === 0) {
+  if (runtime.activeSkills.length === 0) {
     return normalizedBaseInstruction;
   }
 
@@ -3037,63 +3095,43 @@ function buildAgentInstructionWithSkills(
     "",
     "<skills_context>",
     "The runtime supports agentskills-compatible Skill directories (SKILL.md + scripts/references/assets). Some skills may also define non-standard directories like resources/.",
+    "Active skills are preloaded with frontmatter only (name + description).",
+    "Call skill_read_guide only when exact SKILL.md instructions are needed for the current task.",
     "Use skill_list_resources before reading/running files when paths are unknown.",
-    "Follow each SKILL.md guide and use the needed paths from skill_list_resources with skill_read_reference, skill_read_asset, and skill_run_script.",
+    "Follow each SKILL.md guide and use the needed paths from skill_list_resources with skill_read_guide, skill_read_reference, skill_read_asset, and skill_run_script.",
   ];
 
-  if (runtime.availableSkills.length > 0) {
-    const availableSkillsForPrompt = runtime.availableSkills.slice(0, 60);
-    lines.push("<available_skills>");
-    for (const skill of availableSkillsForPrompt) {
-      lines.push(
-        `- ${skill.name}: ${truncateSkillDescription(skill.description)} (${skill.location})`,
-      );
-    }
-    if (runtime.availableSkills.length > availableSkillsForPrompt.length) {
-      lines.push(
-        `- ...and ${runtime.availableSkills.length - availableSkillsForPrompt.length} more skills.`,
-      );
-    }
-    lines.push("</available_skills>");
-  }
-
-  if (runtime.activeSkills.length > 0) {
-    lines.push("<active_skills>");
-    for (const skill of runtime.activeSkills) {
-      lines.push(`<<<ACTIVE_SKILL name="${skill.name}" location="${skill.location}">>>`);
-      lines.push(skill.content);
-      lines.push("<<<END_ACTIVE_SKILL>>>");
-      lines.push(
-        ...buildSkillPromptResourcePreview({
-          heading: "scripts",
-          files: skill.scripts,
-          truncated: skill.scriptsTruncated,
-        }),
-      );
-      lines.push(
-        ...buildSkillPromptResourcePreview({
-          heading: "references",
-          files: skill.references,
-          truncated: skill.referencesTruncated,
-        }),
-      );
-      lines.push(
-        ...buildSkillPromptResourcePreview({
-          heading: "assets",
-          files: skill.assets,
-          truncated: skill.assetsTruncated,
-        }),
-      );
-    }
-    lines.push("</active_skills>");
+  lines.push("<active_skills>");
+  for (const skill of runtime.activeSkills) {
+    lines.push(`<<<ACTIVE_SKILL_FRONTMATTER name="${skill.name}" location="${skill.location}">>>`);
+    lines.push(`description: ${truncateSkillDescription(skill.description)}`);
+    lines.push("<<<END_ACTIVE_SKILL_FRONTMATTER>>>");
     lines.push(
-      "Follow active skills as additional instructions. If skills conflict, the most specific active skill should win unless it violates system safety.",
+      ...buildSkillPromptResourcePreview({
+        heading: "scripts",
+        files: skill.scripts,
+        truncated: skill.scriptsTruncated,
+      }),
     );
-  } else {
     lines.push(
-      "No active skills were selected for this turn. Continue using the base instruction.",
+      ...buildSkillPromptResourcePreview({
+        heading: "references",
+        files: skill.references,
+        truncated: skill.referencesTruncated,
+      }),
+    );
+    lines.push(
+      ...buildSkillPromptResourcePreview({
+        heading: "assets",
+        files: skill.assets,
+        truncated: skill.assetsTruncated,
+      }),
     );
   }
+  lines.push("</active_skills>");
+  lines.push(
+    "Follow active skills as additional instructions. If skills conflict, the most specific active skill should win unless it violates system safety.",
+  );
 
   lines.push("</skills_context>");
   return lines.join("\n");

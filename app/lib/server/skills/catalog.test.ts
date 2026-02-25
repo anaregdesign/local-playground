@@ -7,6 +7,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   discoverSkillCatalog,
+  readSkillFrontmatter,
   resolveCodexHomeDirectory,
   resolveSkillCatalogRoots,
 } from "~/lib/server/skills/catalog";
@@ -189,5 +190,33 @@ describe("discoverSkillCatalog", () => {
       true,
     );
     expect(result.warnings).toEqual([]);
+  });
+});
+
+describe("readSkillFrontmatter", () => {
+  it("reads frontmatter without requiring full markdown parsing", async () => {
+    const codexHome = await mkdtemp(path.join(tmpdir(), "skill-codex-"));
+    tempDirectories.push(codexHome);
+
+    const skillDirectory = path.join(codexHome, "skills", "pdf-processing");
+    await mkdir(skillDirectory, { recursive: true });
+    await writeFile(
+      path.join(skillDirectory, "SKILL.md"),
+      [
+        "---",
+        "name: pdf-processing",
+        "description: Extract text and tables from PDF files, fill forms, merge documents.",
+        "---",
+        "# PDF Processing",
+        "".padEnd(200_000, "x"),
+      ].join("\n"),
+      "utf8",
+    );
+
+    const frontmatter = await readSkillFrontmatter(path.join(skillDirectory, "SKILL.md"));
+    expect(frontmatter).toEqual({
+      name: "pdf-processing",
+      description: "Extract text and tables from PDF files, fill forms, merge documents.",
+    });
   });
 });
