@@ -462,9 +462,11 @@ export function useWorkspaceController() {
     },
   ];
   const chatCommandKeywords = chatCommandProviders.map((provider) => provider.keyword);
+  const effectiveChatComposerCursorIndex =
+    chatInputRef.current?.selectionStart ?? chatComposerCursorIndex;
   const activeChatCommandMatch = readChatCommandMatchAtCursor({
     value: draft,
-    cursorIndex: chatComposerCursorIndex,
+    cursorIndex: effectiveChatComposerCursorIndex,
     keywords: chatCommandKeywords,
   });
   const activeChatCommandProvider = activeChatCommandMatch

@@ -30,6 +30,21 @@ describe("readChatCommandMatchAtCursor", () => {
     });
   });
 
+  it("matches when the caret is on the keyword character", () => {
+    expect(
+      readChatCommandMatchAtCursor({
+        value: "$",
+        cursorIndex: 0,
+        keywords: ["$", "/"],
+      }),
+    ).toEqual({
+      keyword: "$",
+      query: "",
+      rangeStart: 0,
+      rangeEnd: 1,
+    });
+  });
+
   it("returns null when trigger character is not at token boundary", () => {
     expect(
       readChatCommandMatchAtCursor({

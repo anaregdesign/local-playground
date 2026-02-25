@@ -1081,6 +1081,8 @@ body {
   border: 0;
   border-radius: 16px;
   background: #f5f7fa;
+  position: relative;
+  overflow: visible;
 }
 
 .chat-composer:focus-within {
@@ -1088,10 +1090,16 @@ body {
 }
 
 .chat-command-menu {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(100% + 0.42rem);
+  z-index: 6;
   border: 1px solid #d6dfeb;
   border-radius: 12px;
   background: #ffffff;
   overflow: hidden;
+  box-shadow: 0 10px 24px rgba(7, 25, 43, 0.12);
 }
 
 .chat-command-empty {
@@ -1108,7 +1116,7 @@ body {
   display: flex;
   flex-direction: column;
   gap: 0.12rem;
-  max-height: 230px;
+  max-height: min(42vh, 360px);
   overflow-y: auto;
 }
 

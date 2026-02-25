@@ -33,7 +33,8 @@ export function readChatCommandMatchAtCursor(
   const cursorIndex = clampCursorIndex(options.cursorIndex, value.length);
   const rangeStart = readTokenStart(value, cursorIndex);
   const rangeEnd = readTokenEnd(value, rangeStart);
-  if (cursorIndex <= rangeStart || cursorIndex > rangeEnd) {
+  // Allow showing candidates immediately when the caret is on the keyword itself (for example right after typing "$").
+  if (cursorIndex < rangeStart || cursorIndex > rangeEnd) {
     return null;
   }
 
