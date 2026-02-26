@@ -1,7 +1,11 @@
 /**
  * API route module for /api/mcp-servers.
  */
+import path from "node:path";
+import nodeOs from "node:os";
 import {
+  FOUNDRY_LEGACY_CONFIG_DIRECTORY_NAME,
+  FOUNDRY_WINDOWS_CONFIG_DIRECTORY_NAME,
   ENV_KEY_PATTERN,
   HTTP_HEADER_NAME_PATTERN,
   MCP_AZURE_AUTH_SCOPE_MAX_LENGTH,
@@ -9,6 +13,9 @@ import {
   MCP_DEFAULT_AZURE_MCP_SERVER_COMMAND,
   MCP_DEFAULT_AZURE_MCP_SERVER_NAME,
   MCP_DEFAULT_AZURE_AUTH_SCOPE,
+  MCP_DEFAULT_FILESYSTEM_MCP_SERVER_ARGS,
+  MCP_DEFAULT_FILESYSTEM_MCP_SERVER_COMMAND,
+  MCP_DEFAULT_FILESYSTEM_MCP_SERVER_NAME,
   MCP_DEFAULT_MICROSOFT_LEARN_SERVER_NAME,
   MCP_DEFAULT_MICROSOFT_LEARN_SERVER_URL,
   MCP_DEFAULT_MERMAID_MCP_SERVER_ARGS,
@@ -310,6 +317,7 @@ function mergeDefaultMcpServers(currentProfiles: SavedMcpServerConfig[]): SavedM
 }
 
 function buildDefaultMcpServerProfiles(): SavedMcpServerConfig[] {
+  const filesystemWorkingDirectory = resolveDefaultFilesystemWorkingDirectory();
   return [
     {
       id: createRandomId(),
@@ -330,6 +338,15 @@ function buildDefaultMcpServerProfiles(): SavedMcpServerConfig[] {
       useAzureAuth: false,
       azureAuthScope: MCP_DEFAULT_AZURE_AUTH_SCOPE,
       timeoutSeconds: MCP_DEFAULT_TIMEOUT_SECONDS,
+    },
+    {
+      id: createRandomId(),
+      name: MCP_DEFAULT_FILESYSTEM_MCP_SERVER_NAME,
+      transport: "stdio",
+      command: MCP_DEFAULT_FILESYSTEM_MCP_SERVER_COMMAND,
+      args: [...MCP_DEFAULT_FILESYSTEM_MCP_SERVER_ARGS],
+      cwd: filesystemWorkingDirectory,
+      env: {},
     },
     {
       id: createRandomId(),
@@ -364,6 +381,25 @@ function buildDefaultMcpServerProfiles(): SavedMcpServerConfig[] {
       env: {},
     },
   ];
+}
+
+function resolveDefaultFilesystemWorkingDirectory(): string {
+  const platform = process.platform;
+  const homeDirectory = nodeOs.homedir();
+  if (platform === "win32") {
+    const appDataDirectory = (process.env.APPDATA ?? "").trim();
+    if (!appDataDirectory) {
+      return path.win32.join(homeDirectory, FOUNDRY_LEGACY_CONFIG_DIRECTORY_NAME);
+    }
+
+    return path.win32.join(appDataDirectory, FOUNDRY_WINDOWS_CONFIG_DIRECTORY_NAME);
+  }
+
+  if (platform === "darwin" || platform === "linux") {
+    return path.posix.join(homeDirectory, FOUNDRY_LEGACY_CONFIG_DIRECTORY_NAME);
+  }
+
+  return path.join(homeDirectory, FOUNDRY_LEGACY_CONFIG_DIRECTORY_NAME);
 }
 
 function parseIncomingMcpServer(payload: unknown): ParseResult<IncomingMcpServerConfig> {
@@ -1002,4 +1038,5 @@ export const mcpServersRouteTestUtils = {
   deleteSavedMcpServer,
   buildIncomingProfileKey,
   mergeDefaultMcpServers,
+  resolveDefaultFilesystemWorkingDirectory,
 };

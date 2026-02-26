@@ -101,6 +101,7 @@ Default saved MCP profiles (created if missing):
 
 - `openai-docs` (`https://developers.openai.com/mcp`)
 - `microsoft-learn` (`https://learn.microsoft.com/api/mcp`)
+- `filesystem` (`npx -y @modelcontextprotocol/server-filesystem .`; working directory: `~/.foundry_local_playground/` on macOS/Linux)
 - `workiq` (`npx -y @microsoft/workiq mcp`)
 - `azure-mcp` (`npx -y @azure/mcp@latest server start`)
 - `playwright` (`npx -y @playwright/mcp@latest`)

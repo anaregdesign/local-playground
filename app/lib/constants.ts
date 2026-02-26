@@ -146,6 +146,13 @@ export const MCP_DEFAULT_MICROSOFT_LEARN_SERVER_URL = "https://learn.microsoft.c
 export const MCP_DEFAULT_WORKIQ_SERVER_NAME = "workiq";
 export const MCP_DEFAULT_WORKIQ_SERVER_COMMAND = "npx";
 export const MCP_DEFAULT_WORKIQ_SERVER_ARGS = ["-y", "@microsoft/workiq", "mcp"] as const;
+export const MCP_DEFAULT_FILESYSTEM_MCP_SERVER_NAME = "filesystem";
+export const MCP_DEFAULT_FILESYSTEM_MCP_SERVER_COMMAND = "npx";
+export const MCP_DEFAULT_FILESYSTEM_MCP_SERVER_ARGS = [
+  "-y",
+  "@modelcontextprotocol/server-filesystem",
+  ".",
+] as const;
 export const MCP_DEFAULT_AZURE_MCP_SERVER_NAME = "azure-mcp";
 export const MCP_DEFAULT_AZURE_MCP_SERVER_COMMAND = "npx";
 export const MCP_DEFAULT_AZURE_MCP_SERVER_ARGS = [

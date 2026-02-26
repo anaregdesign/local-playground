@@ -7,6 +7,9 @@ import {
   MCP_DEFAULT_AZURE_MCP_SERVER_COMMAND,
   MCP_DEFAULT_AZURE_MCP_SERVER_NAME,
   MCP_DEFAULT_AZURE_AUTH_SCOPE,
+  MCP_DEFAULT_FILESYSTEM_MCP_SERVER_ARGS,
+  MCP_DEFAULT_FILESYSTEM_MCP_SERVER_COMMAND,
+  MCP_DEFAULT_FILESYSTEM_MCP_SERVER_NAME,
   MCP_DEFAULT_MERMAID_MCP_SERVER_ARGS,
   MCP_DEFAULT_MERMAID_MCP_SERVER_COMMAND,
   MCP_DEFAULT_MERMAID_MCP_SERVER_NAME,
@@ -24,8 +27,13 @@ import {
 } from "~/lib/constants";
 import { mcpServersRouteTestUtils } from "./api.mcp-servers";
 
-const { parseIncomingMcpServer, upsertSavedMcpServer, deleteSavedMcpServer, mergeDefaultMcpServers } =
-  mcpServersRouteTestUtils;
+const {
+  parseIncomingMcpServer,
+  upsertSavedMcpServer,
+  deleteSavedMcpServer,
+  mergeDefaultMcpServers,
+  resolveDefaultFilesystemWorkingDirectory,
+} = mcpServersRouteTestUtils;
 
 describe("parseIncomingMcpServer", () => {
   it("parses HTTP payload and applies defaults", () => {
@@ -275,9 +283,10 @@ describe("deleteSavedMcpServer", () => {
 
 describe("mergeDefaultMcpServers", () => {
   it("adds the default vendor profiles when missing", () => {
+    const expectedFilesystemWorkingDirectory = resolveDefaultFilesystemWorkingDirectory();
     const result = mergeDefaultMcpServers([]);
 
-    expect(result).toHaveLength(6);
+    expect(result).toHaveLength(7);
     expect(result).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -297,6 +306,14 @@ describe("mergeDefaultMcpServers", () => {
           useAzureAuth: false,
           azureAuthScope: MCP_DEFAULT_AZURE_AUTH_SCOPE,
           timeoutSeconds: MCP_DEFAULT_TIMEOUT_SECONDS,
+        }),
+        expect.objectContaining({
+          name: MCP_DEFAULT_FILESYSTEM_MCP_SERVER_NAME,
+          transport: "stdio",
+          command: MCP_DEFAULT_FILESYSTEM_MCP_SERVER_COMMAND,
+          args: [...MCP_DEFAULT_FILESYSTEM_MCP_SERVER_ARGS],
+          cwd: expectedFilesystemWorkingDirectory,
+          env: {},
         }),
         expect.objectContaining({
           name: MCP_DEFAULT_WORKIQ_SERVER_NAME,
@@ -362,6 +379,15 @@ describe("mergeDefaultMcpServers", () => {
         timeoutSeconds: MCP_DEFAULT_TIMEOUT_SECONDS,
       },
       {
+        id: "profile-filesystem",
+        name: "Filesystem (Custom Name)",
+        transport: "stdio" as const,
+        command: MCP_DEFAULT_FILESYSTEM_MCP_SERVER_COMMAND,
+        args: [...MCP_DEFAULT_FILESYSTEM_MCP_SERVER_ARGS],
+        cwd: resolveDefaultFilesystemWorkingDirectory(),
+        env: {},
+      },
+      {
         id: "profile-azure-mcp",
         name: "Azure MCP (Custom Name)",
         transport: "stdio" as const,
@@ -406,7 +432,7 @@ describe("mergeDefaultMcpServers", () => {
 
     const result = mergeDefaultMcpServers(existing);
 
-    expect(result).toHaveLength(6);
+    expect(result).toHaveLength(7);
     expect(result).toEqual(
       expect.arrayContaining([
         existing[0],
@@ -417,6 +443,12 @@ describe("mergeDefaultMcpServers", () => {
         expect.objectContaining({
           transport: "streamable_http",
           url: MCP_DEFAULT_MICROSOFT_LEARN_SERVER_URL,
+        }),
+        expect.objectContaining({
+          transport: "stdio",
+          command: MCP_DEFAULT_FILESYSTEM_MCP_SERVER_COMMAND,
+          args: [...MCP_DEFAULT_FILESYSTEM_MCP_SERVER_ARGS],
+          cwd: resolveDefaultFilesystemWorkingDirectory(),
         }),
         expect.objectContaining({
           transport: "stdio",
