@@ -197,15 +197,15 @@ describe("readTemperature", () => {
 });
 
 describe("isSkillOperationErrorResult", () => {
-  it("returns true for explicit error payloads and non-empty stderr", () => {
+  it("returns true for explicit error payloads and non-zero exit codes", () => {
     expect(isSkillOperationErrorResult({ ok: false, error: "failed" })).toBe(true);
-    expect(isSkillOperationErrorResult({ ok: true, stderr: "warning: something happened" })).toBe(
-      true,
-    );
+    expect(isSkillOperationErrorResult({ ok: true, exitCode: 1, stderr: "" })).toBe(true);
+    expect(isSkillOperationErrorResult({ ok: true, exitCode: null, stderr: "" })).toBe(true);
   });
 
-  it("returns false for successful payloads without stderr", () => {
-    expect(isSkillOperationErrorResult({ ok: true, stderr: "" })).toBe(false);
+  it("returns false for successful payloads with exitCode=0 regardless of stderr", () => {
+    expect(isSkillOperationErrorResult({ ok: true, exitCode: 0, stderr: "warning" })).toBe(false);
+    expect(isSkillOperationErrorResult({ ok: true, stderr: "warning" })).toBe(false);
     expect(isSkillOperationErrorResult({ ok: true })).toBe(false);
   });
 });

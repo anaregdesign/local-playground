@@ -256,6 +256,43 @@ describe("runSkillScript", () => {
     );
   });
 
+  it("invokes inferred entrypoint functions for .bash scripts", async () => {
+    const skillRoot = await createTempSkillRoot();
+    await mkdir(path.join(skillRoot, "scripts"), { recursive: true });
+    await writeFile(
+      path.join(skillRoot, "scripts", "python-venv.bash"),
+      [
+        "python_venv() {",
+        '  export VIRTUAL_ENV="$PWD/.venv"',
+        "  printf '%s' \"$1\"",
+        "}",
+        'if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then',
+        '  echo "Source this file instead of executing it." >&2',
+        "  exit 1",
+        "fi",
+      ].join("\n"),
+      "utf8",
+    );
+
+    const result = await runSkillScript({
+      skillRoot,
+      relativePath: "python-venv.bash",
+      args: ["run"],
+      env: {
+        PATH: "/usr/bin",
+      },
+      timeoutMs: 2_000,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toBe("run");
+    expect(result.environmentChanges.captured).toBe(true);
+    expect(result.environmentChanges.updated.VIRTUAL_ENV ?? "").toMatch(/\/skills\/sample-skill\/\.venv$/);
+    expect(result.environmentChanges.updated).not.toHaveProperty(
+      "LOCAL_PLAYGROUND_SCRIPT_ENTRYPOINT",
+    );
+  });
+
   it("captures removed environment variables from shell scripts", async () => {
     const skillRoot = await createTempSkillRoot();
     await mkdir(path.join(skillRoot, "scripts"), { recursive: true });

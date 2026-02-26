@@ -187,6 +187,7 @@ export async function runSkillScript(options: SkillScriptRunOptions): Promise<Sk
     return await runProcessWithShellEnvironmentCapture({
       scriptPath,
       scriptArgs,
+      sourceEntrypointFunction: command.sourceEntrypointFunction,
       cwd: path.resolve(options.skillRoot),
       env: baseEnvironment,
       timeoutMs,
@@ -518,6 +519,7 @@ function resolveScriptCommand(
   command: string;
   args: string[];
   captureEnvironment: false | "bash" | "pwsh" | "cmd";
+  sourceEntrypointFunction?: string;
 } {
   const extension = path.extname(scriptPath).toLowerCase();
 
@@ -542,6 +544,8 @@ function resolveScriptCommand(
       command: "bash",
       args: [scriptPath, ...scriptArgs],
       captureEnvironment: "bash",
+      sourceEntrypointFunction:
+        extension === ".bash" ? deriveShellScriptEntrypointFunctionName(scriptPath) : undefined,
     };
   }
 
@@ -569,6 +573,24 @@ function resolveScriptCommand(
     args: scriptArgs,
     captureEnvironment: false,
   };
+}
+
+function deriveShellScriptEntrypointFunctionName(scriptPath: string): string | undefined {
+  const rawBaseName = path.basename(scriptPath, path.extname(scriptPath));
+  if (!rawBaseName) {
+    return undefined;
+  }
+
+  const normalizedBaseName = rawBaseName.replace(/[^A-Za-z0-9_]/g, "_");
+  if (!normalizedBaseName) {
+    return undefined;
+  }
+
+  if (/^[0-9]/.test(normalizedBaseName)) {
+    return `_${normalizedBaseName}`;
+  }
+
+  return normalizedBaseName;
 }
 
 async function runProcess(options: {
@@ -707,6 +729,7 @@ function normalizeProcessEnvironment(
 async function runProcessWithShellEnvironmentCapture(options: {
   scriptPath: string;
   scriptArgs: string[];
+  sourceEntrypointFunction?: string;
   cwd: string;
   env: NodeJS.ProcessEnv;
   timeoutMs: number;
@@ -727,7 +750,17 @@ async function runProcessWithShellEnvironmentCapture(options: {
     "}",
     "trap __local_playground_capture_env EXIT",
     "set +e",
-    'source "$1" "${@:2}"',
+    'script_path="$1"',
+    "shift",
+    'entrypoint="${LOCAL_PLAYGROUND_SCRIPT_ENTRYPOINT:-}"',
+    'if [[ -n "$entrypoint" ]]; then',
+    '  source "$script_path"',
+    '  if declare -F "$entrypoint" >/dev/null 2>&1; then',
+    '    "$entrypoint" "$@"',
+    "    exit $?",
+    "  fi",
+    "fi",
+    'source "$script_path" "$@"',
     "exit $?",
     "",
   ].join("\n");
@@ -745,6 +778,9 @@ async function runProcessWithShellEnvironmentCapture(options: {
     const runtimeEnvironment = {
       ...options.env,
       LOCAL_PLAYGROUND_ENV_CAPTURE_FILE: environmentSnapshotPath,
+      ...(options.sourceEntrypointFunction
+        ? { LOCAL_PLAYGROUND_SCRIPT_ENTRYPOINT: options.sourceEntrypointFunction }
+        : {}),
     };
     const result = await runProcess({
       command: bashCommand,
@@ -1064,6 +1100,7 @@ function shouldIgnoreEnvironmentChangeKey(key: string): boolean {
 
   return (
     key === "LOCAL_PLAYGROUND_ENV_CAPTURE_FILE" ||
+    key === "LOCAL_PLAYGROUND_SCRIPT_ENTRYPOINT" ||
     key === "PSExecutionPolicyPreference" ||
     key === "CD" ||
     key === "_" ||

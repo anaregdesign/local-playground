@@ -3630,7 +3630,11 @@ function isSkillOperationErrorResult(value: unknown): boolean {
     return true;
   }
 
-  return typeof value.stderr === "string" && value.stderr.length > 0;
+  if (Object.hasOwn(value, "exitCode")) {
+    return value.exitCode !== 0;
+  }
+
+  return false;
 }
 
 function readSkillToolCategory(value: unknown): SkillToolCategory | null {
