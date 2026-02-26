@@ -153,31 +153,21 @@ export const MCP_DEFAULT_FILESYSTEM_MCP_SERVER_ARGS = [
   "@modelcontextprotocol/server-filesystem",
   ".",
 ] as const;
-export const MCP_DEFAULT_GIT_MCP_SERVER_NAME = "server-git";
-export const MCP_DEFAULT_GIT_MCP_SERVER_COMMAND = "npx";
-export const MCP_DEFAULT_GIT_MCP_SERVER_ARGS = ["-y", "@modelcontextprotocol/server-git"] as const;
-export const MCP_DEFAULT_HTTP_MCP_SERVER_NAME = "server-http";
-export const MCP_DEFAULT_HTTP_MCP_SERVER_COMMAND = "npx";
-export const MCP_DEFAULT_HTTP_MCP_SERVER_ARGS = ["-y", "@modelcontextprotocol/server-http"] as const;
-export const MCP_DEFAULT_SQLITE_MCP_SERVER_NAME = "server-sqlite";
-export const MCP_DEFAULT_SQLITE_MCP_SERVER_COMMAND = "npx";
-export const MCP_DEFAULT_SQLITE_MCP_SERVER_ARGS = ["-y", "@modelcontextprotocol/server-sqlite"] as const;
-export const MCP_DEFAULT_POSTGRES_MCP_SERVER_NAME = "server-postgres";
-export const MCP_DEFAULT_POSTGRES_MCP_SERVER_COMMAND = "npx";
-export const MCP_DEFAULT_POSTGRES_MCP_SERVER_ARGS = [
-  "-y",
-  "@modelcontextprotocol/server-postgres",
-] as const;
 export const MCP_DEFAULT_MEMORY_MCP_SERVER_NAME = "server-memory";
 export const MCP_DEFAULT_MEMORY_MCP_SERVER_COMMAND = "npx";
 export const MCP_DEFAULT_MEMORY_MCP_SERVER_ARGS = ["-y", "@modelcontextprotocol/server-memory"] as const;
-export const MCP_DEFAULT_SHELL_MCP_SERVER_NAME = "server-shell";
-export const MCP_DEFAULT_SHELL_MCP_SERVER_COMMAND = "npx";
-export const MCP_DEFAULT_SHELL_MCP_SERVER_ARGS = ["-y", "@modelcontextprotocol/server-shell"] as const;
-export const MCP_DEFAULT_SERVER_PLAYWRIGHT_MCP_SERVER_NAME = "server-playwright";
-export const MCP_DEFAULT_SERVER_PLAYWRIGHT_MCP_SERVER_COMMAND = "npx";
-export const MCP_DEFAULT_SERVER_PLAYWRIGHT_MCP_SERVER_ARGS = [
+export const MCP_DEFAULT_EVERYTHING_MCP_SERVER_NAME = "server-everything";
+export const MCP_DEFAULT_EVERYTHING_MCP_SERVER_COMMAND = "npx";
+export const MCP_DEFAULT_EVERYTHING_MCP_SERVER_ARGS = [
   "-y",
+  "@modelcontextprotocol/server-everything",
+] as const;
+export const MCP_LEGACY_UNAVAILABLE_DEFAULT_STDIO_NPX_PACKAGE_NAMES = [
+  "@modelcontextprotocol/server-git",
+  "@modelcontextprotocol/server-http",
+  "@modelcontextprotocol/server-sqlite",
+  "@modelcontextprotocol/server-postgres",
+  "@modelcontextprotocol/server-shell",
   "@modelcontextprotocol/server-playwright",
 ] as const;
 export const MCP_DEFAULT_AZURE_MCP_SERVER_NAME = "azure-mcp";

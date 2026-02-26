@@ -606,6 +606,41 @@ describe("readMcpServers", () => {
         'mcpServers[0].headers cannot include "Content-Type". It is fixed to "application/json".',
     });
   });
+
+  it("skips legacy unavailable default stdio MCP servers", () => {
+    const result = readMcpServers({
+      mcpServers: [
+        {
+          transport: "stdio",
+          name: "server-http",
+          command: "npx",
+          args: ["-y", "@modelcontextprotocol/server-http"],
+          env: {},
+        },
+        {
+          transport: "stdio",
+          name: "custom-local",
+          command: "node",
+          args: ["server.js"],
+          env: {},
+        },
+      ],
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+
+    expect(result.value).toHaveLength(1);
+    expect(result.value[0]).toEqual({
+      transport: "stdio",
+      name: "custom-local",
+      command: "node",
+      args: ["server.js"],
+      env: {},
+    });
+  });
 });
 
 describe("stdio command resolution", () => {

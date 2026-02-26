@@ -13,18 +13,16 @@ import {
   MCP_DEFAULT_AZURE_MCP_SERVER_COMMAND,
   MCP_DEFAULT_AZURE_MCP_SERVER_NAME,
   MCP_DEFAULT_AZURE_AUTH_SCOPE,
+  MCP_DEFAULT_EVERYTHING_MCP_SERVER_ARGS,
+  MCP_DEFAULT_EVERYTHING_MCP_SERVER_COMMAND,
+  MCP_DEFAULT_EVERYTHING_MCP_SERVER_NAME,
   MCP_DEFAULT_FILESYSTEM_MCP_SERVER_ARGS,
   MCP_DEFAULT_FILESYSTEM_MCP_SERVER_COMMAND,
   MCP_DEFAULT_FILESYSTEM_MCP_SERVER_NAME,
-  MCP_DEFAULT_GIT_MCP_SERVER_ARGS,
-  MCP_DEFAULT_GIT_MCP_SERVER_COMMAND,
-  MCP_DEFAULT_GIT_MCP_SERVER_NAME,
-  MCP_DEFAULT_HTTP_MCP_SERVER_ARGS,
-  MCP_DEFAULT_HTTP_MCP_SERVER_COMMAND,
-  MCP_DEFAULT_HTTP_MCP_SERVER_NAME,
   MCP_DEFAULT_MEMORY_MCP_SERVER_ARGS,
   MCP_DEFAULT_MEMORY_MCP_SERVER_COMMAND,
   MCP_DEFAULT_MEMORY_MCP_SERVER_NAME,
+  MCP_LEGACY_UNAVAILABLE_DEFAULT_STDIO_NPX_PACKAGE_NAMES,
   MCP_DEFAULT_MICROSOFT_LEARN_SERVER_NAME,
   MCP_DEFAULT_MICROSOFT_LEARN_SERVER_URL,
   MCP_DEFAULT_MERMAID_MCP_SERVER_ARGS,
@@ -32,21 +30,9 @@ import {
   MCP_DEFAULT_MERMAID_MCP_SERVER_NAME,
   MCP_DEFAULT_OPENAI_DOCS_SERVER_NAME,
   MCP_DEFAULT_OPENAI_DOCS_SERVER_URL,
-  MCP_DEFAULT_POSTGRES_MCP_SERVER_ARGS,
-  MCP_DEFAULT_POSTGRES_MCP_SERVER_COMMAND,
-  MCP_DEFAULT_POSTGRES_MCP_SERVER_NAME,
   MCP_DEFAULT_PLAYWRIGHT_MCP_SERVER_ARGS,
   MCP_DEFAULT_PLAYWRIGHT_MCP_SERVER_COMMAND,
   MCP_DEFAULT_PLAYWRIGHT_MCP_SERVER_NAME,
-  MCP_DEFAULT_SERVER_PLAYWRIGHT_MCP_SERVER_ARGS,
-  MCP_DEFAULT_SERVER_PLAYWRIGHT_MCP_SERVER_COMMAND,
-  MCP_DEFAULT_SERVER_PLAYWRIGHT_MCP_SERVER_NAME,
-  MCP_DEFAULT_SHELL_MCP_SERVER_ARGS,
-  MCP_DEFAULT_SHELL_MCP_SERVER_COMMAND,
-  MCP_DEFAULT_SHELL_MCP_SERVER_NAME,
-  MCP_DEFAULT_SQLITE_MCP_SERVER_ARGS,
-  MCP_DEFAULT_SQLITE_MCP_SERVER_COMMAND,
-  MCP_DEFAULT_SQLITE_MCP_SERVER_NAME,
   MCP_DEFAULT_WORKIQ_SERVER_ARGS,
   MCP_DEFAULT_WORKIQ_SERVER_COMMAND,
   MCP_DEFAULT_WORKIQ_SERVER_NAME,
@@ -98,6 +84,9 @@ type IncomingMcpHttpServerConfig = Omit<SavedMcpHttpServerConfig, "id"> & { id?:
 type IncomingMcpStdioServerConfig = Omit<SavedMcpStdioServerConfig, "id"> & { id?: string };
 type IncomingMcpServerConfig = IncomingMcpHttpServerConfig | IncomingMcpStdioServerConfig;
 type ParseResult<T> = { ok: true; value: T } | { ok: false; error: string };
+const legacyUnavailableDefaultStdioNpxPackageNameSet = new Set<string>(
+  MCP_LEGACY_UNAVAILABLE_DEFAULT_STDIO_NPX_PACKAGE_NAMES,
+);
 
 export async function loader({ request }: Route.LoaderArgs) {
   installGlobalServerErrorLogging();
@@ -322,7 +311,7 @@ async function writeSavedMcpServers(userId: number, profiles: SavedMcpServerConf
 }
 
 function mergeDefaultMcpServers(currentProfiles: SavedMcpServerConfig[]): SavedMcpServerConfig[] {
-  const mergedProfiles = normalizeLegacyDefaultMermaidProfiles(currentProfiles);
+  const mergedProfiles = normalizeLegacyDefaultProfiles(currentProfiles);
   const profileKeys = new Set(mergedProfiles.map((profile) => buildProfileKey(profile)));
   for (const profile of buildDefaultMcpServerProfiles()) {
     const profileKey = buildProfileKey(profile);
@@ -379,38 +368,6 @@ function buildDefaultMcpServerProfiles(): SavedMcpServerConfig[] {
     },
     {
       id: createRandomId(),
-      name: MCP_DEFAULT_GIT_MCP_SERVER_NAME,
-      transport: "stdio",
-      command: MCP_DEFAULT_GIT_MCP_SERVER_COMMAND,
-      args: [...MCP_DEFAULT_GIT_MCP_SERVER_ARGS],
-      env: {},
-    },
-    {
-      id: createRandomId(),
-      name: MCP_DEFAULT_HTTP_MCP_SERVER_NAME,
-      transport: "stdio",
-      command: MCP_DEFAULT_HTTP_MCP_SERVER_COMMAND,
-      args: [...MCP_DEFAULT_HTTP_MCP_SERVER_ARGS],
-      env: {},
-    },
-    {
-      id: createRandomId(),
-      name: MCP_DEFAULT_SQLITE_MCP_SERVER_NAME,
-      transport: "stdio",
-      command: MCP_DEFAULT_SQLITE_MCP_SERVER_COMMAND,
-      args: [...MCP_DEFAULT_SQLITE_MCP_SERVER_ARGS],
-      env: {},
-    },
-    {
-      id: createRandomId(),
-      name: MCP_DEFAULT_POSTGRES_MCP_SERVER_NAME,
-      transport: "stdio",
-      command: MCP_DEFAULT_POSTGRES_MCP_SERVER_COMMAND,
-      args: [...MCP_DEFAULT_POSTGRES_MCP_SERVER_ARGS],
-      env: {},
-    },
-    {
-      id: createRandomId(),
       name: MCP_DEFAULT_MEMORY_MCP_SERVER_NAME,
       transport: "stdio",
       command: MCP_DEFAULT_MEMORY_MCP_SERVER_COMMAND,
@@ -419,18 +376,10 @@ function buildDefaultMcpServerProfiles(): SavedMcpServerConfig[] {
     },
     {
       id: createRandomId(),
-      name: MCP_DEFAULT_SHELL_MCP_SERVER_NAME,
+      name: MCP_DEFAULT_EVERYTHING_MCP_SERVER_NAME,
       transport: "stdio",
-      command: MCP_DEFAULT_SHELL_MCP_SERVER_COMMAND,
-      args: [...MCP_DEFAULT_SHELL_MCP_SERVER_ARGS],
-      env: {},
-    },
-    {
-      id: createRandomId(),
-      name: MCP_DEFAULT_SERVER_PLAYWRIGHT_MCP_SERVER_NAME,
-      transport: "stdio",
-      command: MCP_DEFAULT_SERVER_PLAYWRIGHT_MCP_SERVER_COMMAND,
-      args: [...MCP_DEFAULT_SERVER_PLAYWRIGHT_MCP_SERVER_ARGS],
+      command: MCP_DEFAULT_EVERYTHING_MCP_SERVER_COMMAND,
+      args: [...MCP_DEFAULT_EVERYTHING_MCP_SERVER_ARGS],
       env: {},
     },
     {
@@ -461,20 +410,29 @@ function buildDefaultMcpServerProfiles(): SavedMcpServerConfig[] {
   ];
 }
 
-function normalizeLegacyDefaultMermaidProfiles(
+function normalizeLegacyDefaultProfiles(
   currentProfiles: SavedMcpServerConfig[],
 ): SavedMcpServerConfig[] {
   const defaultWorkingDirectory = resolveDefaultFilesystemWorkingDirectory();
-  return currentProfiles.map((profile) => {
-    if (!isLegacyDefaultMermaidProfile(profile)) {
-      return profile;
+  const normalizedProfiles: SavedMcpServerConfig[] = [];
+
+  for (const profile of currentProfiles) {
+    if (isLegacyUnavailableDefaultStdioProfile(profile)) {
+      continue;
     }
 
-    return {
+    if (!isLegacyDefaultMermaidProfile(profile)) {
+      normalizedProfiles.push(profile);
+      continue;
+    }
+
+    normalizedProfiles.push({
       ...profile,
       cwd: defaultWorkingDirectory,
-    };
-  });
+    });
+  }
+
+  return normalizedProfiles;
 }
 
 function isLegacyDefaultMermaidProfile(profile: SavedMcpServerConfig): profile is SavedMcpStdioServerConfig {
@@ -488,6 +446,21 @@ function isLegacyDefaultMermaidProfile(profile: SavedMcpServerConfig): profile i
     profile.args.every((arg, index) => arg === MCP_DEFAULT_MERMAID_MCP_SERVER_ARGS[index]) &&
     Object.keys(profile.env).length === 0 &&
     !profile.cwd
+  );
+}
+
+function isLegacyUnavailableDefaultStdioProfile(profile: SavedMcpServerConfig): boolean {
+  if (profile.transport !== "stdio") {
+    return false;
+  }
+
+  return (
+    profile.command === "npx" &&
+    profile.args.length === 2 &&
+    profile.args[0] === "-y" &&
+    legacyUnavailableDefaultStdioNpxPackageNameSet.has(profile.args[1]) &&
+    !profile.cwd &&
+    Object.keys(profile.env).length === 0
   );
 }
 

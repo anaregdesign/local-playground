@@ -72,6 +72,7 @@ import {
   MCP_DEFAULT_HTTP_HEADERS,
   MCP_DEFAULT_TIMEOUT_SECONDS,
   MCP_HTTP_HEADERS_MAX,
+  MCP_LEGACY_UNAVAILABLE_DEFAULT_STDIO_NPX_PACKAGE_NAMES,
   MCP_SERVER_NAME_MAX_LENGTH,
   MCP_STDIO_ARGS_MAX,
   MCP_STDIO_ENV_VARS_MAX,
@@ -138,6 +139,9 @@ type ClientMcpServerConfig = ClientMcpHttpServerConfig | ClientMcpStdioServerCon
 type ClientSkillSelection = ThreadSkillSelection;
 
 type ParseResult<T> = { ok: true; value: T } | { ok: false; error: string };
+const legacyUnavailableDefaultStdioNpxPackageNameSet = new Set<string>(
+  MCP_LEGACY_UNAVAILABLE_DEFAULT_STDIO_NPX_PACKAGE_NAMES,
+);
 type ResolvedAzureConfig = {
   projectName: string;
   baseUrl: string;
@@ -1962,6 +1966,17 @@ function readMcpServers(payload: unknown): ParseResult<ClientMcpServerConfig[]> 
         return { ok: false, error: `mcpServers[${index}].name is required.` };
       }
 
+      if (
+        isLegacyUnavailableDefaultStdioNpxServer({
+          command,
+          args: argsResult.value,
+          cwd: cwd || undefined,
+          env: envResult.value,
+        })
+      ) {
+        continue;
+      }
+
       const envKey = Object.entries(envResult.value)
         .sort(([left], [right]) => left.localeCompare(right))
         .map(([key, value]) => `${key}=${value}`)
@@ -2043,6 +2058,22 @@ function readMcpServers(payload: unknown): ParseResult<ClientMcpServerConfig[]> 
   }
 
   return { ok: true, value: result };
+}
+
+function isLegacyUnavailableDefaultStdioNpxServer(config: {
+  command: string;
+  args: string[];
+  cwd?: string;
+  env: Record<string, string>;
+}): boolean {
+  return (
+    config.command === "npx" &&
+    config.args.length === 2 &&
+    config.args[0] === "-y" &&
+    legacyUnavailableDefaultStdioNpxPackageNameSet.has(config.args[1]) &&
+    !config.cwd &&
+    Object.keys(config.env).length === 0
+  );
 }
 
 async function createMcpServer(
