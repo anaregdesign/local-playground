@@ -104,6 +104,7 @@ Default saved MCP profiles (created if missing):
 - `workiq` (`npx -y @microsoft/workiq mcp`)
 - `azure-mcp` (`npx -y @azure/mcp@latest server start`)
 - `playwright` (`npx -y @playwright/mcp@latest`)
+- `mcp-mermaid` (`npx -y mcp-mermaid`)
 
 ### Skills workflow
 

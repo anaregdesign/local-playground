@@ -7,6 +7,9 @@ import {
   MCP_DEFAULT_AZURE_MCP_SERVER_COMMAND,
   MCP_DEFAULT_AZURE_MCP_SERVER_NAME,
   MCP_DEFAULT_AZURE_AUTH_SCOPE,
+  MCP_DEFAULT_MERMAID_MCP_SERVER_ARGS,
+  MCP_DEFAULT_MERMAID_MCP_SERVER_COMMAND,
+  MCP_DEFAULT_MERMAID_MCP_SERVER_NAME,
   MCP_DEFAULT_MICROSOFT_LEARN_SERVER_NAME,
   MCP_DEFAULT_MICROSOFT_LEARN_SERVER_URL,
   MCP_DEFAULT_OPENAI_DOCS_SERVER_NAME,
@@ -274,7 +277,7 @@ describe("mergeDefaultMcpServers", () => {
   it("adds the default vendor profiles when missing", () => {
     const result = mergeDefaultMcpServers([]);
 
-    expect(result).toHaveLength(5);
+    expect(result).toHaveLength(6);
     expect(result).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -314,6 +317,13 @@ describe("mergeDefaultMcpServers", () => {
           transport: "stdio",
           command: MCP_DEFAULT_PLAYWRIGHT_MCP_SERVER_COMMAND,
           args: [...MCP_DEFAULT_PLAYWRIGHT_MCP_SERVER_ARGS],
+          env: {},
+        }),
+        expect.objectContaining({
+          name: MCP_DEFAULT_MERMAID_MCP_SERVER_NAME,
+          transport: "stdio",
+          command: MCP_DEFAULT_MERMAID_MCP_SERVER_COMMAND,
+          args: [...MCP_DEFAULT_MERMAID_MCP_SERVER_ARGS],
           env: {},
         }),
       ]),
@@ -367,6 +377,14 @@ describe("mergeDefaultMcpServers", () => {
         args: [...MCP_DEFAULT_PLAYWRIGHT_MCP_SERVER_ARGS],
         env: {},
       },
+      {
+        id: "profile-mermaid",
+        name: "Mermaid (Custom Name)",
+        transport: "stdio" as const,
+        command: MCP_DEFAULT_MERMAID_MCP_SERVER_COMMAND,
+        args: [...MCP_DEFAULT_MERMAID_MCP_SERVER_ARGS],
+        env: {},
+      },
     ];
 
     const result = mergeDefaultMcpServers(existing);
@@ -388,7 +406,7 @@ describe("mergeDefaultMcpServers", () => {
 
     const result = mergeDefaultMcpServers(existing);
 
-    expect(result).toHaveLength(5);
+    expect(result).toHaveLength(6);
     expect(result).toEqual(
       expect.arrayContaining([
         existing[0],
@@ -409,6 +427,11 @@ describe("mergeDefaultMcpServers", () => {
           transport: "stdio",
           command: MCP_DEFAULT_PLAYWRIGHT_MCP_SERVER_COMMAND,
           args: [...MCP_DEFAULT_PLAYWRIGHT_MCP_SERVER_ARGS],
+        }),
+        expect.objectContaining({
+          transport: "stdio",
+          command: MCP_DEFAULT_MERMAID_MCP_SERVER_COMMAND,
+          args: [...MCP_DEFAULT_MERMAID_MCP_SERVER_ARGS],
         }),
       ]),
     );

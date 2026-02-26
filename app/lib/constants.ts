@@ -157,6 +157,9 @@ export const MCP_DEFAULT_AZURE_MCP_SERVER_ARGS = [
 export const MCP_DEFAULT_PLAYWRIGHT_MCP_SERVER_NAME = "playwright";
 export const MCP_DEFAULT_PLAYWRIGHT_MCP_SERVER_COMMAND = "npx";
 export const MCP_DEFAULT_PLAYWRIGHT_MCP_SERVER_ARGS = ["-y", "@playwright/mcp@latest"] as const;
+export const MCP_DEFAULT_MERMAID_MCP_SERVER_NAME = "mcp-mermaid";
+export const MCP_DEFAULT_MERMAID_MCP_SERVER_COMMAND = "npx";
+export const MCP_DEFAULT_MERMAID_MCP_SERVER_ARGS = ["-y", "mcp-mermaid"] as const;
 export const ENV_KEY_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
 export const HTTP_HEADER_NAME_PATTERN = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/;
 
