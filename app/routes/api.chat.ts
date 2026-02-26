@@ -3506,6 +3506,19 @@ function buildSkillTools(
             result.environmentChanges,
           );
 
+          if (result.exitCode !== 0) {
+            return buildSkillToolResult({
+              ok: false,
+              error: buildSkillScriptRunFailureMessage(result),
+              skill: selectedSkill.name,
+              location: selectedSkill.location,
+              path: relativePath,
+              ...result,
+              environmentChanges,
+              threadEnvironment: readCurrentThreadEnvironment(),
+            });
+          }
+
           return buildSkillToolResult({
             ok: true,
             skill: selectedSkill.name,
@@ -3889,6 +3902,32 @@ function buildSkillToolErrorResult(message: string): string {
   });
 }
 
+function buildSkillScriptRunFailureMessage(result: {
+  exitCode: number | null;
+  signal: NodeJS.Signals | null;
+  timedOut: boolean;
+  stderr: string;
+}): string {
+  const stderr = result.stderr.trim();
+  if (stderr) {
+    return stderr;
+  }
+
+  if (result.timedOut) {
+    return "Skill script timed out.";
+  }
+
+  if (result.signal) {
+    return `Skill script terminated by signal ${result.signal}.`;
+  }
+
+  if (result.exitCode === null) {
+    return "Skill script failed with an unknown exit status.";
+  }
+
+  return `Skill script exited with code ${result.exitCode}.`;
+}
+
 function isSkillOperationErrorResult(value: unknown): boolean {
   if (!isRecord(value)) {
     return false;
@@ -4184,6 +4223,16 @@ function readProgressEventFromRunStreamEvent(
     }
 
     const toolName = knownToolName || readToolNameFromRunItem(item) || shortenToolCallId(callId);
+    const toolErrorMessage = readToolErrorMessageFromRunItem(item);
+    if (toolErrorMessage) {
+      return {
+        message: hasMcpServers
+          ? `MCP command failed: ${toolName} (${truncateProgressMessage(toolErrorMessage)})`
+          : `Tool failed: ${toolName} (${truncateProgressMessage(toolErrorMessage)})`,
+        isMcp: hasMcpServers,
+      };
+    }
+
     return {
       message: hasMcpServers
         ? `MCP command finished: ${toolName}`
@@ -4240,6 +4289,71 @@ function shortenToolCallId(callId: string): string {
   }
 
   return trimmed.length <= 12 ? trimmed : `${trimmed.slice(0, 12)}...`;
+}
+
+function readToolErrorMessageFromRunItem(item: unknown): string {
+  if (!isRecord(item)) {
+    return "";
+  }
+
+  const output = "output" in item ? item.output : isRecord(item.rawItem) ? item.rawItem.output : null;
+  return readSkillOperationErrorMessageFromToolOutput(output);
+}
+
+function readSkillOperationErrorMessageFromToolOutput(value: unknown): string {
+  if (value === null || value === undefined) {
+    return "";
+  }
+
+  const parsedValue = parseToolOutputPayload(value);
+  if (!isRecord(parsedValue)) {
+    return "";
+  }
+
+  const explicitError = readTrimmedString(parsedValue.error);
+  if (parsedValue.ok === false && explicitError) {
+    return explicitError;
+  }
+
+  if (Object.hasOwn(parsedValue, "exitCode")) {
+    const exitCode =
+      typeof parsedValue.exitCode === "number" && Number.isFinite(parsedValue.exitCode)
+        ? parsedValue.exitCode
+        : null;
+    if (exitCode !== 0) {
+      if (explicitError) {
+        return explicitError;
+      }
+
+      const stderr = readTrimmedString(parsedValue.stderr);
+      if (stderr) {
+        return stderr;
+      }
+
+      return exitCode === null
+        ? "Tool returned an unknown exit status."
+        : `Tool exited with code ${exitCode}.`;
+    }
+  }
+
+  return "";
+}
+
+function parseToolOutputPayload(value: unknown): unknown {
+  if (typeof value !== "string") {
+    return value;
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return "";
+  }
+
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    return value;
+  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

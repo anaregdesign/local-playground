@@ -3333,7 +3333,7 @@ export function useWorkspaceController() {
           },
         });
       } else {
-        payload = (await response.json()) as ChatApiResponse;
+        payload = await readJsonPayload<ChatApiResponse>(response, "chat");
       }
 
       if (!response.ok || payload.error) {

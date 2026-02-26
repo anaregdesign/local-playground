@@ -625,6 +625,34 @@ describe("MCP progress event reader", () => {
     expect(toolNameByCallId.has("call-1")).toBe(false);
   });
 
+  it("surfaces tool failures in progress messages", () => {
+    const toolNameByCallId = new Map<string, string>([["call-2", "skill_run_script"]]);
+
+    const failed = readProgressEventFromRunStreamEvent(
+      {
+        type: "run_item_stream_event",
+        name: "tool_output",
+        item: {
+          output: JSON.stringify({
+            ok: false,
+            error: "Plan not found: /private/tmp/plan.json",
+          }),
+          rawItem: {
+            callId: "call-2",
+          },
+        },
+      },
+      false,
+      toolNameByCallId,
+    );
+
+    expect(failed).toEqual({
+      message: "Tool failed: skill_run_script (Plan not found: /private/tmp/plan.json)",
+      isMcp: false,
+    });
+    expect(toolNameByCallId.has("call-2")).toBe(false);
+  });
+
   it("emits reasoning and message generation progress", () => {
     const toolNameByCallId = new Map<string, string>();
 
