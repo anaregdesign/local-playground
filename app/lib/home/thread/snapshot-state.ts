@@ -9,6 +9,7 @@ import type { McpServerConfig } from "~/lib/home/mcp/profile";
 import type { ChatMessage } from "~/lib/home/chat/messages";
 import type { McpRpcHistoryEntry } from "~/lib/home/chat/stream";
 import type { ThreadSkillSelection } from "~/lib/home/skills/types";
+import type { ThreadEnvironment } from "~/lib/home/thread/environment";
 import type { ThreadSnapshot } from "~/lib/home/thread/types";
 
 export function cloneMessages(value: ChatMessage[]): ChatMessage[] {
@@ -45,6 +46,10 @@ export function cloneThreadSkillSelections(value: ThreadSkillSelection[]): Threa
   }));
 }
 
+export function cloneThreadEnvironment(value: ThreadEnvironment): ThreadEnvironment {
+  return { ...value };
+}
+
 export function buildThreadSaveSignature(snapshot: ThreadSnapshot): string {
   return JSON.stringify({
     name: snapshot.name,
@@ -52,6 +57,7 @@ export function buildThreadSaveSignature(snapshot: ThreadSnapshot): string {
     reasoningEffort: snapshot.reasoningEffort,
     webSearchEnabled: snapshot.webSearchEnabled,
     agentInstruction: snapshot.agentInstruction,
+    threadEnvironment: snapshot.threadEnvironment,
     messages: snapshot.messages,
     mcpServers: snapshot.mcpServers,
     mcpRpcHistory: snapshot.mcpRpcHistory,
@@ -71,7 +77,10 @@ export function hasThreadInteraction(
 }
 
 export function hasThreadPersistableState(
-  snapshot: Pick<ThreadSnapshot, "messages" | "reasoningEffort" | "webSearchEnabled"> &
+  snapshot: Pick<
+    ThreadSnapshot,
+    "messages" | "reasoningEffort" | "webSearchEnabled" | "threadEnvironment"
+  > &
     Partial<Pick<ThreadSnapshot, "skillSelections">>,
 ): boolean {
   if (hasThreadInteraction(snapshot)) {
@@ -80,7 +89,8 @@ export function hasThreadPersistableState(
 
   return (
     snapshot.reasoningEffort !== HOME_DEFAULT_REASONING_EFFORT ||
-    snapshot.webSearchEnabled !== HOME_DEFAULT_WEB_SEARCH_ENABLED
+    snapshot.webSearchEnabled !== HOME_DEFAULT_WEB_SEARCH_ENABLED ||
+    Object.keys(snapshot.threadEnvironment).length > 0
   );
 }
 

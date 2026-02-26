@@ -405,6 +405,7 @@ async function saveThreadSnapshot(
           deletedAt: null,
           reasoningEffort: snapshot.reasoningEffort,
           webSearchEnabled: snapshot.webSearchEnabled,
+          threadEnvironmentJson: JSON.stringify(snapshot.threadEnvironment),
         },
       });
 
@@ -440,6 +441,7 @@ async function saveThreadSnapshot(
         updatedAt,
         reasoningEffort: snapshot.reasoningEffort,
         webSearchEnabled: snapshot.webSearchEnabled,
+        threadEnvironmentJson: JSON.stringify(snapshot.threadEnvironment),
       },
     });
 
@@ -672,6 +674,7 @@ function mapStoredThreadToSnapshot(value: {
   deletedAt: string | null;
   reasoningEffort: string;
   webSearchEnabled: boolean;
+  threadEnvironmentJson: string;
   instruction: {
     content: string;
   } | null;
@@ -726,6 +729,7 @@ function mapStoredThreadToSnapshot(value: {
       reasoningEffort: readThreadReasoningEffort(value.reasoningEffort),
       webSearchEnabled: value.webSearchEnabled === true,
       agentInstruction: value.instruction?.content ?? DEFAULT_AGENT_INSTRUCTION,
+      threadEnvironment: readJsonValue(value.threadEnvironmentJson, {}),
       messages: value.messages.map((message) => ({
         id: message.id,
         role: message.role,

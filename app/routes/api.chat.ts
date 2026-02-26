@@ -73,9 +73,17 @@ import {
   MCP_TIMEOUT_SECONDS_MIN,
   TEMPERATURE_MAX,
   TEMPERATURE_MIN,
+  THREAD_ENVIRONMENT_KEY_MAX_LENGTH,
+  THREAD_ENVIRONMENT_VALUE_MAX_LENGTH,
+  THREAD_ENVIRONMENT_VARIABLES_MAX,
 } from "~/lib/constants";
 import type { AzureDependencies } from "~/lib/azure/dependencies";
 import type { ThreadSkillSelection } from "~/lib/home/skills/types";
+import {
+  cloneThreadEnvironment,
+  parseThreadEnvironmentFromUnknown,
+  type ThreadEnvironment,
+} from "~/lib/home/thread/environment";
 import { readSkillFrontmatter, readSkillMarkdown } from "~/lib/server/skills/catalog";
 import {
   inspectSkillResourceManifest,
@@ -142,10 +150,15 @@ type ChatExecutionOptions = {
   webSearchEnabled: boolean;
   temperature: number | null;
   agentInstruction: string;
+  threadEnvironment: ThreadEnvironment;
   skills: ClientSkillSelection[];
   explicitSkillLocations: string[];
   azureConfig: ResolvedAzureConfig;
   mcpServers: ClientMcpServerConfig[];
+};
+type ChatExecutionResult = {
+  message: string;
+  threadEnvironment: ThreadEnvironment;
 };
 type JsonRpcRequestPayload = {
   jsonrpc: "2.0";
@@ -210,6 +223,7 @@ type ChatStreamPayload =
   | {
       type: "final";
       message: string;
+      threadEnvironment: ThreadEnvironment;
     }
   | {
       type: "error";
@@ -243,6 +257,10 @@ type SkillToolCategory = SkillResourceKind;
 type SkillToolLogHandlers = {
   nextSequence: () => number;
   onRecord: (record: McpRpcRecord) => void;
+};
+
+type SkillToolExecutionContext = {
+  threadEnvironment: ThreadEnvironment;
 };
 
 let codeInterpreterAttachmentAvailabilityCache: CodeInterpreterAttachmentAvailabilityCache | null =
@@ -344,6 +362,20 @@ export async function action({ request }: Route.ActionArgs) {
     return Response.json({ error: temperatureResult.error }, { status: 400 });
   }
   const agentInstruction = readAgentInstruction(payload);
+  const threadEnvironmentResult = readThreadEnvironment(payload);
+  if (!threadEnvironmentResult.ok) {
+    await logServerRouteEvent({
+      request,
+      route: "/api/chat",
+      eventName: "invalid_thread_environment_payload",
+      action: "validate_payload",
+      level: "warning",
+      statusCode: 400,
+      message: threadEnvironmentResult.error,
+    });
+
+    return Response.json({ error: threadEnvironmentResult.error }, { status: 400 });
+  }
   const skillsResult = readSkills(payload);
   if (!skillsResult.ok) {
     await logServerRouteEvent({
@@ -433,6 +465,7 @@ export async function action({ request }: Route.ActionArgs) {
     webSearchEnabled,
     temperature: temperatureResult.value,
     agentInstruction,
+    threadEnvironment: threadEnvironmentResult.value,
     skills: skillsResult.value,
     explicitSkillLocations: explicitSkillLocationsResult.value,
     azureConfig,
@@ -444,8 +477,11 @@ export async function action({ request }: Route.ActionArgs) {
   }
 
   try {
-    const assistantMessage = await executeChat(executionOptions);
-    return Response.json({ message: assistantMessage });
+    const result = await executeChat(executionOptions);
+    return Response.json({
+      message: result.message,
+      threadEnvironment: result.threadEnvironment,
+    });
   } catch (error) {
     const upstreamError = buildUpstreamErrorPayload(error, azureConfig.deploymentName);
     await logServerRouteEvent({
@@ -459,6 +495,7 @@ export async function action({ request }: Route.ActionArgs) {
         deploymentName: azureConfig.deploymentName,
         mcpServerCount: executionOptions.mcpServers.length,
         maxRunTurns: CHAT_MAX_RUN_TURNS,
+        threadEnvironment: executionOptions.threadEnvironment,
       },
     });
 
@@ -472,7 +509,7 @@ export async function action({ request }: Route.ActionArgs) {
 async function executeChat(
   options: ChatExecutionOptions,
   onEvent?: (event: ChatExecutionEvent) => void,
-): Promise<string> {
+): Promise<ChatExecutionResult> {
   const azureDependencies = getAzureDependencies();
   const azureOpenAIClient = getAzureOpenAIClient(options.azureConfig.baseUrl, azureDependencies);
   const connectedMcpServers: MCPServer[] = [];
@@ -481,6 +518,9 @@ async function executeChat(
   let mcpRpcSequence = 0;
   const hasMcpServers = options.mcpServers.length > 0;
   const azureMcpAuthorizationTokenPromiseByScope = new Map<string, Promise<string>>();
+  const skillExecutionContext: SkillToolExecutionContext = {
+    threadEnvironment: cloneThreadEnvironment(options.threadEnvironment),
+  };
 
   const emitProgress = (event: ChatProgressEvent) => {
     onEvent?.({
@@ -605,7 +645,7 @@ async function executeChat(
     emitSkillActivationOperationLogs(skillRuntime, {
       nextSequence: nextMcpRpcSequence,
       onRecord: emitMcpRpcRecord,
-    });
+    }, skillExecutionContext);
     const skillWarnings = collectSkillRuntimeWarnings(skillRuntime);
     if (skillWarnings.length > 0) {
       emitProgress({
@@ -664,7 +704,7 @@ async function executeChat(
     const skillTools = buildSkillTools(skillRuntime.activeSkills, {
       nextSequence: nextMcpRpcSequence,
       onRecord: emitMcpRpcRecord,
-    });
+    }, skillExecutionContext);
 
     const agent = new Agent({
       name: "LocalPlaygroundAgent",
@@ -754,7 +794,10 @@ async function executeChat(
       }
 
       emitProgress({ message: "Finalizing response..." });
-      return assistantMessage;
+      return {
+        message: assistantMessage,
+        threadEnvironment: cloneThreadEnvironment(skillExecutionContext.threadEnvironment),
+      };
     }
 
     const result = await runAgentWithTimeout(
@@ -772,7 +815,10 @@ async function executeChat(
       throw new Error("Azure OpenAI returned an empty message.");
     }
 
-    return assistantMessage;
+    return {
+      message: assistantMessage,
+      threadEnvironment: cloneThreadEnvironment(skillExecutionContext.threadEnvironment),
+    };
   } finally {
     await Promise.allSettled([
       awaitWithTimeout(
@@ -815,7 +861,7 @@ function streamChatResponse(options: ChatExecutionOptions): Response {
           message: "Preparing request...",
         });
 
-        const message = await executeChat(options, (event) => {
+        const result = await executeChat(options, (event) => {
           if (event.type === "progress") {
             send({
               type: "progress",
@@ -833,7 +879,8 @@ function streamChatResponse(options: ChatExecutionOptions): Response {
 
         send({
           type: "final",
-          message,
+          message: result.message,
+          threadEnvironment: result.threadEnvironment,
         });
       } catch (error) {
         const upstreamError = buildUpstreamErrorPayload(
@@ -850,6 +897,7 @@ function streamChatResponse(options: ChatExecutionOptions): Response {
             deploymentName: options.azureConfig.deploymentName,
             mcpServerCount: options.mcpServers.length,
             maxRunTurns: CHAT_MAX_RUN_TURNS,
+            threadEnvironment: options.threadEnvironment,
           },
         });
 
@@ -1544,6 +1592,28 @@ function readAgentInstruction(payload: unknown): string {
   }
 
   return trimmed.slice(0, CHAT_MAX_AGENT_INSTRUCTION_LENGTH);
+}
+
+function readThreadEnvironment(payload: unknown): ParseResult<ThreadEnvironment> {
+  if (!isRecord(payload)) {
+    return {
+      ok: true,
+      value: {},
+    };
+  }
+
+  const parsed = parseThreadEnvironmentFromUnknown(payload.threadEnvironment, {
+    strict: true,
+    pathLabel: "threadEnvironment",
+  });
+  if (!parsed.ok) {
+    return parsed;
+  }
+
+  return {
+    ok: true,
+    value: parsed.value,
+  };
 }
 
 function readSkills(payload: unknown): ParseResult<ClientSkillSelection[]> {
@@ -2287,6 +2357,7 @@ function buildMcpConnectParams(serverConfig: ClientMcpServerConfig): Record<stri
       args: serverConfig.args,
       cwd: serverConfig.cwd ?? "",
       envKeys: Object.keys(serverConfig.env).sort((left, right) => left.localeCompare(right)),
+      env: toSerializableValue(serverConfig.env),
     };
   }
 
@@ -2607,6 +2678,7 @@ function buildSkillResourceManifestFallback(skillRoot: string) {
 function buildSkillTools(
   activeSkills: ActiveSkillRuntimeEntry[],
   logHandlers: SkillToolLogHandlers,
+  executionContext: SkillToolExecutionContext,
 ) {
   if (activeSkills.length === 0) {
     return [];
@@ -2679,15 +2751,24 @@ function buildSkillTools(
     return "skill-runtime";
   };
 
+  const readCurrentThreadEnvironment = (): ThreadEnvironment =>
+    cloneThreadEnvironment(executionContext.threadEnvironment);
+
   const readSkillOperationParams = (input: unknown): Record<string, unknown> => {
+    const threadEnvironment = cloneThreadEnvironment(executionContext.threadEnvironment);
     if (!isRecord(input)) {
       return {
         input: toSerializableValue(input),
+        threadEnvironment,
       };
     }
 
     const serialized = toSerializableValue(input);
-    return isRecord(serialized) ? serialized : {};
+    const baseParams = isRecord(serialized) ? serialized : {};
+    return {
+      ...baseParams,
+      threadEnvironment,
+    };
   };
 
   const parseSkillOperationResult = (result: string): unknown => {
@@ -3141,13 +3222,21 @@ function buildSkillTools(
 
         const timeoutMs = normalizeSkillScriptTimeout(input.timeoutMs);
         try {
+          const scriptEnvironment = buildSkillScriptEnvironment(
+            executionContext.threadEnvironment,
+          );
           const result = await runSkillScript({
             skillRoot: selectedSkill.skillRoot,
             relativePath,
             args: argsResult.value,
+            env: scriptEnvironment,
             timeoutMs,
             outputMaxChars: AGENT_SKILL_SCRIPT_OUTPUT_MAX_CHARS,
           });
+          const environmentChanges = applySkillScriptEnvironmentChanges(
+            executionContext.threadEnvironment,
+            result.environmentChanges,
+          );
 
           return buildSkillToolResult({
             ok: true,
@@ -3155,6 +3244,8 @@ function buildSkillTools(
             location: selectedSkill.location,
             path: relativePath,
             ...result,
+            environmentChanges,
+            threadEnvironment: readCurrentThreadEnvironment(),
           });
         } catch (error) {
           return buildSkillToolErrorResult(readErrorMessage(error));
@@ -3162,7 +3253,127 @@ function buildSkillTools(
       }),
   });
 
-  return [listResourcesTool, readGuideTool, readReferenceTool, readAssetTool, runScriptTool];
+  const getEnvironmentTool = tool({
+    name: "skill_get_environment",
+    description: "Read thread-scoped environment variables shared across turns.",
+    parameters: {
+      type: "object" as const,
+      properties: {},
+      required: [],
+      additionalProperties: true as const,
+    },
+    strict: false,
+    execute: (input) =>
+      executeWithSkillOperationLog("skill_get_environment", input, () =>
+        buildSkillToolResult({
+          ok: true,
+          threadEnvironment: readCurrentThreadEnvironment(),
+        }),
+      ),
+  });
+
+  const setEnvironmentTool = tool({
+    name: "skill_set_environment",
+    description:
+      "Update thread-scoped environment variables shared across turns. Supports ${VAR} expansion with current environment values.",
+    parameters: {
+      type: "object" as const,
+      properties: {
+        variables: {
+          type: "object" as const,
+          description:
+            `Optional environment key-value map. Keys must match ${ENV_KEY_PATTERN.toString()} and be ${THREAD_ENVIRONMENT_KEY_MAX_LENGTH} characters or fewer.`,
+          additionalProperties: {
+            type: "string" as const,
+          },
+        },
+        unset: {
+          type: "array" as const,
+          description: "Optional list of environment variable names to remove.",
+          items: {
+            type: "string" as const,
+          },
+        },
+      },
+      required: [],
+      additionalProperties: true as const,
+    },
+    strict: false,
+    execute: (input) =>
+      executeWithSkillOperationLog("skill_set_environment", input, () => {
+        if (!isRecord(input)) {
+          return buildSkillToolErrorResult("Invalid tool input.");
+        }
+
+        const variablesResult = parseThreadEnvironmentFromUnknown(input.variables, {
+          strict: true,
+          pathLabel: "variables",
+        });
+        if (!variablesResult.ok) {
+          return buildSkillToolErrorResult(variablesResult.error);
+        }
+
+        const unsetResult = readUnsetThreadEnvironmentKeys(input.unset);
+        if (!unsetResult.ok) {
+          return buildSkillToolErrorResult(unsetResult.error);
+        }
+
+        const nextKeys = new Set(Object.keys(executionContext.threadEnvironment));
+        for (const key of Object.keys(variablesResult.value)) {
+          nextKeys.add(key);
+        }
+        for (const key of unsetResult.value) {
+          nextKeys.delete(key);
+        }
+        if (nextKeys.size > THREAD_ENVIRONMENT_VARIABLES_MAX) {
+          return buildSkillToolErrorResult(
+            `threadEnvironment can include up to ${THREAD_ENVIRONMENT_VARIABLES_MAX} entries.`,
+          );
+        }
+
+        const updatedKeys: string[] = [];
+        for (const [key, value] of Object.entries(variablesResult.value)) {
+          const expanded = expandThreadEnvironmentTemplate(
+            value,
+            executionContext.threadEnvironment,
+          );
+          if (expanded.length > THREAD_ENVIRONMENT_VALUE_MAX_LENGTH) {
+            return buildSkillToolErrorResult(
+              `variables["${key}"] exceeds ${THREAD_ENVIRONMENT_VALUE_MAX_LENGTH} characters after expansion.`,
+            );
+          }
+          executionContext.threadEnvironment[key] = expanded;
+          updatedKeys.push(key);
+        }
+
+        const removedKeys: string[] = [];
+        for (const key of unsetResult.value) {
+          if (!(key in executionContext.threadEnvironment)) {
+            continue;
+          }
+
+          delete executionContext.threadEnvironment[key];
+          removedKeys.push(key);
+        }
+
+        return buildSkillToolResult({
+          ok: true,
+          updatedKeys,
+          removedKeys,
+          threadEnvironment: readCurrentThreadEnvironment(),
+        });
+      }),
+  });
+
+  return [
+    listResourcesTool,
+    readGuideTool,
+    readReferenceTool,
+    readAssetTool,
+    runScriptTool,
+    getEnvironmentTool,
+    setEnvironmentTool,
+  ];
 }
 
 function collectSkillRuntimeWarnings(runtime: SkillRuntimeContext): string[] {
@@ -3177,6 +3388,7 @@ function emitSkillActivationOperationLogs(
     nextSequence: () => number;
     onRecord: (record: McpRpcRecord) => void;
   },
+  executionContext: SkillToolExecutionContext,
 ): void {
   for (const skill of runtime.activeSkills) {
     const sequence = handlers.nextSequence();
@@ -3190,6 +3402,7 @@ function emitSkillActivationOperationLogs(
         name: skill.name,
         location: skill.location,
         preloadMode: skill.preloadedGuideMarkdown ? "full_guide" : "frontmatter_only",
+        threadEnvironment: cloneThreadEnvironment(executionContext.threadEnvironment),
       },
     };
     const responsePayload: JsonRpcResponsePayload = {
@@ -3219,6 +3432,37 @@ function emitSkillActivationOperationLogs(
       isError: false,
     });
   }
+
+  const sequence = handlers.nextSequence();
+  const requestId = buildMcpRpcRequestId("skill-runtime", sequence);
+  const startedAt = new Date().toISOString();
+  const threadEnvironment = cloneThreadEnvironment(executionContext.threadEnvironment);
+
+  handlers.onRecord({
+    id: requestId,
+    sequence,
+    operationType: "skill",
+    serverName: "skill-runtime",
+    method: "skill/environment_snapshot",
+    startedAt,
+    completedAt: new Date().toISOString(),
+    request: {
+      jsonrpc: "2.0",
+      id: requestId,
+      method: "skill/environment_snapshot",
+      params: {
+        threadEnvironment,
+      },
+    },
+    response: {
+      jsonrpc: "2.0",
+      id: requestId,
+      result: {
+        threadEnvironment,
+      },
+    },
+    isError: false,
+  });
 }
 
 function buildAgentInstructionWithSkills(
@@ -3246,6 +3490,8 @@ function buildAgentInstructionWithSkills(
       : null,
     "Call skill_read_guide only when exact SKILL.md instructions are needed for the current task or to read a specific range.",
     "Use skill_list_resources before reading/running files when paths are unknown.",
+    "Use skill_get_environment and skill_set_environment to inspect and update thread-scoped environment variables that persist across turns.",
+    "skill_run_script runs with the current thread-scoped environment variables.",
     "Follow each SKILL.md guide and use the needed paths from skill_list_resources with skill_read_guide, skill_read_reference, skill_read_asset, and skill_run_script.",
   ].filter((line): line is string => line !== null);
 
@@ -3473,6 +3719,157 @@ function normalizeSkillScriptTimeout(value: unknown): number | undefined {
   }
 
   return Math.min(parsedValue, AGENT_SKILL_SCRIPT_TIMEOUT_MAX_MS);
+}
+
+function buildSkillScriptEnvironment(threadEnvironment: ThreadEnvironment): Record<string, string> {
+  const baseEnvironment: Record<string, string> = {};
+  for (const [key, value] of Object.entries(process.env)) {
+    if (typeof value === "string") {
+      baseEnvironment[key] = value;
+    }
+  }
+
+  for (const [key, value] of Object.entries(threadEnvironment)) {
+    baseEnvironment[key] = value;
+  }
+
+  return buildStdioSpawnEnvironment(baseEnvironment);
+}
+
+function applySkillScriptEnvironmentChanges(
+  threadEnvironment: ThreadEnvironment,
+  changes: {
+    captured: boolean;
+    updated: Record<string, string>;
+    removed: string[];
+  },
+): {
+  captured: boolean;
+  updated: string[];
+  removed: string[];
+  ignored: string[];
+} {
+  if (!changes.captured) {
+    return {
+      captured: false,
+      updated: [],
+      removed: [],
+      ignored: [],
+    };
+  }
+
+  const updatedKeys: string[] = [];
+  const ignoredKeys: string[] = [];
+  for (const [key, value] of Object.entries(changes.updated)) {
+    if (
+      key.length > THREAD_ENVIRONMENT_KEY_MAX_LENGTH ||
+      !ENV_KEY_PATTERN.test(key) ||
+      value.length > THREAD_ENVIRONMENT_VALUE_MAX_LENGTH
+    ) {
+      ignoredKeys.push(key);
+      continue;
+    }
+
+    if (!(key in threadEnvironment) && Object.keys(threadEnvironment).length >= THREAD_ENVIRONMENT_VARIABLES_MAX) {
+      ignoredKeys.push(key);
+      continue;
+    }
+
+    threadEnvironment[key] = value;
+    updatedKeys.push(key);
+  }
+
+  const removedKeys: string[] = [];
+  for (const key of changes.removed) {
+    if (!(key in threadEnvironment)) {
+      continue;
+    }
+
+    delete threadEnvironment[key];
+    removedKeys.push(key);
+  }
+
+  return {
+    captured: true,
+    updated: updatedKeys,
+    removed: removedKeys,
+    ignored: ignoredKeys,
+  };
+}
+
+function readUnsetThreadEnvironmentKeys(value: unknown): ParseResult<string[]> {
+  if (value === undefined || value === null) {
+    return {
+      ok: true,
+      value: [],
+    };
+  }
+
+  if (!Array.isArray(value)) {
+    return {
+      ok: false,
+      error: "`unset` must be an array of environment variable names.",
+    };
+  }
+
+  if (value.length > THREAD_ENVIRONMENT_VARIABLES_MAX) {
+    return {
+      ok: false,
+      error: `\`unset\` can include up to ${THREAD_ENVIRONMENT_VARIABLES_MAX} entries.`,
+    };
+  }
+
+  const unique = new Set<string>();
+  const keys: string[] = [];
+  for (const [index, entry] of value.entries()) {
+    if (typeof entry !== "string") {
+      return {
+        ok: false,
+        error: `unset[${index}] must be a string.`,
+      };
+    }
+
+    const key = entry.trim();
+    if (
+      key.length === 0 ||
+      key.length > THREAD_ENVIRONMENT_KEY_MAX_LENGTH ||
+      !ENV_KEY_PATTERN.test(key)
+    ) {
+      return {
+        ok: false,
+        error:
+          `unset[${index}] is invalid. ` +
+          `Keys must match ${ENV_KEY_PATTERN.toString()} and be ` +
+          `${THREAD_ENVIRONMENT_KEY_MAX_LENGTH} characters or fewer.`,
+      };
+    }
+
+    if (unique.has(key)) {
+      continue;
+    }
+    unique.add(key);
+    keys.push(key);
+  }
+
+  return {
+    ok: true,
+    value: keys,
+  };
+}
+
+function expandThreadEnvironmentTemplate(
+  value: string,
+  environment: ThreadEnvironment,
+): string {
+  return value.replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (_match, variableName: string) => {
+    const threadValue = environment[variableName];
+    if (typeof threadValue === "string") {
+      return threadValue;
+    }
+
+    const processValue = process.env[variableName];
+    return typeof processValue === "string" ? processValue : "";
+  });
 }
 
 function readProgressEventFromRunStreamEvent(
@@ -3916,6 +4313,7 @@ export const chatRouteTestUtils = {
   readTemperature,
   readWebSearchEnabled,
   readAttachments,
+  readThreadEnvironment,
   hasNonPdfAttachments,
   readSkills,
   readExplicitSkillLocations,

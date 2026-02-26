@@ -6,6 +6,7 @@ import type { McpRpcHistoryEntry } from "~/lib/home/chat/stream";
 import type { McpServerConfig } from "~/lib/home/mcp/profile";
 import type { ReasoningEffort } from "~/lib/home/shared/view-types";
 import type { ThreadSkillSelection } from "~/lib/home/skills/types";
+import type { ThreadEnvironment } from "~/lib/home/thread/environment";
 
 export type ThreadSnapshot = {
   id: string;
@@ -16,6 +17,7 @@ export type ThreadSnapshot = {
   reasoningEffort: ReasoningEffort;
   webSearchEnabled: boolean;
   agentInstruction: string;
+  threadEnvironment: ThreadEnvironment;
   messages: ChatMessage[];
   mcpServers: McpServerConfig[];
   mcpRpcHistory: McpRpcHistoryEntry[];

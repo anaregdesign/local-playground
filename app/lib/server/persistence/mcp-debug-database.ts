@@ -260,7 +260,7 @@ const tableDefinitions: DatabaseDebugTableDefinition[] = [
     tableName: "Thread",
     toolName: "debug_read_thread_table",
     purpose:
-      "Stores thread-level metadata and runtime options (name, timestamps, reasoning mode, web search toggle).",
+      "Stores thread-level metadata and runtime options (name, timestamps, reasoning mode, web search toggle, thread environment variables).",
     accumulatesErrors: false,
     fields: [
       {
@@ -310,6 +310,12 @@ const tableDefinitions: DatabaseDebugTableDefinition[] = [
         type: "BOOLEAN",
         nullable: false,
         description: "Whether web-search-preview is enabled for the thread.",
+      },
+      {
+        name: "threadEnvironmentJson",
+        type: "TEXT",
+        nullable: false,
+        description: "Serialized thread-scoped environment variables JSON shared across turns.",
       },
     ],
   },

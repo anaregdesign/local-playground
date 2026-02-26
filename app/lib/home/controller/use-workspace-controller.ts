@@ -116,6 +116,7 @@ import {
   readThreadSnapshotList,
 } from "~/lib/home/thread/parsers";
 import {
+  cloneThreadEnvironment,
   buildThreadSaveSignature,
   cloneMcpRpcHistory,
   cloneMcpServers,
@@ -127,6 +128,7 @@ import {
   isThreadSnapshotArchived,
   upsertThreadSnapshot,
 } from "~/lib/home/thread/snapshot-state";
+import { readThreadEnvironmentFromUnknown } from "~/lib/home/thread/environment";
 import {
   buildThreadAutoTitlePlaygroundContent,
   normalizeThreadAutoTitle,
@@ -1535,7 +1537,7 @@ export function useWorkspaceController() {
   function shouldPersistThreadSnapshot(
     snapshot: Pick<
       ThreadSnapshot,
-      "id" | "messages" | "reasoningEffort" | "webSearchEnabled"
+      "id" | "messages" | "reasoningEffort" | "webSearchEnabled" | "threadEnvironment"
     > &
       Partial<Pick<ThreadSnapshot, "skillSelections">>,
   ): boolean {
@@ -1562,6 +1564,7 @@ export function useWorkspaceController() {
       reasoningEffort: HOME_DEFAULT_REASONING_EFFORT,
       webSearchEnabled: HOME_DEFAULT_WEB_SEARCH_ENABLED,
       agentInstruction: DEFAULT_AGENT_INSTRUCTION,
+      threadEnvironment: {},
       messages: [],
       mcpServers: [],
       mcpRpcHistory: [],
@@ -1583,6 +1586,7 @@ export function useWorkspaceController() {
       reasoningEffort,
       webSearchEnabled,
       agentInstruction,
+      threadEnvironment: cloneThreadEnvironment(base.threadEnvironment),
       messages: cloneMessages(messages),
       mcpServers: cloneMcpServers(mcpServers),
       mcpRpcHistory: cloneMcpRpcHistory(mcpRpcHistory),
@@ -1651,6 +1655,22 @@ export function useWorkspaceController() {
     if (activeThreadIdRef.current === threadId) {
       setMcpRpcHistory((current) => upsertMcpRpcHistoryEntry(current, clonedEntry));
     }
+  }
+
+  function applyThreadEnvironmentToThreadState(
+    threadId: string,
+    environmentValue: unknown,
+  ): void {
+    if (!threadId) {
+      return;
+    }
+
+    const nextEnvironment = readThreadEnvironmentFromUnknown(environmentValue);
+    updateThreadSnapshotById(threadId, (thread) => ({
+      ...thread,
+      updatedAt: new Date().toISOString(),
+      threadEnvironment: cloneThreadEnvironment(nextEnvironment),
+    }));
   }
 
   function applyThreadSnapshotToState(thread: ThreadSnapshot) {
@@ -3110,6 +3130,9 @@ export function useWorkspaceController() {
     );
     const requestMcpServers = cloneMcpServers(mcpServers);
     const requestSkillSelections = cloneThreadSkillSelections(selectedThreadSkills);
+    const requestThreadEnvironment = baseThread
+      ? cloneThreadEnvironment(baseThread.threadEnvironment)
+      : {};
     const requestExplicitSkillLocationSet = new Set(
       draftExplicitSkillLocations
         .map((location) => location.trim())
@@ -3184,6 +3207,7 @@ export function useWorkspaceController() {
           reasoningEffort,
           webSearchEnabled,
           agentInstruction: requestAgentInstruction,
+          threadEnvironment: requestThreadEnvironment,
           skills: requestSkillSelections,
           explicitSkillLocations: requestExplicitSkillLocations,
           mcpServers: requestMcpServers.map((server) =>
@@ -3240,6 +3264,10 @@ export function useWorkspaceController() {
         throw new Error("The server returned an empty message.");
       }
 
+      applyThreadEnvironmentToThreadState(
+        threadId,
+        "threadEnvironment" in payload ? payload.threadEnvironment : requestThreadEnvironment,
+      );
       const assistantMessage = createMessage("assistant", payload.message, turnId);
       appendMessageToThreadState(threadId, assistantMessage);
       updateThreadRequestState(threadId, (current) => ({

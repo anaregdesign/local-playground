@@ -1,8 +1,11 @@
 /**
  * Home runtime support module.
  */
+import { readThreadEnvironmentFromUnknown } from "~/lib/home/thread/environment";
+
 export type ChatApiResponse = {
   message?: string;
+  threadEnvironment?: Record<string, string>;
   error?: string;
   errorCode?: "azure_login_required";
 };
@@ -30,6 +33,7 @@ type ChatStreamProgressEvent = {
 type ChatStreamFinalEvent = {
   type: "final";
   message?: unknown;
+  threadEnvironment?: unknown;
 };
 
 type ChatStreamErrorEvent = {
@@ -85,7 +89,10 @@ export async function readChatEventStreamPayload(
           } else if (event.type === "mcp_rpc") {
             handlers.onMcpRpcRecord(event.record);
           } else if (event.type === "final") {
-            finalPayload = { message: event.message };
+            finalPayload = {
+              message: event.message,
+              threadEnvironment: event.threadEnvironment,
+            };
           } else if (event.type === "error") {
             finalPayload = {
               error: event.error,
@@ -133,7 +140,7 @@ export function parseSseDataBlock(block: string): string | null {
 
 export function readChatStreamEvent(data: string): (
   | { type: "progress"; message: string }
-  | { type: "final"; message: string }
+  | { type: "final"; message: string; threadEnvironment: Record<string, string> }
   | { type: "error"; error: string; errorCode?: "azure_login_required" }
   | { type: "mcp_rpc"; record: McpRpcHistoryEntry }
 ) | null {
@@ -167,6 +174,7 @@ export function readChatStreamEvent(data: string): (
     return {
       type: "final",
       message,
+      threadEnvironment: readThreadEnvironmentFromUnknown(parsed.threadEnvironment),
     };
   }
 

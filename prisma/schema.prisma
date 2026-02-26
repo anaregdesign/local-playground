@@ -60,6 +60,7 @@ model Thread {
   deletedAt    String?
   reasoningEffort String          @default("none")
   webSearchEnabled Boolean        @default(false)
+  threadEnvironmentJson String    @default("{}")
   user         User               @relation(fields: [userId], references: [id], onDelete: Cascade)
   instruction  ThreadInstruction?
   messages     ThreadMessage[]

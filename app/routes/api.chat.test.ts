@@ -12,6 +12,7 @@ const {
   readTemperature,
   readWebSearchEnabled,
   readAttachments,
+  readThreadEnvironment,
   hasNonPdfAttachments,
   readSkills,
   readExplicitSkillLocations,
@@ -137,6 +138,40 @@ describe("readAttachments", () => {
       ok: false,
       error:
         "`attachments[0].name` must use a supported extension (.c, .cpp, .csv, .docx, .gif, .html, .java, .jpeg, .jpg, .js, .json, .md, .pdf, .php, .pkl, .png, .pptx, .py, .rb, .tar, .tex, .txt, .xlsx, .xml, .zip).",
+    });
+  });
+});
+
+describe("readThreadEnvironment", () => {
+  it("parses valid thread environment payloads", () => {
+    expect(
+      readThreadEnvironment({
+        threadEnvironment: {
+          VIRTUAL_ENV: "/tmp/.venv",
+          PATH: "/tmp/.venv/bin:${PATH}",
+        },
+      }),
+    ).toEqual({
+      ok: true,
+      value: {
+        VIRTUAL_ENV: "/tmp/.venv",
+        PATH: "/tmp/.venv/bin:${PATH}",
+      },
+    });
+  });
+
+  it("rejects invalid thread environment payloads", () => {
+    expect(
+      readThreadEnvironment({
+        threadEnvironment: {
+          "INVALID-KEY": "value",
+        },
+      }),
+    ).toEqual({
+      ok: false,
+      error:
+        '`threadEnvironment` includes an invalid key "INVALID-KEY". ' +
+        "Keys must match /^[A-Za-z_][A-Za-z0-9_]*$/ and be 128 characters or fewer.",
     });
   });
 });

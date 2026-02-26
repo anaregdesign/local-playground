@@ -8,6 +8,7 @@ import { readMcpRpcHistoryEntryFromUnknown } from "~/lib/home/chat/stream";
 import { readMcpServerFromUnknown } from "~/lib/home/mcp/profile";
 import type { ReasoningEffort } from "~/lib/home/shared/view-types";
 import { readThreadSkillSelectionList } from "~/lib/home/skills/parsers";
+import { readThreadEnvironmentFromUnknown } from "~/lib/home/thread/environment";
 import type { ThreadSnapshot, ThreadSummary } from "~/lib/home/thread/types";
 
 type ReadThreadSnapshotOptions = {
@@ -69,6 +70,7 @@ export function readThreadSnapshotFromUnknown(
   const fallbackInstruction = options.fallbackInstruction ?? "";
   const agentInstruction =
     typeof agentInstructionValue === "string" ? agentInstructionValue : fallbackInstruction;
+  const threadEnvironment = readThreadEnvironmentFromUnknown(value.threadEnvironment);
 
   const messages = readThreadMessageList(value.messages);
   const mcpServers = readThreadMcpServerList(value.mcpServers);
@@ -84,6 +86,7 @@ export function readThreadSnapshotFromUnknown(
     reasoningEffort,
     webSearchEnabled,
     agentInstruction,
+    threadEnvironment,
     messages,
     mcpServers,
     mcpRpcHistory,

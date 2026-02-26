@@ -44,6 +44,26 @@ describe("readChatStreamEvent", () => {
     expect(event).not.toBeNull();
     expect(event?.type).toBe("mcp_rpc");
   });
+
+  it("parses final payload with thread environment", () => {
+    const event = readChatStreamEvent(
+      JSON.stringify({
+        type: "final",
+        message: "done",
+        threadEnvironment: {
+          VIRTUAL_ENV: "/tmp/.venv",
+        },
+      }),
+    );
+
+    expect(event).toEqual({
+      type: "final",
+      message: "done",
+      threadEnvironment: {
+        VIRTUAL_ENV: "/tmp/.venv",
+      },
+    });
+  });
 });
 
 describe("readMcpRpcHistoryEntryFromUnknown", () => {

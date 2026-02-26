@@ -52,6 +52,7 @@ describe("hasThreadPersistableState", () => {
         messages: [],
         reasoningEffort: "none",
         webSearchEnabled: false,
+        threadEnvironment: {},
       }),
     ).toBe(false);
   });
@@ -62,6 +63,7 @@ describe("hasThreadPersistableState", () => {
         messages: [],
         reasoningEffort: "medium",
         webSearchEnabled: false,
+        threadEnvironment: {},
       }),
     ).toBe(true);
   });
@@ -72,6 +74,20 @@ describe("hasThreadPersistableState", () => {
         messages: [],
         reasoningEffort: "none",
         webSearchEnabled: true,
+        threadEnvironment: {},
+      }),
+    ).toBe(true);
+  });
+
+  it("returns true when thread environment variables are present", () => {
+    expect(
+      hasThreadPersistableState({
+        messages: [],
+        reasoningEffort: "none",
+        webSearchEnabled: false,
+        threadEnvironment: {
+          VIRTUAL_ENV: "/tmp/.venv",
+        },
       }),
     ).toBe(true);
   });

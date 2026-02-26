@@ -258,6 +258,7 @@ async function ensureThreadSchema(): Promise<void> {
       "deletedAt" TEXT,
       "reasoningEffort" TEXT NOT NULL DEFAULT 'none',
       "webSearchEnabled" BOOLEAN NOT NULL DEFAULT false,
+      "threadEnvironmentJson" TEXT NOT NULL DEFAULT '{}',
       FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE CASCADE
     )
   `);
@@ -272,6 +273,11 @@ async function ensureThreadSchema(): Promise<void> {
     "Thread",
     "webSearchEnabled",
     "BOOLEAN NOT NULL DEFAULT false",
+  );
+  await ensureTableColumn(
+    "Thread",
+    "threadEnvironmentJson",
+    "TEXT NOT NULL DEFAULT '{}'",
   );
 
   await prisma.$executeRawUnsafe(`

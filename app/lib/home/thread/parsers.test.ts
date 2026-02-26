@@ -19,6 +19,9 @@ describe("readThreadSnapshotFromUnknown", () => {
       reasoningEffort: "none",
       webSearchEnabled: false,
       agentInstruction: "You are concise.",
+      threadEnvironment: {
+        VIRTUAL_ENV: "/tmp/thread-1/.venv",
+      },
       messages: [
         {
           id: "assistant-1",
@@ -66,6 +69,9 @@ describe("readThreadSnapshotFromUnknown", () => {
     expect(parsed?.id).toBe("thread-1");
     expect(parsed?.reasoningEffort).toBe("none");
     expect(parsed?.webSearchEnabled).toBe(false);
+    expect(parsed?.threadEnvironment).toEqual({
+      VIRTUAL_ENV: "/tmp/thread-1/.venv",
+    });
     expect(parsed?.messages).toHaveLength(1);
     expect(parsed?.mcpServers).toHaveLength(1);
     expect(parsed?.mcpRpcHistory).toHaveLength(1);
@@ -100,6 +106,7 @@ describe("readThreadSnapshotList", () => {
         reasoningEffort: "none",
         webSearchEnabled: false,
         agentInstruction: "Instruction",
+        threadEnvironment: {},
         skillSelections: [],
       },
       {
@@ -111,6 +118,7 @@ describe("readThreadSnapshotList", () => {
         reasoningEffort: "none",
         webSearchEnabled: false,
         agentInstruction: "Instruction",
+        threadEnvironment: {},
         skillSelections: [],
       },
       {
@@ -134,6 +142,7 @@ describe("buildThreadSummary", () => {
       reasoningEffort: "none",
       webSearchEnabled: false,
       agentInstruction: "Instruction",
+      threadEnvironment: {},
       messages: [
         {
           id: "message-1",

@@ -3,7 +3,18 @@
  */
 import { spawn } from "node:child_process";
 import { constants as fsConstants, type Dirent } from "node:fs";
-import { access, lstat, readdir, readFile, realpath, stat } from "node:fs/promises";
+import {
+  access,
+  lstat,
+  mkdtemp,
+  readdir,
+  readFile,
+  realpath,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
+import nodeOs from "node:os";
 import path from "node:path";
 import {
   AGENT_SKILL_ASSET_FILE_MAX_BYTES,
@@ -57,6 +68,7 @@ export type SkillScriptRunOptions = {
   skillRoot: string;
   relativePath: string;
   args: string[];
+  env?: Record<string, string>;
   timeoutMs?: number;
   outputMaxChars?: number;
 };
@@ -69,6 +81,11 @@ export type SkillScriptRunResult = {
   stderr: string;
   timedOut: boolean;
   truncated: boolean;
+  environmentChanges: {
+    captured: boolean;
+    updated: Record<string, string>;
+    removed: string[];
+  };
 };
 
 type ListedSkillResourceFiles = {
@@ -163,12 +180,47 @@ export async function runSkillScript(options: SkillScriptRunOptions): Promise<Sk
   const scriptArgs = normalizeScriptArgs(options.args);
   const timeoutMs = normalizeTimeoutMs(options.timeoutMs);
   const outputMaxChars = normalizeOutputMaxChars(options.outputMaxChars);
+  const baseEnvironment = normalizeProcessEnvironment(options.env);
   const command = resolveScriptCommand(scriptPath, scriptArgs);
+
+  if (command.captureEnvironment === "bash") {
+    return await runProcessWithShellEnvironmentCapture({
+      scriptPath,
+      scriptArgs,
+      cwd: path.resolve(options.skillRoot),
+      env: baseEnvironment,
+      timeoutMs,
+      outputMaxChars,
+    });
+  }
+
+  if (command.captureEnvironment === "pwsh") {
+    return await runProcessWithPowerShellEnvironmentCapture({
+      scriptPath,
+      scriptArgs,
+      cwd: path.resolve(options.skillRoot),
+      env: baseEnvironment,
+      timeoutMs,
+      outputMaxChars,
+    });
+  }
+
+  if (command.captureEnvironment === "cmd") {
+    return await runProcessWithWindowsCommandEnvironmentCapture({
+      scriptPath,
+      scriptArgs,
+      cwd: path.resolve(options.skillRoot),
+      env: baseEnvironment,
+      timeoutMs,
+      outputMaxChars,
+    });
+  }
 
   return await runProcess({
     command: command.command,
     args: command.args,
     cwd: path.resolve(options.skillRoot),
+    env: baseEnvironment,
     timeoutMs,
     outputMaxChars,
   });
@@ -465,6 +517,7 @@ function resolveScriptCommand(
 ): {
   command: string;
   args: string[];
+  captureEnvironment: false | "bash" | "pwsh" | "cmd";
 } {
   const extension = path.extname(scriptPath).toLowerCase();
 
@@ -472,6 +525,7 @@ function resolveScriptCommand(
     return {
       command: process.execPath,
       args: [scriptPath, ...scriptArgs],
+      captureEnvironment: false,
     };
   }
 
@@ -479,6 +533,7 @@ function resolveScriptCommand(
     return {
       command: process.platform === "win32" ? "python" : "python3",
       args: [scriptPath, ...scriptArgs],
+      captureEnvironment: false,
     };
   }
 
@@ -486,19 +541,33 @@ function resolveScriptCommand(
     return {
       command: "bash",
       args: [scriptPath, ...scriptArgs],
+      captureEnvironment: "bash",
     };
   }
 
   if (extension === ".ps1") {
+    const powerShellCommand = readDefaultPowerShellCommandPath();
     return {
-      command: "pwsh",
-      args: ["-NoProfile", "-File", scriptPath, ...scriptArgs],
+      command: powerShellCommand,
+      args: ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", scriptPath, ...scriptArgs],
+      captureEnvironment: "pwsh",
     };
+  }
+
+  if (extension === ".cmd" || extension === ".bat") {
+    if (process.platform === "win32") {
+      return {
+        command: readDefaultCmdCommandPath(),
+        args: ["/d", "/s", "/c", scriptPath, ...scriptArgs],
+        captureEnvironment: "cmd",
+      };
+    }
   }
 
   return {
     command: scriptPath,
     args: scriptArgs,
+    captureEnvironment: false,
   };
 }
 
@@ -506,12 +575,13 @@ async function runProcess(options: {
   command: string;
   args: string[];
   cwd: string;
+  env: NodeJS.ProcessEnv;
   timeoutMs: number;
   outputMaxChars: number;
 }): Promise<SkillScriptRunResult> {
   const child = spawn(options.command, options.args, {
     cwd: options.cwd,
-    env: process.env,
+    env: options.env,
     stdio: ["ignore", "pipe", "pipe"],
   });
 
@@ -579,6 +649,11 @@ async function runProcess(options: {
       stderr,
       timedOut,
       truncated,
+      environmentChanges: {
+        captured: false,
+        updated: {},
+        removed: [],
+      },
     };
   } finally {
     clearTimeout(timeoutId);
@@ -612,6 +687,396 @@ function appendLimited(
     value: `${existing}${next.slice(0, remainingChars)}`,
     truncated: true,
   };
+}
+
+function normalizeProcessEnvironment(
+  value: Record<string, string> | undefined,
+): NodeJS.ProcessEnv {
+  const normalized: NodeJS.ProcessEnv = {};
+  const source = value ?? process.env;
+  for (const [key, entry] of Object.entries(source)) {
+    if (typeof entry !== "string") {
+      continue;
+    }
+
+    normalized[key] = entry;
+  }
+  return normalized;
+}
+
+async function runProcessWithShellEnvironmentCapture(options: {
+  scriptPath: string;
+  scriptArgs: string[];
+  cwd: string;
+  env: NodeJS.ProcessEnv;
+  timeoutMs: number;
+  outputMaxChars: number;
+}): Promise<SkillScriptRunResult> {
+  const tempDirectory = await mkdtemp(
+    path.join(nodeOs.tmpdir(), "local-playground-skill-env-"),
+  );
+  const environmentSnapshotPath = path.join(tempDirectory, "environment.snapshot");
+  const wrapperPath = path.join(tempDirectory, "capture-env.sh");
+
+  const wrapperScript = [
+    "#!/usr/bin/env bash",
+    "__local_playground_capture_env() {",
+    '  if [[ -n "${LOCAL_PLAYGROUND_ENV_CAPTURE_FILE:-}" ]]; then',
+    '    env -0 > "${LOCAL_PLAYGROUND_ENV_CAPTURE_FILE}" 2>/dev/null || true',
+    "  fi",
+    "}",
+    "trap __local_playground_capture_env EXIT",
+    "set +e",
+    'source "$1" "${@:2}"',
+    "exit $?",
+    "",
+  ].join("\n");
+
+  await writeFile(wrapperPath, wrapperScript, {
+    encoding: "utf8",
+    mode: 0o700,
+  });
+
+  try {
+    const bashCommand =
+      process.platform === "win32"
+        ? "bash"
+        : readDefaultBashCommandPath();
+    const runtimeEnvironment = {
+      ...options.env,
+      LOCAL_PLAYGROUND_ENV_CAPTURE_FILE: environmentSnapshotPath,
+    };
+    const result = await runProcess({
+      command: bashCommand,
+      args: [wrapperPath, options.scriptPath, ...options.scriptArgs],
+      cwd: options.cwd,
+      env: runtimeEnvironment,
+      timeoutMs: options.timeoutMs,
+      outputMaxChars: options.outputMaxChars,
+    });
+
+    const capturedEnvironment = await readCapturedEnvironmentSnapshot(environmentSnapshotPath);
+    if (!capturedEnvironment) {
+      return result;
+    }
+
+    const environmentChanges = readEnvironmentChanges(options.env, capturedEnvironment);
+    return {
+      ...result,
+      environmentChanges: {
+        captured: true,
+        ...environmentChanges,
+      },
+    };
+  } finally {
+    await rm(tempDirectory, {
+      recursive: true,
+      force: true,
+    });
+  }
+}
+
+function readDefaultBashCommandPath(): string {
+  const configured = typeof process.env.BASH === "string" ? process.env.BASH.trim() : "";
+  if (configured) {
+    return configured;
+  }
+
+  return "/bin/bash";
+}
+
+function readDefaultPowerShellCommandPath(): string {
+  const configuredPwsh = typeof process.env.PWSH === "string" ? process.env.PWSH.trim() : "";
+  if (configuredPwsh) {
+    return configuredPwsh;
+  }
+
+  const configuredPowerShell =
+    typeof process.env.POWERSHELL === "string" ? process.env.POWERSHELL.trim() : "";
+  if (configuredPowerShell) {
+    return configuredPowerShell;
+  }
+
+  return process.platform === "win32" ? "powershell.exe" : "pwsh";
+}
+
+function readDefaultCmdCommandPath(): string {
+  const configuredComSpec =
+    typeof process.env.ComSpec === "string" ? process.env.ComSpec.trim() : "";
+  if (configuredComSpec) {
+    return configuredComSpec;
+  }
+
+  const configuredComspec =
+    typeof process.env.COMSPEC === "string" ? process.env.COMSPEC.trim() : "";
+  if (configuredComspec) {
+    return configuredComspec;
+  }
+
+  const configured = typeof process.env.SystemRoot === "string" ? process.env.SystemRoot.trim() : "";
+  if (configured) {
+    return path.join(configured, "System32", "cmd.exe");
+  }
+
+  return "cmd.exe";
+}
+
+async function runProcessWithPowerShellEnvironmentCapture(options: {
+  scriptPath: string;
+  scriptArgs: string[];
+  cwd: string;
+  env: NodeJS.ProcessEnv;
+  timeoutMs: number;
+  outputMaxChars: number;
+}): Promise<SkillScriptRunResult> {
+  const tempDirectory = await mkdtemp(
+    path.join(nodeOs.tmpdir(), "local-playground-skill-env-"),
+  );
+  const environmentSnapshotPath = path.join(tempDirectory, "environment.snapshot");
+  const wrapperPath = path.join(tempDirectory, "capture-env.ps1");
+
+  const wrapperScript = [
+    "param(",
+    "  [Parameter(Mandatory = $true)][string]$ScriptPath,",
+    "  [Parameter(Mandatory = $true)][string]$CaptureFile,",
+    "  [string[]]$ScriptArgs",
+    ")",
+    '$ErrorActionPreference = "Continue"',
+    "$scriptExitCode = 0",
+    "try {",
+    "  . $ScriptPath @ScriptArgs",
+    "  if ($LASTEXITCODE -is [int]) {",
+    "    $scriptExitCode = [int]$LASTEXITCODE",
+    "  }",
+    "} catch {",
+    "  Write-Error $_",
+    "  $scriptExitCode = 1",
+    "} finally {",
+    "  try {",
+    "    $pairs = New-Object System.Collections.Generic.List[string]",
+    "    Get-ChildItem Env: | ForEach-Object {",
+    '      $pairs.Add("$($_.Name)=$($_.Value)")',
+    "    }",
+    '    $text = [string]::Join("`0", $pairs) + "`0"',
+    "    [System.IO.File]::WriteAllBytes(",
+    "      $CaptureFile,",
+    "      [System.Text.Encoding]::UTF8.GetBytes($text)",
+    "    )",
+    "  } catch {",
+    "    # Best effort capture.",
+    "  }",
+    "}",
+    "exit $scriptExitCode",
+    "",
+  ].join("\n");
+
+  await writeFile(wrapperPath, wrapperScript, {
+    encoding: "utf8",
+    mode: 0o700,
+  });
+
+  try {
+    const powerShellCommand = readDefaultPowerShellCommandPath();
+    const result = await runProcess({
+      command: powerShellCommand,
+      args: [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        wrapperPath,
+        options.scriptPath,
+        environmentSnapshotPath,
+        ...options.scriptArgs,
+      ],
+      cwd: options.cwd,
+      env: options.env,
+      timeoutMs: options.timeoutMs,
+      outputMaxChars: options.outputMaxChars,
+    });
+
+    const capturedEnvironment = await readCapturedEnvironmentSnapshot(environmentSnapshotPath);
+    if (!capturedEnvironment) {
+      return result;
+    }
+
+    const environmentChanges = readEnvironmentChanges(options.env, capturedEnvironment);
+    return {
+      ...result,
+      environmentChanges: {
+        captured: true,
+        ...environmentChanges,
+      },
+    };
+  } finally {
+    await rm(tempDirectory, {
+      recursive: true,
+      force: true,
+    });
+  }
+}
+
+async function runProcessWithWindowsCommandEnvironmentCapture(options: {
+  scriptPath: string;
+  scriptArgs: string[];
+  cwd: string;
+  env: NodeJS.ProcessEnv;
+  timeoutMs: number;
+  outputMaxChars: number;
+}): Promise<SkillScriptRunResult> {
+  const tempDirectory = await mkdtemp(
+    path.join(nodeOs.tmpdir(), "local-playground-skill-env-"),
+  );
+  const environmentSnapshotPath = path.join(tempDirectory, "environment.snapshot");
+  const wrapperPath = path.join(tempDirectory, "capture-env.cmd");
+
+  const wrapperScript = [
+    "@echo off",
+    "setlocal enableextensions",
+    'set "__LOCAL_PLAYGROUND_SCRIPT=%~1"',
+    "shift",
+    'if not defined __LOCAL_PLAYGROUND_SCRIPT exit /b 1',
+    'call "%__LOCAL_PLAYGROUND_SCRIPT%" %*',
+    'set "__LOCAL_PLAYGROUND_SCRIPT_EXIT_CODE=%ERRORLEVEL%"',
+    "if defined LOCAL_PLAYGROUND_ENV_CAPTURE_FILE (",
+    '  >"%LOCAL_PLAYGROUND_ENV_CAPTURE_FILE%" set',
+    ")",
+    "exit /b %__LOCAL_PLAYGROUND_SCRIPT_EXIT_CODE%",
+    "",
+  ].join("\r\n");
+
+  await writeFile(wrapperPath, wrapperScript, {
+    encoding: "utf8",
+    mode: 0o700,
+  });
+
+  try {
+    const runtimeEnvironment = {
+      ...options.env,
+      LOCAL_PLAYGROUND_ENV_CAPTURE_FILE: environmentSnapshotPath,
+    };
+    const result = await runProcess({
+      command: readDefaultCmdCommandPath(),
+      args: ["/d", "/s", "/c", wrapperPath, options.scriptPath, ...options.scriptArgs],
+      cwd: options.cwd,
+      env: runtimeEnvironment,
+      timeoutMs: options.timeoutMs,
+      outputMaxChars: options.outputMaxChars,
+    });
+
+    const capturedEnvironment = await readCapturedEnvironmentSnapshot(environmentSnapshotPath);
+    if (!capturedEnvironment) {
+      return result;
+    }
+
+    const environmentChanges = readEnvironmentChanges(options.env, capturedEnvironment);
+    return {
+      ...result,
+      environmentChanges: {
+        captured: true,
+        ...environmentChanges,
+      },
+    };
+  } finally {
+    await rm(tempDirectory, {
+      recursive: true,
+      force: true,
+    });
+  }
+}
+
+async function readCapturedEnvironmentSnapshot(
+  snapshotPath: string,
+): Promise<Record<string, string> | null> {
+  try {
+    const raw = await readFile(snapshotPath, "utf8");
+    const entries = raw.includes("\0") ? raw.split("\0") : raw.split(/\r?\n/);
+    const environment: Record<string, string> = {};
+    for (const entry of entries) {
+      if (!entry) {
+        continue;
+      }
+
+      const separatorIndex = entry.indexOf("=");
+      if (separatorIndex <= 0) {
+        continue;
+      }
+
+      const key = entry.slice(0, separatorIndex);
+      const value = entry.slice(separatorIndex + 1);
+      if (!key) {
+        continue;
+      }
+
+      environment[key] = value;
+    }
+
+    return environment;
+  } catch {
+    return null;
+  }
+}
+
+function readEnvironmentChanges(
+  previous: NodeJS.ProcessEnv,
+  next: Record<string, string>,
+): {
+  updated: Record<string, string>;
+  removed: string[];
+} {
+  const updated: Record<string, string> = {};
+  for (const [key, nextValue] of Object.entries(next)) {
+    if (shouldIgnoreEnvironmentChangeKey(key)) {
+      continue;
+    }
+
+    const previousValue = previous[key];
+    if (typeof previousValue === "string" && previousValue === nextValue) {
+      continue;
+    }
+
+    updated[key] = nextValue;
+  }
+
+  const removed: string[] = [];
+  for (const [key, previousValue] of Object.entries(previous)) {
+    if (typeof previousValue !== "string" || shouldIgnoreEnvironmentChangeKey(key)) {
+      continue;
+    }
+
+    if (key in next) {
+      continue;
+    }
+
+    removed.push(key);
+  }
+
+  return {
+    updated,
+    removed,
+  };
+}
+
+function shouldIgnoreEnvironmentChangeKey(key: string): boolean {
+  if (!key || key.startsWith("BASH_") || key.startsWith("__LOCAL_PLAYGROUND_")) {
+    return true;
+  }
+
+  return (
+    key === "LOCAL_PLAYGROUND_ENV_CAPTURE_FILE" ||
+    key === "PSExecutionPolicyPreference" ||
+    key === "CD" ||
+    key === "_" ||
+    key === "PWD" ||
+    key === "OLDPWD" ||
+    key === "SHLVL" ||
+    key === "SHELLOPTS" ||
+    key === "BASHOPTS" ||
+    key === "BASHPID" ||
+    key === "PPID" ||
+    key === "EUID" ||
+    key === "UID"
+  );
 }
 
 function joinRelativePath(parent: string, child: string): string {

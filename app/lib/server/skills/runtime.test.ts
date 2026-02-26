@@ -1,6 +1,7 @@
 /**
  * Test module verifying runtime behavior.
  */
+import { spawnSync } from "node:child_process";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -13,6 +14,9 @@ import {
 } from "~/lib/server/skills/runtime";
 
 const tempDirectories: string[] = [];
+const hasPowerShellRuntime = canRunCommand(
+  process.platform === "win32" ? "powershell.exe" : "pwsh",
+);
 
 afterEach(async () => {
   await Promise.all(
@@ -196,7 +200,175 @@ describe("runSkillScript", () => {
     expect(result.stderr).toBe("");
     expect(result.timedOut).toBe(false);
   });
+
+  it("passes custom environment variables to scripts", async () => {
+    const skillRoot = await createTempSkillRoot();
+    await mkdir(path.join(skillRoot, "scripts"), { recursive: true });
+    await writeFile(
+      path.join(skillRoot, "scripts", "print-env.py"),
+      "import os\nprint(os.environ.get('VIRTUAL_ENV', ''))\n",
+      "utf8",
+    );
+
+    const result = await runSkillScript({
+      skillRoot,
+      relativePath: "print-env.py",
+      args: [],
+      env: {
+        VIRTUAL_ENV: "/tmp/local-playground/.venv",
+      },
+      timeoutMs: 2_000,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout.trim()).toBe("/tmp/local-playground/.venv");
+    expect(result.stderr).toBe("");
+    expect(result.timedOut).toBe(false);
+  });
+
+  it("captures environment changes made by shell scripts", async () => {
+    const skillRoot = await createTempSkillRoot();
+    await mkdir(path.join(skillRoot, "scripts"), { recursive: true });
+    await writeFile(
+      path.join(skillRoot, "scripts", "activate.sh"),
+      [
+        'export VIRTUAL_ENV="$PWD/.venv"',
+        'export PATH="$VIRTUAL_ENV/bin:$PATH"',
+      ].join("\n"),
+      "utf8",
+    );
+
+    const result = await runSkillScript({
+      skillRoot,
+      relativePath: "activate.sh",
+      args: [],
+      env: {
+        PATH: "/usr/bin",
+      },
+      timeoutMs: 2_000,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.environmentChanges.captured).toBe(true);
+    expect(result.environmentChanges.updated.VIRTUAL_ENV ?? "").toMatch(/\/skills\/sample-skill\/\.venv$/);
+    expect(result.environmentChanges.updated.PATH).toContain(
+      `${skillRoot}/.venv/bin`,
+    );
+  });
+
+  it("captures removed environment variables from shell scripts", async () => {
+    const skillRoot = await createTempSkillRoot();
+    await mkdir(path.join(skillRoot, "scripts"), { recursive: true });
+    await writeFile(
+      path.join(skillRoot, "scripts", "unset-env.sh"),
+      'unset TEST_ENV_TO_REMOVE\n',
+      "utf8",
+    );
+
+    const result = await runSkillScript({
+      skillRoot,
+      relativePath: "unset-env.sh",
+      args: [],
+      env: {
+        PATH: "/usr/bin",
+        TEST_ENV_TO_REMOVE: "value",
+      },
+      timeoutMs: 2_000,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.environmentChanges.captured).toBe(true);
+    expect(result.environmentChanges.removed).toContain("TEST_ENV_TO_REMOVE");
+  });
+
+  it.skipIf(process.platform !== "win32")(
+    "captures environment changes made by Windows command scripts",
+    async () => {
+      const skillRoot = await createTempSkillRoot();
+      await mkdir(path.join(skillRoot, "scripts"), { recursive: true });
+      await writeFile(
+        path.join(skillRoot, "scripts", "activate.cmd"),
+        [
+          "@echo off",
+          'set "VIRTUAL_ENV=%CD%\\.venv"',
+          'set "PATH=%VIRTUAL_ENV%\\Scripts;%PATH%"',
+          "set TEST_ENV_TO_REMOVE=",
+        ].join("\r\n"),
+        "utf8",
+      );
+
+      const result = await runSkillScript({
+        skillRoot,
+        relativePath: "activate.cmd",
+        args: [],
+        env: {
+          PATH: "C:\\Windows\\System32",
+          TEST_ENV_TO_REMOVE: "value",
+        },
+        timeoutMs: 2_000,
+      });
+
+      expect(result.exitCode).toBe(0);
+      expect(result.environmentChanges.captured).toBe(true);
+      expect(result.environmentChanges.updated.VIRTUAL_ENV ?? "").toMatch(
+        /[\\/]skills[\\/]sample-skill[\\/]\.venv$/,
+      );
+      expect(result.environmentChanges.updated.PATH).toContain(
+        path.join(skillRoot, ".venv", "Scripts"),
+      );
+      expect(result.environmentChanges.removed).toContain("TEST_ENV_TO_REMOVE");
+      expect(result.environmentChanges.updated).not.toHaveProperty(
+        "LOCAL_PLAYGROUND_ENV_CAPTURE_FILE",
+      );
+    },
+  );
+
+  it.skipIf(!hasPowerShellRuntime)(
+    "captures environment changes made by PowerShell scripts",
+    async () => {
+      const skillRoot = await createTempSkillRoot();
+      await mkdir(path.join(skillRoot, "scripts"), { recursive: true });
+      await writeFile(
+        path.join(skillRoot, "scripts", "activate.ps1"),
+        [
+          '$env:VIRTUAL_ENV = Join-Path $PWD ".venv"',
+          '$env:PATH = "$($env:VIRTUAL_ENV);$($env:PATH)"',
+          "Remove-Item Env:TEST_ENV_TO_REMOVE -ErrorAction SilentlyContinue",
+        ].join("\n"),
+        "utf8",
+      );
+
+      const result = await runSkillScript({
+        skillRoot,
+        relativePath: "activate.ps1",
+        args: [],
+        env: {
+          PATH: "/usr/bin",
+          TEST_ENV_TO_REMOVE: "value",
+        },
+        timeoutMs: 2_000,
+      });
+
+      expect(result.exitCode).toBe(0);
+      expect(result.environmentChanges.captured).toBe(true);
+      expect(result.environmentChanges.updated.VIRTUAL_ENV ?? "").toMatch(
+        /[\\/]skills[\\/]sample-skill[\\/]\.venv$/,
+      );
+      expect(result.environmentChanges.removed).toContain("TEST_ENV_TO_REMOVE");
+      expect(result.environmentChanges.updated).not.toHaveProperty(
+        "LOCAL_PLAYGROUND_ENV_CAPTURE_FILE",
+      );
+    },
+  );
 });
+
+function canRunCommand(command: string): boolean {
+  const result = spawnSync(command, ["-Version"], {
+    stdio: "ignore",
+    timeout: 5_000,
+  });
+  return !result.error;
+}
 
 async function createTempSkillRoot(): Promise<string> {
   const workspaceRoot = await mkdtemp(path.join(tmpdir(), "skill-runtime-"));
