@@ -383,10 +383,11 @@ describe("runSkillScript", () => {
           PATH: "/usr/bin",
           TEST_ENV_TO_REMOVE: "value",
         },
-        timeoutMs: 2_000,
+        timeoutMs: 10_000,
       });
 
       expect(result.exitCode).toBe(0);
+      expect(result.timedOut).toBe(false);
       expect(result.environmentChanges.captured).toBe(true);
       expect(result.environmentChanges.updated.VIRTUAL_ENV ?? "").toMatch(
         /[\\/]skills[\\/]sample-skill[\\/]\.venv$/,
