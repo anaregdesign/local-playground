@@ -1,7 +1,7 @@
 /**
  * Test module verifying catalog behavior.
  */
-import { mkdtemp, mkdir, rm, stat, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, mkdir, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -191,6 +191,48 @@ describe("discoverSkillCatalog", () => {
     );
     expect(result.warnings).toEqual([]);
   });
+
+  it.skipIf(process.platform === "win32")(
+    "continues discovery when an unreadable directory exists",
+    async () => {
+      const codexHome = await mkdtemp(path.join(tmpdir(), "skill-codex-"));
+      const foundryConfigDirectory = await mkdtemp(path.join(tmpdir(), "skill-foundry-"));
+      tempDirectories.push(codexHome, foundryConfigDirectory);
+
+      const readableSkillDirectory = path.join(codexHome, "skills", "local-playground-dev");
+      await mkdir(readableSkillDirectory, { recursive: true });
+      await writeFile(
+        path.join(readableSkillDirectory, "SKILL.md"),
+        [
+          "---",
+          "name: local-playground-dev",
+          "description: Local Playground compliance workflow",
+          "---",
+          "# Skill",
+        ].join("\n"),
+        "utf8",
+      );
+
+      const unreadableDirectory = path.join(codexHome, "skills", "unreadable");
+      await mkdir(path.join(unreadableDirectory, "nested"), { recursive: true });
+      await chmod(unreadableDirectory, 0o000);
+
+      try {
+        const result = await discoverSkillCatalog({
+          codexHome,
+          foundryConfigDirectory,
+        });
+
+        expect(result.skills).toHaveLength(1);
+        expect(result.skills[0]).toMatchObject({
+          name: "local-playground-dev",
+          source: "codex_home",
+        });
+      } finally {
+        await chmod(unreadableDirectory, 0o755).catch(() => {});
+      }
+    },
+  );
 });
 
 describe("readSkillFrontmatter", () => {

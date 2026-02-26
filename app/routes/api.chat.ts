@@ -4071,6 +4071,17 @@ function applySkillScriptEnvironmentChanges(
 
   const updatedKeys: string[] = [];
   const ignoredKeys: string[] = [];
+  const removedKeys: string[] = [];
+  for (const key of changes.removed) {
+    if (!(key in threadEnvironment)) {
+      continue;
+    }
+
+    delete threadEnvironment[key];
+    removedKeys.push(key);
+  }
+
+  let threadEnvironmentEntryCount = Object.keys(threadEnvironment).length;
   for (const [key, value] of Object.entries(changes.updated)) {
     if (
       key.length > THREAD_ENVIRONMENT_KEY_MAX_LENGTH ||
@@ -4081,23 +4092,17 @@ function applySkillScriptEnvironmentChanges(
       continue;
     }
 
-    if (!(key in threadEnvironment) && Object.keys(threadEnvironment).length >= THREAD_ENVIRONMENT_VARIABLES_MAX) {
+    const alreadyExists = key in threadEnvironment;
+    if (!alreadyExists && threadEnvironmentEntryCount >= THREAD_ENVIRONMENT_VARIABLES_MAX) {
       ignoredKeys.push(key);
       continue;
     }
 
     threadEnvironment[key] = value;
-    updatedKeys.push(key);
-  }
-
-  const removedKeys: string[] = [];
-  for (const key of changes.removed) {
-    if (!(key in threadEnvironment)) {
-      continue;
+    if (!alreadyExists) {
+      threadEnvironmentEntryCount += 1;
     }
-
-    delete threadEnvironment[key];
-    removedKeys.push(key);
+    updatedKeys.push(key);
   }
 
   return {
@@ -4727,4 +4732,5 @@ export const chatRouteTestUtils = {
   incrementSkillOperationCount,
   buildSkillOperationCountExceededMessage,
   buildSkillOperationErrorCountExceededMessage,
+  applySkillScriptEnvironmentChanges,
 };

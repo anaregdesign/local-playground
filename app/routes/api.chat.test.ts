@@ -5,7 +5,10 @@ import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { MCP_DEFAULT_AZURE_AUTH_SCOPE } from "~/lib/constants";
+import {
+  MCP_DEFAULT_AZURE_AUTH_SCOPE,
+  THREAD_ENVIRONMENT_VARIABLES_MAX,
+} from "~/lib/constants";
 import { chatRouteTestUtils } from "./api.chat";
 
 const {
@@ -31,6 +34,7 @@ const {
   incrementSkillOperationCount,
   buildSkillOperationCountExceededMessage,
   buildSkillOperationErrorCountExceededMessage,
+  applySkillScriptEnvironmentChanges,
 } = chatRouteTestUtils;
 
 describe("readWebSearchEnabled", () => {
@@ -284,6 +288,34 @@ describe("Skill operation budget helpers", () => {
     expect(countMessage).toContain("25 calls in one run");
     expect(errorMessage).toContain("11");
     expect(errorMessage).toContain("too many Skill operation errors");
+  });
+});
+
+describe("applySkillScriptEnvironmentChanges", () => {
+  it("applies additions after removals when thread environment is at capacity", () => {
+    const threadEnvironment: Record<string, string> = {};
+    for (let index = 0; index < THREAD_ENVIRONMENT_VARIABLES_MAX - 1; index += 1) {
+      threadEnvironment[`KEY_${index}`] = `${index}`;
+    }
+    threadEnvironment.REMOVE_ME = "remove";
+
+    const result = applySkillScriptEnvironmentChanges(threadEnvironment, {
+      captured: true,
+      updated: {
+        ADDED_KEY: "added",
+      },
+      removed: ["REMOVE_ME"],
+    });
+
+    expect(result).toEqual({
+      captured: true,
+      updated: ["ADDED_KEY"],
+      removed: ["REMOVE_ME"],
+      ignored: [],
+    });
+    expect(threadEnvironment).toHaveProperty("ADDED_KEY", "added");
+    expect(threadEnvironment).not.toHaveProperty("REMOVE_ME");
+    expect(Object.keys(threadEnvironment)).toHaveLength(THREAD_ENVIRONMENT_VARIABLES_MAX);
   });
 });
 

@@ -1,7 +1,7 @@
 /**
  * Server runtime module.
  */
-import { constants as fsConstants } from "node:fs";
+import { constants as fsConstants, type Dirent } from "node:fs";
 import { access, mkdir, open, readdir, readFile, realpath, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
@@ -206,7 +206,13 @@ async function collectSkillFileCandidates(
     return;
   }
 
-  const entries = await readdir(directoryPath, { withFileTypes: true });
+  let entries: Dirent[];
+  try {
+    entries = await readdir(directoryPath, { withFileTypes: true });
+  } catch {
+    // Ignore unreadable directories so one permission issue does not block full catalog discovery.
+    return;
+  }
   for (const entry of entries) {
     if (!entry.isDirectory()) {
       continue;
