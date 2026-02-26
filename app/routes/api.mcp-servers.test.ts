@@ -10,6 +10,15 @@ import {
   MCP_DEFAULT_FILESYSTEM_MCP_SERVER_ARGS,
   MCP_DEFAULT_FILESYSTEM_MCP_SERVER_COMMAND,
   MCP_DEFAULT_FILESYSTEM_MCP_SERVER_NAME,
+  MCP_DEFAULT_GIT_MCP_SERVER_ARGS,
+  MCP_DEFAULT_GIT_MCP_SERVER_COMMAND,
+  MCP_DEFAULT_GIT_MCP_SERVER_NAME,
+  MCP_DEFAULT_HTTP_MCP_SERVER_ARGS,
+  MCP_DEFAULT_HTTP_MCP_SERVER_COMMAND,
+  MCP_DEFAULT_HTTP_MCP_SERVER_NAME,
+  MCP_DEFAULT_MEMORY_MCP_SERVER_ARGS,
+  MCP_DEFAULT_MEMORY_MCP_SERVER_COMMAND,
+  MCP_DEFAULT_MEMORY_MCP_SERVER_NAME,
   MCP_DEFAULT_MERMAID_MCP_SERVER_ARGS,
   MCP_DEFAULT_MERMAID_MCP_SERVER_COMMAND,
   MCP_DEFAULT_MERMAID_MCP_SERVER_NAME,
@@ -17,9 +26,21 @@ import {
   MCP_DEFAULT_MICROSOFT_LEARN_SERVER_URL,
   MCP_DEFAULT_OPENAI_DOCS_SERVER_NAME,
   MCP_DEFAULT_OPENAI_DOCS_SERVER_URL,
+  MCP_DEFAULT_POSTGRES_MCP_SERVER_ARGS,
+  MCP_DEFAULT_POSTGRES_MCP_SERVER_COMMAND,
+  MCP_DEFAULT_POSTGRES_MCP_SERVER_NAME,
   MCP_DEFAULT_PLAYWRIGHT_MCP_SERVER_ARGS,
   MCP_DEFAULT_PLAYWRIGHT_MCP_SERVER_COMMAND,
   MCP_DEFAULT_PLAYWRIGHT_MCP_SERVER_NAME,
+  MCP_DEFAULT_SERVER_PLAYWRIGHT_MCP_SERVER_ARGS,
+  MCP_DEFAULT_SERVER_PLAYWRIGHT_MCP_SERVER_COMMAND,
+  MCP_DEFAULT_SERVER_PLAYWRIGHT_MCP_SERVER_NAME,
+  MCP_DEFAULT_SHELL_MCP_SERVER_ARGS,
+  MCP_DEFAULT_SHELL_MCP_SERVER_COMMAND,
+  MCP_DEFAULT_SHELL_MCP_SERVER_NAME,
+  MCP_DEFAULT_SQLITE_MCP_SERVER_ARGS,
+  MCP_DEFAULT_SQLITE_MCP_SERVER_COMMAND,
+  MCP_DEFAULT_SQLITE_MCP_SERVER_NAME,
   MCP_DEFAULT_TIMEOUT_SECONDS,
   MCP_DEFAULT_WORKIQ_SERVER_ARGS,
   MCP_DEFAULT_WORKIQ_SERVER_COMMAND,
@@ -286,7 +307,7 @@ describe("mergeDefaultMcpServers", () => {
     const expectedFilesystemWorkingDirectory = resolveDefaultFilesystemWorkingDirectory();
     const result = mergeDefaultMcpServers([]);
 
-    expect(result).toHaveLength(7);
+    expect(result).toHaveLength(14);
     expect(result).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -320,6 +341,55 @@ describe("mergeDefaultMcpServers", () => {
           transport: "stdio",
           command: MCP_DEFAULT_WORKIQ_SERVER_COMMAND,
           args: [...MCP_DEFAULT_WORKIQ_SERVER_ARGS],
+          env: {},
+        }),
+        expect.objectContaining({
+          name: MCP_DEFAULT_GIT_MCP_SERVER_NAME,
+          transport: "stdio",
+          command: MCP_DEFAULT_GIT_MCP_SERVER_COMMAND,
+          args: [...MCP_DEFAULT_GIT_MCP_SERVER_ARGS],
+          env: {},
+        }),
+        expect.objectContaining({
+          name: MCP_DEFAULT_HTTP_MCP_SERVER_NAME,
+          transport: "stdio",
+          command: MCP_DEFAULT_HTTP_MCP_SERVER_COMMAND,
+          args: [...MCP_DEFAULT_HTTP_MCP_SERVER_ARGS],
+          env: {},
+        }),
+        expect.objectContaining({
+          name: MCP_DEFAULT_SQLITE_MCP_SERVER_NAME,
+          transport: "stdio",
+          command: MCP_DEFAULT_SQLITE_MCP_SERVER_COMMAND,
+          args: [...MCP_DEFAULT_SQLITE_MCP_SERVER_ARGS],
+          env: {},
+        }),
+        expect.objectContaining({
+          name: MCP_DEFAULT_POSTGRES_MCP_SERVER_NAME,
+          transport: "stdio",
+          command: MCP_DEFAULT_POSTGRES_MCP_SERVER_COMMAND,
+          args: [...MCP_DEFAULT_POSTGRES_MCP_SERVER_ARGS],
+          env: {},
+        }),
+        expect.objectContaining({
+          name: MCP_DEFAULT_MEMORY_MCP_SERVER_NAME,
+          transport: "stdio",
+          command: MCP_DEFAULT_MEMORY_MCP_SERVER_COMMAND,
+          args: [...MCP_DEFAULT_MEMORY_MCP_SERVER_ARGS],
+          env: {},
+        }),
+        expect.objectContaining({
+          name: MCP_DEFAULT_SHELL_MCP_SERVER_NAME,
+          transport: "stdio",
+          command: MCP_DEFAULT_SHELL_MCP_SERVER_COMMAND,
+          args: [...MCP_DEFAULT_SHELL_MCP_SERVER_ARGS],
+          env: {},
+        }),
+        expect.objectContaining({
+          name: MCP_DEFAULT_SERVER_PLAYWRIGHT_MCP_SERVER_NAME,
+          transport: "stdio",
+          command: MCP_DEFAULT_SERVER_PLAYWRIGHT_MCP_SERVER_COMMAND,
+          args: [...MCP_DEFAULT_SERVER_PLAYWRIGHT_MCP_SERVER_ARGS],
           env: {},
         }),
         expect.objectContaining({
@@ -368,6 +438,62 @@ describe("mergeDefaultMcpServers", () => {
         transport: "stdio" as const,
         command: MCP_DEFAULT_WORKIQ_SERVER_COMMAND,
         args: [...MCP_DEFAULT_WORKIQ_SERVER_ARGS],
+        env: {},
+      },
+      {
+        id: "profile-server-git",
+        name: "Server Git (Custom Name)",
+        transport: "stdio" as const,
+        command: MCP_DEFAULT_GIT_MCP_SERVER_COMMAND,
+        args: [...MCP_DEFAULT_GIT_MCP_SERVER_ARGS],
+        env: {},
+      },
+      {
+        id: "profile-server-http",
+        name: "Server HTTP (Custom Name)",
+        transport: "stdio" as const,
+        command: MCP_DEFAULT_HTTP_MCP_SERVER_COMMAND,
+        args: [...MCP_DEFAULT_HTTP_MCP_SERVER_ARGS],
+        env: {},
+      },
+      {
+        id: "profile-server-sqlite",
+        name: "Server SQLite (Custom Name)",
+        transport: "stdio" as const,
+        command: MCP_DEFAULT_SQLITE_MCP_SERVER_COMMAND,
+        args: [...MCP_DEFAULT_SQLITE_MCP_SERVER_ARGS],
+        env: {},
+      },
+      {
+        id: "profile-server-postgres",
+        name: "Server Postgres (Custom Name)",
+        transport: "stdio" as const,
+        command: MCP_DEFAULT_POSTGRES_MCP_SERVER_COMMAND,
+        args: [...MCP_DEFAULT_POSTGRES_MCP_SERVER_ARGS],
+        env: {},
+      },
+      {
+        id: "profile-server-memory",
+        name: "Server Memory (Custom Name)",
+        transport: "stdio" as const,
+        command: MCP_DEFAULT_MEMORY_MCP_SERVER_COMMAND,
+        args: [...MCP_DEFAULT_MEMORY_MCP_SERVER_ARGS],
+        env: {},
+      },
+      {
+        id: "profile-server-shell",
+        name: "Server Shell (Custom Name)",
+        transport: "stdio" as const,
+        command: MCP_DEFAULT_SHELL_MCP_SERVER_COMMAND,
+        args: [...MCP_DEFAULT_SHELL_MCP_SERVER_ARGS],
+        env: {},
+      },
+      {
+        id: "profile-server-playwright",
+        name: "Server Playwright (Custom Name)",
+        transport: "stdio" as const,
+        command: MCP_DEFAULT_SERVER_PLAYWRIGHT_MCP_SERVER_COMMAND,
+        args: [...MCP_DEFAULT_SERVER_PLAYWRIGHT_MCP_SERVER_ARGS],
         env: {},
       },
       {
@@ -436,7 +562,7 @@ describe("mergeDefaultMcpServers", () => {
 
     const result = mergeDefaultMcpServers(existing);
 
-    expect(result).toHaveLength(7);
+    expect(result).toHaveLength(14);
     expect(result).toEqual(
       expect.arrayContaining([
         existing[0],
@@ -453,6 +579,41 @@ describe("mergeDefaultMcpServers", () => {
           command: MCP_DEFAULT_FILESYSTEM_MCP_SERVER_COMMAND,
           args: [...MCP_DEFAULT_FILESYSTEM_MCP_SERVER_ARGS],
           cwd: resolveDefaultFilesystemWorkingDirectory(),
+        }),
+        expect.objectContaining({
+          transport: "stdio",
+          command: MCP_DEFAULT_GIT_MCP_SERVER_COMMAND,
+          args: [...MCP_DEFAULT_GIT_MCP_SERVER_ARGS],
+        }),
+        expect.objectContaining({
+          transport: "stdio",
+          command: MCP_DEFAULT_HTTP_MCP_SERVER_COMMAND,
+          args: [...MCP_DEFAULT_HTTP_MCP_SERVER_ARGS],
+        }),
+        expect.objectContaining({
+          transport: "stdio",
+          command: MCP_DEFAULT_SQLITE_MCP_SERVER_COMMAND,
+          args: [...MCP_DEFAULT_SQLITE_MCP_SERVER_ARGS],
+        }),
+        expect.objectContaining({
+          transport: "stdio",
+          command: MCP_DEFAULT_POSTGRES_MCP_SERVER_COMMAND,
+          args: [...MCP_DEFAULT_POSTGRES_MCP_SERVER_ARGS],
+        }),
+        expect.objectContaining({
+          transport: "stdio",
+          command: MCP_DEFAULT_MEMORY_MCP_SERVER_COMMAND,
+          args: [...MCP_DEFAULT_MEMORY_MCP_SERVER_ARGS],
+        }),
+        expect.objectContaining({
+          transport: "stdio",
+          command: MCP_DEFAULT_SHELL_MCP_SERVER_COMMAND,
+          args: [...MCP_DEFAULT_SHELL_MCP_SERVER_ARGS],
+        }),
+        expect.objectContaining({
+          transport: "stdio",
+          command: MCP_DEFAULT_SERVER_PLAYWRIGHT_MCP_SERVER_COMMAND,
+          args: [...MCP_DEFAULT_SERVER_PLAYWRIGHT_MCP_SERVER_ARGS],
         }),
         expect.objectContaining({
           transport: "stdio",
