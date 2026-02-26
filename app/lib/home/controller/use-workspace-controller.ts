@@ -54,7 +54,10 @@ import {
   readTenantIdFromUnknown,
 } from "~/lib/home/azure/parsers";
 import { isLikelyChatAzureAuthError } from "~/lib/home/azure/errors";
-import { buildMcpHistoryByTurnId } from "~/lib/home/chat/history";
+import {
+  buildMcpHistoryByTurnId,
+  collectSuccessfulSkillGuideLocations,
+} from "~/lib/home/chat/history";
 import type { DraftChatAttachment } from "~/lib/home/chat/attachments";
 import { formatChatAttachmentSize, readFileAsDataUrl } from "~/lib/home/chat/attachments";
 import {
@@ -3200,8 +3203,12 @@ export function useWorkspaceController() {
     const requestThreadEnvironment = baseThread
       ? cloneThreadEnvironment(baseThread.threadEnvironment)
       : {};
+    const previouslyLoadedSkillGuideLocations = collectSuccessfulSkillGuideLocations(
+      baseThread?.mcpRpcHistory ?? [],
+      requestSkillSelections,
+    );
     const requestExplicitSkillLocationSet = new Set(
-      draftExplicitSkillLocations
+      [...draftExplicitSkillLocations, ...previouslyLoadedSkillGuideLocations]
         .map((location) => location.trim())
         .filter((location) => location.length > 0),
     );

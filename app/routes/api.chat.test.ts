@@ -6,6 +6,8 @@ import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  CHAT_MAX_IDENTICAL_SKILL_OPERATION_CALLS_PER_SIGNATURE,
+  CHAT_MAX_IDENTICAL_SKILL_RUN_SCRIPT_CALLS_PER_SIGNATURE,
   CHAT_MAX_SKILL_OPERATION_CALLS_PER_SERVER_METHOD,
   CHAT_MAX_SKILL_RUN_SCRIPT_CALLS_PER_SERVER_METHOD,
   MCP_DEFAULT_AZURE_AUTH_SCOPE,
@@ -34,10 +36,15 @@ const {
   updateSkillOperationLoopState,
   buildRepeatedSkillOperationLoopMessage,
   incrementSkillOperationCount,
+  incrementSkillOperationSignatureCount,
   readSkillOperationCallLimit,
+  readSkillOperationSignatureCallLimit,
   buildSkillOperationCountExceededMessage,
   buildSkillOperationErrorCountExceededMessage,
+  buildSkillOperationSignatureCountExceededMessage,
+  shouldCacheSkillOperationResult,
   applySkillScriptEnvironmentChanges,
+  instrumentMcpServer,
 } = chatRouteTestUtils;
 
 describe("readWebSearchEnabled", () => {
@@ -279,11 +286,27 @@ describe("Skill operation budget helpers", () => {
     );
   });
 
+  it("uses method-specific identical-call limits per signature", () => {
+    expect(readSkillOperationSignatureCallLimit("skill_run_script")).toBe(
+      CHAT_MAX_IDENTICAL_SKILL_RUN_SCRIPT_CALLS_PER_SIGNATURE,
+    );
+    expect(readSkillOperationSignatureCallLimit("skill_read_guide")).toBe(
+      CHAT_MAX_IDENTICAL_SKILL_OPERATION_CALLS_PER_SIGNATURE,
+    );
+  });
+
   it("tracks counts per server and method key", () => {
     const counts = new Map<string, number>();
     expect(incrementSkillOperationCount(counts, "python-venv", "skill_run_script")).toBe(1);
     expect(incrementSkillOperationCount(counts, "python-venv", "skill_run_script")).toBe(2);
     expect(incrementSkillOperationCount(counts, "pptx", "skill_run_script")).toBe(1);
+  });
+
+  it("tracks counts for identical operation signatures", () => {
+    const counts = new Map<string, number>();
+    expect(incrementSkillOperationSignatureCount(counts, "sig-1")).toBe(1);
+    expect(incrementSkillOperationSignatureCount(counts, "sig-1")).toBe(2);
+    expect(incrementSkillOperationSignatureCount(counts, "sig-2")).toBe(1);
   });
 
   it("returns descriptive budget messages", () => {
@@ -295,11 +318,147 @@ describe("Skill operation budget helpers", () => {
     const errorMessage = buildSkillOperationErrorCountExceededMessage({
       errorCount: 11,
     });
+    const signatureMessage = buildSkillOperationSignatureCountExceededMessage({
+      serverName: "python-venv",
+      method: "skill_run_script",
+      count: 3,
+    });
 
     expect(countMessage).toContain("python-venv.skill_run_script");
     expect(countMessage).toContain("25 calls in one run");
     expect(errorMessage).toContain("11");
     expect(errorMessage).toContain("too many Skill operation errors");
+    expect(signatureMessage).toContain("python-venv.skill_run_script");
+    expect(signatureMessage).toContain("3 identical calls in one run");
+  });
+
+  it("caches deterministic read operations and failed script runs", () => {
+    expect(shouldCacheSkillOperationResult("skill_read_guide", false)).toBe(true);
+    expect(shouldCacheSkillOperationResult("skill_read_reference", false)).toBe(true);
+    expect(shouldCacheSkillOperationResult("skill_read_asset", false)).toBe(true);
+    expect(shouldCacheSkillOperationResult("skill_list_resources", false)).toBe(true);
+    expect(shouldCacheSkillOperationResult("skill_run_script", true)).toBe(true);
+    expect(shouldCacheSkillOperationResult("skill_run_script", false)).toBe(false);
+    expect(shouldCacheSkillOperationResult("skill_set_environment", false)).toBe(false);
+  });
+});
+
+describe("instrumentMcpServer", () => {
+  it("caches successful tools/list results within a run", async () => {
+    let listToolsCallCount = 0;
+    let sequence = 0;
+    const records: Array<{ method: string }> = [];
+    const baseServer = {
+      name: "example-mcp",
+      listTools: async () => {
+        listToolsCallCount += 1;
+        return [{ name: "ping", description: "Ping tool" }];
+      },
+      callTool: async () => ({ ok: true }),
+      invalidateToolsCache: () => undefined,
+    };
+
+    const instrumented = instrumentMcpServer(
+      baseServer as unknown as Parameters<typeof instrumentMcpServer>[0],
+      {
+        nextSequence: () => {
+          sequence += 1;
+          return sequence;
+        },
+        onRecord: (record) => {
+          records.push({
+            method: record.method,
+          });
+        },
+      },
+    );
+
+    const first = await instrumented.listTools();
+    const second = await instrumented.listTools();
+
+    expect(listToolsCallCount).toBe(1);
+    expect(second).toEqual(first);
+    expect(records.filter((record) => record.method === "tools/list")).toHaveLength(1);
+  });
+
+  it("does not cache failed tools/list calls and allows retry", async () => {
+    let listToolsCallCount = 0;
+    let sequence = 0;
+    const errorsByMethod: boolean[] = [];
+    const baseServer = {
+      name: "example-mcp",
+      listTools: async () => {
+        listToolsCallCount += 1;
+        if (listToolsCallCount === 1) {
+          throw new Error("first list failed");
+        }
+        return [{ name: "ping", description: "Ping tool" }];
+      },
+      callTool: async () => ({ ok: true }),
+      invalidateToolsCache: () => undefined,
+    };
+
+    const instrumented = instrumentMcpServer(
+      baseServer as unknown as Parameters<typeof instrumentMcpServer>[0],
+      {
+        nextSequence: () => {
+          sequence += 1;
+          return sequence;
+        },
+        onRecord: (record) => {
+          if (record.method === "tools/list") {
+            errorsByMethod.push(record.isError);
+          }
+        },
+      },
+    );
+
+    await expect(instrumented.listTools()).rejects.toThrow("first list failed");
+    await expect(instrumented.listTools()).resolves.toEqual([
+      { name: "ping", description: "Ping tool" },
+    ]);
+
+    expect(listToolsCallCount).toBe(2);
+    expect(errorsByMethod).toEqual([true, false]);
+  });
+
+  it("drops cached tools/list results when cache invalidation is requested", async () => {
+    let listToolsCallCount = 0;
+    let sequence = 0;
+    let invalidateCount = 0;
+    const baseServer = {
+      name: "example-mcp",
+      listTools: async () => {
+        listToolsCallCount += 1;
+        return [{ name: `ping-${listToolsCallCount}`, description: "Ping tool" }];
+      },
+      callTool: async () => ({ ok: true }),
+      invalidateToolsCache: () => {
+        invalidateCount += 1;
+      },
+    };
+
+    const instrumented = instrumentMcpServer(
+      baseServer as unknown as Parameters<typeof instrumentMcpServer>[0],
+      {
+        nextSequence: () => {
+          sequence += 1;
+          return sequence;
+        },
+        onRecord: () => {},
+      },
+    );
+
+    const first = await instrumented.listTools();
+    const second = await instrumented.listTools();
+    expect(first).toEqual(second);
+    expect(listToolsCallCount).toBe(1);
+
+    instrumented.invalidateToolsCache();
+    const third = await instrumented.listTools();
+    expect(listToolsCallCount).toBe(2);
+    expect(invalidateCount).toBe(1);
+    expect(third).not.toEqual(first);
   });
 });
 

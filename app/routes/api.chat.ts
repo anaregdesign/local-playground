@@ -47,6 +47,8 @@ import {
   CHAT_MAX_CONSECUTIVE_IDENTICAL_SKILL_OPERATIONS,
   CHAT_MAX_AGENT_INSTRUCTION_LENGTH,
   CHAT_MAX_ACTIVE_SKILLS,
+  CHAT_MAX_IDENTICAL_SKILL_OPERATION_CALLS_PER_SIGNATURE,
+  CHAT_MAX_IDENTICAL_SKILL_RUN_SCRIPT_CALLS_PER_SIGNATURE,
   CHAT_MAX_SKILL_OPERATION_CALLS_PER_SERVER_METHOD,
   CHAT_MAX_SKILL_RUN_SCRIPT_CALLS_PER_SERVER_METHOD,
   CHAT_MAX_SKILL_OPERATION_ERRORS,
@@ -275,7 +277,13 @@ type SkillOperationLoopState = {
 };
 type SkillOperationCountState = {
   byServerMethod: Map<string, number>;
+  bySignature: Map<string, number>;
   errorCount: number;
+};
+type SkillOperationCachedResult = {
+  rawResult: string;
+  parsedResult: unknown;
+  isError: boolean;
 };
 
 let codeInterpreterAttachmentAvailabilityCache: CodeInterpreterAttachmentAvailabilityCache | null =
@@ -2315,8 +2323,21 @@ function instrumentMcpServer(
 ): MCPServer {
   const originalListTools = server.listTools.bind(server);
   const originalCallTool = server.callTool.bind(server);
+  const originalInvalidateToolsCache = server.invalidateToolsCache.bind(server);
+  let hasCachedListToolsResult = false;
+  let cachedListToolsResult: Awaited<ReturnType<typeof originalListTools>> | null = null;
+  let pendingListToolsResult:
+    | Promise<Awaited<ReturnType<typeof originalListTools>>>
+    | null = null;
 
   server.listTools = async () => {
+    if (hasCachedListToolsResult && cachedListToolsResult !== null) {
+      return cachedListToolsResult;
+    }
+    if (pendingListToolsResult) {
+      return pendingListToolsResult;
+    }
+
     const sequence = handlers.nextSequence();
     const requestId = buildMcpRpcRequestId(server.name, sequence);
     const startedAt = new Date().toISOString();
@@ -2327,54 +2348,70 @@ function instrumentMcpServer(
       params: {},
     };
 
-    try {
-      const result = await originalListTools();
-      const responsePayload: JsonRpcResponsePayload = {
-        jsonrpc: "2.0",
-        id: requestId,
-        result: {
-          tools: toSerializableValue(result),
-        },
-      };
+    const requestPromise = (async () => {
+      try {
+        const result = await originalListTools();
+        const responsePayload: JsonRpcResponsePayload = {
+          jsonrpc: "2.0",
+          id: requestId,
+          result: {
+            tools: toSerializableValue(result),
+          },
+        };
 
-      handlers.onRecord({
-        id: requestId,
-        sequence,
-        operationType: "mcp",
-        serverName: server.name,
-        method: "tools/list",
-        startedAt,
-        completedAt: new Date().toISOString(),
-        request: requestPayload,
-        response: responsePayload,
-        isError: false,
-      });
+        handlers.onRecord({
+          id: requestId,
+          sequence,
+          operationType: "mcp",
+          serverName: server.name,
+          method: "tools/list",
+          startedAt,
+          completedAt: new Date().toISOString(),
+          request: requestPayload,
+          response: responsePayload,
+          isError: false,
+        });
 
-      return result;
-    } catch (error) {
-      const responsePayload: JsonRpcResponsePayload = {
-        jsonrpc: "2.0",
-        id: requestId,
-        error: {
-          message: readErrorMessage(error),
-        },
-      };
+        cachedListToolsResult = result;
+        hasCachedListToolsResult = true;
+        return result;
+      } catch (error) {
+        const responsePayload: JsonRpcResponsePayload = {
+          jsonrpc: "2.0",
+          id: requestId,
+          error: {
+            message: readErrorMessage(error),
+          },
+        };
 
-      handlers.onRecord({
-        id: requestId,
-        sequence,
-        operationType: "mcp",
-        serverName: server.name,
-        method: "tools/list",
-        startedAt,
-        completedAt: new Date().toISOString(),
-        request: requestPayload,
-        response: responsePayload,
-        isError: true,
-      });
+        handlers.onRecord({
+          id: requestId,
+          sequence,
+          operationType: "mcp",
+          serverName: server.name,
+          method: "tools/list",
+          startedAt,
+          completedAt: new Date().toISOString(),
+          request: requestPayload,
+          response: responsePayload,
+          isError: true,
+        });
 
-      throw error;
-    }
+        throw error;
+      } finally {
+        pendingListToolsResult = null;
+      }
+    })();
+
+    pendingListToolsResult = requestPromise;
+    return requestPromise;
+  };
+
+  server.invalidateToolsCache = () => {
+    hasCachedListToolsResult = false;
+    cachedListToolsResult = null;
+    pendingListToolsResult = null;
+    return originalInvalidateToolsCache();
   };
 
   server.callTool = async (toolName, args, meta) => {
@@ -2547,10 +2584,25 @@ function incrementSkillOperationCount(
   return nextCount;
 }
 
+function incrementSkillOperationSignatureCount(
+  countsBySignature: Map<string, number>,
+  signature: string,
+): number {
+  const nextCount = (countsBySignature.get(signature) ?? 0) + 1;
+  countsBySignature.set(signature, nextCount);
+  return nextCount;
+}
+
 function readSkillOperationCallLimit(method: string): number {
   return method === "skill_run_script"
     ? CHAT_MAX_SKILL_RUN_SCRIPT_CALLS_PER_SERVER_METHOD
     : CHAT_MAX_SKILL_OPERATION_CALLS_PER_SERVER_METHOD;
+}
+
+function readSkillOperationSignatureCallLimit(method: string): number {
+  return method === "skill_run_script"
+    ? CHAT_MAX_IDENTICAL_SKILL_RUN_SCRIPT_CALLS_PER_SIGNATURE
+    : CHAT_MAX_IDENTICAL_SKILL_OPERATION_CALLS_PER_SIGNATURE;
 }
 
 function buildSkillOperationCountExceededMessage(options: {
@@ -2565,6 +2617,30 @@ function buildSkillOperationErrorCountExceededMessage(options: {
   errorCount: number;
 }): string {
   return `Detected too many Skill operation errors in one run (${options.errorCount}). Stopped early to avoid repeated failures.`;
+}
+
+function buildSkillOperationSignatureCountExceededMessage(options: {
+  serverName: string;
+  method: string;
+  count: number;
+}): string {
+  return `Detected repeated identical Skill operation usage for ${options.serverName}.${options.method} (${options.count} identical calls in one run). Stopped early to avoid redundant retries.`;
+}
+
+function shouldCacheSkillOperationResult(
+  method: string,
+  isError: boolean,
+): boolean {
+  if (
+    method === "skill_list_resources" ||
+    method === "skill_read_guide" ||
+    method === "skill_read_reference" ||
+    method === "skill_read_asset"
+  ) {
+    return true;
+  }
+
+  return method === "skill_run_script" && isError;
 }
 
 function parseStdioArgs(argsValue: unknown, index: number): ParseResult<string[]> {
@@ -2977,14 +3053,17 @@ function buildSkillTools(
   };
   const skillOperationCountState: SkillOperationCountState = {
     byServerMethod: new Map<string, number>(),
+    bySignature: new Map<string, number>(),
     errorCount: 0,
   };
+  const skillOperationCachedResultBySignature = new Map<string, SkillOperationCachedResult>();
 
   const executeWithSkillOperationLog = async (
     method: string,
     input: unknown,
     execute: () => Promise<string> | string,
   ): Promise<string> => {
+    const operationParams = readSkillOperationParams(input);
     const sequence = logHandlers.nextSequence();
     const serverName = readSkillOperationServerName(input);
     const requestId = buildMcpRpcRequestId(serverName, sequence);
@@ -2993,7 +3072,7 @@ function buildSkillTools(
       jsonrpc: "2.0",
       id: requestId,
       method,
-      params: readSkillOperationParams(input),
+      params: operationParams,
     };
     const operationCountForServerMethod = incrementSkillOperationCount(
       skillOperationCountState.byServerMethod,
@@ -3028,7 +3107,43 @@ function buildSkillTools(
       });
       throw new Error(operationCountErrorMessage);
     }
-    const operationSignature = buildSkillOperationLoopSignature(serverName, method, input);
+    const operationSignature = buildSkillOperationLoopSignature(
+      serverName,
+      method,
+      method === "skill_run_script" ? operationParams : input,
+    );
+    const operationSignatureCount = incrementSkillOperationSignatureCount(
+      skillOperationCountState.bySignature,
+      operationSignature,
+    );
+    const operationSignatureCallLimit = readSkillOperationSignatureCallLimit(method);
+    if (operationSignatureCount > operationSignatureCallLimit) {
+      const operationSignatureCountErrorMessage = buildSkillOperationSignatureCountExceededMessage({
+        serverName,
+        method,
+        count: operationSignatureCount,
+      });
+      const responsePayload: JsonRpcResponsePayload = {
+        jsonrpc: "2.0",
+        id: requestId,
+        error: {
+          message: operationSignatureCountErrorMessage,
+        },
+      };
+      logHandlers.onRecord({
+        id: requestId,
+        sequence,
+        operationType: "skill",
+        serverName,
+        method,
+        startedAt,
+        completedAt: new Date().toISOString(),
+        request: requestPayload,
+        response: responsePayload,
+        isError: true,
+      });
+      throw new Error(operationSignatureCountErrorMessage);
+    }
     skillOperationLoopState = updateSkillOperationLoopState(
       skillOperationLoopState,
       operationSignature,
@@ -3063,6 +3178,39 @@ function buildSkillTools(
       throw new Error(loopErrorMessage);
     }
 
+    const cachedResult = skillOperationCachedResultBySignature.get(operationSignature);
+    if (cachedResult) {
+      const responsePayload: JsonRpcResponsePayload = {
+        jsonrpc: "2.0",
+        id: requestId,
+        result: cachedResult.parsedResult,
+      };
+      logHandlers.onRecord({
+        id: requestId,
+        sequence,
+        operationType: "skill",
+        serverName,
+        method,
+        startedAt,
+        completedAt: new Date().toISOString(),
+        request: requestPayload,
+        response: responsePayload,
+        isError: cachedResult.isError,
+      });
+      if (cachedResult.isError) {
+        skillOperationCountState.errorCount += 1;
+        if (skillOperationCountState.errorCount > CHAT_MAX_SKILL_OPERATION_ERRORS) {
+          throw new Error(
+            buildSkillOperationErrorCountExceededMessage({
+              errorCount: skillOperationCountState.errorCount,
+            }),
+          );
+        }
+      }
+
+      return cachedResult.rawResult;
+    }
+
     let result: string;
     try {
       result = await execute();
@@ -3093,6 +3241,13 @@ function buildSkillTools(
 
     const parsedResult = parseSkillOperationResult(result);
     const skillOperationErrored = isSkillOperationErrorResult(parsedResult);
+    if (shouldCacheSkillOperationResult(method, skillOperationErrored)) {
+      skillOperationCachedResultBySignature.set(operationSignature, {
+        rawResult: result,
+        parsedResult,
+        isError: skillOperationErrored,
+      });
+    }
     const responsePayload: JsonRpcResponsePayload = {
       jsonrpc: "2.0",
       id: requestId,
@@ -4738,8 +4893,13 @@ export const chatRouteTestUtils = {
   updateSkillOperationLoopState,
   buildRepeatedSkillOperationLoopMessage,
   incrementSkillOperationCount,
+  incrementSkillOperationSignatureCount,
   readSkillOperationCallLimit,
+  readSkillOperationSignatureCallLimit,
   buildSkillOperationCountExceededMessage,
   buildSkillOperationErrorCountExceededMessage,
+  buildSkillOperationSignatureCountExceededMessage,
+  shouldCacheSkillOperationResult,
   applySkillScriptEnvironmentChanges,
+  instrumentMcpServer,
 };
