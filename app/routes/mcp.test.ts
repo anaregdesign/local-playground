@@ -87,5 +87,15 @@ describe("mcp route", () => {
     expect(appEventTool.description).toContain("Query options:");
     expect(appEventTool.inputSchema?.properties?.filters).toBeTruthy();
     expect(appEventTool.inputSchema?.properties?.filterMode).toBeTruthy();
+
+    const latestThreadTool = body.result.tools.find(
+      (entry: { name?: string }) => entry.name === "debug_read_latest_thread_snapshot",
+    );
+    expect(latestThreadTool).toBeTruthy();
+    expect(typeof latestThreadTool.description).toBe("string");
+    expect(latestThreadTool.description).toContain("Schema source:");
+    expect(latestThreadTool.description).toContain("Output fields:");
+    expect(latestThreadTool.inputSchema?.properties?.threadId).toBeTruthy();
+    expect(latestThreadTool.inputSchema?.properties?.appEventLimit).toBeTruthy();
   });
 });

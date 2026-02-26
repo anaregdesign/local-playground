@@ -107,6 +107,7 @@ import {
 } from "~/lib/home/mcp/saved-profiles";
 import {
   installGlobalClientErrorLogging,
+  reportClientEvent,
   reportClientError,
   reportClientWarning,
 } from "~/lib/home/observability/app-event-log-client";
@@ -605,6 +606,28 @@ export function useWorkspaceController() {
       location: options.location ?? "home",
       action: options.action,
       threadId: activeThreadIdRef.current || undefined,
+      context: buildRuntimeLogContext(options.context),
+    });
+  }
+
+  function logHomeInfo(
+    eventName: string,
+    message: string,
+    options: {
+      category?: string;
+      location?: string;
+      action?: string;
+      context?: Record<string, unknown>;
+    } = {},
+  ): void {
+    reportClientEvent({
+      level: "info",
+      category: options.category ?? "frontend",
+      eventName,
+      message,
+      location: options.location ?? "home",
+      ...(options.action ? { action: options.action } : {}),
+      ...(activeThreadIdRef.current ? { threadId: activeThreadIdRef.current } : {}),
       context: buildRuntimeLogContext(options.context),
     });
   }
@@ -1782,6 +1805,16 @@ export function useWorkspaceController() {
       if (savedThread.id === activeThreadIdRef.current) {
         setActiveThreadNameInput(savedThread.name);
       }
+      logHomeInfo("save_thread_snapshot_succeeded", "Thread snapshot saved.", {
+        action: "save_thread_snapshot",
+        context: {
+          threadId: savedThread.id,
+          messageCount: savedThread.messages.length,
+          mcpServerCount: savedThread.mcpServers.length,
+          mcpRpcCount: savedThread.mcpRpcHistory.length,
+          skillSelectionCount: savedThread.skillSelections.length,
+        },
+      });
       return true;
     } catch (saveError) {
       logHomeError("save_thread_snapshot_failed", saveError, {
@@ -2066,6 +2099,14 @@ export function useWorkspaceController() {
       }
 
       applyThreadSnapshotToState(nextThread);
+      logHomeInfo("load_threads_succeeded", "Threads loaded.", {
+        action: "load_threads",
+        context: {
+          threadCount: nextThreads.length,
+          archivedThreadCount: nextThreads.filter((thread) => thread.deletedAt !== null).length,
+          activeThreadId: nextThread.id,
+        },
+      });
     } catch (loadError) {
       if (requestSeq !== threadLoadRequestSeqRef.current) {
         return;
@@ -2125,6 +2166,13 @@ export function useWorkspaceController() {
       updateThreadsState((current) => upsertThreadSnapshot(current, localThread));
       isThreadsReadyRef.current = true;
       applyThreadSnapshotToState(localThread);
+      logHomeInfo("create_thread_succeeded", "Thread created.", {
+        action: "create_thread",
+        context: {
+          threadId: localThread.id,
+          nameLength: localThread.name.length,
+        },
+      });
       return true;
     } catch (createError) {
       logHomeError("create_thread_failed", createError, {
@@ -2292,6 +2340,12 @@ export function useWorkspaceController() {
         return next;
       });
       await loadThreads();
+      logHomeInfo("delete_thread_succeeded", "Thread archived.", {
+        action: "delete_thread",
+        context: {
+          threadId,
+        },
+      });
     } catch (deleteError) {
       logHomeError("delete_thread_failed", deleteError, {
         action: "delete_thread",
@@ -2377,6 +2431,12 @@ export function useWorkspaceController() {
       updateThreadsState((current) => upsertThreadSnapshot(current, restoredThread));
       threadSaveSignatureByIdRef.current.set(restoredThread.id, buildThreadSaveSignature(restoredThread));
       applyThreadSnapshotToState(restoredThread);
+      logHomeInfo("restore_thread_succeeded", "Thread restored.", {
+        action: "restore_thread",
+        context: {
+          threadId,
+        },
+      });
     } catch (restoreError) {
       logHomeError("restore_thread_failed", restoreError, {
         action: "restore_thread",
@@ -2423,6 +2483,13 @@ export function useWorkspaceController() {
       }
 
       applyThreadSnapshotToState(nextThread);
+      logHomeInfo("switch_thread_succeeded", "Thread switched.", {
+        action: "switch_thread",
+        context: {
+          fromThreadId: currentThreadId,
+          toThreadId: nextThread.id,
+        },
+      });
     } finally {
       setIsSwitchingThread(false);
     }
@@ -3180,6 +3247,18 @@ export function useWorkspaceController() {
       lastErrorTurnId: null,
       error: null,
     }));
+    logHomeInfo("send_message_started", "Thread message request started.", {
+      action: "send_message",
+      context: {
+        threadId,
+        turnId,
+        messageLength: content.length,
+        historyCount: history.length,
+        attachmentCount: requestAttachments.length,
+        mcpServerCount: requestMcpServers.length,
+        skillSelectionCount: requestSkillSelections.length,
+      },
+    });
     if (shouldRefreshThreadTitleOnFirstMessage) {
       void refreshThreadTitleInBackground({
         threadId,
@@ -3187,6 +3266,7 @@ export function useWorkspaceController() {
       });
     }
 
+    let receivedMcpRpcCount = 0;
     try {
       const response = await fetch("/api/chat", {
         method: "POST",
@@ -3195,6 +3275,8 @@ export function useWorkspaceController() {
           Accept: "text/event-stream, application/json",
         },
         body: JSON.stringify({
+          threadId,
+          turnId,
           message: content,
           attachments: requestAttachments,
           history,
@@ -3243,6 +3325,7 @@ export function useWorkspaceController() {
             appendThreadProgressMessage(threadId, message);
           },
           onMcpRpcRecord: (entry) => {
+            receivedMcpRpcCount += 1;
             appendMcpRpcLogToThreadState(threadId, {
               ...entry,
               turnId,
@@ -3278,6 +3361,16 @@ export function useWorkspaceController() {
         lastErrorTurnId: null,
         error: null,
       }));
+      logHomeInfo("send_message_succeeded", "Thread message request completed.", {
+        action: "send_message",
+        context: {
+          threadId,
+          turnId,
+          responseLength: payload.message.length,
+          mcpRpcCount: receivedMcpRpcCount,
+          usedEventStream: isEventStream,
+        },
+      });
     } catch (sendError) {
       logHomeError("send_message_failed", sendError, {
         action: "send_message",

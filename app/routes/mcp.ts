@@ -5,14 +5,27 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import * as z from "zod/v4";
 import {
+  buildDatabaseDebugLatestThreadToolDescription,
   buildDatabaseDebugTableToolDescription,
   databaseDebugDefaultReadLimit,
   databaseDebugFilterOperatorValues,
+  databaseDebugLatestThreadDefaultAppEventLimit,
+  databaseDebugLatestThreadDefaultMcpRpcLimit,
+  databaseDebugLatestThreadDefaultMcpServerLimit,
+  databaseDebugLatestThreadDefaultMessageLimit,
+  databaseDebugLatestThreadDefaultSkillSelectionLimit,
+  databaseDebugLatestThreadMaxAppEventLimit,
+  databaseDebugLatestThreadMaxMcpRpcLimit,
+  databaseDebugLatestThreadMaxMcpServerLimit,
+  databaseDebugLatestThreadMaxMessageLimit,
+  databaseDebugLatestThreadMaxSkillSelectionLimit,
   databaseDebugMaxReadLimit,
   databaseDebugMaxReadOffset,
   databaseDebugMaxReadFilters,
   listDatabaseDebugTables,
+  normalizeDatabaseDebugLatestThreadReadOptions,
   normalizeDatabaseDebugReadOptions,
+  readDatabaseDebugLatestThreadSnapshot,
   readDatabaseDebugTableRows,
 } from "~/lib/server/persistence/mcp-debug-database";
 import { ensurePersistenceDatabaseReady } from "~/lib/server/persistence/prisma";
@@ -70,6 +83,75 @@ const tableReadInputSchema = {
     .optional()
     .describe(
       `Optional row filters (up to ${databaseDebugMaxReadFilters}). Unsupported/invalid entries are ignored.`,
+    ),
+};
+
+const latestThreadReadInputSchema = {
+  threadId: z
+    .string()
+    .min(1)
+    .optional()
+    .describe(
+      "Specific thread ID to read. When omitted, the latest thread by updatedAt is selected.",
+    ),
+  includeArchived: z
+    .boolean()
+    .optional()
+    .describe("Include archived threads when selecting the latest thread. Defaults to true."),
+  includeAppEventLogs: z
+    .boolean()
+    .optional()
+    .describe("Include AppEventLog rows linked to the selected thread. Defaults to true."),
+  includeAllRows: z
+    .boolean()
+    .optional()
+    .describe(
+      "Return all messages/MCP rows/skill selections for the selected thread. Defaults to true.",
+    ),
+  messageLimit: z
+    .number()
+    .int()
+    .min(1)
+    .max(databaseDebugLatestThreadMaxMessageLimit)
+    .optional()
+    .describe(
+      `Applied only when includeAllRows=false. Defaults to ${databaseDebugLatestThreadDefaultMessageLimit} (max ${databaseDebugLatestThreadMaxMessageLimit}).`,
+    ),
+  mcpServerLimit: z
+    .number()
+    .int()
+    .min(1)
+    .max(databaseDebugLatestThreadMaxMcpServerLimit)
+    .optional()
+    .describe(
+      `Applied only when includeAllRows=false. Defaults to ${databaseDebugLatestThreadDefaultMcpServerLimit} (max ${databaseDebugLatestThreadMaxMcpServerLimit}).`,
+    ),
+  mcpRpcLimit: z
+    .number()
+    .int()
+    .min(1)
+    .max(databaseDebugLatestThreadMaxMcpRpcLimit)
+    .optional()
+    .describe(
+      `Applied only when includeAllRows=false. Defaults to ${databaseDebugLatestThreadDefaultMcpRpcLimit} (max ${databaseDebugLatestThreadMaxMcpRpcLimit}).`,
+    ),
+  skillSelectionLimit: z
+    .number()
+    .int()
+    .min(1)
+    .max(databaseDebugLatestThreadMaxSkillSelectionLimit)
+    .optional()
+    .describe(
+      `Applied only when includeAllRows=false. Defaults to ${databaseDebugLatestThreadDefaultSkillSelectionLimit} (max ${databaseDebugLatestThreadMaxSkillSelectionLimit}).`,
+    ),
+  appEventLimit: z
+    .number()
+    .int()
+    .min(1)
+    .max(databaseDebugLatestThreadMaxAppEventLimit)
+    .optional()
+    .describe(
+      `Maximum related AppEventLog rows to return. Defaults to ${databaseDebugLatestThreadDefaultAppEventLimit} (max ${databaseDebugLatestThreadMaxAppEventLimit}).`,
     ),
 };
 
@@ -156,6 +238,7 @@ function createDatabaseDebugMcpServer(): McpServer {
     },
     async () => {
       const payload = {
+        schemaSource: "prisma/schema.prisma",
         tables: tables.map((table) => ({
           tableName: table.tableName,
           toolName: table.toolName,
@@ -167,6 +250,19 @@ function createDatabaseDebugMcpServer(): McpServer {
       };
 
       return buildToolResponse(payload);
+    },
+  );
+
+  server.registerTool(
+    "debug_read_latest_thread_snapshot",
+    {
+      description: buildDatabaseDebugLatestThreadToolDescription(),
+      inputSchema: latestThreadReadInputSchema,
+    },
+    async (args) => {
+      const options = normalizeDatabaseDebugLatestThreadReadOptions(args);
+      const result = await readDatabaseDebugLatestThreadSnapshot(options);
+      return buildToolResponse(result);
     },
   );
 

@@ -70,10 +70,57 @@ export type DatabaseDebugTableReadResult = {
   rows: Array<Record<string, unknown>>;
 };
 
+export type DatabaseDebugLatestThreadReadOptions = {
+  threadId: string | null;
+  includeArchived: boolean;
+  includeAppEventLogs: boolean;
+  includeAllRows: boolean;
+  messageLimit: number;
+  mcpServerLimit: number;
+  mcpRpcLimit: number;
+  skillSelectionLimit: number;
+  appEventLimit: number;
+};
+
+export type DatabaseDebugLatestThreadReadResult = {
+  target: {
+    mode: "latest" | "by_id";
+    threadId: string | null;
+    includeArchived: boolean;
+  };
+  found: boolean;
+  snapshot: Record<string, unknown> | null;
+  appEventLogs: Array<Record<string, unknown>>;
+  counts: {
+    messages: number;
+    mcpServers: number;
+    mcpRpcLogs: number;
+    skillSelections: number;
+    appEventLogs: number;
+  };
+  truncation: {
+    messages: boolean;
+    mcpServers: boolean;
+    mcpRpcLogs: boolean;
+    skillSelections: boolean;
+    appEventLogs: boolean;
+  };
+};
+
 export const databaseDebugDefaultReadLimit = 50;
 export const databaseDebugMaxReadLimit = 200;
 export const databaseDebugMaxReadOffset = 100_000;
 export const databaseDebugMaxReadFilters = 12;
+export const databaseDebugLatestThreadDefaultMessageLimit = 400;
+export const databaseDebugLatestThreadDefaultMcpServerLimit = 64;
+export const databaseDebugLatestThreadDefaultMcpRpcLimit = 1_500;
+export const databaseDebugLatestThreadDefaultSkillSelectionLimit = 128;
+export const databaseDebugLatestThreadDefaultAppEventLimit = 400;
+export const databaseDebugLatestThreadMaxMessageLimit = 5_000;
+export const databaseDebugLatestThreadMaxMcpServerLimit = 512;
+export const databaseDebugLatestThreadMaxMcpRpcLimit = 10_000;
+export const databaseDebugLatestThreadMaxSkillSelectionLimit = 1_000;
+export const databaseDebugLatestThreadMaxAppEventLimit = 5_000;
 
 const databaseDebugMaxReadInValues = 50;
 const databaseDebugMaxTextFilterLength = 2_000;
@@ -811,6 +858,275 @@ export function buildDatabaseDebugTableToolDescription(
   return lines.join("\n");
 }
 
+export function buildDatabaseDebugLatestThreadToolDescription(): string {
+  const lines = [
+    "Debug read tool for retrieving a full thread snapshot in one call.",
+    "Role: Reads the most-recent thread (or an explicit threadId) together with instruction, messages, MCP servers, MCP RPC logs, skill selections, and related app event logs.",
+    "Schema source: prisma/schema.prisma (Thread, ThreadInstruction, ThreadMessage, ThreadMcpServer, ThreadMcpRpcLog, ThreadSkillSelection, AppEventLog).",
+    "Input options:",
+    "- `threadId` (TEXT, optional): Specific thread ID to read. When omitted, the latest thread is selected by updatedAt.",
+    "- `includeArchived` (BOOLEAN, optional): Include archived threads when selecting the latest thread. Defaults to true.",
+    "- `includeAppEventLogs` (BOOLEAN, optional): Include thread-linked AppEventLog rows. Defaults to true.",
+    "- `includeAllRows` (BOOLEAN, optional): Return all related thread rows (messages/MCP/skills) without per-section take limits. Defaults to true.",
+    `- \`messageLimit\` (INTEGER, optional): Applied when includeAllRows=false. Defaults to ${databaseDebugLatestThreadDefaultMessageLimit} (max ${databaseDebugLatestThreadMaxMessageLimit}).`,
+    `- \`mcpServerLimit\` (INTEGER, optional): Applied when includeAllRows=false. Defaults to ${databaseDebugLatestThreadDefaultMcpServerLimit} (max ${databaseDebugLatestThreadMaxMcpServerLimit}).`,
+    `- \`mcpRpcLimit\` (INTEGER, optional): Applied when includeAllRows=false. Defaults to ${databaseDebugLatestThreadDefaultMcpRpcLimit} (max ${databaseDebugLatestThreadMaxMcpRpcLimit}).`,
+    `- \`skillSelectionLimit\` (INTEGER, optional): Applied when includeAllRows=false. Defaults to ${databaseDebugLatestThreadDefaultSkillSelectionLimit} (max ${databaseDebugLatestThreadMaxSkillSelectionLimit}).`,
+    `- \`appEventLimit\` (INTEGER, optional): Maximum AppEventLog rows when includeAppEventLogs=true. Defaults to ${databaseDebugLatestThreadDefaultAppEventLimit} (max ${databaseDebugLatestThreadMaxAppEventLimit}).`,
+    "Output fields:",
+    "- `target`: Which thread-selection mode was used (`latest` or `by_id`), and the effective threadId/includeArchived flags.",
+    "- `found`: Whether a matching thread exists.",
+    "- `snapshot.thread`: Thread core metadata. Includes parsed `threadEnvironment` alongside raw `threadEnvironmentJson`.",
+    "- `snapshot.instruction`: Per-thread instruction row (or null when absent).",
+    "- `snapshot.messages[]`: Ordered thread messages. Includes parsed `attachments` alongside raw `attachmentsJson`.",
+    "- `snapshot.mcpServers[]`: Ordered MCP server snapshot rows. Includes parsed `headers`/`args`/`env` plus raw JSON fields.",
+    "- `snapshot.mcpRpcLogs[]`: Ordered MCP RPC rows. Includes parsed `request`/`response` plus raw JSON fields.",
+    "- `snapshot.skillSelections[]`: Ordered skill selections saved for the thread.",
+    "- `appEventLogs[]`: Related AppEventLog rows for the thread. Includes parsed `context` plus raw `contextJson`.",
+    "- `counts`: Total row counts per section in storage.",
+    "- `truncation`: True when returned rows are truncated by limits.",
+  ];
+
+  return lines.join("\n");
+}
+
+export function normalizeDatabaseDebugLatestThreadReadOptions(
+  options: {
+    threadId?: unknown;
+    includeArchived?: unknown;
+    includeAppEventLogs?: unknown;
+    includeAllRows?: unknown;
+    messageLimit?: unknown;
+    mcpServerLimit?: unknown;
+    mcpRpcLimit?: unknown;
+    skillSelectionLimit?: unknown;
+    appEventLimit?: unknown;
+  } = {},
+): DatabaseDebugLatestThreadReadOptions {
+  return {
+    threadId: readOptionalTextOption(options.threadId, 256),
+    includeArchived: readBooleanOption(options.includeArchived, true),
+    includeAppEventLogs: readBooleanOption(options.includeAppEventLogs, true),
+    includeAllRows: readBooleanOption(options.includeAllRows, true),
+    messageLimit: readBoundedIntegerOption(
+      options.messageLimit,
+      databaseDebugLatestThreadDefaultMessageLimit,
+      1,
+      databaseDebugLatestThreadMaxMessageLimit,
+    ),
+    mcpServerLimit: readBoundedIntegerOption(
+      options.mcpServerLimit,
+      databaseDebugLatestThreadDefaultMcpServerLimit,
+      1,
+      databaseDebugLatestThreadMaxMcpServerLimit,
+    ),
+    mcpRpcLimit: readBoundedIntegerOption(
+      options.mcpRpcLimit,
+      databaseDebugLatestThreadDefaultMcpRpcLimit,
+      1,
+      databaseDebugLatestThreadMaxMcpRpcLimit,
+    ),
+    skillSelectionLimit: readBoundedIntegerOption(
+      options.skillSelectionLimit,
+      databaseDebugLatestThreadDefaultSkillSelectionLimit,
+      1,
+      databaseDebugLatestThreadMaxSkillSelectionLimit,
+    ),
+    appEventLimit: readBoundedIntegerOption(
+      options.appEventLimit,
+      databaseDebugLatestThreadDefaultAppEventLimit,
+      1,
+      databaseDebugLatestThreadMaxAppEventLimit,
+    ),
+  };
+}
+
+export async function readDatabaseDebugLatestThreadSnapshot(
+  options: DatabaseDebugLatestThreadReadOptions,
+): Promise<DatabaseDebugLatestThreadReadResult> {
+  const includeAllRows = options.includeAllRows;
+  const selectedById = Boolean(options.threadId);
+  const thread = selectedById
+    ? await prisma.thread.findFirst({
+        where: {
+          id: options.threadId!,
+        },
+        include: {
+          instruction: true,
+          messages: {
+            orderBy: { sortOrder: "asc" },
+            ...(includeAllRows ? {} : { take: options.messageLimit }),
+          },
+          mcpServers: {
+            orderBy: { sortOrder: "asc" },
+            ...(includeAllRows ? {} : { take: options.mcpServerLimit }),
+          },
+          mcpRpcLogs: {
+            orderBy: { sortOrder: "asc" },
+            ...(includeAllRows ? {} : { take: options.mcpRpcLimit }),
+          },
+          skillSelections: {
+            orderBy: { sortOrder: "asc" },
+            ...(includeAllRows ? {} : { take: options.skillSelectionLimit }),
+          },
+          _count: {
+            select: {
+              messages: true,
+              mcpServers: true,
+              mcpRpcLogs: true,
+              skillSelections: true,
+            },
+          },
+        },
+      })
+    : await prisma.thread.findFirst({
+        where: options.includeArchived ? undefined : { deletedAt: null },
+        orderBy: [
+          { updatedAt: "desc" },
+          { createdAt: "desc" },
+          { id: "desc" },
+        ],
+        include: {
+          instruction: true,
+          messages: {
+            orderBy: { sortOrder: "asc" },
+            ...(includeAllRows ? {} : { take: options.messageLimit }),
+          },
+          mcpServers: {
+            orderBy: { sortOrder: "asc" },
+            ...(includeAllRows ? {} : { take: options.mcpServerLimit }),
+          },
+          mcpRpcLogs: {
+            orderBy: { sortOrder: "asc" },
+            ...(includeAllRows ? {} : { take: options.mcpRpcLimit }),
+          },
+          skillSelections: {
+            orderBy: { sortOrder: "asc" },
+            ...(includeAllRows ? {} : { take: options.skillSelectionLimit }),
+          },
+          _count: {
+            select: {
+              messages: true,
+              mcpServers: true,
+              mcpRpcLogs: true,
+              skillSelections: true,
+            },
+          },
+        },
+      });
+
+  if (!thread) {
+    return {
+      target: {
+        mode: selectedById ? "by_id" : "latest",
+        threadId: options.threadId,
+        includeArchived: options.includeArchived,
+      },
+      found: false,
+      snapshot: null,
+      appEventLogs: [],
+      counts: {
+        messages: 0,
+        mcpServers: 0,
+        mcpRpcLogs: 0,
+        skillSelections: 0,
+        appEventLogs: 0,
+      },
+      truncation: {
+        messages: false,
+        mcpServers: false,
+        mcpRpcLogs: false,
+        skillSelections: false,
+        appEventLogs: false,
+      },
+    };
+  }
+
+  const [appEventLogs, appEventLogCount] = options.includeAppEventLogs
+    ? await Promise.all([
+        prisma.appEventLog.findMany({
+          where: {
+            threadId: thread.id,
+          },
+          orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+          take: options.appEventLimit,
+        }),
+        prisma.appEventLog.count({
+          where: {
+            threadId: thread.id,
+          },
+        }),
+      ])
+    : [[], 0];
+
+  const messages = thread.messages.map((message) => ({
+    ...message,
+    attachments: normalizeUnknownForJson(readJsonValue(message.attachmentsJson, [])),
+  }));
+  const mcpServers = thread.mcpServers.map((server) => ({
+    ...server,
+    headers: normalizeUnknownForJson(readJsonValue(server.headersJson, {})),
+    args: normalizeUnknownForJson(readJsonValue(server.argsJson, [])),
+    env: normalizeUnknownForJson(readJsonValue(server.envJson, {})),
+  }));
+  const mcpRpcLogs = thread.mcpRpcLogs.map((entry) => ({
+    ...entry,
+    request: normalizeUnknownForJson(readJsonValue(entry.requestJson, null)),
+    response: normalizeUnknownForJson(readJsonValue(entry.responseJson, null)),
+  }));
+  const skillSelections = thread.skillSelections.map((selection) => ({ ...selection }));
+  const threadRecord = {
+    id: thread.id,
+    userId: thread.userId,
+    name: thread.name,
+    createdAt: thread.createdAt,
+    updatedAt: thread.updatedAt,
+    deletedAt: thread.deletedAt,
+    reasoningEffort: thread.reasoningEffort,
+    webSearchEnabled: thread.webSearchEnabled,
+    threadEnvironmentJson: thread.threadEnvironmentJson,
+    threadEnvironment: normalizeUnknownForJson(readJsonValue(thread.threadEnvironmentJson, {})),
+  };
+  const instruction = thread.instruction ? { ...thread.instruction } : null;
+  const normalizedAppEventLogs = appEventLogs.map((event) => ({
+    ...event,
+    contextJson: event.context,
+    context: normalizeUnknownForJson(readJsonValue(event.context, {})),
+  }));
+
+  return {
+    target: {
+      mode: selectedById ? "by_id" : "latest",
+      threadId: thread.id,
+      includeArchived: options.includeArchived,
+    },
+    found: true,
+    snapshot: {
+      thread: threadRecord,
+      instruction,
+      messages,
+      mcpServers,
+      mcpRpcLogs,
+      skillSelections,
+    },
+    appEventLogs: normalizedAppEventLogs.map((row) => normalizeRecordForJson(row)),
+    counts: {
+      messages: thread._count.messages,
+      mcpServers: thread._count.mcpServers,
+      mcpRpcLogs: thread._count.mcpRpcLogs,
+      skillSelections: thread._count.skillSelections,
+      appEventLogs: appEventLogCount,
+    },
+    truncation: {
+      messages: messages.length < thread._count.messages,
+      mcpServers: mcpServers.length < thread._count.mcpServers,
+      mcpRpcLogs: mcpRpcLogs.length < thread._count.mcpRpcLogs,
+      skillSelections: skillSelections.length < thread._count.skillSelections,
+      appEventLogs: normalizedAppEventLogs.length < appEventLogCount,
+    },
+  };
+}
+
 export function normalizeDatabaseDebugReadOptions(
   options: {
     limit?: unknown;
@@ -1020,6 +1336,34 @@ function readIntegerOption(value: unknown): number | null {
     : null;
 }
 
+function readBoundedIntegerOption(
+  value: unknown,
+  fallback: number,
+  min: number,
+  max: number,
+): number {
+  const parsed = readIntegerOption(value);
+  const candidate = parsed === null ? fallback : parsed;
+  return Math.min(max, Math.max(min, candidate));
+}
+
+function readBooleanOption(value: unknown, fallback: boolean): boolean {
+  return typeof value === "boolean" ? value : fallback;
+}
+
+function readOptionalTextOption(value: unknown, maxLength: number): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const normalized = value.trim();
+  if (!normalized) {
+    return null;
+  }
+
+  return normalized.slice(0, maxLength);
+}
+
 function readFilterMode(value: unknown): DatabaseDebugFilterMode {
   return value === "any" ? "any" : "all";
 }
@@ -1219,4 +1563,21 @@ function normalizeUnknownForJson(value: unknown): unknown {
   }
 
   return value;
+}
+
+function readJsonValue<T>(value: string | null | undefined, fallback: T): T {
+  if (typeof value !== "string") {
+    return fallback;
+  }
+
+  const normalized = value.trim();
+  if (!normalized) {
+    return fallback;
+  }
+
+  try {
+    return JSON.parse(normalized) as T;
+  } catch {
+    return fallback;
+  }
 }

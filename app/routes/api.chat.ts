@@ -146,6 +146,8 @@ type UpstreamErrorPayload = {
   errorCode?: "azure_login_required";
 };
 type ChatExecutionOptions = {
+  threadId: string | null;
+  turnId: string | null;
   message: string;
   attachments: ClientAttachment[];
   history: ClientMessage[];
@@ -162,6 +164,7 @@ type ChatExecutionOptions = {
 type ChatExecutionResult = {
   message: string;
   threadEnvironment: ThreadEnvironment;
+  mcpRpcCount: number;
 };
 type JsonRpcRequestPayload = {
   jsonrpc: "2.0";
@@ -326,6 +329,8 @@ export async function action({ request }: Route.ActionArgs) {
 
     return Response.json({ error: "`message` is required." }, { status: 400 });
   }
+  const threadId = readThreadId(payload);
+  const turnId = readTurnId(payload);
 
   const historyResult = readHistory(payload);
   if (!historyResult.ok) {
@@ -469,6 +474,8 @@ export async function action({ request }: Route.ActionArgs) {
   }
 
   const executionOptions: ChatExecutionOptions = {
+    threadId,
+    turnId,
     message,
     attachments: attachmentsResult.value,
     history,
@@ -482,13 +489,41 @@ export async function action({ request }: Route.ActionArgs) {
     azureConfig,
     mcpServers: mcpServersResult.value,
   };
+  const logContext = buildChatExecutionLogContext(executionOptions);
+  const streamRequested = wantsEventStream(request);
+  await logServerRouteEvent({
+    request,
+    route: "/api/chat",
+    eventName: streamRequested ? "chat_stream_request_received" : "chat_request_received",
+    action: streamRequested ? "stream_chat" : "execute_chat",
+    level: "info",
+    statusCode: 200,
+    message: "Chat request received.",
+    threadId,
+    context: logContext,
+  });
 
-  if (wantsEventStream(request)) {
+  if (streamRequested) {
     return streamChatResponse(executionOptions);
   }
 
   try {
     const result = await executeChat(executionOptions);
+    await logServerRouteEvent({
+      request,
+      route: "/api/chat",
+      eventName: "chat_execution_succeeded",
+      action: "execute_chat",
+      level: "info",
+      statusCode: 200,
+      message: "Chat request completed.",
+      threadId,
+      context: {
+        ...logContext,
+        responseLength: result.message.length,
+        mcpRpcCount: result.mcpRpcCount,
+      },
+    });
     return Response.json({
       message: result.message,
       threadEnvironment: result.threadEnvironment,
@@ -502,11 +537,10 @@ export async function action({ request }: Route.ActionArgs) {
       action: "execute_chat",
       statusCode: upstreamError.status,
       error,
+      threadId,
       context: {
-        deploymentName: azureConfig.deploymentName,
-        mcpServerCount: executionOptions.mcpServers.length,
+        ...logContext,
         maxRunTurns: CHAT_MAX_RUN_TURNS,
-        threadEnvironment: executionOptions.threadEnvironment,
       },
     });
 
@@ -808,6 +842,7 @@ async function executeChat(
       return {
         message: assistantMessage,
         threadEnvironment: cloneThreadEnvironment(skillExecutionContext.threadEnvironment),
+        mcpRpcCount: mcpRpcSequence,
       };
     }
 
@@ -829,6 +864,7 @@ async function executeChat(
     return {
       message: assistantMessage,
       threadEnvironment: cloneThreadEnvironment(skillExecutionContext.threadEnvironment),
+      mcpRpcCount: mcpRpcSequence,
     };
   } finally {
     await Promise.allSettled([
@@ -893,6 +929,20 @@ function streamChatResponse(options: ChatExecutionOptions): Response {
           message: result.message,
           threadEnvironment: result.threadEnvironment,
         });
+        await logServerRouteEvent({
+          route: "/api/chat",
+          eventName: "chat_stream_execution_succeeded",
+          action: "stream_chat",
+          level: "info",
+          statusCode: 200,
+          message: "Chat stream completed.",
+          threadId: options.threadId,
+          context: {
+            ...buildChatExecutionLogContext(options),
+            responseLength: result.message.length,
+            mcpRpcCount: result.mcpRpcCount,
+          },
+        });
       } catch (error) {
         const upstreamError = buildUpstreamErrorPayload(
           error,
@@ -904,11 +954,10 @@ function streamChatResponse(options: ChatExecutionOptions): Response {
           action: "stream_chat",
           statusCode: upstreamError.status,
           error,
+          threadId: options.threadId,
           context: {
-            deploymentName: options.azureConfig.deploymentName,
-            mcpServerCount: options.mcpServers.length,
+            ...buildChatExecutionLogContext(options),
             maxRunTurns: CHAT_MAX_RUN_TURNS,
-            threadEnvironment: options.threadEnvironment,
           },
         });
 
@@ -941,6 +990,22 @@ function wantsEventStream(request: Request): boolean {
     typeof acceptHeader === "string" &&
     acceptHeader.toLowerCase().includes("text/event-stream")
   );
+}
+
+function buildChatExecutionLogContext(options: ChatExecutionOptions): Record<string, unknown> {
+  return {
+    turnId: options.turnId,
+    deploymentName: options.azureConfig.deploymentName,
+    messageLength: options.message.length,
+    historyCount: options.history.length,
+    attachmentCount: options.attachments.length,
+    threadEnvironmentKeyCount: Object.keys(options.threadEnvironment).length,
+    reasoningEffort: options.reasoningEffort,
+    webSearchEnabled: options.webSearchEnabled,
+    mcpServerCount: options.mcpServers.length,
+    skillCount: options.skills.length,
+    explicitSkillLocationCount: options.explicitSkillLocations.length,
+  };
 }
 
 function buildWebSearchPreviewTool() {
@@ -1244,6 +1309,28 @@ function createResilientCompactionSession(
       }
     },
   };
+}
+
+function readThreadId(payload: unknown): string | null {
+  return readOptionalPayloadLabel(payload, "threadId");
+}
+
+function readTurnId(payload: unknown): string | null {
+  return readOptionalPayloadLabel(payload, "turnId");
+}
+
+function readOptionalPayloadLabel(payload: unknown, key: string): string | null {
+  if (!isRecord(payload)) {
+    return null;
+  }
+
+  const value = payload[key];
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : null;
 }
 
 function readMessage(payload: unknown): string {

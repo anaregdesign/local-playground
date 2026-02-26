@@ -52,6 +52,20 @@ export async function loader({ request }: Route.LoaderArgs) {
 
   try {
     const threads = await readUserThreads(user.id);
+    await logServerRouteEvent({
+      request,
+      route: "/api/threads",
+      eventName: "load_threads_succeeded",
+      action: "load_threads",
+      level: "info",
+      statusCode: 200,
+      message: "Threads loaded.",
+      userId: user.id,
+      context: {
+        threadCount: threads.length,
+        archivedThreadCount: threads.filter((thread) => thread.deletedAt !== null).length,
+      },
+    });
     return Response.json({ threads });
   } catch (error) {
     await logServerRouteEvent({
@@ -165,6 +179,23 @@ export async function action({ request }: Route.ActionArgs) {
         return Response.json({ error: "Thread is not available." }, { status: 404 });
       }
 
+      await logServerRouteEvent({
+        request,
+        route: "/api/threads",
+        eventName: "save_thread_succeeded",
+        action: "save_thread",
+        level: "info",
+        statusCode: 200,
+        message: "Thread saved.",
+        userId: user.id,
+        threadId: saved.id,
+        context: {
+          messageCount: saved.messages.length,
+          mcpServerCount: saved.mcpServers.length,
+          mcpRpcCount: saved.mcpRpcHistory.length,
+          skillSelectionCount: saved.skillSelections.length,
+        },
+      });
       return Response.json({ thread: saved });
     }
 
@@ -220,6 +251,17 @@ export async function action({ request }: Route.ActionArgs) {
         );
       }
 
+      await logServerRouteEvent({
+        request,
+        route: "/api/threads",
+        eventName: "delete_thread_succeeded",
+        action: "delete_thread",
+        level: "info",
+        statusCode: 200,
+        message: "Thread archived.",
+        userId: user.id,
+        threadId: deleted.thread.id,
+      });
       return Response.json({ thread: deleted.thread });
     }
 
@@ -240,6 +282,17 @@ export async function action({ request }: Route.ActionArgs) {
       return Response.json({ error: "Thread is not available." }, { status: 404 });
     }
 
+    await logServerRouteEvent({
+      request,
+      route: "/api/threads",
+      eventName: "restore_thread_succeeded",
+      action: "restore_thread",
+      level: "info",
+      statusCode: 200,
+      message: "Thread restored.",
+      userId: user.id,
+      threadId: restored.thread.id,
+    });
     return Response.json({ thread: restored.thread });
   } catch (error) {
     const eventName =
