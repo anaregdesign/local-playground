@@ -2703,9 +2703,6 @@ function buildSkillTools(
     }
   };
 
-  const isSkillOperationErrorResult = (value: unknown): boolean =>
-    isRecord(value) && value.ok === false;
-
   const executeWithSkillOperationLog = async (
     method: string,
     input: unknown,
@@ -3378,6 +3375,18 @@ function buildSkillToolErrorResult(message: string): string {
   });
 }
 
+function isSkillOperationErrorResult(value: unknown): boolean {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  if (value.ok === false) {
+    return true;
+  }
+
+  return typeof value.stderr === "string" && value.stderr.length > 0;
+}
+
 function readSkillToolCategory(value: unknown): SkillToolCategory | null {
   return value === "scripts" || value === "references" || value === "assets" ? value : null;
 }
@@ -3918,4 +3927,5 @@ export const chatRouteTestUtils = {
   readProgressEventFromRunStreamEvent,
   buildStdioSpawnEnvironment,
   resolveExecutableCommand,
+  isSkillOperationErrorResult,
 };

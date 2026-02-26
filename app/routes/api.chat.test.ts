@@ -23,6 +23,7 @@ const {
   readProgressEventFromRunStreamEvent,
   buildStdioSpawnEnvironment,
   resolveExecutableCommand,
+  isSkillOperationErrorResult,
 } = chatRouteTestUtils;
 
 describe("readWebSearchEnabled", () => {
@@ -157,6 +158,20 @@ describe("readTemperature", () => {
       ok: false,
       error: "`temperature` must be between 0 and 2, or omitted (None).",
     });
+  });
+});
+
+describe("isSkillOperationErrorResult", () => {
+  it("returns true for explicit error payloads and non-empty stderr", () => {
+    expect(isSkillOperationErrorResult({ ok: false, error: "failed" })).toBe(true);
+    expect(isSkillOperationErrorResult({ ok: true, stderr: "warning: something happened" })).toBe(
+      true,
+    );
+  });
+
+  it("returns false for successful payloads without stderr", () => {
+    expect(isSkillOperationErrorResult({ ok: true, stderr: "" })).toBe(false);
+    expect(isSkillOperationErrorResult({ ok: true })).toBe(false);
   });
 });
 
