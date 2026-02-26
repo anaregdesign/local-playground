@@ -28,6 +28,9 @@ const {
   buildSkillOperationLoopSignature,
   updateSkillOperationLoopState,
   buildRepeatedSkillOperationLoopMessage,
+  incrementSkillOperationCount,
+  buildSkillOperationCountExceededMessage,
+  buildSkillOperationErrorCountExceededMessage,
 } = chatRouteTestUtils;
 
 describe("readWebSearchEnabled", () => {
@@ -256,6 +259,31 @@ describe("Skill operation loop guard helpers", () => {
 
     expect(message).toContain("python-venv.skill_run_script");
     expect(message).toContain("9 identical consecutive calls");
+  });
+});
+
+describe("Skill operation budget helpers", () => {
+  it("tracks counts per server and method key", () => {
+    const counts = new Map<string, number>();
+    expect(incrementSkillOperationCount(counts, "python-venv", "skill_run_script")).toBe(1);
+    expect(incrementSkillOperationCount(counts, "python-venv", "skill_run_script")).toBe(2);
+    expect(incrementSkillOperationCount(counts, "pptx", "skill_run_script")).toBe(1);
+  });
+
+  it("returns descriptive budget messages", () => {
+    const countMessage = buildSkillOperationCountExceededMessage({
+      serverName: "python-venv",
+      method: "skill_run_script",
+      count: 25,
+    });
+    const errorMessage = buildSkillOperationErrorCountExceededMessage({
+      errorCount: 11,
+    });
+
+    expect(countMessage).toContain("python-venv.skill_run_script");
+    expect(countMessage).toContain("25 calls in one run");
+    expect(errorMessage).toContain("11");
+    expect(errorMessage).toContain("too many Skill operation errors");
   });
 });
 

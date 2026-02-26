@@ -47,6 +47,8 @@ import {
   CHAT_MAX_CONSECUTIVE_IDENTICAL_SKILL_OPERATIONS,
   CHAT_MAX_AGENT_INSTRUCTION_LENGTH,
   CHAT_MAX_ACTIVE_SKILLS,
+  CHAT_MAX_SKILL_OPERATION_CALLS_PER_SERVER_METHOD,
+  CHAT_MAX_SKILL_OPERATION_ERRORS,
   CHAT_MAX_RUN_TURNS,
   CHAT_MAX_MCP_SERVERS,
   CHAT_MODEL_RUN_TIMEOUT_MS,
@@ -266,6 +268,10 @@ type SkillToolExecutionContext = {
 type SkillOperationLoopState = {
   signature: string;
   consecutiveCount: number;
+};
+type SkillOperationCountState = {
+  byServerMethod: Map<string, number>;
+  errorCount: number;
 };
 
 let codeInterpreterAttachmentAvailabilityCache: CodeInterpreterAttachmentAvailabilityCache | null =
@@ -2438,6 +2444,35 @@ function buildRepeatedSkillOperationLoopMessage(options: {
   return `Detected a repeated Skill operation loop for ${options.serverName}.${options.method} (${options.consecutiveCount} identical consecutive calls). Stopped early to avoid exceeding max turns.`;
 }
 
+function buildSkillOperationCountKey(serverName: string, method: string): string {
+  return `${serverName}::${method}`;
+}
+
+function incrementSkillOperationCount(
+  countsByServerMethod: Map<string, number>,
+  serverName: string,
+  method: string,
+): number {
+  const key = buildSkillOperationCountKey(serverName, method);
+  const nextCount = (countsByServerMethod.get(key) ?? 0) + 1;
+  countsByServerMethod.set(key, nextCount);
+  return nextCount;
+}
+
+function buildSkillOperationCountExceededMessage(options: {
+  serverName: string;
+  method: string;
+  count: number;
+}): string {
+  return `Detected excessive Skill operation usage for ${options.serverName}.${options.method} (${options.count} calls in one run). Stopped early to avoid exceeding max turns.`;
+}
+
+function buildSkillOperationErrorCountExceededMessage(options: {
+  errorCount: number;
+}): string {
+  return `Detected too many Skill operation errors in one run (${options.errorCount}). Stopped early to avoid repeated failures.`;
+}
+
 function parseStdioArgs(argsValue: unknown, index: number): ParseResult<string[]> {
   if (argsValue === undefined || argsValue === null) {
     return { ok: true, value: [] };
@@ -2846,6 +2881,10 @@ function buildSkillTools(
     signature: "",
     consecutiveCount: 0,
   };
+  const skillOperationCountState: SkillOperationCountState = {
+    byServerMethod: new Map<string, number>(),
+    errorCount: 0,
+  };
 
   const executeWithSkillOperationLog = async (
     method: string,
@@ -2862,6 +2901,38 @@ function buildSkillTools(
       method,
       params: readSkillOperationParams(input),
     };
+    const operationCountForServerMethod = incrementSkillOperationCount(
+      skillOperationCountState.byServerMethod,
+      serverName,
+      method,
+    );
+    if (operationCountForServerMethod > CHAT_MAX_SKILL_OPERATION_CALLS_PER_SERVER_METHOD) {
+      const operationCountErrorMessage = buildSkillOperationCountExceededMessage({
+        serverName,
+        method,
+        count: operationCountForServerMethod,
+      });
+      const responsePayload: JsonRpcResponsePayload = {
+        jsonrpc: "2.0",
+        id: requestId,
+        error: {
+          message: operationCountErrorMessage,
+        },
+      };
+      logHandlers.onRecord({
+        id: requestId,
+        sequence,
+        operationType: "skill",
+        serverName,
+        method,
+        startedAt,
+        completedAt: new Date().toISOString(),
+        request: requestPayload,
+        response: responsePayload,
+        isError: true,
+      });
+      throw new Error(operationCountErrorMessage);
+    }
     const operationSignature = buildSkillOperationLoopSignature(serverName, method, input);
     skillOperationLoopState = updateSkillOperationLoopState(
       skillOperationLoopState,
@@ -2897,29 +2968,9 @@ function buildSkillTools(
       throw new Error(loopErrorMessage);
     }
 
+    let result: string;
     try {
-      const result = await execute();
-      const parsedResult = parseSkillOperationResult(result);
-      const responsePayload: JsonRpcResponsePayload = {
-        jsonrpc: "2.0",
-        id: requestId,
-        result: parsedResult,
-      };
-
-      logHandlers.onRecord({
-        id: requestId,
-        sequence,
-        operationType: "skill",
-        serverName,
-        method,
-        startedAt,
-        completedAt: new Date().toISOString(),
-        request: requestPayload,
-        response: responsePayload,
-        isError: isSkillOperationErrorResult(parsedResult),
-      });
-
-      return result;
+      result = await execute();
     } catch (error) {
       const responsePayload: JsonRpcResponsePayload = {
         jsonrpc: "2.0",
@@ -2944,6 +2995,39 @@ function buildSkillTools(
 
       throw error;
     }
+
+    const parsedResult = parseSkillOperationResult(result);
+    const skillOperationErrored = isSkillOperationErrorResult(parsedResult);
+    const responsePayload: JsonRpcResponsePayload = {
+      jsonrpc: "2.0",
+      id: requestId,
+      result: parsedResult,
+    };
+
+    logHandlers.onRecord({
+      id: requestId,
+      sequence,
+      operationType: "skill",
+      serverName,
+      method,
+      startedAt,
+      completedAt: new Date().toISOString(),
+      request: requestPayload,
+      response: responsePayload,
+      isError: skillOperationErrored,
+    });
+    if (skillOperationErrored) {
+      skillOperationCountState.errorCount += 1;
+      if (skillOperationCountState.errorCount > CHAT_MAX_SKILL_OPERATION_ERRORS) {
+        throw new Error(
+          buildSkillOperationErrorCountExceededMessage({
+            errorCount: skillOperationCountState.errorCount,
+          }),
+        );
+      }
+    }
+
+    return result;
   };
 
   const listResourcesTool = tool({
@@ -4149,6 +4233,12 @@ function buildUpstreamErrorMessage(error: unknown, deploymentName: string): stri
   if (error.message.includes("repeated Skill operation loop")) {
     return `${error.message} Review active Skills or reduce repeated Skill tool calls, then retry.`;
   }
+  if (error.message.includes("excessive Skill operation usage")) {
+    return `${error.message} Review active Skills or simplify the workflow, then retry.`;
+  }
+  if (error.message.includes("too many Skill operation errors")) {
+    return `${error.message} Fix failing Skill scripts or reduce unstable steps, then retry.`;
+  }
   if (error.message.includes("Max turns (")) {
     return `${error.message} Try reducing active MCP servers or skills, or retry the request.`;
   }
@@ -4433,4 +4523,7 @@ export const chatRouteTestUtils = {
   buildSkillOperationLoopSignature,
   updateSkillOperationLoopState,
   buildRepeatedSkillOperationLoopMessage,
+  incrementSkillOperationCount,
+  buildSkillOperationCountExceededMessage,
+  buildSkillOperationErrorCountExceededMessage,
 };
