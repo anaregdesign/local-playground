@@ -59,12 +59,12 @@ export function UtilityModelSection(props: UtilityModelSectionProps) {
       ) : (
         <>
           {isLoadingAzureConnections || isLoadingUtilityAzureDeployments ? (
-            <p className="azure-loading-notice" role="status" aria-live="polite">
+            <div className="azure-loading-notice" role="status" aria-live="polite">
               <Spinner size="tiny" />
               {isLoadingAzureConnections
                 ? "Loading projects from Azure..."
                 : "Loading Utility deployment options..."}
-            </p>
+            </div>
           ) : null}
           <label className="input-label" htmlFor="utility-model-project">
             Utility Project

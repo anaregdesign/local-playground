@@ -48,6 +48,7 @@ import {
   CHAT_MAX_AGENT_INSTRUCTION_LENGTH,
   CHAT_MAX_ACTIVE_SKILLS,
   CHAT_MAX_SKILL_OPERATION_CALLS_PER_SERVER_METHOD,
+  CHAT_MAX_SKILL_RUN_SCRIPT_CALLS_PER_SERVER_METHOD,
   CHAT_MAX_SKILL_OPERATION_ERRORS,
   CHAT_MAX_RUN_TURNS,
   CHAT_MAX_MCP_SERVERS,
@@ -2546,6 +2547,12 @@ function incrementSkillOperationCount(
   return nextCount;
 }
 
+function readSkillOperationCallLimit(method: string): number {
+  return method === "skill_run_script"
+    ? CHAT_MAX_SKILL_RUN_SCRIPT_CALLS_PER_SERVER_METHOD
+    : CHAT_MAX_SKILL_OPERATION_CALLS_PER_SERVER_METHOD;
+}
+
 function buildSkillOperationCountExceededMessage(options: {
   serverName: string;
   method: string;
@@ -2993,7 +3000,8 @@ function buildSkillTools(
       serverName,
       method,
     );
-    if (operationCountForServerMethod > CHAT_MAX_SKILL_OPERATION_CALLS_PER_SERVER_METHOD) {
+    const operationCallLimit = readSkillOperationCallLimit(method);
+    if (operationCountForServerMethod > operationCallLimit) {
       const operationCountErrorMessage = buildSkillOperationCountExceededMessage({
         serverName,
         method,
@@ -4730,6 +4738,7 @@ export const chatRouteTestUtils = {
   updateSkillOperationLoopState,
   buildRepeatedSkillOperationLoopMessage,
   incrementSkillOperationCount,
+  readSkillOperationCallLimit,
   buildSkillOperationCountExceededMessage,
   buildSkillOperationErrorCountExceededMessage,
   applySkillScriptEnvironmentChanges,

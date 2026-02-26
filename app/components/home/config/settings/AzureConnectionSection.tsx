@@ -76,12 +76,12 @@ export function AzureConnectionSection(props: AzureConnectionSectionProps) {
       ) : (
         <>
           {isLoadingAzureConnections || isLoadingAzureDeployments ? (
-            <p className="azure-loading-notice" role="status" aria-live="polite">
+            <div className="azure-loading-notice" role="status" aria-live="polite">
               <Spinner size="tiny" />
               {isLoadingAzureConnections
                 ? "Loading projects from Azure..."
                 : "Loading deployments for the selected project..."}
-            </p>
+            </div>
           ) : null}
           {activeAzureConnection || activeAzurePrincipal ? (
             <dl className="azure-connection-summary" aria-label="Active Azure connection details">

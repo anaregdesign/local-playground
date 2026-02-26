@@ -71,10 +71,10 @@ export function McpSavedConfigsSection(props: McpSavedConfigsSectionProps) {
         </Button>
       </div>
       {isLoadingSavedMcpServers ? (
-        <p className="azure-loading-notice" role="status" aria-live="polite">
+        <div className="azure-loading-notice" role="status" aria-live="polite">
           <Spinner size="tiny" />
           Loading MCP Servers...
-        </p>
+        </div>
       ) : null}
       <SelectableCardList
         items={savedMcpServerOptions}

@@ -138,10 +138,10 @@ export function ThreadsManageSection(props: ThreadsManageSectionProps) {
       description="Switch Playground context across conversation, MCP logs, instruction, and connected MCP Servers."
     >
       {isLoadingThreads ? (
-        <p className="azure-loading-notice" role="status" aria-live="polite">
+        <div className="azure-loading-notice" role="status" aria-live="polite">
           <Spinner size="tiny" />
           Loading threads...
-        </p>
+        </div>
       ) : null}
       <div className="threads-action-row">
         <Button

@@ -130,10 +130,10 @@ export function SkillRegistrySection(props: SkillRegistrySectionProps) {
         </Button>
       </div>
       {isLoadingSkillRegistries ? (
-        <p className="azure-loading-notice" role="status" aria-live="polite">
+        <div className="azure-loading-notice" role="status" aria-live="polite">
           <Spinner size="tiny" />
           Loading registries...
-        </p>
+        </div>
       ) : null}
       <CollapsibleSelectableCardGroupList
         groups={collapsibleRegistryGroups}

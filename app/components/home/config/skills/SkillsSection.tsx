@@ -107,10 +107,10 @@ export function SkillsSection(props: SkillsSectionProps) {
         </Button>
       </div>
       {isLoadingSkills ? (
-        <p className="azure-loading-notice" role="status" aria-live="polite">
+        <div className="azure-loading-notice" role="status" aria-live="polite">
           <Spinner size="tiny" />
           Loading Skills...
-        </p>
+        </div>
       ) : null}
       <CollapsibleSelectableCardGroupList
         groups={groupedSkills}

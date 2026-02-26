@@ -6,6 +6,8 @@ import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  CHAT_MAX_SKILL_OPERATION_CALLS_PER_SERVER_METHOD,
+  CHAT_MAX_SKILL_RUN_SCRIPT_CALLS_PER_SERVER_METHOD,
   MCP_DEFAULT_AZURE_AUTH_SCOPE,
   THREAD_ENVIRONMENT_VARIABLES_MAX,
 } from "~/lib/constants";
@@ -32,6 +34,7 @@ const {
   updateSkillOperationLoopState,
   buildRepeatedSkillOperationLoopMessage,
   incrementSkillOperationCount,
+  readSkillOperationCallLimit,
   buildSkillOperationCountExceededMessage,
   buildSkillOperationErrorCountExceededMessage,
   applySkillScriptEnvironmentChanges,
@@ -267,6 +270,15 @@ describe("Skill operation loop guard helpers", () => {
 });
 
 describe("Skill operation budget helpers", () => {
+  it("uses a higher call limit for skill_run_script only", () => {
+    expect(readSkillOperationCallLimit("skill_run_script")).toBe(
+      CHAT_MAX_SKILL_RUN_SCRIPT_CALLS_PER_SERVER_METHOD,
+    );
+    expect(readSkillOperationCallLimit("skill_read_guide")).toBe(
+      CHAT_MAX_SKILL_OPERATION_CALLS_PER_SERVER_METHOD,
+    );
+  });
+
   it("tracks counts per server and method key", () => {
     const counts = new Map<string, number>();
     expect(incrementSkillOperationCount(counts, "python-venv", "skill_run_script")).toBe(1);
