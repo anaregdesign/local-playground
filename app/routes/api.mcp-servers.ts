@@ -301,7 +301,7 @@ async function writeSavedMcpServers(userId: number, profiles: SavedMcpServerConf
 }
 
 function mergeDefaultMcpServers(currentProfiles: SavedMcpServerConfig[]): SavedMcpServerConfig[] {
-  const mergedProfiles = [...currentProfiles];
+  const mergedProfiles = normalizeLegacyDefaultMermaidProfiles(currentProfiles);
   const profileKeys = new Set(mergedProfiles.map((profile) => buildProfileKey(profile)));
   for (const profile of buildDefaultMcpServerProfiles()) {
     const profileKey = buildProfileKey(profile);
@@ -317,7 +317,7 @@ function mergeDefaultMcpServers(currentProfiles: SavedMcpServerConfig[]): SavedM
 }
 
 function buildDefaultMcpServerProfiles(): SavedMcpServerConfig[] {
-  const filesystemWorkingDirectory = resolveDefaultFilesystemWorkingDirectory();
+  const defaultStdioWorkingDirectory = resolveDefaultFilesystemWorkingDirectory();
   return [
     {
       id: createRandomId(),
@@ -345,7 +345,7 @@ function buildDefaultMcpServerProfiles(): SavedMcpServerConfig[] {
       transport: "stdio",
       command: MCP_DEFAULT_FILESYSTEM_MCP_SERVER_COMMAND,
       args: [...MCP_DEFAULT_FILESYSTEM_MCP_SERVER_ARGS],
-      cwd: filesystemWorkingDirectory,
+      cwd: defaultStdioWorkingDirectory,
       env: {},
     },
     {
@@ -378,9 +378,40 @@ function buildDefaultMcpServerProfiles(): SavedMcpServerConfig[] {
       transport: "stdio",
       command: MCP_DEFAULT_MERMAID_MCP_SERVER_COMMAND,
       args: [...MCP_DEFAULT_MERMAID_MCP_SERVER_ARGS],
+      cwd: defaultStdioWorkingDirectory,
       env: {},
     },
   ];
+}
+
+function normalizeLegacyDefaultMermaidProfiles(
+  currentProfiles: SavedMcpServerConfig[],
+): SavedMcpServerConfig[] {
+  const defaultWorkingDirectory = resolveDefaultFilesystemWorkingDirectory();
+  return currentProfiles.map((profile) => {
+    if (!isLegacyDefaultMermaidProfile(profile)) {
+      return profile;
+    }
+
+    return {
+      ...profile,
+      cwd: defaultWorkingDirectory,
+    };
+  });
+}
+
+function isLegacyDefaultMermaidProfile(profile: SavedMcpServerConfig): profile is SavedMcpStdioServerConfig {
+  if (profile.transport !== "stdio") {
+    return false;
+  }
+
+  return (
+    profile.command === MCP_DEFAULT_MERMAID_MCP_SERVER_COMMAND &&
+    profile.args.length === MCP_DEFAULT_MERMAID_MCP_SERVER_ARGS.length &&
+    profile.args.every((arg, index) => arg === MCP_DEFAULT_MERMAID_MCP_SERVER_ARGS[index]) &&
+    Object.keys(profile.env).length === 0 &&
+    !profile.cwd
+  );
 }
 
 function resolveDefaultFilesystemWorkingDirectory(): string {

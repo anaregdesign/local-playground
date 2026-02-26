@@ -341,6 +341,7 @@ describe("mergeDefaultMcpServers", () => {
           transport: "stdio",
           command: MCP_DEFAULT_MERMAID_MCP_SERVER_COMMAND,
           args: [...MCP_DEFAULT_MERMAID_MCP_SERVER_ARGS],
+          cwd: expectedFilesystemWorkingDirectory,
           env: {},
         }),
       ]),
@@ -349,6 +350,7 @@ describe("mergeDefaultMcpServers", () => {
   });
 
   it("does not duplicate defaults when matching profiles already exist", () => {
+    const expectedFilesystemWorkingDirectory = resolveDefaultFilesystemWorkingDirectory();
     const existing = [
       {
         id: "profile-openai-docs",
@@ -409,6 +411,7 @@ describe("mergeDefaultMcpServers", () => {
         transport: "stdio" as const,
         command: MCP_DEFAULT_MERMAID_MCP_SERVER_COMMAND,
         args: [...MCP_DEFAULT_MERMAID_MCP_SERVER_ARGS],
+        cwd: expectedFilesystemWorkingDirectory,
         env: {},
       },
     ];
@@ -419,6 +422,7 @@ describe("mergeDefaultMcpServers", () => {
   });
 
   it("adds only missing defaults when some profiles already exist", () => {
+    const expectedFilesystemWorkingDirectory = resolveDefaultFilesystemWorkingDirectory();
     const existing = [
       {
         id: "profile-workiq",
@@ -464,8 +468,40 @@ describe("mergeDefaultMcpServers", () => {
           transport: "stdio",
           command: MCP_DEFAULT_MERMAID_MCP_SERVER_COMMAND,
           args: [...MCP_DEFAULT_MERMAID_MCP_SERVER_ARGS],
+          cwd: expectedFilesystemWorkingDirectory,
         }),
       ]),
+    );
+  });
+
+  it("upgrades legacy default mermaid profile without cwd", () => {
+    const expectedFilesystemWorkingDirectory = resolveDefaultFilesystemWorkingDirectory();
+    const existing = [
+      {
+        id: "legacy-mermaid",
+        name: "Legacy Mermaid",
+        transport: "stdio" as const,
+        command: MCP_DEFAULT_MERMAID_MCP_SERVER_COMMAND,
+        args: [...MCP_DEFAULT_MERMAID_MCP_SERVER_ARGS],
+        env: {},
+      },
+    ];
+
+    const result = mergeDefaultMcpServers(existing);
+    const mermaidProfiles = result.filter(
+      (entry) =>
+        entry.transport === "stdio" &&
+        entry.command === MCP_DEFAULT_MERMAID_MCP_SERVER_COMMAND &&
+        entry.args.length === MCP_DEFAULT_MERMAID_MCP_SERVER_ARGS.length &&
+        entry.args.every((arg, index) => arg === MCP_DEFAULT_MERMAID_MCP_SERVER_ARGS[index]),
+    );
+
+    expect(mermaidProfiles).toHaveLength(1);
+    expect(mermaidProfiles[0]).toEqual(
+      expect.objectContaining({
+        id: "legacy-mermaid",
+        cwd: expectedFilesystemWorkingDirectory,
+      }),
     );
   });
 
