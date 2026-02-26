@@ -25,6 +25,9 @@ const {
   buildStdioSpawnEnvironment,
   resolveExecutableCommand,
   isSkillOperationErrorResult,
+  buildSkillOperationLoopSignature,
+  updateSkillOperationLoopState,
+  buildRepeatedSkillOperationLoopMessage,
 } = chatRouteTestUtils;
 
 describe("readWebSearchEnabled", () => {
@@ -207,6 +210,52 @@ describe("isSkillOperationErrorResult", () => {
     expect(isSkillOperationErrorResult({ ok: true, exitCode: 0, stderr: "warning" })).toBe(false);
     expect(isSkillOperationErrorResult({ ok: true, stderr: "warning" })).toBe(false);
     expect(isSkillOperationErrorResult({ ok: true })).toBe(false);
+  });
+});
+
+describe("Skill operation loop guard helpers", () => {
+  it("builds stable signatures for equivalent inputs", () => {
+    const first = buildSkillOperationLoopSignature("python-venv", "skill_run_script", {
+      skill: "python-venv",
+      path: "python-venv.bash",
+      args: ["path", "3.11.8"],
+      options: {
+        retries: 2,
+        mode: "strict",
+      },
+    });
+    const second = buildSkillOperationLoopSignature("python-venv", "skill_run_script", {
+      options: {
+        mode: "strict",
+        retries: 2,
+      },
+      args: ["path", "3.11.8"],
+      path: "python-venv.bash",
+      skill: "python-venv",
+    });
+
+    expect(first).toBe(second);
+  });
+
+  it("increments repeated counts and resets for different signatures", () => {
+    let state = { signature: "", consecutiveCount: 0 };
+    state = updateSkillOperationLoopState(state, "sig-1");
+    expect(state).toEqual({ signature: "sig-1", consecutiveCount: 1 });
+    state = updateSkillOperationLoopState(state, "sig-1");
+    expect(state).toEqual({ signature: "sig-1", consecutiveCount: 2 });
+    state = updateSkillOperationLoopState(state, "sig-2");
+    expect(state).toEqual({ signature: "sig-2", consecutiveCount: 1 });
+  });
+
+  it("returns descriptive loop error messages", () => {
+    const message = buildRepeatedSkillOperationLoopMessage({
+      serverName: "python-venv",
+      method: "skill_run_script",
+      consecutiveCount: 9,
+    });
+
+    expect(message).toContain("python-venv.skill_run_script");
+    expect(message).toContain("9 identical consecutive calls");
   });
 });
 

@@ -44,6 +44,7 @@ import {
   CHAT_ATTACHMENT_MAX_PDF_FILE_SIZE_BYTES,
   CHAT_ATTACHMENT_MAX_PDF_TOTAL_SIZE_BYTES,
   CHAT_ATTACHMENT_MAX_TOTAL_SIZE_BYTES,
+  CHAT_MAX_CONSECUTIVE_IDENTICAL_SKILL_OPERATIONS,
   CHAT_MAX_AGENT_INSTRUCTION_LENGTH,
   CHAT_MAX_ACTIVE_SKILLS,
   CHAT_MAX_RUN_TURNS,
@@ -261,6 +262,10 @@ type SkillToolLogHandlers = {
 
 type SkillToolExecutionContext = {
   threadEnvironment: ThreadEnvironment;
+};
+type SkillOperationLoopState = {
+  signature: string;
+  consecutiveCount: number;
 };
 
 let codeInterpreterAttachmentAvailabilityCache: CodeInterpreterAttachmentAvailabilityCache | null =
@@ -2379,6 +2384,60 @@ function toSerializableValue(value: unknown): unknown {
   }
 }
 
+function buildSkillOperationLoopSignature(
+  serverName: string,
+  method: string,
+  input: unknown,
+): string {
+  return JSON.stringify({
+    serverName,
+    method,
+    input: normalizeObjectKeyOrder(toSerializableValue(input)),
+  });
+}
+
+function normalizeObjectKeyOrder(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map((item) => normalizeObjectKeyOrder(item));
+  }
+  if (!isRecord(value)) {
+    return value;
+  }
+
+  const normalized: Record<string, unknown> = {};
+  const sortedEntries = Object.entries(value).sort(([left], [right]) => left.localeCompare(right));
+  for (const [key, entryValue] of sortedEntries) {
+    normalized[key] = normalizeObjectKeyOrder(entryValue);
+  }
+
+  return normalized;
+}
+
+function updateSkillOperationLoopState(
+  current: SkillOperationLoopState,
+  nextSignature: string,
+): SkillOperationLoopState {
+  if (current.signature === nextSignature) {
+    return {
+      signature: nextSignature,
+      consecutiveCount: current.consecutiveCount + 1,
+    };
+  }
+
+  return {
+    signature: nextSignature,
+    consecutiveCount: 1,
+  };
+}
+
+function buildRepeatedSkillOperationLoopMessage(options: {
+  serverName: string;
+  method: string;
+  consecutiveCount: number;
+}): string {
+  return `Detected a repeated Skill operation loop for ${options.serverName}.${options.method} (${options.consecutiveCount} identical consecutive calls). Stopped early to avoid exceeding max turns.`;
+}
+
 function parseStdioArgs(argsValue: unknown, index: number): ParseResult<string[]> {
   if (argsValue === undefined || argsValue === null) {
     return { ok: true, value: [] };
@@ -2783,6 +2842,10 @@ function buildSkillTools(
       return result;
     }
   };
+  let skillOperationLoopState: SkillOperationLoopState = {
+    signature: "",
+    consecutiveCount: 0,
+  };
 
   const executeWithSkillOperationLog = async (
     method: string,
@@ -2799,6 +2862,40 @@ function buildSkillTools(
       method,
       params: readSkillOperationParams(input),
     };
+    const operationSignature = buildSkillOperationLoopSignature(serverName, method, input);
+    skillOperationLoopState = updateSkillOperationLoopState(
+      skillOperationLoopState,
+      operationSignature,
+    );
+    if (
+      skillOperationLoopState.consecutiveCount > CHAT_MAX_CONSECUTIVE_IDENTICAL_SKILL_OPERATIONS
+    ) {
+      const loopErrorMessage = buildRepeatedSkillOperationLoopMessage({
+        serverName,
+        method,
+        consecutiveCount: skillOperationLoopState.consecutiveCount,
+      });
+      const responsePayload: JsonRpcResponsePayload = {
+        jsonrpc: "2.0",
+        id: requestId,
+        error: {
+          message: loopErrorMessage,
+        },
+      };
+      logHandlers.onRecord({
+        id: requestId,
+        sequence,
+        operationType: "skill",
+        serverName,
+        method,
+        startedAt,
+        completedAt: new Date().toISOString(),
+        request: requestPayload,
+        response: responsePayload,
+        isError: true,
+      });
+      throw new Error(loopErrorMessage);
+    }
 
     try {
       const result = await execute();
@@ -4049,6 +4146,9 @@ function buildUpstreamErrorMessage(error: unknown, deploymentName: string): stri
   if (error.message.includes("Model behavior error")) {
     return `${error.message} Verify your model/deployment supports the selected reasoning effort.`;
   }
+  if (error.message.includes("repeated Skill operation loop")) {
+    return `${error.message} Review active Skills or reduce repeated Skill tool calls, then retry.`;
+  }
   if (error.message.includes("Max turns (")) {
     return `${error.message} Try reducing active MCP servers or skills, or retry the request.`;
   }
@@ -4330,4 +4430,7 @@ export const chatRouteTestUtils = {
   buildStdioSpawnEnvironment,
   resolveExecutableCommand,
   isSkillOperationErrorResult,
+  buildSkillOperationLoopSignature,
+  updateSkillOperationLoopState,
+  buildRepeatedSkillOperationLoopMessage,
 };
