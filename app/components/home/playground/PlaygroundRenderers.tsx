@@ -52,12 +52,17 @@ export function renderTurnMcpLog(
         <div className="mcp-history-list">
           {entries.map((entry) => {
             const operationType = readOperationLogType(entry);
-            const operationLabel = operationType === "skill" ? "Skill" : "MCP";
+            const isSystemSkillOperation =
+              operationType === "skill" && entry.serverName === "skill-runtime";
+            const operationLabel =
+              operationType === "mcp" ? "MCP" : isSystemSkillOperation ? "SYSTEM" : "SKILL";
+            const operationBadgeType =
+              operationType === "mcp" ? "mcp" : isSystemSkillOperation ? "system" : "skill";
             return (
               <details key={entry.id} className="mcp-history-item">
                 <summary>
                   <span className="mcp-history-seq">#{entry.sequence}</span>
-                  <span className={`mcp-history-type-badge ${operationType}`}>
+                  <span className={`mcp-history-type-badge ${operationBadgeType}`}>
                     {operationLabel}
                   </span>
                   <span className="mcp-history-method">{entry.method}</span>

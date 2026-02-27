@@ -782,6 +782,12 @@ body {
   color: #2f5e3a;
 }
 
+.mcp-history-type-badge.system {
+  background: #f1f3f6;
+  border-color: rgba(76, 84, 95, 0.24);
+  color: #4c5868;
+}
+
 .mcp-history-server {
   color: var(--text-subtle);
 }
