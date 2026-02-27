@@ -54,10 +54,7 @@ import {
   readTenantIdFromUnknown,
 } from "~/lib/home/azure/parsers";
 import { isLikelyChatAzureAuthError } from "~/lib/home/azure/errors";
-import {
-  buildMcpHistoryByTurnId,
-  collectSuccessfulSkillGuideLocations,
-} from "~/lib/home/chat/history";
+import { buildMcpHistoryByTurnId } from "~/lib/home/chat/history";
 import type { DraftChatAttachment } from "~/lib/home/chat/attachments";
 import { formatChatAttachmentSize, readFileAsDataUrl } from "~/lib/home/chat/attachments";
 import {
@@ -205,7 +202,6 @@ export function useWorkspaceController() {
   );
   const [messages, setMessages] = useState<ChatMessage[]>([...HOME_INITIAL_MESSAGES]);
   const [draft, setDraft] = useState("");
-  const [draftExplicitSkillLocations, setDraftExplicitSkillLocations] = useState<string[]>([]);
   const [chatComposerCursorIndex, setChatComposerCursorIndex] = useState(0);
   const [chatCommandHighlightedIndex, setChatCommandHighlightedIndex] = useState(0);
   const [draftAttachments, setDraftAttachments] = useState<DraftChatAttachment[]>([]);
@@ -293,6 +289,7 @@ export function useWorkspaceController() {
   const [threadError, setThreadError] = useState<string | null>(null);
   const [availableSkills, setAvailableSkills] = useState<SkillCatalogEntry[]>([]);
   const [selectedThreadSkills, setSelectedThreadSkills] = useState<ThreadSkillSelection[]>([]);
+  const [selectedDialogueSkills, setSelectedDialogueSkills] = useState<ThreadSkillSelection[]>([]);
   const [skillRegistryCatalogs, setSkillRegistryCatalogs] = useState<SkillRegistryCatalog[]>([]);
   const [isMutatingSkillRegistries, setIsMutatingSkillRegistries] = useState(false);
   const [skillRegistryError, setSkillRegistryError] = useState<string | null>(null);
@@ -453,17 +450,51 @@ export function useWorkspaceController() {
       return left.name.localeCompare(right.name);
     });
   }, [availableSkillByLocation, availableSkills, selectedThreadSkills]);
+  const dialogueSkillOptions = useMemo(() => {
+    const selectedDialogueSkillLocationSet = new Set(
+      selectedDialogueSkills.map((selection) => selection.location),
+    );
+    return [
+      ...availableSkills.map((skill) => ({
+        name: skill.name,
+        description: skill.description,
+        location: skill.location,
+        source: skill.source,
+        badge: resolveSkillBadgeLabel(skill.source, skill.location),
+        isSelected: selectedDialogueSkillLocationSet.has(skill.location),
+        isAvailable: true,
+      })),
+      ...selectedDialogueSkills
+        .filter((selection) => !availableSkillByLocation.has(selection.location))
+        .map((selection) => ({
+          name: selection.name,
+          description:
+            "Added for this dialogue, but the SKILL.md file is currently unavailable.",
+          location: selection.location,
+          source: "app_data" as const,
+          badge: resolveSkillBadgeLabel("app_data", selection.location),
+          isSelected: true,
+          isAvailable: false,
+        })),
+    ].sort((left, right) => {
+      if (left.isSelected !== right.isSelected) {
+        return left.isSelected ? -1 : 1;
+      }
+
+      return left.name.localeCompare(right.name);
+    });
+  }, [availableSkillByLocation, availableSkills, selectedDialogueSkills]);
   const chatCommandProviders: ChatCommandProvider[] = [
     {
       keyword: "$",
       emptyHint: "No matching Skills.",
-      readSuggestions: (query) => readSkillCommandSuggestions(threadSkillOptions, query),
+      readSuggestions: (query) => readSkillCommandSuggestions(dialogueSkillOptions, query),
       applySuggestion: (suggestion) => {
         if (!suggestion.isAvailable) {
           return;
         }
 
-        handleAddThreadSkill(suggestion.id);
+        handleAddDialogueSkill(suggestion.id);
       },
     },
   ];
@@ -1475,6 +1506,7 @@ export function useWorkspaceController() {
     setMcpRpcHistory([]);
     setMcpServers([]);
     setSelectedThreadSkills([]);
+    setSelectedDialogueSkills([]);
     setReasoningEffort(HOME_DEFAULT_REASONING_EFFORT);
     setWebSearchEnabled(HOME_DEFAULT_WEB_SEARCH_ENABLED);
     setAgentInstruction(DEFAULT_AGENT_INSTRUCTION);
@@ -1487,7 +1519,6 @@ export function useWorkspaceController() {
     setInstructionEnhancingThreadId("");
     setInstructionEnhanceComparison(null);
     setDraft("");
-    setDraftExplicitSkillLocations([]);
     setDraftAttachments([]);
     setChatAttachmentError(null);
     setUiError(null);
@@ -1714,6 +1745,7 @@ export function useWorkspaceController() {
     setMcpServers(clonedMcpServers);
     setMcpRpcHistory(clonedMcpRpcHistory);
     setSelectedThreadSkills(clonedSkillSelections);
+    setSelectedDialogueSkills([]);
     setReasoningEffort(thread.reasoningEffort);
     setWebSearchEnabled(thread.webSearchEnabled);
     setAgentInstruction(thread.agentInstruction);
@@ -1725,7 +1757,6 @@ export function useWorkspaceController() {
     setInstructionEnhanceSuccess(null);
     setInstructionEnhanceComparison(null);
     setDraft("");
-    setDraftExplicitSkillLocations([]);
     setDraftAttachments([]);
     setChatAttachmentError(null);
     setUiError(null);
@@ -3199,22 +3230,16 @@ export function useWorkspaceController() {
       ({ id: _id, ...attachment }) => attachment,
     );
     const requestMcpServers = cloneMcpServers(mcpServers);
-    const requestSkillSelections = cloneThreadSkillSelections(selectedThreadSkills);
+    const requestSkillSelections = mergeSkillSelections(
+      selectedThreadSkills,
+      selectedDialogueSkills,
+    );
     const requestThreadEnvironment = baseThread
       ? cloneThreadEnvironment(baseThread.threadEnvironment)
       : {};
-    const previouslyLoadedSkillGuideLocations = collectSuccessfulSkillGuideLocations(
-      baseThread?.mcpRpcHistory ?? [],
-      requestSkillSelections,
+    const requestExplicitSkillLocations = requestSkillSelections.map(
+      (selection) => selection.location,
     );
-    const requestExplicitSkillLocationSet = new Set(
-      [...draftExplicitSkillLocations, ...previouslyLoadedSkillGuideLocations]
-        .map((location) => location.trim())
-        .filter((location) => location.length > 0),
-    );
-    const requestExplicitSkillLocations = requestSkillSelections
-      .filter((selection) => requestExplicitSkillLocationSet.has(selection.location))
-      .map((selection) => selection.location);
     const requestAgentInstruction = agentInstruction;
     const userMessage: ChatMessage = createMessage(
       "user",
@@ -3240,7 +3265,7 @@ export function useWorkspaceController() {
 
     appendMessageToThreadState(threadId, userMessage);
     setDraft("");
-    setDraftExplicitSkillLocations([]);
+    setSelectedDialogueSkills([]);
     setDraftAttachments([]);
     setChatAttachmentError(null);
     setUiError(null);
@@ -3599,6 +3624,43 @@ export function useWorkspaceController() {
     });
   }
 
+  function handleAddDialogueSkill(locationRaw: string) {
+    const location = locationRaw.trim();
+    if (!location) {
+      return;
+    }
+
+    setSelectedDialogueSkills((current) => {
+      if (current.some((selection) => selection.location === location)) {
+        return current;
+      }
+
+      const skill = availableSkillByLocation.get(location);
+      if (!skill) {
+        return current;
+      }
+
+      return [
+        ...current,
+        {
+          name: skill.name,
+          location: skill.location,
+        },
+      ];
+    });
+  }
+
+  function handleRemoveDialogueSkill(locationRaw: string) {
+    const location = locationRaw.trim();
+    if (!location) {
+      return;
+    }
+
+    setSelectedDialogueSkills((current) =>
+      current.filter((selection) => selection.location !== location),
+    );
+  }
+
   function handleAddThreadSkill(locationRaw: string) {
     const location = locationRaw.trim();
     if (!location) {
@@ -3623,6 +3685,18 @@ export function useWorkspaceController() {
         },
       ];
     });
+    setSkillsError(null);
+  }
+
+  function handleRemoveThreadSkill(locationRaw: string) {
+    const location = locationRaw.trim();
+    if (!location) {
+      return;
+    }
+
+    setSelectedThreadSkills((current) =>
+      current.filter((selection) => selection.location !== location),
+    );
     setSkillsError(null);
   }
 
@@ -3651,9 +3725,6 @@ export function useWorkspaceController() {
         },
       ];
     });
-    setDraftExplicitSkillLocations((current) =>
-      current.filter((selectionLocation) => selectionLocation !== location),
-    );
     setSkillsError(null);
   }
 
@@ -3670,13 +3741,6 @@ export function useWorkspaceController() {
     }
 
     activeChatCommandProvider.applySuggestion(suggestion);
-    setDraftExplicitSkillLocations((current) => {
-      if (current.includes(suggestion.id)) {
-        return current;
-      }
-
-      return [...current, suggestion.id];
-    });
 
     const nextDraft = replaceChatCommandToken({
       value: draft,
@@ -4952,8 +5016,10 @@ export function useWorkspaceController() {
     onWebSearchEnabledChange: handleWebSearchEnabledChange,
     maxChatAttachmentFiles: CHAT_ATTACHMENT_MAX_FILES,
     canSendMessage,
-    selectedSkills: selectedThreadSkills,
-    onRemoveSkill: handleToggleThreadSkill,
+    selectedThreadSkills,
+    selectedDialogueSkills,
+    onRemoveThreadSkill: handleRemoveThreadSkill,
+    onRemoveDialogueSkill: handleRemoveDialogueSkill,
     mcpServers,
     onRemoveMcpServer: handleRemoveMcpServer,
   };
@@ -4981,6 +5047,24 @@ export function useWorkspaceController() {
     },
     playgroundPanelProps,
   };
+}
+
+function mergeSkillSelections(
+  threadSkills: ThreadSkillSelection[],
+  dialogueSkills: ThreadSkillSelection[],
+): ThreadSkillSelection[] {
+  const byLocation = new Map<string, ThreadSkillSelection>();
+  for (const selection of [...threadSkills, ...dialogueSkills]) {
+    const location = selection.location.trim();
+    if (!location || byLocation.has(location)) {
+      continue;
+    }
+    byLocation.set(location, {
+      name: selection.name,
+      location,
+    });
+  }
+  return Array.from(byLocation.values());
 }
 
 function resolveSkillBadgeLabel(

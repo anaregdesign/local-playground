@@ -177,8 +177,10 @@ type PlaygroundPanelProps<
   onWebSearchEnabledChange: (value: boolean) => void;
   maxChatAttachmentFiles: number;
   canSendMessage: boolean;
-  selectedSkills: ThreadSkillLike[];
-  onRemoveSkill: (location: string) => void;
+  selectedThreadSkills: ThreadSkillLike[];
+  selectedDialogueSkills: ThreadSkillLike[];
+  onRemoveThreadSkill: (location: string) => void;
+  onRemoveDialogueSkill: (location: string) => void;
   mcpServers: TMcpServer[];
   onRemoveMcpServer: (id: string) => void;
 };
@@ -251,8 +253,10 @@ export function PlaygroundPanel<
     onWebSearchEnabledChange,
     maxChatAttachmentFiles,
     canSendMessage,
-    selectedSkills,
-    onRemoveSkill,
+    selectedThreadSkills,
+    selectedDialogueSkills,
+    onRemoveThreadSkill,
+    onRemoveDialogueSkill,
     mcpServers,
     onRemoveMcpServer,
   } = props;
@@ -320,90 +324,136 @@ export function PlaygroundPanel<
     );
   }
 
-  function renderAddedMcpServersBubbles() {
+  function renderAddedThreadMcpServersBubbles() {
     if (mcpServers.length === 0) {
       return null;
     }
 
     return (
-      <section className="chat-mcp-strip" aria-label="Added MCP Servers">
-        <div className="chat-mcp-bubbles">
-          {mcpServers.map((server) => (
-            <div key={server.id} className="chat-mcp-bubble-item">
-              <LabeledTooltip
-                title={server.name}
-                lines={
-                  server.transport === "stdio"
-                    ? [
-                        "Transport: stdio",
-                        `Command: ${server.command}${server.args.length > 0 ? ` ${server.args.join(" ")}` : ""}`,
-                        ...(server.cwd ? [`Working directory: ${server.cwd}`] : []),
-                        `Environment variables: ${Object.keys(server.env).length}`,
-                      ]
-                    : [
-                        `Transport: ${server.transport}`,
-                        `URL: ${server.url}`,
-                        `Custom headers: ${Object.keys(server.headers).length}`,
-                        `Timeout: ${server.timeoutSeconds}s`,
-                        `Azure auth: ${server.useAzureAuth ? `enabled (${server.azureAuthScope})` : "disabled"}`,
-                      ]
-                }
-              >
-                <span className="chat-mcp-bubble">
-                  <span className="chat-mcp-bubble-name">{server.name}</span>
-                  <Button
-                    type="button"
-                    appearance="subtle"
-                    size="small"
-                    className="chat-mcp-bubble-remove"
-                    onClick={() => onRemoveMcpServer(server.id)}
-                    disabled={isSending || isThreadReadOnly}
-                    aria-label={`Remove MCP server ${server.name}`}
-                    title={`Remove ${server.name}`}
-                  >
-                    ×
-                  </Button>
-                </span>
-              </LabeledTooltip>
-            </div>
-          ))}
+      <section className="chat-skill-strip chat-skill-strip-mcp" aria-label="Added Thread MCP Servers">
+        <div className="chat-skill-strip-inline">
+          <p className="chat-skill-strip-label">Thread MCP Servers</p>
+          <div className="chat-skill-bubbles">
+            {mcpServers.map((server) => (
+              <div key={server.id} className="chat-skill-bubble-item">
+                <LabeledTooltip
+                  title={server.name}
+                  lines={
+                    server.transport === "stdio"
+                      ? [
+                          "Transport: stdio",
+                          `Command: ${server.command}${server.args.length > 0 ? ` ${server.args.join(" ")}` : ""}`,
+                          ...(server.cwd ? [`Working directory: ${server.cwd}`] : []),
+                          `Environment variables: ${Object.keys(server.env).length}`,
+                        ]
+                      : [
+                          `Transport: ${server.transport}`,
+                          `URL: ${server.url}`,
+                          `Custom headers: ${Object.keys(server.headers).length}`,
+                          `Timeout: ${server.timeoutSeconds}s`,
+                          `Azure auth: ${server.useAzureAuth ? `enabled (${server.azureAuthScope})` : "disabled"}`,
+                        ]
+                  }
+                >
+                  <span className="chat-skill-bubble chat-skill-bubble-mcp">
+                    <span className="chat-skill-bubble-name">{server.name}</span>
+                    <Button
+                      type="button"
+                      appearance="subtle"
+                      size="small"
+                      className="chat-skill-bubble-remove"
+                      onClick={() => onRemoveMcpServer(server.id)}
+                      disabled={isSending || isThreadReadOnly}
+                      aria-label={`Remove MCP server ${server.name}`}
+                      title={`Remove ${server.name}`}
+                    >
+                      ×
+                    </Button>
+                  </span>
+                </LabeledTooltip>
+              </div>
+            ))}
+          </div>
         </div>
       </section>
     );
   }
 
-  function renderAddedSkillBubbles() {
-    if (selectedSkills.length === 0) {
+  function renderAddedDialogueSkillBubbles() {
+    if (selectedDialogueSkills.length === 0) {
       return null;
     }
 
     return (
-      <section className="chat-skill-strip" aria-label="Added Skills">
-        <div className="chat-skill-bubbles">
-          {selectedSkills.map((skill) => (
-            <div key={skill.location} className="chat-skill-bubble-item">
-              <LabeledTooltip
-                title={skill.name}
-                lines={[`Source: ${skill.location}`]}
-              >
-                <span className="chat-skill-bubble">
-                  <span className="chat-skill-bubble-name">{skill.name}</span>
-                  <Button
-                    type="button"
-                    appearance="subtle"
-                    size="small"
-                    className="chat-skill-bubble-remove"
-                    onClick={() => onRemoveSkill(skill.location)}
-                    disabled={isSending || isThreadReadOnly}
-                    aria-label={`Remove skill ${skill.name}`}
-                    title={`Remove ${skill.name}`}
-                  >
-                    ×
-                  </Button>
-                </span>
-              </LabeledTooltip>
-            </div>
-          ))}
+      <section className="chat-skill-strip chat-skill-strip-dialogue" aria-label="Added Dialogue Skills">
+        <div className="chat-skill-strip-inline">
+          <p className="chat-skill-strip-label">Dialogue Skills</p>
+          <div className="chat-skill-bubbles">
+            {selectedDialogueSkills.map((skill) => (
+              <div key={skill.location} className="chat-skill-bubble-item">
+                <LabeledTooltip
+                  title={skill.name}
+                  lines={[`Source: ${skill.location}`]}
+                >
+                  <span className="chat-skill-bubble chat-skill-bubble-dialogue">
+                    <span className="chat-skill-bubble-name">{skill.name}</span>
+                    <Button
+                      type="button"
+                      appearance="subtle"
+                      size="small"
+                      className="chat-skill-bubble-remove"
+                      onClick={() => onRemoveDialogueSkill(skill.location)}
+                      disabled={isSending || isThreadReadOnly}
+                      aria-label={`Remove dialogue skill ${skill.name}`}
+                      title={`Remove dialogue skill ${skill.name}`}
+                    >
+                      ×
+                    </Button>
+                  </span>
+                </LabeledTooltip>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  function renderAddedThreadSkillBubbles() {
+    if (selectedThreadSkills.length === 0) {
+      return null;
+    }
+
+    return (
+      <section className="chat-skill-strip chat-skill-strip-thread" aria-label="Added Thread Skills">
+        <div className="chat-skill-strip-inline">
+          <p className="chat-skill-strip-label">Thread Skills</p>
+          <div className="chat-skill-bubbles">
+            {selectedThreadSkills.map((skill) => (
+              <div key={skill.location} className="chat-skill-bubble-item">
+                <LabeledTooltip
+                  title={skill.name}
+                  lines={[`Source: ${skill.location}`]}
+                >
+                  <span className="chat-skill-bubble chat-skill-bubble-thread">
+                    <span className="chat-skill-bubble-name">{skill.name}</span>
+                    <Button
+                      type="button"
+                      appearance="subtle"
+                      size="small"
+                      className="chat-skill-bubble-remove"
+                      onClick={() => onRemoveThreadSkill(skill.location)}
+                      disabled={isSending || isThreadReadOnly}
+                      aria-label={`Remove thread skill ${skill.name}`}
+                      title={`Remove thread skill ${skill.name}`}
+                    >
+                      ×
+                    </Button>
+                  </span>
+                </LabeledTooltip>
+              </div>
+            ))}
+          </div>
         </div>
       </section>
     );
@@ -876,11 +926,12 @@ export function PlaygroundPanel<
                 "chat-tooltip-target chat-send-tooltip-target",
               )}
             </div>
+            {renderAddedDialogueSkillBubbles()}
+            {renderAddedThreadSkillBubbles()}
+            {renderAddedThreadMcpServersBubbles()}
           </div>
         </form>
         {renderDraftAttachmentBubbles()}
-        {renderAddedSkillBubbles()}
-        {renderAddedMcpServersBubbles()}
       </footer>
     </section>
   );

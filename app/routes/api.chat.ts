@@ -247,6 +247,8 @@ type ActiveSkillRuntimeEntry = {
   name: string;
   description: string;
   location: string;
+  guidePreloadRequested: boolean;
+  preloadedGuideErrorMessage: string | null;
   preloadedGuideMarkdown: string | null;
   skillRoot: string;
   scripts: SkillResourceFileEntry[];
@@ -2903,7 +2905,10 @@ async function buildSkillRuntimeContext(
   }
 
   const explicitSkillLocationSet = new Set(
-    (options.explicitSkillLocations ?? [])
+    [
+      ...selectedSkills.map((skill) => skill.location),
+      ...(options.explicitSkillLocations ?? []),
+    ]
       .map((location) => location.trim())
       .filter((location) => location.length > 0),
   );
@@ -2913,13 +2918,13 @@ async function buildSkillRuntimeContext(
       const frontmatter = await readSkillFrontmatter(selectedSkill.location);
       const shouldPreloadGuide = explicitSkillLocationSet.has(selectedSkill.location);
       let preloadedGuideMarkdown: string | null = null;
+      let preloadedGuideErrorMessage: string | null = null;
       if (shouldPreloadGuide) {
         try {
           preloadedGuideMarkdown = await readSkillMarkdown(selectedSkill.location);
         } catch (error) {
-          warnings.push(
-            `Failed to preload full Skill guide for ${frontmatter.name}: ${readErrorMessage(error)}`,
-          );
+          preloadedGuideErrorMessage = readErrorMessage(error);
+          warnings.push(`Failed to preload full Skill guide for ${frontmatter.name}: ${preloadedGuideErrorMessage}`);
         }
       }
 
@@ -2934,6 +2939,8 @@ async function buildSkillRuntimeContext(
         name: frontmatter.name,
         description: frontmatter.description,
         location: selectedSkill.location,
+        guidePreloadRequested: shouldPreloadGuide,
+        preloadedGuideErrorMessage,
         preloadedGuideMarkdown,
         skillRoot: resources.skillRoot,
         scripts: resources.scripts,
@@ -3865,22 +3872,64 @@ function emitSkillActivationOperationLogs(
   },
   executionContext: SkillToolExecutionContext,
 ): void {
+  const records = buildInitialSkillOperationRecords(runtime, {
+    nextSequence: handlers.nextSequence,
+    threadEnvironment: executionContext.threadEnvironment,
+  });
+  for (const record of records) {
+    handlers.onRecord(record);
+  }
+}
+
+function buildInitialSkillOperationRecords(
+  runtime: SkillRuntimeContext,
+  options: {
+    nextSequence: () => number;
+    threadEnvironment: ThreadEnvironment;
+  },
+): McpRpcRecord[] {
+  const records: McpRpcRecord[] = [];
   for (const skill of runtime.activeSkills) {
-    const sequence = handlers.nextSequence();
-    const requestId = buildMcpRpcRequestId(skill.name, sequence);
-    const startedAt = new Date().toISOString();
-    const requestPayload: JsonRpcRequestPayload = {
+    records.push(buildSkillActivateOperationRecord(skill, options));
+    if (skill.guidePreloadRequested) {
+      records.push(buildSkillGuideReadOperationRecord(skill, options));
+    }
+  }
+  records.push(buildSkillEnvironmentSnapshotOperationRecord(options));
+  return records;
+}
+
+function buildSkillActivateOperationRecord(
+  skill: ActiveSkillRuntimeEntry,
+  options: {
+    nextSequence: () => number;
+    threadEnvironment: ThreadEnvironment;
+  },
+): McpRpcRecord {
+  const sequence = options.nextSequence();
+  const requestId = buildMcpRpcRequestId(skill.name, sequence);
+  const startedAt = new Date().toISOString();
+
+  return {
+    id: requestId,
+    sequence,
+    operationType: "skill",
+    serverName: skill.name,
+    method: "skill/activate",
+    startedAt,
+    completedAt: new Date().toISOString(),
+    request: {
       jsonrpc: "2.0",
       id: requestId,
       method: "skill/activate",
       params: {
         name: skill.name,
         location: skill.location,
-        preloadMode: skill.preloadedGuideMarkdown ? "full_guide" : "frontmatter_only",
-        threadEnvironment: cloneThreadEnvironment(executionContext.threadEnvironment),
+        preloadMode: skill.guidePreloadRequested ? "full_guide" : "frontmatter_only",
+        threadEnvironment: cloneThreadEnvironment(options.threadEnvironment),
       },
-    };
-    const responsePayload: JsonRpcResponsePayload = {
+    },
+    response: {
       jsonrpc: "2.0",
       id: requestId,
       result: {
@@ -3892,28 +3941,97 @@ function emitSkillActivationOperationLogs(
           assets: skill.assets.length,
         },
       },
-    };
+    },
+    isError: false,
+  };
+}
 
-    handlers.onRecord({
+function buildSkillGuideReadOperationRecord(
+  skill: ActiveSkillRuntimeEntry,
+  options: {
+    nextSequence: () => number;
+    threadEnvironment: ThreadEnvironment;
+  },
+): McpRpcRecord {
+  const sequence = options.nextSequence();
+  const requestId = buildMcpRpcRequestId(skill.name, sequence);
+  const startedAt = new Date().toISOString();
+  const request: JsonRpcRequestPayload = {
+    jsonrpc: "2.0",
+    id: requestId,
+    method: "skill_read_guide",
+    params: {
+      skill: skill.location,
+      maxChars: AGENT_SKILL_READ_TEXT_DEFAULT_MAX_CHARS,
+      threadEnvironment: cloneThreadEnvironment(options.threadEnvironment),
+    },
+  };
+
+  if (skill.preloadedGuideMarkdown === null) {
+    return {
       id: requestId,
       sequence,
       operationType: "skill",
       serverName: skill.name,
-      method: "skill/activate",
+      method: "skill_read_guide",
       startedAt,
       completedAt: new Date().toISOString(),
-      request: requestPayload,
-      response: responsePayload,
-      isError: false,
-    });
+      request,
+      response: {
+        jsonrpc: "2.0",
+        id: requestId,
+        error: {
+          message:
+            skill.preloadedGuideErrorMessage ??
+            `Failed to preload SKILL.md for active Skill "${skill.name}".`,
+        },
+      },
+      isError: true,
+    };
   }
 
-  const sequence = handlers.nextSequence();
+  const lineNormalized = skill.preloadedGuideMarkdown.replace(/\r\n?/g, "\n");
+  const lines = lineNormalized.split("\n");
+  const clipped = clipTextForSkillTool(lineNormalized, AGENT_SKILL_READ_TEXT_DEFAULT_MAX_CHARS);
+
+  return {
+    id: requestId,
+    sequence,
+    operationType: "skill",
+    serverName: skill.name,
+    method: "skill_read_guide",
+    startedAt,
+    completedAt: new Date().toISOString(),
+    request,
+    response: {
+      jsonrpc: "2.0",
+      id: requestId,
+      result: {
+        ok: true,
+        skill: skill.name,
+        location: skill.location,
+        path: "SKILL.md",
+        startLine: 1,
+        endLine: lines.length,
+        totalLines: lines.length,
+        truncated: clipped.truncated,
+        text: clipped.value,
+      },
+    },
+    isError: false,
+  };
+}
+
+function buildSkillEnvironmentSnapshotOperationRecord(options: {
+  nextSequence: () => number;
+  threadEnvironment: ThreadEnvironment;
+}): McpRpcRecord {
+  const sequence = options.nextSequence();
   const requestId = buildMcpRpcRequestId("skill-runtime", sequence);
   const startedAt = new Date().toISOString();
-  const threadEnvironment = cloneThreadEnvironment(executionContext.threadEnvironment);
+  const threadEnvironment = cloneThreadEnvironment(options.threadEnvironment);
 
-  handlers.onRecord({
+  return {
     id: requestId,
     sequence,
     operationType: "skill",
@@ -3937,7 +4055,7 @@ function emitSkillActivationOperationLogs(
       },
     },
     isError: false,
-  });
+  };
 }
 
 function buildAgentInstructionWithSkills(
@@ -3958,12 +4076,12 @@ function buildAgentInstructionWithSkills(
     "<skills_context>",
     "The runtime supports agentskills-compatible Skill directories (SKILL.md + scripts/references/assets). Some skills may also define non-standard directories like resources/.",
     preloadedGuideSkillCount > 0
-      ? "Skills explicitly selected in this turn are preloaded with full SKILL.md content."
+      ? "Linked Skills in this turn are initialized in order with skill/activate then skill_read_guide before model execution."
       : "Active skills are preloaded with frontmatter only (name + description).",
     preloadedGuideSkillCount > 0 && preloadedGuideSkillCount < runtime.activeSkills.length
       ? "Other active skills are preloaded with frontmatter only (name + description)."
       : null,
-    "Call skill_read_guide only when exact SKILL.md instructions are needed for the current task or to read a specific range.",
+    "skill_read_guide is already executed once for linked Skills. Call it again only when a specific line range is needed.",
     "Use skill_list_resources before reading/running files when paths are unknown.",
     "Use skill_get_environment and skill_set_environment to inspect and update thread-scoped environment variables that persist across turns.",
     "skill_run_script runs with the current thread-scoped environment variables.",
@@ -4932,5 +5050,6 @@ export const chatRouteTestUtils = {
   buildSkillOperationSignatureCountExceededMessage,
   shouldCacheSkillOperationResult,
   applySkillScriptEnvironmentChanges,
+  buildInitialSkillOperationRecords,
   instrumentMcpServer,
 };

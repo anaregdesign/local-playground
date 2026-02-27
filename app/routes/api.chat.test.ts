@@ -44,6 +44,7 @@ const {
   buildSkillOperationSignatureCountExceededMessage,
   shouldCacheSkillOperationResult,
   applySkillScriptEnvironmentChanges,
+  buildInitialSkillOperationRecords,
   instrumentMcpServer,
 } = chatRouteTestUtils;
 
@@ -735,6 +736,101 @@ describe("readExplicitSkillLocations", () => {
       ok: false,
       error: "explicitSkillLocations[0] must be a string.",
     });
+  });
+});
+
+describe("buildInitialSkillOperationRecords", () => {
+  it("records skill activation and guide load before environment snapshot", () => {
+    let sequence = 0;
+    const records = buildInitialSkillOperationRecords(
+      {
+        activeSkills: [
+          {
+            name: "skill-creator",
+            description: "Create a new skill.",
+            location: "/skills/skill-creator/SKILL.md",
+            guidePreloadRequested: true,
+            preloadedGuideErrorMessage: null,
+            preloadedGuideMarkdown: "# Skill Creator\nUse this guide.",
+            skillRoot: "/skills/skill-creator",
+            scripts: [],
+            references: [],
+            assets: [],
+            scriptsTruncated: false,
+            referencesTruncated: false,
+            assetsTruncated: false,
+          },
+        ],
+        warnings: [],
+      },
+      {
+        nextSequence: () => {
+          sequence += 1;
+          return sequence;
+        },
+        threadEnvironment: { PROJECT: "local-playground" },
+      },
+    );
+
+    expect(records.map((record) => record.method)).toEqual([
+      "skill/activate",
+      "skill_read_guide",
+      "skill/environment_snapshot",
+    ]);
+
+    const guideRecord = records[1];
+    if (!guideRecord || !("result" in guideRecord.response)) {
+      throw new Error("Expected skill_read_guide result payload.");
+    }
+
+    expect(guideRecord.isError).toBe(false);
+    expect(guideRecord.response.result).toMatchObject({
+      ok: true,
+      location: "/skills/skill-creator/SKILL.md",
+      path: "SKILL.md",
+    });
+  });
+
+  it("records skill_read_guide error when preload failed", () => {
+    let sequence = 0;
+    const records = buildInitialSkillOperationRecords(
+      {
+        activeSkills: [
+          {
+            name: "skill-creator",
+            description: "Create a new skill.",
+            location: "/skills/skill-creator/SKILL.md",
+            guidePreloadRequested: true,
+            preloadedGuideErrorMessage: "ENOENT",
+            preloadedGuideMarkdown: null,
+            skillRoot: "/skills/skill-creator",
+            scripts: [],
+            references: [],
+            assets: [],
+            scriptsTruncated: false,
+            referencesTruncated: false,
+            assetsTruncated: false,
+          },
+        ],
+        warnings: [],
+      },
+      {
+        nextSequence: () => {
+          sequence += 1;
+          return sequence;
+        },
+        threadEnvironment: {},
+      },
+    );
+
+    const guideRecord = records[1];
+    if (!guideRecord || !("error" in guideRecord.response)) {
+      throw new Error("Expected skill_read_guide error payload.");
+    }
+
+    expect(guideRecord.method).toBe("skill_read_guide");
+    expect(guideRecord.isError).toBe(true);
+    expect(guideRecord.response.error.message).toContain("ENOENT");
   });
 });
 

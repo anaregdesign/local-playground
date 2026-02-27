@@ -861,12 +861,29 @@ body {
   background: var(--surface);
 }
 
-.chat-mcp-strip {
+.chat-skill-strip {
   margin-top: 0.55rem;
 }
 
-.chat-skill-strip {
-  margin-top: 0.55rem;
+.chat-composer .chat-skill-strip {
+  margin-top: 0.2rem;
+}
+
+.chat-skill-strip-inline {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.45rem;
+}
+
+.chat-skill-strip-label {
+  margin: 0;
+  color: #4a6454;
+  font-size: 0.67rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  text-transform: uppercase;
+  white-space: nowrap;
 }
 
 .chat-attachment-strip {
@@ -931,23 +948,12 @@ body {
   color: #2b2f32;
 }
 
-.chat-mcp-bubbles {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.35rem 0.45rem;
-}
-
 .chat-skill-bubbles {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 0.35rem 0.45rem;
-}
-
-.chat-mcp-bubble-item {
-  display: inline-flex;
-  align-items: stretch;
+  flex: 1 1 220px;
   min-width: 0;
 }
 
@@ -955,21 +961,6 @@ body {
   display: inline-flex;
   align-items: stretch;
   min-width: 0;
-}
-
-.chat-mcp-bubble {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.28rem;
-  min-height: 1.9rem;
-  max-width: 260px;
-  padding: 0 0.34rem 0 0.68rem;
-  border-radius: 999px;
-  background: #e9eff6;
-  color: #23465f;
-  font-size: 0.74rem;
-  font-weight: 600;
-  white-space: nowrap;
 }
 
 .chat-skill-bubble {
@@ -987,29 +978,31 @@ body {
   white-space: nowrap;
 }
 
-.chat-mcp-bubble-name {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.chat-skill-bubble-dialogue {
+  background: #e2f1e6;
+  color: #1f553a;
+}
+
+.chat-skill-bubble-thread {
+  border: 1px solid #c7decf;
+  background: #f3f8f4;
+  color: #2f5f45;
+}
+
+.chat-skill-strip-mcp .chat-skill-strip-label {
+  color: #3e5873;
+}
+
+.chat-skill-bubble-mcp {
+  border: 1px solid #c5d6ea;
+  background: #edf3fb;
+  color: #274866;
 }
 
 .chat-skill-bubble-name {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-.chat-mcp-bubble-remove.fui-Button {
-  min-width: 1.45rem !important;
-  width: 1.45rem !important;
-  min-height: 1.45rem !important;
-  height: 1.45rem !important;
-  border-radius: 999px;
-  border: 0 !important;
-  box-shadow: none !important;
-  color: #4b5560;
-  padding: 0;
-  background: transparent !important;
 }
 
 .chat-skill-bubble-remove.fui-Button {
@@ -1023,11 +1016,6 @@ body {
   color: #49604f;
   padding: 0;
   background: transparent !important;
-}
-
-.chat-mcp-bubble-remove.fui-Button:enabled:hover {
-  background: rgba(31, 78, 103, 0.15) !important;
-  color: #2b2f32;
 }
 
 .chat-skill-bubble-remove.fui-Button:enabled:hover {
