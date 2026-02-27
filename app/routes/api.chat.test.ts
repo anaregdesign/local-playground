@@ -34,9 +34,10 @@ const {
   isSkillOperationErrorResult,
   buildSkillOperationLoopSignature,
   updateSkillOperationLoopState,
+  updateSkillOperationErrorLoopState,
+  buildSkillOperationErrorSignature,
   buildRepeatedSkillOperationLoopMessage,
   incrementSkillOperationCount,
-  incrementSkillOperationSignatureCount,
   readSkillOperationCallLimit,
   readSkillOperationSignatureCallLimit,
   buildSkillOperationCountExceededMessage,
@@ -275,6 +276,48 @@ describe("Skill operation loop guard helpers", () => {
     expect(message).toContain("python-venv.skill_run_script");
     expect(message).toContain("9 identical consecutive calls");
   });
+
+  it("tracks consecutive identical errors and resets on mitigation changes", () => {
+    let state = { signature: "", errorSignature: "", consecutiveCount: 0 };
+    state = updateSkillOperationErrorLoopState(state, "sig-1", "err-1");
+    expect(state).toEqual({
+      signature: "sig-1",
+      errorSignature: "err-1",
+      consecutiveCount: 1,
+    });
+    state = updateSkillOperationErrorLoopState(state, "sig-1", "err-1");
+    expect(state.consecutiveCount).toBe(2);
+    state = updateSkillOperationErrorLoopState(state, "sig-1", "err-2");
+    expect(state).toEqual({
+      signature: "sig-1",
+      errorSignature: "err-2",
+      consecutiveCount: 1,
+    });
+    state = updateSkillOperationErrorLoopState(state, "sig-2", "err-2");
+    expect(state).toEqual({
+      signature: "sig-2",
+      errorSignature: "err-2",
+      consecutiveCount: 1,
+    });
+  });
+
+  it("builds stable error signatures from structured payloads", () => {
+    const signature = buildSkillOperationErrorSignature({
+      timedOut: false,
+      stderr: "Traceback",
+      exitCode: 1,
+      error: "failed",
+    });
+    const reorderedSignature = buildSkillOperationErrorSignature({
+      error: "failed",
+      exitCode: 1,
+      stderr: "Traceback",
+      timedOut: false,
+    });
+
+    expect(signature).toBe(reorderedSignature);
+    expect(signature).toContain("failed");
+  });
 });
 
 describe("Skill operation budget helpers", () => {
@@ -303,13 +346,6 @@ describe("Skill operation budget helpers", () => {
     expect(incrementSkillOperationCount(counts, "pptx", "skill_run_script")).toBe(1);
   });
 
-  it("tracks counts for identical operation signatures", () => {
-    const counts = new Map<string, number>();
-    expect(incrementSkillOperationSignatureCount(counts, "sig-1")).toBe(1);
-    expect(incrementSkillOperationSignatureCount(counts, "sig-1")).toBe(2);
-    expect(incrementSkillOperationSignatureCount(counts, "sig-2")).toBe(1);
-  });
-
   it("returns descriptive budget messages", () => {
     const countMessage = buildSkillOperationCountExceededMessage({
       serverName: "python-venv",
@@ -330,17 +366,17 @@ describe("Skill operation budget helpers", () => {
     expect(errorMessage).toContain("11");
     expect(errorMessage).toContain("too many Skill operation errors");
     expect(signatureMessage).toContain("python-venv.skill_run_script");
-    expect(signatureMessage).toContain("3 identical calls in one run");
+    expect(signatureMessage).toContain("3 consecutive identical errors");
+    expect(signatureMessage).toContain("without recurrence-prevention change");
   });
 
-  it("caches deterministic read operations and failed script runs", () => {
-    expect(shouldCacheSkillOperationResult("skill_read_guide", false)).toBe(true);
-    expect(shouldCacheSkillOperationResult("skill_read_reference", false)).toBe(true);
-    expect(shouldCacheSkillOperationResult("skill_read_asset", false)).toBe(true);
-    expect(shouldCacheSkillOperationResult("skill_list_resources", false)).toBe(true);
-    expect(shouldCacheSkillOperationResult("skill_run_script", true)).toBe(true);
-    expect(shouldCacheSkillOperationResult("skill_run_script", false)).toBe(false);
-    expect(shouldCacheSkillOperationResult("skill_set_environment", false)).toBe(false);
+  it("caches deterministic read operations only", () => {
+    expect(shouldCacheSkillOperationResult("skill_read_guide")).toBe(true);
+    expect(shouldCacheSkillOperationResult("skill_read_reference")).toBe(true);
+    expect(shouldCacheSkillOperationResult("skill_read_asset")).toBe(true);
+    expect(shouldCacheSkillOperationResult("skill_list_resources")).toBe(true);
+    expect(shouldCacheSkillOperationResult("skill_run_script")).toBe(false);
+    expect(shouldCacheSkillOperationResult("skill_set_environment")).toBe(false);
   });
 });
 

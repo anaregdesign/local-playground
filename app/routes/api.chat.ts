@@ -283,8 +283,12 @@ type SkillOperationLoopState = {
 };
 type SkillOperationCountState = {
   byServerMethod: Map<string, number>;
-  bySignature: Map<string, number>;
   errorCount: number;
+};
+type SkillOperationErrorLoopState = {
+  signature: string;
+  errorSignature: string;
+  consecutiveCount: number;
 };
 type SkillOperationCachedResult = {
   rawResult: string;
@@ -2594,6 +2598,76 @@ function updateSkillOperationLoopState(
   };
 }
 
+function updateSkillOperationErrorLoopState(
+  current: SkillOperationErrorLoopState,
+  nextSignature: string,
+  nextErrorSignature: string,
+): SkillOperationErrorLoopState {
+  if (current.signature === nextSignature && current.errorSignature === nextErrorSignature) {
+    return {
+      signature: nextSignature,
+      errorSignature: nextErrorSignature,
+      consecutiveCount: current.consecutiveCount + 1,
+    };
+  }
+
+  return {
+    signature: nextSignature,
+    errorSignature: nextErrorSignature,
+    consecutiveCount: 1,
+  };
+}
+
+function buildSkillOperationErrorSignature(value: unknown): string {
+  const maxLength = 512;
+  const normalize = (raw: string): string => {
+    const trimmed = raw.trim();
+    if (!trimmed) {
+      return "unknown";
+    }
+
+    return trimmed.length > maxLength ? `${trimmed.slice(0, maxLength)}...` : trimmed;
+  };
+
+  if (typeof value === "string") {
+    return normalize(value);
+  }
+
+  if (value instanceof Error) {
+    return normalize(value.message);
+  }
+
+  if (isRecord(value)) {
+    const narrowed: Record<string, unknown> = {};
+    const errorMessage = readTrimmedString(value.error);
+    if (errorMessage) {
+      narrowed.error = errorMessage;
+    }
+    if (Object.hasOwn(value, "exitCode")) {
+      narrowed.exitCode = toSerializableValue(value.exitCode);
+    }
+    const stderr = readTrimmedString(value.stderr);
+    if (stderr) {
+      narrowed.stderr = stderr;
+    }
+    const signal = readTrimmedString(value.signal);
+    if (signal) {
+      narrowed.signal = signal;
+    }
+    if (typeof value.timedOut === "boolean") {
+      narrowed.timedOut = value.timedOut;
+    }
+
+    if (Object.keys(narrowed).length > 0) {
+      const serializedNarrowed = JSON.stringify(normalizeObjectKeyOrder(narrowed));
+      return normalize(serializedNarrowed ?? "unknown");
+    }
+  }
+
+  const serialized = JSON.stringify(normalizeObjectKeyOrder(toSerializableValue(value)));
+  return normalize(serialized ?? "unknown");
+}
+
 function buildRepeatedSkillOperationLoopMessage(options: {
   serverName: string;
   method: string;
@@ -2614,15 +2688,6 @@ function incrementSkillOperationCount(
   const key = buildSkillOperationCountKey(serverName, method);
   const nextCount = (countsByServerMethod.get(key) ?? 0) + 1;
   countsByServerMethod.set(key, nextCount);
-  return nextCount;
-}
-
-function incrementSkillOperationSignatureCount(
-  countsBySignature: Map<string, number>,
-  signature: string,
-): number {
-  const nextCount = (countsBySignature.get(signature) ?? 0) + 1;
-  countsBySignature.set(signature, nextCount);
   return nextCount;
 }
 
@@ -2657,13 +2722,10 @@ function buildSkillOperationSignatureCountExceededMessage(options: {
   method: string;
   count: number;
 }): string {
-  return `Detected repeated identical Skill operation usage for ${options.serverName}.${options.method} (${options.count} identical calls in one run). Stopped early to avoid redundant retries.`;
+  return `Detected repeated identical Skill operation errors for ${options.serverName}.${options.method} (${options.count} consecutive identical errors without recurrence-prevention change). Stopped early to avoid redundant retries.`;
 }
 
-function shouldCacheSkillOperationResult(
-  method: string,
-  isError: boolean,
-): boolean {
+function shouldCacheSkillOperationResult(method: string): boolean {
   if (
     method === "skill_list_resources" ||
     method === "skill_read_guide" ||
@@ -2673,7 +2735,7 @@ function shouldCacheSkillOperationResult(
     return true;
   }
 
-  return method === "skill_run_script" && isError;
+  return false;
 }
 
 function parseStdioArgs(argsValue: unknown, index: number): ParseResult<string[]> {
@@ -3089,12 +3151,57 @@ function buildSkillTools(
     signature: "",
     consecutiveCount: 0,
   };
+  let skillOperationErrorLoopState: SkillOperationErrorLoopState = {
+    signature: "",
+    errorSignature: "",
+    consecutiveCount: 0,
+  };
   const skillOperationCountState: SkillOperationCountState = {
     byServerMethod: new Map<string, number>(),
-    bySignature: new Map<string, number>(),
     errorCount: 0,
   };
   const skillOperationCachedResultBySignature = new Map<string, SkillOperationCachedResult>();
+
+  const resetSkillOperationErrorLoopState = () => {
+    skillOperationErrorLoopState = {
+      signature: "",
+      errorSignature: "",
+      consecutiveCount: 0,
+    };
+  };
+
+  const applySkillOperationErrorGuards = (options: {
+    method: string;
+    serverName: string;
+    operationSignature: string;
+    errorPayload: unknown;
+  }): void => {
+    const errorSignature = buildSkillOperationErrorSignature(options.errorPayload);
+    skillOperationErrorLoopState = updateSkillOperationErrorLoopState(
+      skillOperationErrorLoopState,
+      options.operationSignature,
+      errorSignature,
+    );
+    const operationSignatureCallLimit = readSkillOperationSignatureCallLimit(options.method);
+    if (skillOperationErrorLoopState.consecutiveCount > operationSignatureCallLimit) {
+      throw new Error(
+        buildSkillOperationSignatureCountExceededMessage({
+          serverName: options.serverName,
+          method: options.method,
+          count: skillOperationErrorLoopState.consecutiveCount,
+        }),
+      );
+    }
+
+    skillOperationCountState.errorCount += 1;
+    if (skillOperationCountState.errorCount > CHAT_MAX_SKILL_OPERATION_ERRORS) {
+      throw new Error(
+        buildSkillOperationErrorCountExceededMessage({
+          errorCount: skillOperationCountState.errorCount,
+        }),
+      );
+    }
+  };
 
   const executeWithSkillOperationLog = async (
     method: string,
@@ -3150,38 +3257,6 @@ function buildSkillTools(
       method,
       method === "skill_run_script" ? operationParams : input,
     );
-    const operationSignatureCount = incrementSkillOperationSignatureCount(
-      skillOperationCountState.bySignature,
-      operationSignature,
-    );
-    const operationSignatureCallLimit = readSkillOperationSignatureCallLimit(method);
-    if (operationSignatureCount > operationSignatureCallLimit) {
-      const operationSignatureCountErrorMessage = buildSkillOperationSignatureCountExceededMessage({
-        serverName,
-        method,
-        count: operationSignatureCount,
-      });
-      const responsePayload: JsonRpcResponsePayload = {
-        jsonrpc: "2.0",
-        id: requestId,
-        error: {
-          message: operationSignatureCountErrorMessage,
-        },
-      };
-      logHandlers.onRecord({
-        id: requestId,
-        sequence,
-        operationType: "skill",
-        serverName,
-        method,
-        startedAt,
-        completedAt: new Date().toISOString(),
-        request: requestPayload,
-        response: responsePayload,
-        isError: true,
-      });
-      throw new Error(operationSignatureCountErrorMessage);
-    }
     skillOperationLoopState = updateSkillOperationLoopState(
       skillOperationLoopState,
       operationSignature,
@@ -3236,14 +3311,14 @@ function buildSkillTools(
         isError: cachedResult.isError,
       });
       if (cachedResult.isError) {
-        skillOperationCountState.errorCount += 1;
-        if (skillOperationCountState.errorCount > CHAT_MAX_SKILL_OPERATION_ERRORS) {
-          throw new Error(
-            buildSkillOperationErrorCountExceededMessage({
-              errorCount: skillOperationCountState.errorCount,
-            }),
-          );
-        }
+        applySkillOperationErrorGuards({
+          method,
+          serverName,
+          operationSignature,
+          errorPayload: cachedResult.parsedResult,
+        });
+      } else {
+        resetSkillOperationErrorLoopState();
       }
 
       return cachedResult.rawResult;
@@ -3253,11 +3328,12 @@ function buildSkillTools(
     try {
       result = await execute();
     } catch (error) {
+      const errorMessage = readErrorMessage(error);
       const responsePayload: JsonRpcResponsePayload = {
         jsonrpc: "2.0",
         id: requestId,
         error: {
-          message: readErrorMessage(error),
+          message: errorMessage,
         },
       };
 
@@ -3274,12 +3350,18 @@ function buildSkillTools(
         isError: true,
       });
 
+      applySkillOperationErrorGuards({
+        method,
+        serverName,
+        operationSignature,
+        errorPayload: errorMessage,
+      });
       throw error;
     }
 
     const parsedResult = parseSkillOperationResult(result);
     const skillOperationErrored = isSkillOperationErrorResult(parsedResult);
-    if (shouldCacheSkillOperationResult(method, skillOperationErrored)) {
+    if (shouldCacheSkillOperationResult(method)) {
       skillOperationCachedResultBySignature.set(operationSignature, {
         rawResult: result,
         parsedResult,
@@ -3305,14 +3387,14 @@ function buildSkillTools(
       isError: skillOperationErrored,
     });
     if (skillOperationErrored) {
-      skillOperationCountState.errorCount += 1;
-      if (skillOperationCountState.errorCount > CHAT_MAX_SKILL_OPERATION_ERRORS) {
-        throw new Error(
-          buildSkillOperationErrorCountExceededMessage({
-            errorCount: skillOperationCountState.errorCount,
-          }),
-        );
-      }
+      applySkillOperationErrorGuards({
+        method,
+        serverName,
+        operationSignature,
+        errorPayload: parsedResult,
+      });
+    } else {
+      resetSkillOperationErrorLoopState();
     }
 
     return result;
@@ -5040,9 +5122,10 @@ export const chatRouteTestUtils = {
   isSkillOperationErrorResult,
   buildSkillOperationLoopSignature,
   updateSkillOperationLoopState,
+  updateSkillOperationErrorLoopState,
+  buildSkillOperationErrorSignature,
   buildRepeatedSkillOperationLoopMessage,
   incrementSkillOperationCount,
-  incrementSkillOperationSignatureCount,
   readSkillOperationCallLimit,
   readSkillOperationSignatureCallLimit,
   buildSkillOperationCountExceededMessage,
