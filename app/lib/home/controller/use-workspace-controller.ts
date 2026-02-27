@@ -4662,6 +4662,63 @@ export function useWorkspaceController() {
     }
   }
 
+  async function handleCheckDesktopUpdates() {
+    const desktopApi = readDesktopApi();
+    if (!desktopApi || !desktopUpdaterStatus.supported || desktopUpdaterStatus.checking) {
+      return;
+    }
+
+    setUiError(null);
+    try {
+      const payload = await desktopApi.checkForUpdates();
+      const parsed = readDesktopUpdaterStatusFromUnknown(payload);
+      if (!parsed) {
+        setSystemNotice("Update check completed.");
+        return;
+      }
+
+      setDesktopUpdaterStatus(parsed);
+
+      if (parsed.errorMessage) {
+        setUiError(parsed.errorMessage);
+        return;
+      }
+
+      if (parsed.updateDownloaded) {
+        setSystemNotice(
+          parsed.availableVersion
+            ? `Version ${parsed.availableVersion} is downloaded. Use Upgrade to apply it.`
+            : "An update is downloaded. Use Upgrade to apply it.",
+        );
+        return;
+      }
+
+      if (parsed.updateAvailable) {
+        setSystemNotice(
+          parsed.availableVersion
+            ? `Version ${parsed.availableVersion} is available and downloading in the background.`
+            : "A new version is available and downloading in the background.",
+        );
+        return;
+      }
+
+      setSystemNotice(
+        parsed.currentVersion
+          ? `No updates found. Current version is ${parsed.currentVersion}.`
+          : "No updates found.",
+      );
+    } catch (error) {
+      logHomeError("desktop_update_check_failed", error, {
+        action: "desktop_updater.checkForUpdates",
+        location: "controller.desktopUpdater",
+        context: {
+          currentVersion: desktopUpdaterStatus.currentVersion,
+        },
+      });
+      setUiError(error instanceof Error ? error.message : "Failed to check desktop updates.");
+    }
+  }
+
   function handleMainSplitterPointerDown(event: ReactPointerEvent<HTMLDivElement>) {
     event.preventDefault();
     const layoutElement = layoutRef.current;
@@ -4956,6 +5013,9 @@ export function useWorkspaceController() {
     isThreadReadOnly: isActiveThreadArchived,
     desktopUpdaterStatus,
     isApplyingDesktopUpdate,
+    onCheckDesktopUpdates: () => {
+      void handleCheckDesktopUpdates();
+    },
     onApplyDesktopUpdate: () => {
       void handleApplyDesktopUpdate();
     },

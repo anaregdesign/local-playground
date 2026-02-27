@@ -33,7 +33,7 @@ extraResources:
     filter:
       - "**/*"
 
-artifactName: "${productName}-${version}-${os}-${arch}.${ext}"
+artifactName: "Local-Playground-${version}-${os}-${arch}.${ext}"
 
 extraMetadata:
   main: desktop/electron/main.cjs

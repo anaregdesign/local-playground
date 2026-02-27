@@ -15,6 +15,7 @@ export type DesktopUpdaterStatus = {
 
 export type DesktopUpdaterApi = {
   getUpdaterStatus: () => Promise<unknown>;
+  checkForUpdates: () => Promise<unknown>;
   onUpdaterStatus: (listener: (status: unknown) => void) => () => void;
   quitAndInstallUpdate: () => Promise<void>;
 };
@@ -49,6 +50,7 @@ export function readDesktopApi(): DesktopUpdaterApi | null {
   const typedCandidate = candidate as Partial<DesktopUpdaterApi>;
   if (
     typeof typedCandidate.getUpdaterStatus !== "function" ||
+    typeof typedCandidate.checkForUpdates !== "function" ||
     typeof typedCandidate.onUpdaterStatus !== "function" ||
     typeof typedCandidate.quitAndInstallUpdate !== "function"
   ) {

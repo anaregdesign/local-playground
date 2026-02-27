@@ -7,6 +7,9 @@ contextBridge.exposeInMainWorld('desktopApi', {
   async getUpdaterStatus() {
     return ipcRenderer.invoke('desktop:get-updater-status');
   },
+  async checkForUpdates() {
+    return ipcRenderer.invoke('desktop:check-for-updates');
+  },
   onUpdaterStatus(listener) {
     const handler = (_event, payload) => {
       listener(payload);

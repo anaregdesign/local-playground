@@ -25,7 +25,9 @@ let updateCheckTimer = null;
 
 const DESKTOP_UPDATER_STATUS_CHANNEL = 'desktop:updater-status';
 const DESKTOP_GET_UPDATER_STATUS_CHANNEL = 'desktop:get-updater-status';
+const DESKTOP_CHECK_FOR_UPDATES_CHANNEL = 'desktop:check-for-updates';
 const DESKTOP_QUIT_AND_INSTALL_CHANNEL = 'desktop:quit-and-install-update';
+let isUpdateCheckInProgress = false;
 
 /** @type {{
  *   supported: boolean;
@@ -244,6 +246,15 @@ function registerDesktopIpcHandlers() {
     return buildDesktopUpdaterStatusPayload();
   });
 
+  ipcMain.removeHandler(DESKTOP_CHECK_FOR_UPDATES_CHANNEL);
+  ipcMain.handle(DESKTOP_CHECK_FOR_UPDATES_CHANNEL, async () => {
+    if (!desktopUpdaterState.supported) {
+      throw new Error('Auto update is unavailable in this environment.');
+    }
+
+    return checkForUpdates();
+  });
+
   ipcMain.removeHandler(DESKTOP_QUIT_AND_INSTALL_CHANNEL);
   ipcMain.handle(DESKTOP_QUIT_AND_INSTALL_CHANNEL, async () => {
     if (!desktopUpdaterState.supported) {
@@ -337,11 +348,21 @@ function initializeAutoUpdater() {
 }
 
 async function checkForUpdates() {
+  if (isUpdateCheckInProgress) {
+    return buildDesktopUpdaterStatusPayload();
+  }
+
+  isUpdateCheckInProgress = true;
   try {
+    setDesktopUpdaterState({
+      checking: true,
+      errorMessage: '',
+    });
     await autoUpdater.checkForUpdates();
     setDesktopUpdaterState({
       lastCheckedAt: new Date().toISOString(),
     });
+    return buildDesktopUpdaterStatusPayload();
   } catch (error) {
     console.error(`[desktop-updater] Failed to check for updates: ${readErrorMessage(error)}`);
     setDesktopUpdaterState({
@@ -349,6 +370,9 @@ async function checkForUpdates() {
       errorMessage: readErrorMessage(error),
       lastCheckedAt: new Date().toISOString(),
     });
+    return buildDesktopUpdaterStatusPayload();
+  } finally {
+    isUpdateCheckInProgress = false;
   }
 }
 

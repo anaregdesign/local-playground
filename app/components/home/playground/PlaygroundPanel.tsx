@@ -117,6 +117,7 @@ type PlaygroundPanelProps<
   isThreadReadOnly: boolean;
   desktopUpdaterStatus: DesktopUpdaterStatusLike;
   isApplyingDesktopUpdate: boolean;
+  onCheckDesktopUpdates: () => void;
   onApplyDesktopUpdate: () => void;
   activeThreadName: string;
   isThreadOperationBusy: boolean;
@@ -197,6 +198,7 @@ export function PlaygroundPanel<
     isThreadReadOnly,
     desktopUpdaterStatus,
     isApplyingDesktopUpdate,
+    onCheckDesktopUpdates,
     onApplyDesktopUpdate,
     activeThreadName,
     isThreadOperationBusy,
@@ -574,6 +576,24 @@ export function PlaygroundPanel<
                 <img className="chat-header-symbol" src="/foundry-symbol.svg" alt="" aria-hidden="true" />
                 <h1>Local Playground</h1>
               </div>
+              {desktopUpdaterStatus.supported ? (
+                <Button
+                  type="button"
+                  appearance="subtle"
+                  size="small"
+                  className="chat-header-upgrade-btn"
+                  aria-label="Check for updates"
+                  title={
+                    desktopUpdaterStatus.lastCheckedAt
+                      ? `Check for updates. Last checked at ${desktopUpdaterStatus.lastCheckedAt}.`
+                      : "Check for updates."
+                  }
+                  onClick={onCheckDesktopUpdates}
+                  disabled={desktopUpdaterStatus.checking || isApplyingDesktopUpdate}
+                >
+                  {desktopUpdaterStatus.checking ? "Checking…" : "Check Updates"}
+                </Button>
+              ) : null}
               {desktopUpdaterStatus.updateDownloaded ? (
                 <Button
                   type="button"
