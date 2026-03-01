@@ -1,5 +1,5 @@
 /**
- * API route module for /api/azure-projects/:projectId/deployments.
+ * API route module for /api/azure/projects/:projectId/deployments.
  */
 import { getAzureDependencies } from "~/lib/azure/dependencies";
 import { methodNotAllowedResponse } from "~/lib/server/http";
@@ -14,8 +14,8 @@ import {
   parseProjectId,
   readErrorMessage,
   resolveAzurePrincipalProfile,
-} from "./api.azure-connections";
-import type { Route } from "./+types/api.azure-project-deployments";
+} from "./api.azure.projects";
+import type { Route } from "./+types/api.azure.projects.$projectId.deployments";
 
 const AZURE_PROJECT_DEPLOYMENTS_ALLOWED_METHODS = ["GET"] as const;
 
@@ -43,7 +43,7 @@ export async function loader({ request, params }: Route.LoaderArgs) {
   if (!projectRef) {
     await logServerRouteEvent({
       request,
-      route: "/api/azure-projects/:projectId/deployments",
+      route: "/api/azure/projects/:projectId/deployments",
       eventName: "invalid_project_id",
       action: "parse_project_id",
       level: "warning",
@@ -72,7 +72,7 @@ export async function loader({ request, params }: Route.LoaderArgs) {
     if (isLikelyAzureAuthError(error)) {
       await logServerRouteEvent({
         request,
-        route: "/api/azure-projects/:projectId/deployments",
+        route: "/api/azure/projects/:projectId/deployments",
         eventName: "azure_auth_required",
         action: "list_deployments",
         level: "warning",
@@ -94,7 +94,7 @@ export async function loader({ request, params }: Route.LoaderArgs) {
 
     await logServerRouteEvent({
       request,
-      route: "/api/azure-projects/:projectId/deployments",
+      route: "/api/azure/projects/:projectId/deployments",
       eventName: "load_azure_deployments_failed",
       action: "list_deployments",
       statusCode: 502,

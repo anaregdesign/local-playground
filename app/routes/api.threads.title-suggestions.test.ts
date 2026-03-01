@@ -1,11 +1,11 @@
 /**
- * Test module verifying api.thread-title behavior.
+ * Test module verifying api.threads.title-suggestions behavior.
  */
 import { describe, expect, it } from "vitest";
 import {
   extractThreadAutoTitle,
   parseThreadTitleReasoningEffort,
-} from "./api.thread-title";
+} from "./api.threads.title-suggestions";
 
 describe("parseThreadTitleReasoningEffort", () => {
   it("defaults to high when omitted", () => {

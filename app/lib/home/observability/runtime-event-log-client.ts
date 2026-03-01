@@ -232,7 +232,7 @@ function trimSignatureCache(): void {
 
 async function sendClientEvent(payload: ClientRuntimeEventLogPayload): Promise<void> {
   try {
-    await fetch("/api/runtime-event-logs", {
+    await fetch("/api/runtime/event-logs", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

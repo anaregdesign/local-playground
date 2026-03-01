@@ -1,5 +1,5 @@
 /**
- * Test module verifying api.instruction behavior.
+ * Test module verifying api.instruction-patches behavior.
  */
 import { describe, expect, it } from "vitest";
 import { PROMPT_MAX_CONTENT_BYTES } from "~/lib/constants";
@@ -10,7 +10,7 @@ import {
   normalizeRequestedPromptFileName,
   parseInstructionContent,
   parseRequestedPromptFileName,
-} from "./api.instruction";
+} from "./api.instruction-patches";
 
 describe("parseInstructionContent", () => {
   it("accepts a non-empty instruction string", () => {

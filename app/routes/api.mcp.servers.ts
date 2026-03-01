@@ -1,5 +1,5 @@
 /**
- * API route module for /api/mcp-servers.
+ * API route module for /api/mcp/servers.
  */
 import path from "node:path";
 import nodeOs from "node:os";
@@ -31,7 +31,7 @@ import {
   installGlobalServerErrorLogging,
   logServerRouteEvent,
 } from "~/lib/server/observability/runtime-event-log";
-import type { Route } from "./+types/api.mcp-servers";
+import type { Route } from "./+types/api.mcp.servers";
 
 type McpTransport = "streamable_http" | "sse" | "stdio";
 
@@ -101,7 +101,7 @@ export async function loader({ request }: Route.LoaderArgs) {
   } catch (error) {
     await logServerRouteEvent({
       request,
-      route: "/api/mcp-servers",
+      route: "/api/mcp/servers",
       eventName: "read_mcp_servers_failed",
       action: "read_saved_profiles",
       statusCode: 500,
@@ -142,7 +142,7 @@ export async function action({ request }: Route.ActionArgs) {
   } catch {
     await logServerRouteEvent({
       request,
-      route: "/api/mcp-servers",
+      route: "/api/mcp/servers",
       eventName: "invalid_json_body",
       action: "parse_request_body",
       level: "warning",
@@ -157,7 +157,7 @@ export async function action({ request }: Route.ActionArgs) {
   if (isRecord(payload) && payload.id !== undefined) {
     await logServerRouteEvent({
       request,
-      route: "/api/mcp-servers",
+      route: "/api/mcp/servers",
       eventName: "invalid_mcp_server_payload",
       action: "validate_payload",
       level: "warning",
@@ -172,7 +172,7 @@ export async function action({ request }: Route.ActionArgs) {
   if (!incomingResult.ok) {
     await logServerRouteEvent({
       request,
-      route: "/api/mcp-servers",
+      route: "/api/mcp/servers",
       eventName: "invalid_mcp_server_payload",
       action: "validate_payload",
       level: "warning",
@@ -200,7 +200,7 @@ export async function action({ request }: Route.ActionArgs) {
     if (warning) {
       await logServerRouteEvent({
         request,
-        route: "/api/mcp-servers",
+        route: "/api/mcp/servers",
         eventName: "mcp_server_duplicate_reused",
         action: "upsert_saved_profile",
         level: "warning",
@@ -220,7 +220,7 @@ export async function action({ request }: Route.ActionArgs) {
         status,
         headers: created
           ? {
-              Location: `/api/mcp-servers/${encodeURIComponent(profile.id)}`,
+              Location: `/api/mcp/servers/${encodeURIComponent(profile.id)}`,
             }
           : undefined,
       },
@@ -228,7 +228,7 @@ export async function action({ request }: Route.ActionArgs) {
   } catch (error) {
     await logServerRouteEvent({
       request,
-      route: "/api/mcp-servers",
+      route: "/api/mcp/servers",
       eventName: "save_mcp_servers_failed",
       action: "write_saved_profiles",
       statusCode: 500,

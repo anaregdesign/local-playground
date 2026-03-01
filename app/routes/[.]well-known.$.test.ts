@@ -13,7 +13,7 @@ vi.mock("~/lib/server/observability/runtime-event-log", () => ({
   installGlobalServerErrorLogging: installGlobalServerErrorLoggingMock,
 }));
 
-import { action, loader } from "./well-known";
+import { action, loader } from "./[.]well-known.$";
 
 describe("well-known route", () => {
   it("returns 404 for metadata probe GET requests", async () => {

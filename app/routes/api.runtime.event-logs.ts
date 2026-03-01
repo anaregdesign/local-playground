@@ -1,5 +1,5 @@
 /**
- * API route module for /api/runtime-event-logs.
+ * API route module for /api/runtime/event-logs.
  */
 import { readClientRuntimeEventLogPayload } from "~/lib/observability/runtime-event-log";
 import { readAzureArmUserContext } from "~/lib/server/auth/azure-user";
@@ -30,7 +30,7 @@ export async function action({ request }: { request: Request }) {
   } catch {
     await logServerRouteEvent({
       request,
-      route: "/api/runtime-event-logs",
+      route: "/api/runtime/event-logs",
       eventName: "invalid_json_body",
       action: "parse_request_body",
       level: "warning",
@@ -44,7 +44,7 @@ export async function action({ request }: { request: Request }) {
   if (!parsed) {
     await logServerRouteEvent({
       request,
-      route: "/api/runtime-event-logs",
+      route: "/api/runtime/event-logs",
       eventName: "invalid_client_event_payload",
       action: "validate_payload",
       level: "warning",

@@ -1,5 +1,5 @@
 /**
- * API route module for /api/azure-projects.
+ * API route module for /api/azure/projects.
  */
 import {
   getAzureDependencies,
@@ -25,7 +25,7 @@ import {
 } from "~/lib/server/observability/runtime-event-log";
 import { methodNotAllowedResponse } from "~/lib/server/http";
 import type { AzureDependencies } from "~/lib/azure/dependencies";
-import type { Route } from "./+types/api.azure-connections";
+import type { Route } from "./+types/api.azure.projects";
 
 const AZURE_PROJECTS_ALLOWED_METHODS = ["GET"] as const;
 
@@ -129,7 +129,7 @@ export async function loader({ request }: Route.LoaderArgs) {
     if (isLikelyAzureAuthError(error)) {
       await logServerRouteEvent({
         request,
-        route: "/api/azure-projects",
+        route: "/api/azure/projects",
         eventName: "azure_auth_required",
         action: "list_projects",
         level: "warning",
@@ -148,7 +148,7 @@ export async function loader({ request }: Route.LoaderArgs) {
 
     await logServerRouteEvent({
       request,
-      route: "/api/azure-projects",
+      route: "/api/azure/projects",
       eventName: "load_azure_connections_failed",
       action: "list_projects",
       statusCode: 502,
@@ -192,7 +192,7 @@ export async function listAzureProjects(accessToken: string): Promise<AzureProje
       );
     } catch (error) {
       await logServerRouteEvent({
-        route: "/api/azure-projects",
+        route: "/api/azure/projects",
         eventName: "list_accounts_failed",
         action: "list_subscription_accounts",
         level: "warning",
@@ -325,7 +325,7 @@ async function listAccountModels(
     );
   } catch (error) {
     await logServerRouteEvent({
-      route: "/api/azure-projects",
+      route: "/api/azure/projects",
       eventName: "list_account_models_failed",
       action: "list_account_models",
       level: "warning",

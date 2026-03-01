@@ -1,5 +1,5 @@
 /**
- * Test module verifying api.azure-connections behavior.
+ * Test module verifying api.azure.projects behavior.
  */
 import { describe, expect, it } from "vitest";
 import {
@@ -9,7 +9,7 @@ import {
   readPrincipalTypeFromAccessToken,
   readTenantIdFromAccessToken,
 } from "~/lib/server/auth/azure-user";
-import { isLikelyAzureAuthError } from "./api.azure-connections";
+import { isLikelyAzureAuthError } from "./api.azure.projects";
 
 function createAccessToken(payload: unknown): string {
   const encodedPayload = Buffer.from(JSON.stringify(payload)).toString("base64url");

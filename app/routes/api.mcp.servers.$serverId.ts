@@ -1,5 +1,5 @@
 /**
- * API route module for /api/mcp-servers/:serverId.
+ * API route module for /api/mcp/servers/:serverId.
  */
 import { methodNotAllowedResponse } from "~/lib/server/http";
 import {
@@ -15,8 +15,8 @@ import {
   readWorkspaceMcpServerProfiles,
   upsertWorkspaceMcpServerProfile,
   writeWorkspaceMcpServerProfiles,
-} from "./api.mcp-servers";
-import type { Route } from "./+types/api.mcp-servers.$serverId";
+} from "./api.mcp.servers";
+import type { Route } from "./+types/api.mcp.servers.$serverId";
 
 const MCP_SERVER_ITEM_ALLOWED_METHODS = ["PUT", "DELETE"] as const;
 
@@ -61,7 +61,7 @@ export async function action({ request, params }: Route.ActionArgs) {
     } catch (error) {
       await logServerRouteEvent({
         request,
-        route: "/api/mcp-servers/:serverId",
+        route: "/api/mcp/servers/:serverId",
         eventName: "delete_mcp_server_failed",
         action: "delete_saved_profile",
         statusCode: 500,
@@ -116,7 +116,7 @@ export async function action({ request, params }: Route.ActionArgs) {
   } catch (error) {
     await logServerRouteEvent({
       request,
-      route: "/api/mcp-servers/:serverId",
+      route: "/api/mcp/servers/:serverId",
       eventName: "update_mcp_server_failed",
       action: "update_saved_profile",
       statusCode: 500,

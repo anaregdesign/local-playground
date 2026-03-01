@@ -24,8 +24,8 @@ export type AzureActionApiResponse = {
 };
 
 /**
- * Response shape returned by `/api/azure-projects` and
- * `/api/azure-projects/:projectId/deployments`.
+ * Response shape returned by `/api/azure/projects` and
+ * `/api/azure/projects/:projectId/deployments`.
  * Unknown-typed payload fields are normalized by parser helpers in `~/lib/home/azure/parsers`.
  */
 export type AzureConnectionsApiResponse = {
@@ -39,7 +39,7 @@ export type AzureConnectionsApiResponse = {
 };
 
 /**
- * Response shape returned by `/api/azure-selection`.
+ * Response shape returned by `/api/azure/selection`.
  */
 export type AzureSelectionApiResponse = {
   selection?: unknown;
@@ -47,7 +47,7 @@ export type AzureSelectionApiResponse = {
 };
 
 /**
- * Response shape returned by `/api/mcp-servers` and `/api/mcp-servers/:serverId`.
+ * Response shape returned by `/api/mcp/servers` and `/api/mcp/servers/:serverId`.
  */
 export type McpServersApiResponse = {
   profile?: unknown;
@@ -69,7 +69,7 @@ export type ThreadsApiResponse = {
 
 /**
  * Response shape returned by `/api/skills` and
- * `/api/skill-registries/:registryId/skills/*`.
+ * `/api/skills/registries/:registryId/skills/*`.
  */
 export type SkillsApiResponse = {
   skills?: unknown;

@@ -1,5 +1,5 @@
 /**
- * API route module for /api/skill-registries/:registryId/skills/*.
+ * API route module for /api/skills/registries/:registryId/skills/*.
  */
 import { methodNotAllowedResponse } from "~/lib/server/http";
 import {
@@ -18,7 +18,7 @@ import {
   readErrorMessage,
   syncWorkspaceSkillMasters,
 } from "./api.skills";
-import type { Route } from "./+types/api.skill-registries.$registryId.skills.$";
+import type { Route } from "./+types/api.skills.registries.$registryId.skills.$";
 
 const SKILL_REGISTRY_SKILL_ALLOWED_METHODS = ["PUT", "DELETE"] as const;
 
@@ -51,7 +51,7 @@ export async function action({ request, params }: Route.ActionArgs) {
   if (!parsedMutation.ok) {
     await logServerRouteEvent({
       request,
-      route: "/api/skill-registries/:registryId/skills/*",
+      route: "/api/skills/registries/:registryId/skills/*",
       eventName: "invalid_skills_mutation_request",
       action: "validate_payload",
       level: "warning",
@@ -127,7 +127,7 @@ export async function action({ request, params }: Route.ActionArgs) {
   } catch (error) {
     await logServerRouteEvent({
       request,
-      route: "/api/skill-registries/:registryId/skills/*",
+      route: "/api/skills/registries/:registryId/skills/*",
       eventName: "skills_action_failed",
       action: request.method === "PUT" ? "install_registry_skill" : "delete_registry_skill",
       statusCode: 500,
@@ -150,5 +150,5 @@ export async function action({ request, params }: Route.ActionArgs) {
 
 function buildSkillResourcePath(registryId: string, skillName: string): string {
   const encodedSkillPath = skillName.split("/").map((segment) => encodeURIComponent(segment)).join("/");
-  return `/api/skill-registries/${encodeURIComponent(registryId)}/skills/${encodedSkillPath}`;
+  return `/api/skills/registries/${encodeURIComponent(registryId)}/skills/${encodedSkillPath}`;
 }

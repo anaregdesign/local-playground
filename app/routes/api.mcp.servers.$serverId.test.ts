@@ -1,5 +1,5 @@
 /**
- * Test module verifying api.mcp-servers.$serverId behavior.
+ * Test module verifying api.mcp.servers.$serverId behavior.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -38,7 +38,7 @@ const {
   logServerRouteEvent: vi.fn(async () => undefined),
 }));
 
-vi.mock("./api.mcp-servers", () => ({
+vi.mock("./api.mcp.servers", () => ({
   readAuthenticatedUser,
   readWorkspaceMcpServerProfiles,
   deleteWorkspaceMcpServerProfile,
@@ -54,9 +54,9 @@ vi.mock("~/lib/server/observability/runtime-event-log", () => ({
   logServerRouteEvent,
 }));
 
-import { action, loader } from "./api.mcp-servers.$serverId";
+import { action, loader } from "./api.mcp.servers.$serverId";
 
-describe("/api/mcp-servers/:serverId", () => {
+describe("/api/mcp/servers/:serverId", () => {
   beforeEach(() => {
     readAuthenticatedUser.mockReset();
     readAuthenticatedUser.mockResolvedValue({ id: 1 });
@@ -106,7 +106,7 @@ describe("/api/mcp-servers/:serverId", () => {
 
   it("returns 405 for unsupported methods", async () => {
     const response = await action({
-      request: new Request("http://localhost/api/mcp-servers/srv-1", { method: "POST" }),
+      request: new Request("http://localhost/api/mcp/servers/srv-1", { method: "POST" }),
       params: { serverId: "srv-1" },
     } as never);
 
@@ -118,7 +118,7 @@ describe("/api/mcp-servers/:serverId", () => {
     deleteWorkspaceMcpServerProfile.mockReturnValueOnce({ profiles: [], deleted: false });
 
     const response = await action({
-      request: new Request("http://localhost/api/mcp-servers/srv-404", { method: "DELETE" }),
+      request: new Request("http://localhost/api/mcp/servers/srv-404", { method: "DELETE" }),
       params: { serverId: "srv-404" },
     } as never);
     const payload = (await response.json()) as { error?: string };
@@ -141,7 +141,7 @@ describe("/api/mcp-servers/:serverId", () => {
     });
 
     const response = await action({
-      request: new Request("http://localhost/api/mcp-servers/srv-1", {
+      request: new Request("http://localhost/api/mcp/servers/srv-1", {
         method: "PUT",
         body: JSON.stringify({
           transport: "stdio",

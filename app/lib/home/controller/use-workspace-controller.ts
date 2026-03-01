@@ -1257,7 +1257,7 @@ export function useWorkspaceController() {
     setIsLoadingWorkspaceMcpServerProfiles(true);
 
     try {
-      const response = await fetch("/api/mcp-servers", {
+      const response = await fetch("/api/mcp/servers", {
         method: "GET",
       });
 
@@ -1455,7 +1455,7 @@ export function useWorkspaceController() {
       .split("/")
       .map((segment) => encodeURIComponent(segment))
       .join("/");
-    return `/api/skill-registries/${encodeURIComponent(options.registryId)}/skills/${encodedSkillPath}`;
+    return `/api/skills/registries/${encodeURIComponent(options.registryId)}/skills/${encodedSkillPath}`;
   }
 
   // Timer and reset helpers.
@@ -2750,7 +2750,7 @@ export function useWorkspaceController() {
     }
 
     try {
-      const response = await fetch("/api/azure-selection", {
+      const response = await fetch("/api/azure/selection", {
         method: "GET",
       });
       const payload = (await response.json()) as AzureSelectionApiResponse;
@@ -2825,7 +2825,7 @@ export function useWorkspaceController() {
     preferredAzureSelectionRef.current = nextPreferredSelection;
 
     try {
-      const response = await fetch("/api/azure-selection", {
+      const response = await fetch("/api/azure/selection", {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
@@ -2873,7 +2873,7 @@ export function useWorkspaceController() {
     setIsLoadingAzureConnections(true);
 
     try {
-      const response = await fetch("/api/azure-projects", {
+      const response = await fetch("/api/azure/projects", {
         method: "GET",
       });
 
@@ -2980,7 +2980,7 @@ export function useWorkspaceController() {
 
         try {
           const deploymentResponse = await fetch(
-            `/api/azure-projects/${encodeURIComponent(normalizedProjectId)}/deployments`,
+            `/api/azure/projects/${encodeURIComponent(normalizedProjectId)}/deployments`,
             {
               method: "GET",
             },
@@ -3125,7 +3125,7 @@ export function useWorkspaceController() {
 
     try {
       const response = await fetch(
-        `/api/azure-projects/${encodeURIComponent(projectId)}/deployments`,
+        `/api/azure/projects/${encodeURIComponent(projectId)}/deployments`,
         {
           method: "GET",
         },
@@ -3298,8 +3298,8 @@ export function useWorkspaceController() {
   }> {
     const isUpdate = options.isUpdate === true;
     const endpoint = isUpdate
-      ? `/api/mcp-servers/${encodeURIComponent(server.id)}`
-      : "/api/mcp-servers";
+      ? `/api/mcp/servers/${encodeURIComponent(server.id)}`
+      : "/api/mcp/servers";
     const method = isUpdate ? "PUT" : "POST";
 
     const response = await fetch(endpoint, {
@@ -3343,7 +3343,7 @@ export function useWorkspaceController() {
   }
 
   async function deleteWorkspaceMcpServerProfileFromConfig(serverId: string): Promise<McpServerConfig[]> {
-    const response = await fetch(`/api/mcp-servers/${encodeURIComponent(serverId)}`, {
+    const response = await fetch(`/api/mcp/servers/${encodeURIComponent(serverId)}`, {
       method: "DELETE",
     });
 
@@ -3656,7 +3656,7 @@ export function useWorkspaceController() {
     setSystemNotice(null);
     setIsStartingAzureLogin(true);
     try {
-      const response = await fetch("/api/azure-session", {
+      const response = await fetch("/api/azure/session", {
         method: "POST",
       });
       const payload = (await response.json()) as AzureActionApiResponse;
@@ -3702,7 +3702,7 @@ export function useWorkspaceController() {
     setSystemNotice(null);
     setIsStartingAzureLogout(true);
     try {
-      const response = await fetch("/api/azure-session", {
+      const response = await fetch("/api/azure/session", {
         method: "DELETE",
       });
       const payload = (await response.json()) as AzureActionApiResponse;

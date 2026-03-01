@@ -1,5 +1,5 @@
 /**
- * API route module for /api/azure-session.
+ * API route module for /api/azure/session.
  */
 import { getAzureDependencies, resetAzureDependencies } from "~/lib/azure/dependencies";
 import { AZURE_ARM_SCOPE } from "~/lib/constants";
@@ -10,8 +10,8 @@ import {
 } from "~/lib/server/observability/runtime-event-log";
 import { getOrCreateUserByIdentity } from "~/lib/server/persistence/user";
 import { readAzureArmUserContext } from "~/lib/server/auth/azure-user";
-import { ensureDefaultMcpServersForUser } from "./api.mcp-servers";
-import type { Route } from "./+types/api.azure-session";
+import { ensureDefaultMcpServersForUser } from "./api.mcp.servers";
+import type { Route } from "./+types/api.azure.session";
 
 const AZURE_SESSION_ALLOWED_METHODS = ["POST", "DELETE"] as const;
 
@@ -46,7 +46,7 @@ export async function action({ request }: Route.ActionArgs) {
     } catch (error) {
       await logServerRouteEvent({
         request,
-        route: "/api/azure-session",
+        route: "/api/azure/session",
         eventName: "azure_login_start_failed",
         action: "authenticate_interactive_browser_credential",
         statusCode: 500,
@@ -74,7 +74,7 @@ export async function action({ request }: Route.ActionArgs) {
   } catch (error) {
     await logServerRouteEvent({
       request,
-      route: "/api/azure-session",
+      route: "/api/azure/session",
       eventName: "azure_logout_failed",
       action: "reset_azure_dependencies",
       statusCode: 500,

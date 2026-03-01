@@ -1,5 +1,5 @@
 /**
- * Test module verifying api.mcp-servers behavior.
+ * Test module verifying api.mcp.servers behavior.
  */
 import { describe, expect, it } from "vitest";
 import {
@@ -7,7 +7,7 @@ import {
   MCP_DEFAULT_TIMEOUT_SECONDS,
   HOME_DEFAULT_WORKSPACE_MCP_SERVER_PROFILE_ROWS,
 } from "~/lib/constants";
-import { mcpServersRouteTestUtils } from "./api.mcp-servers";
+import { mcpServersRouteTestUtils } from "./api.mcp.servers";
 
 const {
   parseIncomingMcpServer,

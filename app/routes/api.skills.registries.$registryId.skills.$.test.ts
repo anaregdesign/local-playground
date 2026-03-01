@@ -1,5 +1,5 @@
 /**
- * Test module verifying api.skill-registries.$registryId.skills.$ behavior.
+ * Test module verifying api.skills.registries.$registryId.skills.$ behavior.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -62,9 +62,9 @@ vi.mock("~/lib/server/observability/runtime-event-log", () => ({
   logServerRouteEvent,
 }));
 
-import { action, loader } from "./api.skill-registries.$registryId.skills.$";
+import { action, loader } from "./api.skills.registries.$registryId.skills.$";
 
-describe("/api/skill-registries/:registryId/skills/*", () => {
+describe("/api/skills/registries/:registryId/skills/*", () => {
   beforeEach(() => {
     parseSkillRegistryMutationPath.mockReset();
     parseSkillRegistryMutationPath.mockReturnValue({
@@ -109,7 +109,7 @@ describe("/api/skill-registries/:registryId/skills/*", () => {
 
   it("returns 405 for unsupported methods", async () => {
     const response = await action({
-      request: new Request("http://localhost/api/skill-registries/openai_curated/skills/gh-fix-ci", {
+      request: new Request("http://localhost/api/skills/registries/openai_curated/skills/gh-fix-ci", {
         method: "GET",
       }),
       params: {
@@ -124,7 +124,7 @@ describe("/api/skill-registries/:registryId/skills/*", () => {
 
   it("returns 201 and Location for new install", async () => {
     const response = await action({
-      request: new Request("http://localhost/api/skill-registries/openai_curated/skills/gh-fix-ci", {
+      request: new Request("http://localhost/api/skills/registries/openai_curated/skills/gh-fix-ci", {
         method: "PUT",
       }),
       params: {
@@ -135,7 +135,7 @@ describe("/api/skill-registries/:registryId/skills/*", () => {
 
     expect(response.status).toBe(201);
     expect(response.headers.get("location")).toBe(
-      "/api/skill-registries/openai_curated/skills/gh-fix-ci",
+      "/api/skills/registries/openai_curated/skills/gh-fix-ci",
     );
   });
 });

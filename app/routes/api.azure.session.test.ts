@@ -1,5 +1,5 @@
 /**
- * Test module verifying api.azure-session behavior.
+ * Test module verifying api.azure.session behavior.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AZURE_ARM_SCOPE } from "~/lib/constants";
@@ -49,13 +49,13 @@ vi.mock("~/lib/server/persistence/user", () => ({
   getOrCreateUserByIdentity,
 }));
 
-vi.mock("./api.mcp-servers", () => ({
+vi.mock("./api.mcp.servers", () => ({
   ensureDefaultMcpServersForUser,
 }));
 
-import { action, loader } from "./api.azure-session";
+import { action, loader } from "./api.azure.session";
 
-describe("/api/azure-session", () => {
+describe("/api/azure/session", () => {
   beforeEach(() => {
     authenticateAzure.mockReset();
     authenticateAzure.mockResolvedValue(undefined);
@@ -86,7 +86,7 @@ describe("/api/azure-session", () => {
 
   it("returns 405 for unsupported methods", async () => {
     const response = await action({
-      request: new Request("http://localhost/api/azure-session", { method: "GET" }),
+      request: new Request("http://localhost/api/azure/session", { method: "GET" }),
     } as never);
     expect(response.status).toBe(405);
     expect(response.headers.get("allow")).toBe("POST, DELETE");
@@ -94,7 +94,7 @@ describe("/api/azure-session", () => {
 
   it("runs interactive azure authentication on POST", async () => {
     const response = await action({
-      request: new Request("http://localhost/api/azure-session", { method: "POST" }),
+      request: new Request("http://localhost/api/azure/session", { method: "POST" }),
     } as never);
     const payload = (await response.json()) as { message?: string };
 
@@ -113,7 +113,7 @@ describe("/api/azure-session", () => {
     readAzureArmUserContext.mockResolvedValueOnce(null);
 
     const response = await action({
-      request: new Request("http://localhost/api/azure-session", { method: "POST" }),
+      request: new Request("http://localhost/api/azure/session", { method: "POST" }),
     } as never);
 
     expect(response.status).toBe(200);
@@ -123,7 +123,7 @@ describe("/api/azure-session", () => {
 
   it("resets azure dependencies on DELETE and returns success message", async () => {
     const response = await action({
-      request: new Request("http://localhost/api/azure-session", { method: "DELETE" }),
+      request: new Request("http://localhost/api/azure/session", { method: "DELETE" }),
     } as never);
     const payload = (await response.json()) as { message?: string };
 
@@ -136,7 +136,7 @@ describe("/api/azure-session", () => {
     authenticateAzure.mockRejectedValueOnce(new Error("manual login cancelled"));
 
     const response = await action({
-      request: new Request("http://localhost/api/azure-session", { method: "POST" }),
+      request: new Request("http://localhost/api/azure/session", { method: "POST" }),
     } as never);
     const payload = (await response.json()) as { error?: string };
 

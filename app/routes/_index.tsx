@@ -10,7 +10,7 @@ import {
   renderTurnOperationLog,
 } from "~/components/home/playground/PlaygroundRenderers";
 import { useWorkspaceController } from "~/lib/home/controller/use-workspace-controller";
-import type { Route } from "./+types/home";
+import type { Route } from "./+types/_index";
 
 export function meta({}: Route.MetaArgs) {
   return [

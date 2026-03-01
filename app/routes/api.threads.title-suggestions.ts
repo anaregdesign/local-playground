@@ -1,7 +1,7 @@
 /**
  * API route module for /api/threads/title-suggestions.
  */
-import type { Route } from "./+types/api.thread-title";
+import type { Route } from "./+types/api.threads.title-suggestions";
 import { Agent, run, user } from "@openai/agents";
 import { OpenAIResponsesModel } from "@openai/agents-openai";
 import {

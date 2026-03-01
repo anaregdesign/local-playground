@@ -1,5 +1,5 @@
 /**
- * Test module verifying api.mcp-servers collection route behavior.
+ * Test module verifying api.mcp.servers collection route behavior.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -51,9 +51,9 @@ vi.mock("~/lib/server/observability/runtime-event-log", () => ({
   logServerRouteEvent,
 }));
 
-import { action, loader } from "./api.mcp-servers";
+import { action, loader } from "./api.mcp.servers";
 
-describe("/api/mcp-servers collection", () => {
+describe("/api/mcp/servers collection", () => {
   beforeEach(() => {
     readAzureArmUserContext.mockReset();
     readAzureArmUserContext.mockResolvedValue({
@@ -78,7 +78,7 @@ describe("/api/mcp-servers collection", () => {
 
   it("returns 200 for GET without writing profiles", async () => {
     const response = await loader({
-      request: new Request("http://localhost/api/mcp-servers", { method: "GET" }),
+      request: new Request("http://localhost/api/mcp/servers", { method: "GET" }),
     } as never);
 
     expect(response.status).toBe(200);
@@ -89,7 +89,7 @@ describe("/api/mcp-servers collection", () => {
 
   it("returns 405 with Allow for unsupported loader methods", async () => {
     const response = await loader({
-      request: new Request("http://localhost/api/mcp-servers", { method: "DELETE" }),
+      request: new Request("http://localhost/api/mcp/servers", { method: "DELETE" }),
     } as never);
 
     expect(response.status).toBe(405);
@@ -98,7 +98,7 @@ describe("/api/mcp-servers collection", () => {
 
   it("returns 405 with Allow for unsupported action methods", async () => {
     const response = await action({
-      request: new Request("http://localhost/api/mcp-servers", { method: "PUT" }),
+      request: new Request("http://localhost/api/mcp/servers", { method: "PUT" }),
     } as never);
 
     expect(response.status).toBe(405);

@@ -1,5 +1,5 @@
 /**
- * API route module for /api/azure-selection.
+ * API route module for /api/azure/selection.
  */
 import {
   ensurePersistenceDatabaseReady,
@@ -13,7 +13,7 @@ import {
 import { methodNotAllowedResponse } from "~/lib/server/http";
 import { HOME_REASONING_EFFORT_OPTIONS } from "~/lib/constants";
 import type { ReasoningEffort } from "~/lib/home/shared/view-types";
-import type { Route } from "./+types/api.azure-selection";
+import type { Route } from "./+types/api.azure.selection";
 
 const AZURE_SELECTION_ALLOWED_METHODS = ["GET", "PUT"] as const;
 
@@ -66,7 +66,7 @@ export async function loader({ request }: Route.LoaderArgs) {
   } catch (error) {
     await logServerRouteEvent({
       request,
-      route: "/api/azure-selection",
+      route: "/api/azure/selection",
       eventName: "read_azure_selection_failed",
       action: "read_selection",
       statusCode: 500,
@@ -108,7 +108,7 @@ export async function action({ request }: Route.ActionArgs) {
   } catch {
     await logServerRouteEvent({
       request,
-      route: "/api/azure-selection",
+      route: "/api/azure/selection",
       eventName: "invalid_json_body",
       action: "parse_request_body",
       level: "warning",
@@ -123,7 +123,7 @@ export async function action({ request }: Route.ActionArgs) {
   if (!preference) {
     await logServerRouteEvent({
       request,
-      route: "/api/azure-selection",
+      route: "/api/azure/selection",
       eventName: "invalid_selection_payload",
       action: "validate_payload",
       level: "warning",
@@ -152,7 +152,7 @@ export async function action({ request }: Route.ActionArgs) {
   } catch (error) {
     await logServerRouteEvent({
       request,
-      route: "/api/azure-selection",
+      route: "/api/azure/selection",
       eventName: "save_azure_selection_failed",
       action: "save_selection",
       statusCode: 500,
