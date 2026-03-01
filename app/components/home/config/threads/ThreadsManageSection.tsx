@@ -32,12 +32,14 @@ export type ThreadsManageSectionProps = {
   isSwitchingThread: boolean;
   isCreatingThread: boolean;
   isDeletingThread: boolean;
+  isClearingThread: boolean;
   isRestoringThread: boolean;
   threadError: string | null;
   onActiveThreadChange: (threadId: string) => void;
   onCreateThread: () => void;
   onThreadRename: (threadId: string, nextName: string) => void;
   onThreadDelete: (threadId: string) => void;
+  onThreadClear: (threadId: string) => void;
   onThreadRestore: (threadId: string) => void;
 };
 
@@ -50,17 +52,24 @@ export function ThreadsManageSection(props: ThreadsManageSectionProps) {
     isSwitchingThread,
     isCreatingThread,
     isDeletingThread,
+    isClearingThread,
     isRestoringThread,
     threadError,
     onActiveThreadChange,
     onCreateThread,
     onThreadRename,
     onThreadDelete,
+    onThreadClear,
     onThreadRestore,
   } = props;
 
   const isThreadOperationBusy =
-    isLoadingThreads || isSwitchingThread || isCreatingThread || isDeletingThread || isRestoringThread;
+    isLoadingThreads ||
+    isSwitchingThread ||
+    isCreatingThread ||
+    isDeletingThread ||
+    isClearingThread ||
+    isRestoringThread;
 
   const renameInputRef = useRef<HTMLInputElement | null>(null);
   const [renamingThreadId, setRenamingThreadId] = useState("");
@@ -165,10 +174,16 @@ export function ThreadsManageSection(props: ThreadsManageSectionProps) {
             const isRenamingThread = renamingThreadId === thread.id;
             const isDeleteDisabled =
               isThreadOperationBusy || thread.isAwaitingResponse || thread.messageCount === 0;
+            const isClearDisabled =
+              isThreadOperationBusy || thread.isAwaitingResponse || thread.messageCount === 0;
             const deleteButtonTitle =
               thread.messageCount === 0
                 ? `Cannot delete thread ${thread.name} because it has no messages`
                 : `Delete thread ${thread.name}`;
+            const clearButtonTitle =
+              thread.messageCount === 0
+                ? `Cannot clear thread ${thread.name} because it has no messages`
+                : `Clear messages and MCP logs in thread ${thread.name} while keeping instruction, Skills, and MCP Servers`;
             const isRenameDisabled = isThreadOperationBusy || thread.isAwaitingResponse;
             const activeThreadContextMenuItems: ContextActionMenuItem[] = [
               {
@@ -178,6 +193,15 @@ export function ThreadsManageSection(props: ThreadsManageSectionProps) {
                 title: `Rename thread ${thread.name}`,
                 onSelect: () => {
                   beginThreadRename(thread);
+                },
+              },
+              {
+                id: "clear",
+                label: "Clear Thread",
+                disabled: isClearDisabled,
+                title: clearButtonTitle,
+                onSelect: () => {
+                  onThreadClear(thread.id);
                 },
               },
               {

@@ -285,6 +285,7 @@ export function useWorkspaceController() {
   const [isSwitchingThread, setIsSwitchingThread] = useState(false);
   const [isCreatingThread, setIsCreatingThread] = useState(false);
   const [isDeletingThread, setIsDeletingThread] = useState(false);
+  const [isClearingThread, setIsClearingThread] = useState(false);
   const [isRestoringThread, setIsRestoringThread] = useState(false);
   const [threadError, setThreadError] = useState<string | null>(null);
   const [availableSkills, setAvailableSkills] = useState<SkillCatalogEntry[]>([]);
@@ -581,6 +582,7 @@ export function useWorkspaceController() {
     !isSending &&
     !isSwitchingThread &&
     !isDeletingThread &&
+    !isClearingThread &&
     !isRestoringThread &&
     !isActiveThreadArchived &&
     !isLoadingThreads &&
@@ -1072,7 +1074,14 @@ export function useWorkspaceController() {
     if (!isThreadsReadyRef.current || isApplyingThreadStateRef.current) {
       return;
     }
-    if (isSending || isSwitchingThread || isDeletingThread || isRestoringThread || isLoadingThreads) {
+    if (
+      isSending ||
+      isSwitchingThread ||
+      isDeletingThread ||
+      isClearingThread ||
+      isRestoringThread ||
+      isLoadingThreads
+    ) {
       return;
     }
 
@@ -1118,6 +1127,7 @@ export function useWorkspaceController() {
     isSending,
     isSwitchingThread,
     isDeletingThread,
+    isClearingThread,
     isRestoringThread,
     isLoadingThreads,
   ]);
@@ -1132,6 +1142,7 @@ export function useWorkspaceController() {
       isSwitchingThread ||
       isCreatingThread ||
       isDeletingThread ||
+      isClearingThread ||
       isRestoringThread
     ) {
       return;
@@ -1174,6 +1185,7 @@ export function useWorkspaceController() {
     isSwitchingThread,
     isCreatingThread,
     isDeletingThread,
+    isClearingThread,
     isRestoringThread,
   ]);
 
@@ -1186,6 +1198,7 @@ export function useWorkspaceController() {
       isSwitchingThread ||
       isCreatingThread ||
       isDeletingThread ||
+      isClearingThread ||
       isRestoringThread
     ) {
       return;
@@ -1227,6 +1240,7 @@ export function useWorkspaceController() {
     isSwitchingThread,
     isCreatingThread,
     isDeletingThread,
+    isClearingThread,
     isRestoringThread,
   ]);
 
@@ -1584,6 +1598,7 @@ export function useWorkspaceController() {
     setIsSwitchingThread(false);
     setIsCreatingThread(false);
     setIsDeletingThread(false);
+    setIsClearingThread(false);
     setIsRestoringThread(false);
     setIsSavingThread(false);
     setMessages([...HOME_INITIAL_MESSAGES]);
@@ -2249,7 +2264,14 @@ export function useWorkspaceController() {
   async function createThreadAndSwitch(options: {
     name?: string;
   } = {}): Promise<boolean> {
-    if (isLoadingThreads || isSwitchingThread || isCreatingThread || isDeletingThread || isRestoringThread) {
+    if (
+      isLoadingThreads ||
+      isSwitchingThread ||
+      isCreatingThread ||
+      isDeletingThread ||
+      isClearingThread ||
+      isRestoringThread
+    ) {
       return false;
     }
 
@@ -2336,6 +2358,7 @@ export function useWorkspaceController() {
       isSwitchingThread ||
       isCreatingThread ||
       isDeletingThread ||
+      isClearingThread ||
       isRestoringThread
     ) {
       return;
@@ -2376,6 +2399,112 @@ export function useWorkspaceController() {
     await saveThreadSnapshotToDatabase(renamedThread, signature);
   }
 
+  async function handleThreadClear(threadIdRaw: string): Promise<void> {
+    const threadId = threadIdRaw.trim();
+    if (!threadId) {
+      return;
+    }
+
+    if (isSending) {
+      setThreadError("Thread state is updating. Please wait.");
+      return;
+    }
+
+    if (
+      isLoadingThreads ||
+      isSwitchingThread ||
+      isCreatingThread ||
+      isDeletingThread ||
+      isClearingThread ||
+      isRestoringThread
+    ) {
+      return;
+    }
+
+    const targetThread = threadsRef.current.find((thread) => thread.id === threadId);
+    if (!targetThread || targetThread.deletedAt !== null) {
+      setThreadError("Selected thread is not available.");
+      return;
+    }
+
+    if (readThreadRequestState(threadId).isSending) {
+      setThreadError("Cannot clear a thread while a response is in progress.");
+      return;
+    }
+
+    if (targetThread.messages.length === 0 && targetThread.mcpRpcLogs.length === 0) {
+      return;
+    }
+
+    setThreadError(null);
+    setIsClearingThread(true);
+
+    try {
+      const targetThreadForSave =
+        threadId === activeThreadIdRef.current.trim()
+          ? (() => {
+              const activeThread = threadsRef.current.find((thread) => thread.id === threadId);
+              if (!activeThread) {
+                return null;
+              }
+              const snapshot = buildThreadSnapshotFromCurrentState(activeThread, {
+                includeDraftName: true,
+              });
+              return {
+                ...snapshot,
+                messages: [],
+                mcpRpcLogs: [],
+              };
+            })()
+          : {
+              ...targetThread,
+              updatedAt: new Date().toISOString(),
+              messages: [],
+              mcpRpcLogs: [],
+            };
+
+      if (!targetThreadForSave) {
+        return;
+      }
+
+      updateThreadsState((current) => upsertThreadSnapshot(current, targetThreadForSave));
+
+      setThreadRequestStateById((current) => {
+        const next = { ...current };
+        delete next[threadId];
+        return next;
+      });
+
+      if (threadId === activeThreadIdRef.current.trim()) {
+        applyThreadSnapshotToState(targetThreadForSave);
+      }
+
+      const signature = buildThreadSaveSignature(targetThreadForSave);
+      const saved = await saveThreadSnapshotToDatabase(targetThreadForSave, signature);
+      if (!saved) {
+        return;
+      }
+
+      logHomeInfo("clear_thread_succeeded", "Thread content cleared.", {
+        action: "clear_thread",
+        context: {
+          threadId,
+        },
+      });
+    } catch (clearError) {
+      logHomeError("clear_thread_failed", clearError, {
+        action: "clear_thread",
+        statusCode: 500,
+        context: {
+          threadId,
+        },
+      });
+      setThreadError(clearError instanceof Error ? clearError.message : "Failed to clear thread.");
+    } finally {
+      setIsClearingThread(false);
+    }
+  }
+
   async function handleThreadLogicalDelete(threadIdRaw: string): Promise<void> {
     const threadId = threadIdRaw.trim();
     if (!threadId) {
@@ -2392,6 +2521,7 @@ export function useWorkspaceController() {
       isSwitchingThread ||
       isCreatingThread ||
       isDeletingThread ||
+      isClearingThread ||
       isRestoringThread
     ) {
       return;
@@ -2488,6 +2618,7 @@ export function useWorkspaceController() {
       isSwitchingThread ||
       isCreatingThread ||
       isDeletingThread ||
+      isClearingThread ||
       isRestoringThread
     ) {
       return;
@@ -2570,6 +2701,7 @@ export function useWorkspaceController() {
       isSwitchingThread ||
       isCreatingThread ||
       isDeletingThread ||
+      isClearingThread ||
       isRestoringThread
     ) {
       return;
@@ -3266,7 +3398,13 @@ export function useWorkspaceController() {
       return;
     }
 
-    if (isLoadingThreads || isSwitchingThread || isDeletingThread || isRestoringThread) {
+    if (
+      isLoadingThreads ||
+      isSwitchingThread ||
+      isDeletingThread ||
+      isClearingThread ||
+      isRestoringThread
+    ) {
       setThreadError("Thread state is updating. Please wait.");
       setActiveMainTab("threads");
       return;
@@ -4970,7 +5108,12 @@ export function useWorkspaceController() {
   };
 
   const isThreadOperationBusy =
-    isLoadingThreads || isSwitchingThread || isCreatingThread || isDeletingThread || isRestoringThread;
+    isLoadingThreads ||
+    isSwitchingThread ||
+    isCreatingThread ||
+    isDeletingThread ||
+    isClearingThread ||
+    isRestoringThread;
 
   const threadsTabProps = {
     instructionSectionProps: {
@@ -5034,6 +5177,7 @@ export function useWorkspaceController() {
     isSwitchingThread,
     isCreatingThread,
     isDeletingThread,
+    isClearingThread,
     isRestoringThread,
     threadError,
     onActiveThreadChange: (threadId: string) => {
@@ -5047,6 +5191,9 @@ export function useWorkspaceController() {
     },
     onThreadDelete: (threadId: string) => {
       void handleThreadLogicalDelete(threadId);
+    },
+    onThreadClear: (threadId: string) => {
+      void handleThreadClear(threadId);
     },
     onThreadRestore: (threadId: string) => {
       void handleThreadRestore(threadId);
