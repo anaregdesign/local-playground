@@ -19,7 +19,13 @@ export default [
   route("api/instruction-patches", "routes/api.instruction.ts"),
   route("api/threads/title-suggestions", "routes/api.thread-title.ts"),
   route("api/mcp-servers", "routes/api.mcp-servers.ts"),
+  route("api/mcp-servers/:serverId", "routes/api.mcp-servers.$serverId.ts"),
   route("mcp", "routes/mcp.ts"),
   route("api/threads", "routes/api.threads.ts"),
+  route("api/threads/:threadId", "routes/api.threads.$threadId.ts"),
   route("api/skills", "routes/api.skills.ts"),
+  route(
+    "api/skill-registries/:registryId/skills/*",
+    "routes/api.skill-registries.$registryId.skills.$.ts",
+  ),
 ] satisfies RouteConfig;

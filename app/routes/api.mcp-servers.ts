@@ -50,6 +50,7 @@ import {
 } from "~/lib/server/persistence/prisma";
 import { getOrCreateUserByIdentity } from "~/lib/server/persistence/user";
 import { readAzureArmUserContext } from "~/lib/server/auth/azure-user";
+import { methodNotAllowedResponse } from "~/lib/server/http";
 import {
   installGlobalServerErrorLogging,
   logServerRouteEvent,
@@ -79,20 +80,21 @@ type SavedMcpStdioServerConfig = {
   env: Record<string, string>;
 };
 
-type SavedMcpServerConfig = SavedMcpHttpServerConfig | SavedMcpStdioServerConfig;
+export type SavedMcpServerConfig = SavedMcpHttpServerConfig | SavedMcpStdioServerConfig;
 type IncomingMcpHttpServerConfig = Omit<SavedMcpHttpServerConfig, "id"> & { id?: string };
 type IncomingMcpStdioServerConfig = Omit<SavedMcpStdioServerConfig, "id"> & { id?: string };
-type IncomingMcpServerConfig = IncomingMcpHttpServerConfig | IncomingMcpStdioServerConfig;
+export type IncomingMcpServerConfig = IncomingMcpHttpServerConfig | IncomingMcpStdioServerConfig;
 type ParseResult<T> = { ok: true; value: T } | { ok: false; error: string };
 const legacyUnavailableDefaultStdioNpxPackageNameSet = new Set<string>(
   MCP_LEGACY_UNAVAILABLE_DEFAULT_STDIO_NPX_PACKAGE_NAMES,
 );
+const MCP_SERVERS_COLLECTION_ALLOWED_METHODS = ["GET", "POST"] as const;
 
 export async function loader({ request }: Route.LoaderArgs) {
   installGlobalServerErrorLogging();
 
   if (request.method !== "GET") {
-    return Response.json({ error: "Method not allowed." }, { status: 405 });
+    return methodNotAllowedResponse(MCP_SERVERS_COLLECTION_ALLOWED_METHODS);
   }
 
   const user = await readAuthenticatedUser();
@@ -107,11 +109,7 @@ export async function loader({ request }: Route.LoaderArgs) {
   }
 
   try {
-    const currentProfiles = await readSavedMcpServers(user.id);
-    const profiles = mergeDefaultMcpServers(currentProfiles);
-    if (profiles.length !== currentProfiles.length) {
-      await writeSavedMcpServers(user.id, profiles);
-    }
+    const profiles = await readSavedMcpServers(user.id);
     return Response.json({ profiles });
   } catch (error) {
     await logServerRouteEvent({
@@ -136,8 +134,8 @@ export async function loader({ request }: Route.LoaderArgs) {
 export async function action({ request }: Route.ActionArgs) {
   installGlobalServerErrorLogging();
 
-  if (request.method !== "POST" && request.method !== "DELETE") {
-    return Response.json({ error: "Method not allowed." }, { status: 405 });
+  if (request.method !== "POST") {
+    return methodNotAllowedResponse(MCP_SERVERS_COLLECTION_ALLOWED_METHODS);
   }
 
   const user = await readAuthenticatedUser();
@@ -169,60 +167,48 @@ export async function action({ request }: Route.ActionArgs) {
     return Response.json({ error: "Invalid JSON body." }, { status: 400 });
   }
 
-  let incomingMcpServer: IncomingMcpServerConfig | null = null;
-  if (request.method === "POST") {
-    const incomingResult = parseIncomingMcpServer(payload);
-    if (!incomingResult.ok) {
-      await logServerRouteEvent({
-        request,
-        route: "/api/mcp-servers",
-        eventName: "invalid_mcp_server_payload",
-        action: "validate_payload",
-        level: "warning",
-        statusCode: 400,
-        message: incomingResult.error,
-        userId: user.id,
-      });
-
-      return Response.json({ error: incomingResult.error }, { status: 400 });
-    }
-
-    incomingMcpServer = incomingResult.value;
+  if (isRecord(payload) && payload.id !== undefined) {
+    await logServerRouteEvent({
+      request,
+      route: "/api/mcp-servers",
+      eventName: "invalid_mcp_server_payload",
+      action: "validate_payload",
+      level: "warning",
+      statusCode: 400,
+      message: "`id` must not be provided for POST.",
+      userId: user.id,
+    });
+    return Response.json({ error: "`id` must not be provided for POST." }, { status: 400 });
   }
+
+  const incomingResult = parseIncomingMcpServer(payload);
+  if (!incomingResult.ok) {
+    await logServerRouteEvent({
+      request,
+      route: "/api/mcp-servers",
+      eventName: "invalid_mcp_server_payload",
+      action: "validate_payload",
+      level: "warning",
+      statusCode: 400,
+      message: incomingResult.error,
+      userId: user.id,
+    });
+
+    return Response.json({ error: incomingResult.error }, { status: 400 });
+  }
+  const incomingMcpServer = incomingResult.value;
 
   try {
     const currentProfiles = await readSavedMcpServers(user.id);
-    if (request.method === "DELETE") {
-      const deleteIdResult = parseDeleteSavedMcpServerPayload(payload);
-      if (!deleteIdResult.ok) {
-        await logServerRouteEvent({
-          request,
-          route: "/api/mcp-servers",
-          eventName: "invalid_mcp_server_delete_payload",
-          action: "validate_payload",
-          level: "warning",
-          statusCode: 400,
-          message: deleteIdResult.error,
-          userId: user.id,
-        });
-        return Response.json({ error: deleteIdResult.error }, { status: 400 });
-      }
-
-      const deleteResult = deleteSavedMcpServer(currentProfiles, deleteIdResult.value);
-      if (!deleteResult.deleted) {
-        return Response.json({ error: "Selected MCP server is not available." }, { status: 404 });
-      }
-
-      await writeSavedMcpServers(user.id, deleteResult.profiles);
-      return Response.json({ profiles: deleteResult.profiles });
-    }
-
-    if (!incomingMcpServer) {
-      return Response.json({ error: "Invalid MCP server payload." }, { status: 400 });
-    }
-
-    const { profile, profiles, warning } = upsertSavedMcpServer(currentProfiles, incomingMcpServer);
+    const profilesWithDefaults = mergeDefaultMcpServers(currentProfiles);
+    const existingIds = new Set(profilesWithDefaults.map((profile) => profile.id));
+    const { profile, profiles, warning } = upsertSavedMcpServer(
+      profilesWithDefaults,
+      incomingMcpServer,
+    );
     await writeSavedMcpServers(user.id, profiles);
+    const created = !existingIds.has(profile.id);
+    const status = created ? 201 : 200;
 
     if (warning) {
       await logServerRouteEvent({
@@ -231,7 +217,7 @@ export async function action({ request }: Route.ActionArgs) {
         eventName: "mcp_server_duplicate_reused",
         action: "upsert_saved_profile",
         level: "warning",
-        statusCode: 200,
+        statusCode: status,
         message: warning,
         userId: user.id,
         context: {
@@ -241,7 +227,17 @@ export async function action({ request }: Route.ActionArgs) {
       });
     }
 
-    return Response.json({ profile, profiles, warning });
+    return Response.json(
+      { profile, profiles, warning },
+      {
+        status,
+        headers: created
+          ? {
+              Location: `/api/mcp-servers/${encodeURIComponent(profile.id)}`,
+            }
+          : undefined,
+      },
+    );
   } catch (error) {
     await logServerRouteEvent({
       request,
@@ -262,7 +258,7 @@ export async function action({ request }: Route.ActionArgs) {
   }
 }
 
-async function readSavedMcpServers(userId: number): Promise<SavedMcpServerConfig[]> {
+export async function readSavedMcpServers(userId: number): Promise<SavedMcpServerConfig[]> {
   await ensurePersistenceDatabaseReady();
   const records = await prisma.workspaceMcpServerProfile.findMany({
     where: {
@@ -294,7 +290,10 @@ async function readSavedMcpServers(userId: number): Promise<SavedMcpServerConfig
   return profiles;
 }
 
-async function writeSavedMcpServers(userId: number, profiles: SavedMcpServerConfig[]): Promise<void> {
+export async function writeSavedMcpServers(
+  userId: number,
+  profiles: SavedMcpServerConfig[],
+): Promise<void> {
   await ensurePersistenceDatabaseReady();
   await prisma.$transaction(async (transaction) => {
     await transaction.workspaceMcpServerProfile.deleteMany({
@@ -310,7 +309,9 @@ async function writeSavedMcpServers(userId: number, profiles: SavedMcpServerConf
   });
 }
 
-function mergeDefaultMcpServers(currentProfiles: SavedMcpServerConfig[]): SavedMcpServerConfig[] {
+export function mergeDefaultMcpServers(
+  currentProfiles: SavedMcpServerConfig[],
+): SavedMcpServerConfig[] {
   const mergedProfiles = normalizeLegacyDefaultProfiles(currentProfiles);
   const profileKeys = new Set(mergedProfiles.map((profile) => buildProfileKey(profile)));
   for (const profile of buildDefaultMcpServerProfiles()) {
@@ -324,6 +325,16 @@ function mergeDefaultMcpServers(currentProfiles: SavedMcpServerConfig[]): SavedM
   }
 
   return mergedProfiles;
+}
+
+export async function ensureDefaultMcpServersForUser(userId: number): Promise<void> {
+  const currentProfiles = await readSavedMcpServers(userId);
+  const nextProfiles = mergeDefaultMcpServers(currentProfiles);
+  if (nextProfiles.length === currentProfiles.length) {
+    return;
+  }
+
+  await writeSavedMcpServers(userId, nextProfiles);
 }
 
 function buildDefaultMcpServerProfiles(): SavedMcpServerConfig[] {
@@ -483,7 +494,7 @@ function resolveDefaultFilesystemWorkingDirectory(): string {
   return path.join(homeDirectory, FOUNDRY_LEGACY_CONFIG_DIRECTORY_NAME);
 }
 
-function parseIncomingMcpServer(payload: unknown): ParseResult<IncomingMcpServerConfig> {
+export function parseIncomingMcpServer(payload: unknown): ParseResult<IncomingMcpServerConfig> {
   if (!isRecord(payload)) {
     return { ok: false, error: "Invalid MCP server payload." };
   }
@@ -501,19 +512,6 @@ function parseIncomingMcpServer(payload: unknown): ParseResult<IncomingMcpServer
   }
 
   return parseIncomingHttpMcpServer(payload, transport);
-}
-
-function parseDeleteSavedMcpServerPayload(payload: unknown): ParseResult<string> {
-  if (!isRecord(payload)) {
-    return { ok: false, error: "Invalid MCP server payload." };
-  }
-
-  const id = normalizeOptionalId(payload.id);
-  if (!id) {
-    return { ok: false, error: "`id` is required." };
-  }
-
-  return { ok: true, value: id };
 }
 
 function parseIncomingHttpMcpServer(
@@ -614,7 +612,7 @@ function parseIncomingStdioMcpServer(
   };
 }
 
-function upsertSavedMcpServer(
+export function upsertSavedMcpServer(
   currentProfiles: SavedMcpServerConfig[],
   incoming: IncomingMcpServerConfig,
 ): { profile: SavedMcpServerConfig; profiles: SavedMcpServerConfig[]; warning: string | null } {
@@ -675,7 +673,7 @@ function upsertSavedMcpServer(
   return { profile, profiles, warning };
 }
 
-function deleteSavedMcpServer(
+export function deleteSavedMcpServer(
   currentProfiles: SavedMcpServerConfig[],
   id: string,
 ): { profiles: SavedMcpServerConfig[]; deleted: boolean } {
@@ -1079,7 +1077,7 @@ function buildIncomingProfileKey(profile: IncomingMcpServerConfig): string {
   return `${profile.transport}:${profile.url.toLowerCase()}:${headersKey}:${authKey}:${scopeKey}:${profile.timeoutSeconds}`;
 }
 
-async function readAuthenticatedUser(): Promise<{ id: number } | null> {
+export async function readAuthenticatedUser(): Promise<{ id: number } | null> {
   const userContext = await readAzureArmUserContext();
   if (!userContext) {
     return null;
@@ -1100,7 +1098,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object";
 }
 
-function readErrorMessage(error: unknown): string {
+export function readErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Unknown error.";
 }
 

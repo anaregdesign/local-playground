@@ -4,10 +4,29 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AZURE_ARM_SCOPE } from "~/lib/constants";
 
-const { authenticateAzure, resetAzureDependencies, logServerRouteEvent } = vi.hoisted(() => ({
+const {
+  authenticateAzure,
+  resetAzureDependencies,
+  logServerRouteEvent,
+  readAzureArmUserContext,
+  getOrCreateUserByIdentity,
+  ensureDefaultMcpServersForUser,
+} = vi.hoisted(() => ({
   authenticateAzure: vi.fn(async () => undefined),
   resetAzureDependencies: vi.fn(),
   logServerRouteEvent: vi.fn(async () => undefined),
+  readAzureArmUserContext: vi.fn(
+    async (): Promise<{ tenantId: string; principalId: string } | null> => ({
+      tenantId: "tenant-a",
+      principalId: "principal-a",
+    }),
+  ),
+  getOrCreateUserByIdentity: vi.fn(async () => ({
+    id: 10,
+    tenantId: "tenant-a",
+    principalId: "principal-a",
+  })),
+  ensureDefaultMcpServersForUser: vi.fn(async () => undefined),
 }));
 
 vi.mock("~/lib/azure/dependencies", () => ({
@@ -22,6 +41,18 @@ vi.mock("~/lib/server/observability/app-event-log", () => ({
   logServerRouteEvent,
 }));
 
+vi.mock("~/lib/server/auth/azure-user", () => ({
+  readAzureArmUserContext,
+}));
+
+vi.mock("~/lib/server/persistence/user", () => ({
+  getOrCreateUserByIdentity,
+}));
+
+vi.mock("./api.mcp-servers", () => ({
+  ensureDefaultMcpServersForUser,
+}));
+
 import { action, loader } from "./api.azure-session";
 
 describe("/api/azure-session", () => {
@@ -31,6 +62,19 @@ describe("/api/azure-session", () => {
     resetAzureDependencies.mockReset();
     logServerRouteEvent.mockReset();
     logServerRouteEvent.mockResolvedValue(undefined);
+    readAzureArmUserContext.mockReset();
+    readAzureArmUserContext.mockResolvedValue({
+      tenantId: "tenant-a",
+      principalId: "principal-a",
+    });
+    getOrCreateUserByIdentity.mockReset();
+    getOrCreateUserByIdentity.mockResolvedValue({
+      id: 10,
+      tenantId: "tenant-a",
+      principalId: "principal-a",
+    });
+    ensureDefaultMcpServersForUser.mockReset();
+    ensureDefaultMcpServersForUser.mockResolvedValue(undefined);
   });
 
   it("returns 405 for loader and includes Allow", async () => {
@@ -58,6 +102,23 @@ describe("/api/azure-session", () => {
     expect(payload.message).toBe("Azure login completed. Azure connections were refreshed.");
     expect(authenticateAzure).toHaveBeenCalledTimes(1);
     expect(authenticateAzure).toHaveBeenCalledWith(AZURE_ARM_SCOPE);
+    expect(getOrCreateUserByIdentity).toHaveBeenCalledWith({
+      tenantId: "tenant-a",
+      principalId: "principal-a",
+    });
+    expect(ensureDefaultMcpServersForUser).toHaveBeenCalledWith(10);
+  });
+
+  it("skips MCP default initialization when identity is unavailable", async () => {
+    readAzureArmUserContext.mockResolvedValueOnce(null);
+
+    const response = await action({
+      request: new Request("http://localhost/api/azure-session", { method: "POST" }),
+    } as never);
+
+    expect(response.status).toBe(200);
+    expect(getOrCreateUserByIdentity).not.toHaveBeenCalled();
+    expect(ensureDefaultMcpServersForUser).not.toHaveBeenCalled();
   });
 
   it("resets azure dependencies on DELETE and returns success message", async () => {

@@ -1398,12 +1398,9 @@ export function useWorkspaceController() {
 
     try {
       const mutationMethod = options.action === "install_registry_skill" ? "PUT" : "DELETE";
-      const response = await fetch(
-        `/api/skills?registryId=${encodeURIComponent(options.registryId)}&skillName=${encodeURIComponent(options.skillName)}`,
-        {
-          method: mutationMethod,
-        },
-      );
+      const response = await fetch(buildSkillRegistrySkillApiPath(options), {
+        method: mutationMethod,
+      });
       const payload = await readJsonPayload<SkillsApiResponse>(response, "Skills");
       if (!response.ok) {
         const authRequired = payload.authRequired === true || response.status === 401;
@@ -1434,6 +1431,17 @@ export function useWorkspaceController() {
     } finally {
       setIsMutatingSkillRegistries(false);
     }
+  }
+
+  function buildSkillRegistrySkillApiPath(options: {
+    registryId: SkillRegistryId;
+    skillName: string;
+  }): string {
+    const encodedSkillPath = options.skillName
+      .split("/")
+      .map((segment) => encodeURIComponent(segment))
+      .join("/");
+    return `/api/skill-registries/${encodeURIComponent(options.registryId)}/skills/${encodedSkillPath}`;
   }
 
   // Timer and reset helpers.
@@ -1872,13 +1880,16 @@ export function useWorkspaceController() {
     }
 
     try {
-      const response = await fetch("/api/threads", {
+      const response = await fetch(
+        `/api/threads/${encodeURIComponent(snapshot.id)}`,
+        {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify(snapshot),
-      });
+        },
+      );
 
       const payload = (await response.json()) as ThreadsApiResponse;
       if (!response.ok) {
@@ -2413,7 +2424,7 @@ export function useWorkspaceController() {
         }
       }
 
-      const response = await fetch(`/api/threads?threadId=${encodeURIComponent(threadId)}`, {
+      const response = await fetch(`/api/threads/${encodeURIComponent(threadId)}`, {
         method: "DELETE",
       });
 
@@ -2500,7 +2511,7 @@ export function useWorkspaceController() {
         }
       }
 
-      const response = await fetch(`/api/threads?threadId=${encodeURIComponent(threadId)}`, {
+      const response = await fetch(`/api/threads/${encodeURIComponent(threadId)}`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
@@ -3147,20 +3158,26 @@ export function useWorkspaceController() {
   async function saveMcpServerToConfig(
     server: McpServerConfig,
     options: {
-      includeId?: boolean;
+      isUpdate?: boolean;
     } = {},
   ): Promise<{
     profile: McpServerConfig;
     warning: string | null;
   }> {
-    const response = await fetch("/api/mcp-servers", {
-      method: "POST",
+    const isUpdate = options.isUpdate === true;
+    const endpoint = isUpdate
+      ? `/api/mcp-servers/${encodeURIComponent(server.id)}`
+      : "/api/mcp-servers";
+    const method = isUpdate ? "PUT" : "POST";
+
+    const response = await fetch(endpoint, {
+      method,
       headers: {
         "Content-Type": "application/json",
       },
       body: JSON.stringify(
         serializeMcpServerForSave(server, {
-          includeId: options.includeId === true,
+          includeId: false,
         }),
       ),
     });
@@ -3194,14 +3211,8 @@ export function useWorkspaceController() {
   }
 
   async function deleteSavedMcpServerFromConfig(serverId: string): Promise<McpServerConfig[]> {
-    const response = await fetch("/api/mcp-servers", {
+    const response = await fetch(`/api/mcp-servers/${encodeURIComponent(serverId)}`, {
       method: "DELETE",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        id: serverId,
-      }),
     });
 
     const payload = await readJsonPayload<McpServersApiResponse>(response, "saved MCP servers");
@@ -4583,7 +4594,7 @@ export function useWorkspaceController() {
     let savedProfile = serverToSave;
     try {
       const saveResult = await saveMcpServerToConfig(serverToSave, {
-        includeId: isEditing,
+        isUpdate: isEditing,
       });
       saveWarning = saveResult.warning;
       savedProfile = saveResult.profile;

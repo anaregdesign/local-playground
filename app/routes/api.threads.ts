@@ -34,13 +34,13 @@ import { SKILL_REGISTRY_OPTIONS } from "~/lib/home/skills/registry";
 import type { ThreadSnapshot } from "~/lib/home/thread/types";
 import type { Route } from "./+types/api.threads";
 
-const THREADS_ALLOWED_METHODS = ["GET", "PUT", "PATCH", "DELETE"] as const;
+const THREADS_COLLECTION_ALLOWED_METHODS = ["GET"] as const;
 
 export async function loader({ request }: Route.LoaderArgs) {
   installGlobalServerErrorLogging();
 
   if (request.method !== "GET") {
-    return methodNotAllowedResponse(THREADS_ALLOWED_METHODS);
+    return methodNotAllowedResponse(THREADS_COLLECTION_ALLOWED_METHODS);
   }
 
   const user = await readAuthenticatedUser();
@@ -93,269 +93,7 @@ export async function loader({ request }: Route.LoaderArgs) {
 
 export async function action({ request }: Route.ActionArgs) {
   installGlobalServerErrorLogging();
-
-  if (
-    request.method !== "PUT" &&
-    request.method !== "DELETE" &&
-    request.method !== "PATCH"
-  ) {
-    return methodNotAllowedResponse(THREADS_ALLOWED_METHODS);
-  }
-
-  const user = await readAuthenticatedUser();
-  if (!user) {
-    return Response.json(
-      {
-        authRequired: true,
-        error: "Azure login is required. Click Azure Login to continue.",
-      },
-      { status: 401 },
-    );
-  }
-
-  try {
-    if (request.method === "PUT") {
-      const payload = await readJsonPayload(request);
-      if (!payload.ok) {
-        await logServerRouteEvent({
-          request,
-          route: "/api/threads",
-          eventName: "invalid_json_body",
-          action: "parse_request_body",
-          level: "warning",
-          statusCode: 400,
-          message: "Invalid JSON body.",
-          userId: user.id,
-        });
-
-        return Response.json({ error: "Invalid JSON body." }, { status: 400 });
-      }
-
-      const thread = readThreadSnapshotFromUnknown(payload.value, {
-        fallbackInstruction: DEFAULT_AGENT_INSTRUCTION,
-      });
-      if (!thread) {
-        await logServerRouteEvent({
-          request,
-          route: "/api/threads",
-          eventName: "invalid_thread_payload",
-          action: "read_thread_snapshot",
-          level: "warning",
-          statusCode: 400,
-          message: "Invalid thread payload.",
-          userId: user.id,
-        });
-
-        return Response.json({ error: "Invalid thread payload." }, { status: 400 });
-      }
-
-      const saveResult = await saveThreadSnapshot(user.id, thread);
-      if (!saveResult) {
-        await logServerRouteEvent({
-          request,
-          route: "/api/threads",
-          eventName: "thread_not_found",
-          action: "save_thread",
-          level: "warning",
-          statusCode: 404,
-          message: "Thread is not available.",
-          userId: user.id,
-          threadId: thread.id,
-        });
-
-        return Response.json({ error: "Thread is not available." }, { status: 404 });
-      }
-
-      const status = saveResult.created ? 201 : 200;
-      await logServerRouteEvent({
-        request,
-        route: "/api/threads",
-        eventName: "save_thread_succeeded",
-        action: "save_thread",
-        level: "info",
-        statusCode: status,
-        message: "Thread saved.",
-        userId: user.id,
-        threadId: saveResult.thread.id,
-        context: {
-          messageCount: saveResult.thread.messages.length,
-          mcpServerCount: saveResult.thread.mcpServers.length,
-          mcpRpcCount: saveResult.thread.mcpRpcHistory.length,
-          skillSelectionCount: saveResult.thread.skillSelections.length,
-          created: saveResult.created,
-        },
-      });
-      return Response.json(
-        { thread: saveResult.thread },
-        {
-          status,
-          headers: saveResult.created
-            ? {
-                Location: `/api/threads?threadId=${encodeURIComponent(saveResult.thread.id)}`,
-              }
-            : undefined,
-        },
-      );
-    }
-
-    const threadId = readThreadIdFromRequestUrl(request.url);
-    if (!threadId) {
-      await logServerRouteEvent({
-        request,
-        route: "/api/threads",
-        eventName: "invalid_thread_id_payload",
-        action: "read_thread_id",
-        level: "warning",
-        statusCode: 400,
-        message: "Invalid thread id payload.",
-        userId: user.id,
-      });
-
-      return Response.json({ error: "Invalid thread id payload." }, { status: 400 });
-    }
-
-    if (request.method === "DELETE") {
-      const deleted = await logicalDeleteThread(user.id, threadId);
-      if (deleted.status === "not_found") {
-        await logServerRouteEvent({
-          request,
-          route: "/api/threads",
-          eventName: "thread_not_found",
-          action: "delete_thread",
-          level: "warning",
-          statusCode: 404,
-          message: "Thread is not available.",
-          userId: user.id,
-          threadId,
-        });
-
-        return Response.json({ error: "Thread is not available." }, { status: 404 });
-      }
-      if (deleted.status === "empty") {
-        await logServerRouteEvent({
-          request,
-          route: "/api/threads",
-          eventName: "thread_delete_disallowed_empty",
-          action: "delete_thread",
-          level: "warning",
-          statusCode: 409,
-          message: "Threads without messages cannot be deleted.",
-          userId: user.id,
-          threadId,
-        });
-
-        return Response.json(
-          { error: "Threads without messages cannot be deleted." },
-          { status: 409 },
-        );
-      }
-
-      await logServerRouteEvent({
-        request,
-        route: "/api/threads",
-        eventName: "delete_thread_succeeded",
-        action: "delete_thread",
-        level: "info",
-        statusCode: 200,
-        message: "Thread archived.",
-        userId: user.id,
-        threadId: deleted.thread.id,
-      });
-      return Response.json({ thread: deleted.thread });
-    }
-
-    const payload = await readJsonPayload(request);
-    if (!payload.ok) {
-      await logServerRouteEvent({
-        request,
-        route: "/api/threads",
-        eventName: "invalid_json_body",
-        action: "parse_request_body",
-        level: "warning",
-        statusCode: 400,
-        message: "Invalid JSON body.",
-        userId: user.id,
-      });
-
-      return Response.json({ error: "Invalid JSON body." }, { status: 400 });
-    }
-
-    if (!isThreadRestorePayload(payload.value)) {
-      await logServerRouteEvent({
-        request,
-        route: "/api/threads",
-        eventName: "invalid_restore_payload",
-        action: "validate_payload",
-        level: "warning",
-        statusCode: 400,
-        message: "`archived` must be false.",
-        userId: user.id,
-        threadId,
-      });
-
-      return Response.json({ error: "`archived` must be false." }, { status: 400 });
-    }
-
-    const restored = await logicalRestoreThread(user.id, threadId);
-    if (restored.status === "not_found") {
-      await logServerRouteEvent({
-        request,
-        route: "/api/threads",
-        eventName: "thread_not_found",
-        action: "restore_thread",
-        level: "warning",
-        statusCode: 404,
-        message: "Thread is not available.",
-        userId: user.id,
-        threadId,
-      });
-
-      return Response.json({ error: "Thread is not available." }, { status: 404 });
-    }
-
-    await logServerRouteEvent({
-      request,
-      route: "/api/threads",
-      eventName: "restore_thread_succeeded",
-      action: "restore_thread",
-      level: "info",
-      statusCode: 200,
-      message: "Thread restored.",
-      userId: user.id,
-      threadId: restored.thread.id,
-    });
-    return Response.json({ thread: restored.thread });
-  } catch (error) {
-    const eventName =
-      request.method === "PUT"
-        ? "save_thread_failed"
-        : request.method === "DELETE"
-          ? "delete_thread_failed"
-          : "restore_thread_failed";
-    const action =
-      request.method === "PUT"
-        ? "save_thread"
-        : request.method === "DELETE"
-          ? "delete_thread"
-          : "restore_thread";
-
-    await logServerRouteEvent({
-      request,
-      route: "/api/threads",
-      eventName,
-      action,
-      statusCode: 500,
-      error,
-      userId: user.id,
-    });
-
-    return Response.json(
-      {
-        error: `Failed to update thread in database: ${readErrorMessage(error)}`,
-      },
-      { status: 500 },
-    );
-  }
+  return methodNotAllowedResponse(THREADS_COLLECTION_ALLOWED_METHODS);
 }
 
 async function readUserThreads(userId: number): Promise<ThreadSnapshot[]> {
@@ -485,7 +223,7 @@ async function readThreadById(userId: number, threadId: string): Promise<ThreadS
   return mapStoredThreadToSnapshot(record);
 }
 
-async function saveThreadSnapshot(
+export async function saveThreadSnapshot(
   userId: number,
   snapshot: ThreadSnapshot,
 ): Promise<{ thread: ThreadSnapshot; created: boolean } | null> {
@@ -751,7 +489,7 @@ async function saveThreadSnapshot(
   };
 }
 
-type LogicalDeleteThreadResult =
+export type LogicalDeleteThreadResult =
   | {
       status: "not_found";
     }
@@ -763,7 +501,7 @@ type LogicalDeleteThreadResult =
       thread: ThreadSnapshot;
     };
 
-async function logicalDeleteThread(
+export async function logicalDeleteThread(
   userId: number,
   threadId: string,
 ): Promise<LogicalDeleteThreadResult> {
@@ -801,7 +539,7 @@ async function logicalDeleteThread(
   };
 }
 
-type LogicalRestoreThreadResult =
+export type LogicalRestoreThreadResult =
   | {
       status: "not_found";
     }
@@ -810,7 +548,7 @@ type LogicalRestoreThreadResult =
       thread: ThreadSnapshot;
     };
 
-async function logicalRestoreThread(
+export async function logicalRestoreThread(
   userId: number,
   threadId: string,
 ): Promise<LogicalRestoreThreadResult> {
@@ -1183,7 +921,7 @@ function readJsonValue<T>(value: string | null, fallback: T): T {
   }
 }
 
-async function readJsonPayload(
+export async function readJsonPayload(
   request: Request,
 ): Promise<{ ok: true; value: unknown } | { ok: false }> {
   try {
@@ -1194,12 +932,7 @@ async function readJsonPayload(
   }
 }
 
-function readThreadIdFromRequestUrl(url: string): string {
-  const parsedUrl = new URL(url);
-  return parsedUrl.searchParams.get("threadId")?.trim() ?? "";
-}
-
-function isThreadRestorePayload(value: unknown): boolean {
+export function isThreadRestorePayload(value: unknown): boolean {
   return isRecord(value) && value.archived === false;
 }
 
@@ -1215,7 +948,7 @@ function readThreadReasoningEffort(value: string): ThreadSnapshot["reasoningEffo
   return HOME_DEFAULT_REASONING_EFFORT;
 }
 
-async function readAuthenticatedUser(): Promise<{ id: number } | null> {
+export async function readAuthenticatedUser(): Promise<{ id: number } | null> {
   const userContext = await readAzureArmUserContext();
   if (!userContext) {
     return null;
@@ -1231,7 +964,7 @@ async function readAuthenticatedUser(): Promise<{ id: number } | null> {
   };
 }
 
-function readErrorMessage(error: unknown): string {
+export function readErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Unknown error.";
 }
 

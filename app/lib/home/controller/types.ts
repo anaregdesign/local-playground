@@ -47,7 +47,7 @@ export type AzureSelectionApiResponse = {
 };
 
 /**
- * Response shape returned by `/api/mcp-servers`.
+ * Response shape returned by `/api/mcp-servers` and `/api/mcp-servers/:serverId`.
  */
 export type McpServersApiResponse = {
   profile?: unknown;
@@ -58,7 +58,7 @@ export type McpServersApiResponse = {
 };
 
 /**
- * Response shape returned by `/api/threads`.
+ * Response shape returned by `/api/threads` and `/api/threads/:threadId`.
  */
 export type ThreadsApiResponse = {
   threads?: unknown;
@@ -68,7 +68,8 @@ export type ThreadsApiResponse = {
 };
 
 /**
- * Response shape returned by `/api/skills`.
+ * Response shape returned by `/api/skills` and
+ * `/api/skill-registries/:registryId/skills/*`.
  */
 export type SkillsApiResponse = {
   skills?: unknown;

@@ -8,6 +8,9 @@ import {
   installGlobalServerErrorLogging,
   logServerRouteEvent,
 } from "~/lib/server/observability/app-event-log";
+import { getOrCreateUserByIdentity } from "~/lib/server/persistence/user";
+import { readAzureArmUserContext } from "~/lib/server/auth/azure-user";
+import { ensureDefaultMcpServersForUser } from "./api.mcp-servers";
 import type { Route } from "./+types/api.azure-session";
 
 const AZURE_SESSION_ALLOWED_METHODS = ["POST", "DELETE"] as const;
@@ -28,6 +31,14 @@ export async function action({ request }: Route.ActionArgs) {
     try {
       const dependencies = getAzureDependencies();
       await dependencies.authenticateAzure(AZURE_ARM_SCOPE);
+      const identity = await readAzureArmUserContext();
+      if (identity) {
+        const user = await getOrCreateUserByIdentity({
+          tenantId: identity.tenantId,
+          principalId: identity.principalId,
+        });
+        await ensureDefaultMcpServersForUser(user.id);
+      }
 
       return Response.json({
         message: "Azure login completed. Azure connections were refreshed.",
