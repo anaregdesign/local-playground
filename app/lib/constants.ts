@@ -412,4 +412,4 @@ export const CLIENT_EVENT_LOG_DEDUPE_WINDOW_MS = 1_500;
  * Changing them affects how saved IDs are normalized and reconstructed.
  */
 export const THREAD_MCP_SERVER_ROW_ID_PATTERN = /^thread:[^:]+:mcp:\d+:(.+)$/;
-export const THREAD_MCP_RPC_LOG_ROW_ID_PATTERN = /^thread:[^:]+:rpc:\d+:(.+)$/;
+export const THREAD_OPERATION_LOG_ROW_ID_PATTERN = /^thread:[^:]+:rpc:\d+:(.+)$/;

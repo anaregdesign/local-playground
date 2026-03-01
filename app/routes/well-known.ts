@@ -3,7 +3,7 @@
  */
 import {
   installGlobalServerErrorLogging,
-} from "~/lib/server/observability/app-event-log";
+} from "~/lib/server/observability/runtime-event-log";
 import { methodNotAllowedResponse } from "~/lib/server/http";
 
 const unsupportedMetadataResponse = {

@@ -4,8 +4,8 @@
 import { CLIENT_EVENT_LOG_DEDUPE_WINDOW_MS } from "~/lib/constants";
 import {
   readErrorDetails,
-  type ClientAppEventLogPayload,
-} from "~/lib/observability/app-event-log";
+  type ClientRuntimeEventLogPayload,
+} from "~/lib/observability/runtime-event-log";
 
 type ClientRuntimeContextProvider = () => Record<string, unknown>;
 type GlobalClientLoggerState = {
@@ -21,7 +21,7 @@ const lastSentAtBySignature = new Map<string, number>();
 const dedupeSignatureCacheLimit = 512;
 const dedupeSignatureMaxAgeMs = CLIENT_EVENT_LOG_DEDUPE_WINDOW_MS * 6;
 
-export function reportClientEvent(payload: ClientAppEventLogPayload): void {
+export function reportClientEvent(payload: ClientRuntimeEventLogPayload): void {
   const now = Date.now();
   pruneSignatureCache(now);
 
@@ -230,9 +230,9 @@ function trimSignatureCache(): void {
   }
 }
 
-async function sendClientEvent(payload: ClientAppEventLogPayload): Promise<void> {
+async function sendClientEvent(payload: ClientRuntimeEventLogPayload): Promise<void> {
   try {
-    await fetch("/api/app-event-logs", {
+    await fetch("/api/runtime-event-logs", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

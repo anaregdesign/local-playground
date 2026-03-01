@@ -130,7 +130,7 @@ async function ensureDatabaseSchema(): Promise<void> {
   await ensureMcpServerProfileSchema();
   await ensureSkillProfileSchema();
   await ensureThreadSchema();
-  await ensureAppEventLogSchema();
+  await ensureRuntimeEventLogSchema();
   await ensureSkillRegistryCacheSchema();
 }
 
@@ -376,8 +376,6 @@ async function ensureThreadSchema(): Promise<void> {
     )
   `);
 
-  await recreateThreadMessageTableIfLegacySchema();
-
   await prisma.$executeRawUnsafe(`
     CREATE TABLE IF NOT EXISTS "ThreadMessage" (
       "id" TEXT NOT NULL PRIMARY KEY,
@@ -604,22 +602,7 @@ async function recreateThreadSkillActivationTableIfLegacySchema(): Promise<void>
   await prisma.$executeRawUnsafe(`DROP TABLE IF EXISTS "ThreadSkillActivation"`);
 }
 
-async function recreateThreadMessageTableIfLegacySchema(): Promise<void> {
-  const columns = await readTableColumns("ThreadMessage");
-  if (columns.size === 0) {
-    return;
-  }
-
-  const hasLegacyColumn = columns.has("dialogueSkillSelectionsJson");
-  if (!hasLegacyColumn) {
-    return;
-  }
-
-  await prisma.$executeRawUnsafe(`DROP TABLE IF EXISTS "ThreadMessageSkillActivation"`);
-  await prisma.$executeRawUnsafe(`DROP TABLE IF EXISTS "ThreadMessage"`);
-}
-
-async function ensureAppEventLogSchema(): Promise<void> {
+async function ensureRuntimeEventLogSchema(): Promise<void> {
   await prisma.$executeRawUnsafe(`
     CREATE TABLE IF NOT EXISTS "RuntimeEventLog" (
       "id" TEXT NOT NULL PRIMARY KEY,

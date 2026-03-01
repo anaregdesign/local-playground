@@ -1,16 +1,16 @@
 /**
- * Test module verifying app-event-log behavior.
+ * Test module verifying runtime-event-log behavior.
  */
 import { describe, expect, it } from "vitest";
 import {
-  readClientAppEventLogPayload,
+  readClientRuntimeEventLogPayload,
   readErrorDetails,
-  serializeAppEventContext,
-} from "~/lib/observability/app-event-log";
+  serializeRuntimeEventContext,
+} from "~/lib/observability/runtime-event-log";
 
-describe("readClientAppEventLogPayload", () => {
+describe("readClientRuntimeEventLogPayload", () => {
   it("parses a valid payload and normalizes optional fields", () => {
-    const result = readClientAppEventLogPayload({
+    const result = readClientRuntimeEventLogPayload({
       level: "warning",
       category: "frontend",
       eventName: "test_event",
@@ -37,7 +37,7 @@ describe("readClientAppEventLogPayload", () => {
 
   it("returns null when required fields are missing", () => {
     expect(
-      readClientAppEventLogPayload({
+      readClientRuntimeEventLogPayload({
         level: "error",
         category: "frontend",
         message: "missing event name",
@@ -65,7 +65,7 @@ describe("readErrorDetails", () => {
   });
 });
 
-describe("serializeAppEventContext", () => {
+describe("serializeRuntimeEventContext", () => {
   it("serializes nested context and truncates by depth", () => {
     const context = {
       a: {
@@ -83,7 +83,7 @@ describe("serializeAppEventContext", () => {
       },
     };
 
-    const serialized = serializeAppEventContext(context);
+    const serialized = serializeRuntimeEventContext(context);
     const parsed = JSON.parse(serialized) as Record<string, unknown>;
     expect(parsed).toHaveProperty("a");
   });

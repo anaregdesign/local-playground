@@ -17,7 +17,7 @@ vi.mock("~/lib/server/persistence/prisma", () => ({
   ensurePersistenceDatabaseReady: ensurePersistenceDatabaseReadyMock,
 }));
 
-vi.mock("~/lib/server/observability/app-event-log", () => ({
+vi.mock("~/lib/server/observability/runtime-event-log", () => ({
   installGlobalServerErrorLogging: installGlobalServerErrorLoggingMock,
   logServerRouteEvent: logServerRouteEventMock,
 }));

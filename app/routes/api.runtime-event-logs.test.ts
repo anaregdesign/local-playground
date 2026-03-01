@@ -1,5 +1,5 @@
 /**
- * Test module verifying api.app-event-logs behavior.
+ * Test module verifying api.runtime-event-logs behavior.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -19,15 +19,15 @@ vi.mock("~/lib/server/auth/azure-user", () => ({
   readAzureArmUserContext: readAzureArmUserContextMock,
 }));
 
-vi.mock("~/lib/server/observability/app-event-log", () => ({
+vi.mock("~/lib/server/observability/runtime-event-log", () => ({
   installGlobalServerErrorLogging: installGlobalServerErrorLoggingMock,
-  logAppEvent: logAppEventMock,
+  logRuntimeEvent: logAppEventMock,
   logServerRouteEvent: logServerRouteEventMock,
 }));
 
-import { action, loader } from "./api.app-event-logs";
+import { action, loader } from "./api.runtime-event-logs";
 
-describe("api.app-event-logs loader", () => {
+describe("api.runtime-event-logs loader", () => {
   it("returns 405 response with Allow header", async () => {
     const response = loader();
     expect(response.status).toBe(405);
@@ -37,7 +37,7 @@ describe("api.app-event-logs loader", () => {
   });
 });
 
-describe("api.app-event-logs action", () => {
+describe("api.runtime-event-logs action", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     readAzureArmUserContextMock.mockResolvedValue({
@@ -51,7 +51,7 @@ describe("api.app-event-logs action", () => {
 
   it("returns 405 for non-POST requests", async () => {
     const response = await action({
-      request: new Request("http://localhost/api/app-event-logs", {
+      request: new Request("http://localhost/api/runtime-event-logs", {
         method: "GET",
       }),
     });
@@ -63,7 +63,7 @@ describe("api.app-event-logs action", () => {
 
   it("returns 400 when JSON is invalid and logs warning", async () => {
     const response = await action({
-      request: new Request("http://localhost/api/app-event-logs", {
+      request: new Request("http://localhost/api/runtime-event-logs", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -76,7 +76,7 @@ describe("api.app-event-logs action", () => {
     expect(await response.json()).toEqual({ error: "Invalid JSON body." });
     expect(logServerRouteEventMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        route: "/api/app-event-logs",
+        route: "/api/runtime-event-logs",
         eventName: "invalid_json_body",
         statusCode: 400,
       }),
@@ -86,7 +86,7 @@ describe("api.app-event-logs action", () => {
 
   it("returns 400 for invalid payload shape and logs warning", async () => {
     const response = await action({
-      request: new Request("http://localhost/api/app-event-logs", {
+      request: new Request("http://localhost/api/runtime-event-logs", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -103,7 +103,7 @@ describe("api.app-event-logs action", () => {
     expect(await response.json()).toEqual({ error: "Invalid event log payload." });
     expect(logServerRouteEventMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        route: "/api/app-event-logs",
+        route: "/api/runtime-event-logs",
         eventName: "invalid_client_event_payload",
         statusCode: 400,
       }),
@@ -113,7 +113,7 @@ describe("api.app-event-logs action", () => {
 
   it("accepts valid payload and forwards structured client log", async () => {
     const response = await action({
-      request: new Request("http://localhost/api/app-event-logs", {
+      request: new Request("http://localhost/api/runtime-event-logs", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

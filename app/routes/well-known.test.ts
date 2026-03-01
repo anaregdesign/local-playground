@@ -9,7 +9,7 @@ const {
   installGlobalServerErrorLoggingMock: vi.fn(),
 }));
 
-vi.mock("~/lib/server/observability/app-event-log", () => ({
+vi.mock("~/lib/server/observability/runtime-event-log", () => ({
   installGlobalServerErrorLogging: installGlobalServerErrorLoggingMock,
 }));
 

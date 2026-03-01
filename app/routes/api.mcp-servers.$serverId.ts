@@ -5,16 +5,16 @@ import { methodNotAllowedResponse } from "~/lib/server/http";
 import {
   installGlobalServerErrorLogging,
   logServerRouteEvent,
-} from "~/lib/server/observability/app-event-log";
+} from "~/lib/server/observability/runtime-event-log";
 import {
-  deleteSavedMcpServer,
-  mergeDefaultMcpServers,
+  deleteWorkspaceMcpServerProfile,
+  mergeDefaultWorkspaceMcpServerProfiles,
   parseIncomingMcpServer,
   readAuthenticatedUser,
   readErrorMessage,
-  readSavedMcpServers,
-  upsertSavedMcpServer,
-  writeSavedMcpServers,
+  readWorkspaceMcpServerProfiles,
+  upsertWorkspaceMcpServerProfile,
+  writeWorkspaceMcpServerProfiles,
 } from "./api.mcp-servers";
 import type { Route } from "./+types/api.mcp-servers.$serverId";
 
@@ -50,13 +50,13 @@ export async function action({ request, params }: Route.ActionArgs) {
 
   if (request.method === "DELETE") {
     try {
-      const currentProfiles = await readSavedMcpServers(user.id);
-      const deleteResult = deleteSavedMcpServer(currentProfiles, serverId);
+      const currentProfiles = await readWorkspaceMcpServerProfiles(user.id);
+      const deleteResult = deleteWorkspaceMcpServerProfile(currentProfiles, serverId);
       if (!deleteResult.deleted) {
         return Response.json({ error: "Selected MCP server is not available." }, { status: 404 });
       }
 
-      await writeSavedMcpServers(user.id, deleteResult.profiles);
+      await writeWorkspaceMcpServerProfiles(user.id, deleteResult.profiles);
       return Response.json({ profiles: deleteResult.profiles });
     } catch (error) {
       await logServerRouteEvent({
@@ -98,20 +98,20 @@ export async function action({ request, params }: Route.ActionArgs) {
   }
 
   try {
-    const currentProfiles = await readSavedMcpServers(user.id);
-    const profilesWithDefaults = mergeDefaultMcpServers(currentProfiles);
+    const currentProfiles = await readWorkspaceMcpServerProfiles(user.id);
+    const profilesWithDefaults = mergeDefaultWorkspaceMcpServerProfiles(currentProfiles);
     const hasTargetProfile = profilesWithDefaults.some((profile) => profile.id === serverId);
     if (!hasTargetProfile) {
       return Response.json({ error: "Selected MCP server is not available." }, { status: 404 });
     }
 
     const profilesWithoutTarget = profilesWithDefaults.filter((profile) => profile.id !== serverId);
-    const { profile, profiles, warning } = upsertSavedMcpServer(profilesWithoutTarget, {
+    const { profile, profiles, warning } = upsertWorkspaceMcpServerProfile(profilesWithoutTarget, {
       ...parsed.value,
       id: serverId,
     });
 
-    await writeSavedMcpServers(user.id, profiles);
+    await writeWorkspaceMcpServerProfiles(user.id, profiles);
     return Response.json({ profile, profiles, warning });
   } catch (error) {
     await logServerRouteEvent({

@@ -32,7 +32,7 @@ import { ensurePersistenceDatabaseReady } from "~/lib/server/persistence/prisma"
 import {
   installGlobalServerErrorLogging,
   logServerRouteEvent,
-} from "~/lib/server/observability/app-event-log";
+} from "~/lib/server/observability/runtime-event-log";
 
 const tableReadInputSchema = {
   limit: z

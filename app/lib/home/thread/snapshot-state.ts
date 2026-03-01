@@ -6,17 +6,17 @@ import {
   HOME_DEFAULT_WEB_SEARCH_ENABLED,
 } from "~/lib/constants";
 import type { McpServerConfig } from "~/lib/home/mcp/profile";
-import type { ChatMessage } from "~/lib/home/chat/messages";
-import type { McpRpcHistoryEntry } from "~/lib/home/chat/stream";
+import type { ThreadMessage } from "~/lib/home/chat/messages";
+import type { ThreadOperationLogEntry } from "~/lib/home/chat/stream";
 import type { ThreadSkillActivation } from "~/lib/home/skills/types";
 import type { ThreadEnvironment } from "~/lib/home/thread/environment";
 import type { ThreadSnapshot } from "~/lib/home/thread/types";
 
-export function cloneMessages(value: ChatMessage[]): ChatMessage[] {
+export function cloneMessages(value: ThreadMessage[]): ThreadMessage[] {
   return value.map((message) => ({
     ...message,
     attachments: message.attachments.map((attachment) => ({ ...attachment })),
-    dialogueSkillSelections: message.dialogueSkillSelections.map((selection) => ({ ...selection })),
+    skillActivations: message.skillActivations.map((selection) => ({ ...selection })),
   }));
 }
 
@@ -35,13 +35,13 @@ export function cloneMcpServers(value: McpServerConfig[]): McpServerConfig[] {
   );
 }
 
-export function cloneMcpRpcHistory(value: McpRpcHistoryEntry[]): McpRpcHistoryEntry[] {
+export function cloneThreadOperationLogs(value: ThreadOperationLogEntry[]): ThreadOperationLogEntry[] {
   return value.map((entry) => ({
     ...entry,
   }));
 }
 
-export function cloneThreadSkillSelections(value: ThreadSkillActivation[]): ThreadSkillActivation[] {
+export function cloneThreadSkillActivations(value: ThreadSkillActivation[]): ThreadSkillActivation[] {
   return value.map((entry) => ({
     ...entry,
   }));
@@ -61,7 +61,7 @@ export function buildThreadSaveSignature(snapshot: ThreadSnapshot): string {
     threadEnvironment: snapshot.threadEnvironment,
     messages: snapshot.messages,
     mcpServers: snapshot.mcpServers,
-    mcpRpcHistory: snapshot.mcpRpcHistory,
+    mcpRpcLogs: snapshot.mcpRpcLogs,
     skillSelections: snapshot.skillSelections,
   });
 }

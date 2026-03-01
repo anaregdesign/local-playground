@@ -7,7 +7,7 @@ import { methodNotAllowedResponse } from "~/lib/server/http";
 import {
   installGlobalServerErrorLogging,
   logServerRouteEvent,
-} from "~/lib/server/observability/app-event-log";
+} from "~/lib/server/observability/runtime-event-log";
 import {
   isThreadRestorePayload,
   logicalDeleteThread,
@@ -154,7 +154,7 @@ export async function action({ request, params }: Route.ActionArgs) {
         context: {
           messageCount: saveResult.thread.messages.length,
           mcpServerCount: saveResult.thread.mcpServers.length,
-          mcpRpcCount: saveResult.thread.mcpRpcHistory.length,
+          operationLogCount: saveResult.thread.mcpRpcLogs.length,
           skillSelectionCount: saveResult.thread.skillSelections.length,
           created: saveResult.created,
         },

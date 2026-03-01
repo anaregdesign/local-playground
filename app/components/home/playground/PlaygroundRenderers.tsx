@@ -4,9 +4,9 @@
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { CopyIconButton } from "~/components/home/shared/CopyIconButton";
-import { buildMcpEntryCopyPayload, readOperationLogType } from "~/lib/home/chat/history";
+import { buildThreadOperationLogCopyPayload, readOperationLogType } from "~/lib/home/chat/history";
 import { formatChatAttachmentSize } from "~/lib/home/chat/attachments";
-import type { ChatMessage } from "~/lib/home/chat/messages";
+import type { ThreadMessage } from "~/lib/home/chat/messages";
 import type { JsonToken } from "~/lib/home/chat/json-highlighting";
 import {
   formatJsonForDisplay,
@@ -14,12 +14,12 @@ import {
   parseJsonMessageTokens,
   tokenizeJson,
 } from "~/lib/home/chat/json-highlighting";
-import type { McpRpcHistoryEntry } from "~/lib/home/chat/stream";
+import type { ThreadOperationLogEntry } from "~/lib/home/chat/stream";
 
 type JsonHighlightStyle = "default" | "compact";
 
-export function renderTurnMcpLog(
-  entries: McpRpcHistoryEntry[],
+export function renderTurnOperationLog(
+  entries: ThreadOperationLogEntry[],
   isLive: boolean,
   onCopyText: (text: string) => void,
 ) {
@@ -36,7 +36,7 @@ export function renderTurnMcpLog(
             event.stopPropagation();
             onCopyText(
               formatJsonForDisplay(
-                entries.map((entry) => buildMcpEntryCopyPayload(entry)),
+                entries.map((entry) => buildThreadOperationLogCopyPayload(entry)),
               ),
             );
           }}
@@ -77,7 +77,7 @@ export function renderTurnMcpLog(
                     onClick={(event) => {
                       event.preventDefault();
                       event.stopPropagation();
-                      onCopyText(formatJsonForDisplay(buildMcpEntryCopyPayload(entry)));
+                      onCopyText(formatJsonForDisplay(buildThreadOperationLogCopyPayload(entry)));
                     }}
                   />
                 </summary>
@@ -129,7 +129,7 @@ export function renderTurnMcpLog(
   );
 }
 
-export function renderMessageContent(message: ChatMessage) {
+export function renderMessageContent(message: ThreadMessage) {
   if (message.role !== "assistant") {
     return (
       <div className="user-message-body">

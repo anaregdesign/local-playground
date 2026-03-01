@@ -5,7 +5,7 @@ import { methodNotAllowedResponse } from "~/lib/server/http";
 import {
   installGlobalServerErrorLogging,
   logServerRouteEvent,
-} from "~/lib/server/observability/app-event-log";
+} from "~/lib/server/observability/runtime-event-log";
 import { discoverSkillCatalog } from "~/lib/server/skills/catalog";
 import {
   deleteInstalledSkillFromRegistry,

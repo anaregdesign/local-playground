@@ -36,7 +36,7 @@ vi.mock("~/lib/azure/dependencies", () => ({
   resetAzureDependencies,
 }));
 
-vi.mock("~/lib/server/observability/app-event-log", () => ({
+vi.mock("~/lib/server/observability/runtime-event-log", () => ({
   installGlobalServerErrorLogging: vi.fn(),
   logServerRouteEvent,
 }));

@@ -25,17 +25,17 @@ const {
   Switch,
   Textarea,
 } = FluentUI;
-type ChatRole = "user" | "assistant";
+type ThreadMessageRole = "user" | "assistant";
 
-type ChatMessageLike = {
+type ThreadMessageLike = {
   id: string;
-  role: ChatRole;
+  role: ThreadMessageRole;
   content: string;
   turnId: string;
-  dialogueSkillSelections?: ThreadSkillLike[];
+  skillActivations?: ThreadSkillLike[];
 };
 
-type ChatAttachmentLike = {
+type ThreadMessageAttachmentLike = {
   id: string;
   name: string;
   sizeBytes: number;
@@ -79,11 +79,11 @@ type AzureConnectionLike = {
   projectName: string;
 };
 
-type McpRpcHistoryEntryLike = {
+type ThreadOperationLogEntryLike = {
   id: string;
 };
 
-type McpHttpServerLike = {
+type ThreadMcpConnectionHttpLike = {
   id: string;
   name: string;
   transport: "streamable_http" | "sse";
@@ -94,7 +94,7 @@ type McpHttpServerLike = {
   timeoutSeconds: number;
 };
 
-type McpStdioServerLike = {
+type ThreadMcpConnectionStdioLike = {
   id: string;
   name: string;
   transport: "stdio";
@@ -104,15 +104,15 @@ type McpStdioServerLike = {
   env: Record<string, string>;
 };
 
-type McpServerLike = McpHttpServerLike | McpStdioServerLike;
+type ThreadMcpConnectionLike = ThreadMcpConnectionHttpLike | ThreadMcpConnectionStdioLike;
 
 type PlaygroundPanelProps<
-  TMessage extends ChatMessageLike,
-  TMcpRpcHistoryEntry extends McpRpcHistoryEntryLike,
-  TMcpServer extends McpServerLike,
+  TMessage extends ThreadMessageLike,
+  TThreadOperationLogEntry extends ThreadOperationLogEntryLike,
+  TMcpServer extends ThreadMcpConnectionLike,
 > = {
   messages: TMessage[];
-  mcpHistoryByTurnId: Map<string, TMcpRpcHistoryEntry[]>;
+  threadOperationLogsByTurnId: Map<string, TThreadOperationLogEntry[]>;
   isSending: boolean;
   isThreadReadOnly: boolean;
   desktopUpdaterStatus: DesktopUpdaterStatusLike;
@@ -123,17 +123,17 @@ type PlaygroundPanelProps<
   isThreadOperationBusy: boolean;
   isCreatingThread: boolean;
   renderMessageContent: (message: TMessage) => ReactNode;
-  renderTurnMcpLog: (
-    entries: TMcpRpcHistoryEntry[],
+  renderTurnOperationLog: (
+    entries: TThreadOperationLogEntry[],
     isLive: boolean,
     onCopy: (text: string) => void,
   ) => ReactNode;
   onCreateThread: () => void;
   onCopyMessage: (content: string) => void;
-  onCopyMcpLog: (content: string) => void;
+  onCopyOperationLog: (content: string) => void;
   sendProgressMessages: string[];
-  activeTurnMcpHistory: TMcpRpcHistoryEntry[];
-  errorTurnMcpHistory: TMcpRpcHistoryEntry[];
+  activeTurnOperationLogs: TThreadOperationLogEntry[];
+  errorTurnOperationLogs: TThreadOperationLogEntry[];
   endOfMessagesRef: RefObject<HTMLDivElement | null>;
   systemNotice: string | null;
   onClearSystemNotice: () => void;
@@ -141,17 +141,17 @@ type PlaygroundPanelProps<
   azureLoginError: string | null;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
   chatInputRef: RefObject<HTMLTextAreaElement | null>;
-  chatAttachmentInputRef: RefObject<HTMLInputElement | null>;
-  chatAttachmentAccept: string;
-  chatAttachmentFormatHint: string;
+  messageAttachmentInputRef: RefObject<HTMLInputElement | null>;
+  messageAttachmentAccept: string;
+  messageAttachmentFormatHint: string;
   draft: string;
-  chatAttachments: ChatAttachmentLike[];
-  chatAttachmentError: string | null;
+  messageAttachments: ThreadMessageAttachmentLike[];
+  messageAttachmentError: string | null;
   onDraftChange: (event: ChangeEvent<HTMLTextAreaElement>, value: string) => void;
   onInputSelect: (event: SyntheticEvent<HTMLTextAreaElement>) => void;
-  onOpenChatAttachmentPicker: () => void;
-  onChatAttachmentFileChange: (event: ChangeEvent<HTMLInputElement>) => void;
-  onRemoveChatAttachment: (id: string) => void;
+  onOpenMessageAttachmentPicker: () => void;
+  onMessageAttachmentFileChange: (event: ChangeEvent<HTMLInputElement>) => void;
+  onRemoveMessageAttachment: (id: string) => void;
   onInputKeyDown: (event: KeyboardEvent<HTMLTextAreaElement>) => void;
   chatCommandMenu: ChatCommandMenuLike | null;
   onSelectChatCommandSuggestion: (id: string) => void;
@@ -176,24 +176,24 @@ type PlaygroundPanelProps<
   onReasoningEffortChange: (value: ReasoningEffort) => void;
   webSearchEnabled: boolean;
   onWebSearchEnabledChange: (value: boolean) => void;
-  maxChatAttachmentFiles: number;
+  maxMessageAttachmentFiles: number;
   canSendMessage: boolean;
   selectedThreadSkills: ThreadSkillLike[];
-  selectedDialogueSkills: ThreadSkillLike[];
+  selectedMessageSkillActivations: ThreadSkillLike[];
   onRemoveThreadSkill: (location: string) => void;
-  onRemoveDialogueSkill: (location: string) => void;
+  onRemoveMessageSkillActivation: (location: string) => void;
   mcpServers: TMcpServer[];
   onRemoveMcpServer: (id: string) => void;
 };
 
 export function PlaygroundPanel<
-  TMessage extends ChatMessageLike,
-  TMcpRpcHistoryEntry extends McpRpcHistoryEntryLike,
-  TMcpServer extends McpServerLike,
->(props: PlaygroundPanelProps<TMessage, TMcpRpcHistoryEntry, TMcpServer>) {
+  TMessage extends ThreadMessageLike,
+  TThreadOperationLogEntry extends ThreadOperationLogEntryLike,
+  TMcpServer extends ThreadMcpConnectionLike,
+>(props: PlaygroundPanelProps<TMessage, TThreadOperationLogEntry, TMcpServer>) {
   const {
     messages,
-    mcpHistoryByTurnId,
+    threadOperationLogsByTurnId,
     isSending,
     isThreadReadOnly,
     desktopUpdaterStatus,
@@ -204,13 +204,13 @@ export function PlaygroundPanel<
     isThreadOperationBusy,
     isCreatingThread,
     renderMessageContent,
-    renderTurnMcpLog,
+    renderTurnOperationLog,
     onCreateThread,
     onCopyMessage,
-    onCopyMcpLog,
+    onCopyOperationLog,
     sendProgressMessages,
-    activeTurnMcpHistory,
-    errorTurnMcpHistory,
+    activeTurnOperationLogs,
+    errorTurnOperationLogs,
     endOfMessagesRef,
     systemNotice,
     onClearSystemNotice,
@@ -218,17 +218,17 @@ export function PlaygroundPanel<
     azureLoginError,
     onSubmit,
     chatInputRef,
-    chatAttachmentInputRef,
-    chatAttachmentAccept,
-    chatAttachmentFormatHint,
+    messageAttachmentInputRef,
+    messageAttachmentAccept,
+    messageAttachmentFormatHint,
     draft,
-    chatAttachments,
-    chatAttachmentError,
+    messageAttachments,
+    messageAttachmentError,
     onDraftChange,
     onInputSelect,
-    onOpenChatAttachmentPicker,
-    onChatAttachmentFileChange,
-    onRemoveChatAttachment,
+    onOpenMessageAttachmentPicker,
+    onMessageAttachmentFileChange,
+    onRemoveMessageAttachment,
     onInputKeyDown,
     chatCommandMenu,
     onSelectChatCommandSuggestion,
@@ -253,12 +253,12 @@ export function PlaygroundPanel<
     onReasoningEffortChange,
     webSearchEnabled,
     onWebSearchEnabledChange,
-    maxChatAttachmentFiles,
+    maxMessageAttachmentFiles,
     canSendMessage,
     selectedThreadSkills,
-    selectedDialogueSkills,
+    selectedMessageSkillActivations,
     onRemoveThreadSkill,
-    onRemoveDialogueSkill,
+    onRemoveMessageSkillActivation,
     mcpServers,
     onRemoveMcpServer,
   } = props;
@@ -327,30 +327,30 @@ export function PlaygroundPanel<
   }
 
   function renderAddedSkillAndMcpBubbles() {
-    if (selectedThreadSkills.length === 0 && selectedDialogueSkills.length === 0 && mcpServers.length === 0) {
+    if (selectedThreadSkills.length === 0 && selectedMessageSkillActivations.length === 0 && mcpServers.length === 0) {
       return null;
     }
 
     return (
-      <section className="chat-skill-strip-compact" aria-label="Added thread skills, dialogue skills, and thread MCP servers">
+      <section className="chat-skill-strip-compact" aria-label="Added thread skill activations, message skill activations, and thread MCP connections">
         <div className="chat-skill-bubbles chat-skill-bubbles-compact">
-          {selectedDialogueSkills.map((skill) => (
-            <div key={`dialogue:${skill.location}`} className="chat-skill-bubble-item">
+          {selectedMessageSkillActivations.map((skill) => (
+            <div key={`message_activation:${skill.location}`} className="chat-skill-bubble-item">
               <LabeledTooltip
                 title={skill.name}
                 lines={[`Source: ${skill.location}`]}
               >
-                <span className="chat-skill-bubble chat-skill-bubble-dialogue">
+                <span className="chat-skill-bubble chat-skill-bubble-message-activation">
                   <span className="chat-skill-bubble-name">{skill.name}</span>
                   <Button
                     type="button"
                     appearance="subtle"
                     size="small"
                     className="chat-skill-bubble-remove"
-                    onClick={() => onRemoveDialogueSkill(skill.location)}
+                    onClick={() => onRemoveMessageSkillActivation(skill.location)}
                     disabled={isSending || isThreadReadOnly}
-                    aria-label={`Remove dialogue skill ${skill.name}`}
-                    title={`Remove dialogue skill ${skill.name}`}
+                    aria-label={`Remove message skill activation ${skill.name}`}
+                    title={`Remove message skill activation ${skill.name}`}
                   >
                     ×
                   </Button>
@@ -497,14 +497,14 @@ export function PlaygroundPanel<
   }
 
   function renderDraftAttachmentBubbles() {
-    if (chatAttachments.length === 0) {
+    if (messageAttachments.length === 0) {
       return null;
     }
 
     return (
       <section className="chat-attachment-strip" aria-label="Attached files">
         <div className="chat-attachment-bubbles">
-          {chatAttachments.map((attachment) => (
+          {messageAttachments.map((attachment) => (
             <div key={attachment.id} className="chat-attachment-bubble-item">
               <span className="chat-attachment-bubble">
                 <span className="chat-attachment-bubble-name">{attachment.name}</span>
@@ -516,7 +516,7 @@ export function PlaygroundPanel<
                   appearance="subtle"
                   size="small"
                   className="chat-attachment-bubble-remove"
-                  onClick={() => onRemoveChatAttachment(attachment.id)}
+                  onClick={() => onRemoveMessageAttachment(attachment.id)}
                   disabled={isSending || isThreadReadOnly}
                   aria-label={`Remove attachment ${attachment.name}`}
                   title={`Remove ${attachment.name}`}
@@ -531,25 +531,25 @@ export function PlaygroundPanel<
     );
   }
 
-  function renderTurnDialogueSkillBubbles(message: TMessage) {
+  function renderTurnMessageSkillActivationBubbles(message: TMessage) {
     if (message.role !== "user") {
       return null;
     }
 
-    const dialogueSkillSelections = message.dialogueSkillSelections ?? [];
-    if (dialogueSkillSelections.length === 0) {
+    const skillActivations = message.skillActivations ?? [];
+    if (skillActivations.length === 0) {
       return null;
     }
 
     return (
-      <div className="message-dialogue-skill-row" aria-label="Dialogue Skills used in this turn">
-        {dialogueSkillSelections.map((skill) => (
-          <div key={`${message.id}:dialogue-skill:${skill.location}`} className="message-dialogue-skill-item">
+      <div className="message-skill-activation-row" aria-label="Message Skill Activations used in this turn">
+        {skillActivations.map((skill) => (
+          <div key={`${message.id}:message-skill-activation:${skill.location}`} className="message-skill-activation-item">
             <LabeledTooltip
               title={skill.name}
               lines={[`Source: ${skill.location}`]}
             >
-              <span className="message-dialogue-skill-bubble">{skill.name}</span>
+              <span className="message-skill-activation-bubble">{skill.name}</span>
             </LabeledTooltip>
           </div>
         ))}
@@ -627,8 +627,8 @@ export function PlaygroundPanel<
 
       <div className="chat-log" aria-live="polite">
         {messages.map((message) => {
-          const turnMcpHistory = mcpHistoryByTurnId.get(message.turnId) ?? [];
-          const shouldRenderTurnMcpLog = message.role === "assistant" && turnMcpHistory.length > 0;
+          const turnOperationLogs = threadOperationLogsByTurnId.get(message.turnId) ?? [];
+          const shouldRenderTurnOperationLog = message.role === "assistant" && turnOperationLogs.length > 0;
 
           return (
             <div key={message.id} className={`turn-entry ${message.role}`}>
@@ -643,11 +643,11 @@ export function PlaygroundPanel<
                   }}
                 />
               </article>
-              {renderTurnDialogueSkillBubbles(message)}
-              {shouldRenderTurnMcpLog ? (
+              {renderTurnMessageSkillActivationBubbles(message)}
+              {shouldRenderTurnOperationLog ? (
                 <article className="mcp-turn-log-row">
-                  {renderTurnMcpLog(turnMcpHistory, false, (text) => {
-                    onCopyMcpLog(text);
+                  {renderTurnOperationLog(turnOperationLogs, false, (text) => {
+                    onCopyOperationLog(text);
                   })}
                 </article>
               ) : null}
@@ -672,17 +672,17 @@ export function PlaygroundPanel<
             </div>
           </article>
         ) : null}
-        {isSending && activeTurnMcpHistory.length > 0 ? (
+        {isSending && activeTurnOperationLogs.length > 0 ? (
           <article className="mcp-turn-log-row">
-            {renderTurnMcpLog(activeTurnMcpHistory, true, (text) => {
-              onCopyMcpLog(text);
+            {renderTurnOperationLog(activeTurnOperationLogs, true, (text) => {
+              onCopyOperationLog(text);
             })}
           </article>
         ) : null}
-        {!isSending && errorTurnMcpHistory.length > 0 ? (
+        {!isSending && errorTurnOperationLogs.length > 0 ? (
           <article className="mcp-turn-log-row">
-            {renderTurnMcpLog(errorTurnMcpHistory, false, (text) => {
-              onCopyMcpLog(text);
+            {renderTurnOperationLog(errorTurnOperationLogs, false, (text) => {
+              onCopyOperationLog(text);
             })}
           </article>
         ) : null}
@@ -701,7 +701,7 @@ export function PlaygroundPanel<
             },
           ]}
         />
-        {error || azureLoginError || chatAttachmentError || isThreadReadOnly ? (
+        {error || azureLoginError || messageAttachmentError || isThreadReadOnly ? (
           <StatusMessageList
             className="chat-error-stack"
             messages={[
@@ -714,7 +714,7 @@ export function PlaygroundPanel<
               },
               { intent: "error", title: "Request failed", text: error },
               { intent: "error", text: azureLoginError },
-              { intent: "error", title: "Attachment", text: chatAttachmentError },
+              { intent: "error", title: "Attachment", text: messageAttachmentError },
             ]}
           />
         ) : null}
@@ -723,13 +723,13 @@ export function PlaygroundPanel<
             Message
           </label>
           <input
-            ref={chatAttachmentInputRef}
+            ref={messageAttachmentInputRef}
             id="chat-attachment-input"
             className="file-input-hidden"
             type="file"
-            accept={chatAttachmentAccept}
+            accept={messageAttachmentAccept}
             multiple
-            onChange={onChatAttachmentFileChange}
+            onChange={onMessageAttachmentFileChange}
             disabled={isSending || isChatLocked || isThreadReadOnly}
           />
           <div className="chat-composer">
@@ -762,8 +762,8 @@ export function PlaygroundPanel<
                 {renderLabeledTooltip(
                   "Attach Files",
                   [
-                    `Attach local files for this turn (up to ${maxChatAttachmentFiles}).`,
-                    `Supported format: ${chatAttachmentFormatHint}.`,
+                    `Attach local files for this turn (up to ${maxMessageAttachmentFiles}).`,
+                    `Supported format: ${messageAttachmentFormatHint}.`,
                     "Attachments are sent together with the current message.",
                   ],
                   <div className="chat-quick-control">
@@ -773,7 +773,7 @@ export function PlaygroundPanel<
                       className="chat-attach-btn"
                       aria-label="Attach files"
                       title="Attach files"
-                      onClick={onOpenChatAttachmentPicker}
+                      onClick={onOpenMessageAttachmentPicker}
                       disabled={isSending || isChatLocked || isThreadReadOnly}
                     >
                       📎

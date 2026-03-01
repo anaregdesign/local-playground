@@ -524,23 +524,23 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
-.message-dialogue-skill-row {
+.message-skill-activation-row {
   display: flex;
   flex-wrap: wrap;
   gap: 0.22rem 0.3rem;
   max-width: 72%;
 }
 
-.turn-entry.user .message-dialogue-skill-row {
+.turn-entry.user .message-skill-activation-row {
   justify-content: flex-end;
 }
 
-.message-dialogue-skill-item {
+.message-skill-activation-item {
   display: inline-flex;
   min-width: 0;
 }
 
-.message-dialogue-skill-bubble {
+.message-skill-activation-bubble {
   display: inline-flex;
   align-items: center;
   min-height: 1.4rem;
@@ -1032,7 +1032,7 @@ body {
   white-space: nowrap;
 }
 
-.chat-skill-bubble-dialogue {
+.chat-skill-bubble-message-activation {
   border: 1px solid #d7c8ef;
   background: #f2ebff;
   color: #4c2d74;

@@ -10,7 +10,7 @@ type McpServersAuthLike = {
 /**
  * View model used by `SelectableCardList` in the MCP saved profile section.
  */
-export type SavedMcpServerOption = {
+export type WorkspaceMcpServerProfileOption = {
   id: string;
   name: string;
   badge?: string;
@@ -33,30 +33,30 @@ export function isMcpServersAuthRequired(
 /**
  * Schedules a retry only when auth was previously required and the workspace identity is known.
  */
-export function shouldScheduleSavedMcpLoginRetry(
+export function shouldScheduleWorkspaceMcpServerProfileLoginRetry(
   wasAzureAuthRequired: boolean,
-  savedMcpUserKey: string,
+  workspaceMcpServerProfileUserKey: string,
 ): boolean {
-  return wasAzureAuthRequired && savedMcpUserKey.trim().length > 0;
+  return wasAzureAuthRequired && workspaceMcpServerProfileUserKey.trim().length > 0;
 }
 
 /**
  * Maps persisted MCP profiles into `SelectableCardList` options for the MCP Servers tab.
  */
-export function buildSavedMcpServerOptions(
-  savedMcpServers: McpServerConfig[],
+export function buildWorkspaceMcpServerProfileOptions(
+  workspaceMcpServerProfiles: McpServerConfig[],
   activeMcpServers: McpServerConfig[],
-): SavedMcpServerOption[] {
+): WorkspaceMcpServerProfileOption[] {
   const activeMcpServerKeySet = new Set(activeMcpServers.map((server) => buildMcpServerKey(server)));
-  return savedMcpServers
+  return workspaceMcpServerProfiles
     .map((server) => {
       const key = buildMcpServerKey(server);
       return {
         id: server.id,
         name: server.name,
         badge: resolveMcpTransportBadge(server),
-        description: describeSavedMcpServer(server),
-        detail: describeSavedMcpServerDetail(server),
+        description: describeWorkspaceMcpServerProfile(server),
+        detail: describeWorkspaceMcpServerProfileDetail(server),
         isSelected: activeMcpServerKeySet.has(key),
         isAvailable: true,
       };
@@ -73,7 +73,7 @@ export function buildSavedMcpServerOptions(
 /**
  * Returns how many saved MCP options are currently connected to the active thread.
  */
-export function countSelectedSavedMcpServerOptions(options: SavedMcpServerOption[]): number {
+export function countSelectedWorkspaceMcpServerProfileOptions(options: WorkspaceMcpServerProfileOption[]): number {
   return options.filter((option) => option.isSelected).length;
 }
 
@@ -95,7 +95,7 @@ export function resolveMcpTransportBadge(server: McpServerConfig): string {
 /**
  * Human-readable summary line shown under each saved MCP server card.
  */
-export function describeSavedMcpServer(server: McpServerConfig): string {
+export function describeWorkspaceMcpServerProfile(server: McpServerConfig): string {
   if (server.transport === "stdio") {
     const argsSuffix = server.args.length > 0 ? ` ${server.args.join(" ")}` : "";
     const envCount = Object.keys(server.env).length;
@@ -112,7 +112,7 @@ export function describeSavedMcpServer(server: McpServerConfig): string {
 /**
  * Secondary detail line shown under each saved MCP server card.
  */
-export function describeSavedMcpServerDetail(server: McpServerConfig): string {
+export function describeWorkspaceMcpServerProfileDetail(server: McpServerConfig): string {
   if (server.transport === "stdio") {
     return `Working directory: ${server.cwd ?? "(inherit current workspace)"}`;
   }

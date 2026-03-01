@@ -3,11 +3,11 @@
  */
 import { describe, expect, it } from "vitest";
 import {
-  buildThreadMessageSkillSelectionRowId,
-  buildThreadMcpRpcLogRowId,
+  buildThreadMessageSkillActivationRowId,
+  buildThreadOperationLogRowId,
   buildThreadMcpServerRowId,
-  buildThreadSkillSelectionRowId,
-  normalizeThreadMcpRpcLogSourceId,
+  buildThreadSkillActivationRowId,
+  normalizeThreadOperationLogSourceRpcId,
   normalizeThreadMcpServerSourceId,
 } from "~/lib/home/thread/server-ids";
 
@@ -39,47 +39,47 @@ describe("buildThreadMcpServerRowId", () => {
   });
 });
 
-describe("normalizeThreadMcpRpcLogSourceId", () => {
+describe("normalizeThreadOperationLogSourceRpcId", () => {
   it("keeps plain source ids unchanged", () => {
-    expect(normalizeThreadMcpRpcLogSourceId("rpc-123", 0)).toBe("rpc-123");
+    expect(normalizeThreadOperationLogSourceRpcId("rpc-123", 0)).toBe("rpc-123");
   });
 
   it("unwraps persisted row-id prefixes recursively", () => {
     const nested =
       "thread:thread-1:rpc:0:thread:thread-1:rpc:0:thread:thread-1:rpc:0:rpc-origin";
-    expect(normalizeThreadMcpRpcLogSourceId(nested, 0)).toBe("rpc-origin");
+    expect(normalizeThreadOperationLogSourceRpcId(nested, 0)).toBe("rpc-origin");
   });
 
   it("falls back when source id is blank", () => {
-    expect(normalizeThreadMcpRpcLogSourceId("  ", 1)).toBe("rpc-2");
+    expect(normalizeThreadOperationLogSourceRpcId("  ", 1)).toBe("rpc-2");
   });
 });
 
-describe("buildThreadMcpRpcLogRowId", () => {
+describe("buildThreadOperationLogRowId", () => {
   it("produces stable row ids even when source id already contains a row prefix", () => {
     const threadId = "thread-1";
     const sourceId = "rpc-origin";
-    const first = buildThreadMcpRpcLogRowId(threadId, sourceId, 0);
-    const second = buildThreadMcpRpcLogRowId(threadId, first, 0);
+    const first = buildThreadOperationLogRowId(threadId, sourceId, 0);
+    const second = buildThreadOperationLogRowId(threadId, first, 0);
 
     expect(first).toBe("thread:thread-1:rpc:0:rpc-origin");
     expect(second).toBe(first);
   });
 });
 
-describe("buildThreadSkillSelectionRowId", () => {
+describe("buildThreadSkillActivationRowId", () => {
   it("builds deterministic row ids from thread id and order", () => {
-    expect(buildThreadSkillSelectionRowId("thread-1", 0)).toBe("thread:thread-1:skill:0");
-    expect(buildThreadSkillSelectionRowId("thread-1", 3)).toBe("thread:thread-1:skill:3");
+    expect(buildThreadSkillActivationRowId("thread-1", 0)).toBe("thread:thread-1:skill:0");
+    expect(buildThreadSkillActivationRowId("thread-1", 3)).toBe("thread:thread-1:skill:3");
   });
 });
 
-describe("buildThreadMessageSkillSelectionRowId", () => {
+describe("buildThreadMessageSkillActivationRowId", () => {
   it("builds deterministic row ids from message id and order", () => {
-    expect(buildThreadMessageSkillSelectionRowId("message-1", 0)).toBe(
+    expect(buildThreadMessageSkillActivationRowId("message-1", 0)).toBe(
       "message:message-1:skill:0",
     );
-    expect(buildThreadMessageSkillSelectionRowId("message-1", 2)).toBe(
+    expect(buildThreadMessageSkillActivationRowId("message-1", 2)).toBe(
       "message:message-1:skill:2",
     );
   });

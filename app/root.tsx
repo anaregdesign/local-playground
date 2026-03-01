@@ -34,7 +34,7 @@ export const links: Route.LinksFunction = () => [
 
 export async function loader({}: Route.LoaderArgs) {
   const { installGlobalServerErrorLogging } = await import(
-    "~/lib/server/observability/app-event-log"
+    "~/lib/server/observability/runtime-event-log"
   );
   installGlobalServerErrorLogging();
   return null;

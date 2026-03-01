@@ -31,7 +31,7 @@ export function readSkillCatalogList(value: unknown): SkillCatalogEntry[] {
   return skills;
 }
 
-export function readThreadSkillSelectionList(value: unknown): ThreadSkillActivation[] {
+export function readThreadSkillActivationList(value: unknown): ThreadSkillActivation[] {
   if (!Array.isArray(value)) {
     return [];
   }
@@ -40,7 +40,7 @@ export function readThreadSkillSelectionList(value: unknown): ThreadSkillActivat
   const seenLocations = new Set<string>();
 
   for (const entry of value) {
-    const parsed = readThreadSkillSelectionFromUnknown(entry);
+    const parsed = readThreadSkillActivationFromUnknown(entry);
     if (!parsed || seenLocations.has(parsed.location)) {
       continue;
     }
@@ -73,7 +73,7 @@ export function readSkillRegistryCatalogList(value: unknown): SkillRegistryCatal
   return catalogs;
 }
 
-export function readThreadSkillSelectionFromUnknown(value: unknown): ThreadSkillActivation | null {
+export function readThreadSkillActivationFromUnknown(value: unknown): ThreadSkillActivation | null {
   if (!isRecord(value)) {
     return null;
   }

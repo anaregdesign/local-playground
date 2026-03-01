@@ -46,7 +46,7 @@ vi.mock("~/lib/server/persistence/prisma", () => ({
   },
 }));
 
-vi.mock("~/lib/server/observability/app-event-log", () => ({
+vi.mock("~/lib/server/observability/runtime-event-log", () => ({
   installGlobalServerErrorLogging: vi.fn(),
   logServerRouteEvent,
 }));

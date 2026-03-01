@@ -2,9 +2,9 @@
  * Server runtime module.
  */
 import {
-  createEventLogId,
-  normalizeAppEventLogLevel,
-  normalizeAppEventLogSource,
+  createRuntimeEventLogId,
+  normalizeRuntimeEventLogLevel,
+  normalizeRuntimeEventLogSource,
   normalizeCategory,
   normalizeCreatedAt,
   normalizeEventName,
@@ -15,10 +15,10 @@ import {
   normalizeOptionalTextValue,
   normalizeOptionalUserId,
   readErrorDetails,
-  serializeAppEventContext,
-  type AppEventLogInput,
-  type AppEventLogLevel,
-} from "~/lib/observability/app-event-log";
+  serializeRuntimeEventContext,
+  type RuntimeEventLogInput,
+  type RuntimeEventLogLevel,
+} from "~/lib/observability/runtime-event-log";
 import {
   ensurePersistenceDatabaseReady,
   prisma,
@@ -34,7 +34,7 @@ type ServerRouteEventInput = {
   eventName: string;
   action?: string;
   category?: string;
-  level?: AppEventLogLevel;
+  level?: RuntimeEventLogLevel;
   message?: string;
   error?: unknown;
   statusCode?: number;
@@ -58,7 +58,7 @@ export function installGlobalServerErrorLogging(): void {
 
   monitoredProcess.on("uncaughtExceptionMonitor", (error, origin) => {
     const details = readErrorDetails(error);
-    void logAppEvent({
+    void logRuntimeEvent({
       source: "server",
       level: "error",
       category: "runtime",
@@ -76,7 +76,7 @@ export function installGlobalServerErrorLogging(): void {
 
   process.on("unhandledRejection", (reason) => {
     const details = readErrorDetails(reason);
-    void logAppEvent({
+    void logRuntimeEvent({
       source: "server",
       level: "error",
       category: "runtime",
@@ -94,7 +94,7 @@ export function installGlobalServerErrorLogging(): void {
 
   process.on("warning", (warning) => {
     const details = readErrorDetails(warning);
-    void logAppEvent({
+    void logRuntimeEvent({
       source: "server",
       level: "warning",
       category: "runtime",
@@ -124,7 +124,7 @@ export async function logServerRouteEvent(input: ServerRouteEventInput): Promise
       ? input.message
       : details?.message ?? "Unknown error.";
 
-  await logAppEvent({
+  await logRuntimeEvent({
     source: "server",
     level: input.level ?? "error",
     category: input.category ?? "api",
@@ -145,15 +145,15 @@ export async function logServerRouteEvent(input: ServerRouteEventInput): Promise
   });
 }
 
-export async function logAppEvent(input: AppEventLogInput): Promise<void> {
+export async function logRuntimeEvent(input: RuntimeEventLogInput): Promise<void> {
   try {
     await ensurePersistenceDatabaseReady();
     await prisma.runtimeEventLog.create({
       data: {
-        id: typeof input.id === "string" && input.id.trim() ? input.id.trim() : createEventLogId(),
+        id: typeof input.id === "string" && input.id.trim() ? input.id.trim() : createRuntimeEventLogId(),
         createdAt: normalizeCreatedAt(input.createdAt),
-        source: normalizeAppEventLogSource(input.source),
-        level: normalizeAppEventLogLevel(input.level),
+        source: normalizeRuntimeEventLogSource(input.source),
+        level: normalizeRuntimeEventLogLevel(input.level),
         category: normalizeCategory(input.category),
         eventName: normalizeEventName(input.eventName),
         message: normalizeMessage(input.message),
@@ -168,7 +168,7 @@ export async function logAppEvent(input: AppEventLogInput): Promise<void> {
         principalId: normalizeOptionalLabel(input.principalId),
         userId: normalizeOptionalUserId(input.userId),
         stack: normalizeOptionalTextValue(input.stack),
-        contextJson: serializeAppEventContext(input.context),
+        contextJson: serializeRuntimeEventContext(input.context),
       },
     });
   } catch {

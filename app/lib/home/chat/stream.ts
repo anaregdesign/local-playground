@@ -10,7 +10,7 @@ export type ChatApiResponse = {
   errorCode?: "azure_login_required";
 };
 
-export type McpRpcHistoryEntry = {
+export type ThreadOperationLogEntry = {
   id: string;
   sequence: number;
   operationType: "mcp" | "skill";
@@ -42,8 +42,8 @@ type ChatStreamErrorEvent = {
   errorCode?: unknown;
 };
 
-type ChatStreamMcpRpcEvent = {
-  type: "mcp_rpc";
+type ChatStreamOperationLogEvent = {
+  type: "operation_log";
   record?: unknown;
 };
 
@@ -51,13 +51,13 @@ type ChatStreamEvent =
   | ChatStreamProgressEvent
   | ChatStreamFinalEvent
   | ChatStreamErrorEvent
-  | ChatStreamMcpRpcEvent;
+  | ChatStreamOperationLogEvent;
 
 export async function readChatEventStreamPayload(
   response: Response,
   handlers: {
     onProgress: (message: string) => void;
-    onMcpRpcRecord: (entry: McpRpcHistoryEntry) => void;
+    onOperationLogRecord: (entry: ThreadOperationLogEntry) => void;
   },
 ): Promise<ChatApiResponse> {
   if (!response.body) {
@@ -86,8 +86,8 @@ export async function readChatEventStreamPayload(
         if (event) {
           if (event.type === "progress") {
             handlers.onProgress(event.message);
-          } else if (event.type === "mcp_rpc") {
-            handlers.onMcpRpcRecord(event.record);
+          } else if (event.type === "operation_log") {
+            handlers.onOperationLogRecord(event.record);
           } else if (event.type === "final") {
             finalPayload = {
               message: event.message,
@@ -142,7 +142,7 @@ export function readChatStreamEvent(data: string): (
   | { type: "progress"; message: string }
   | { type: "final"; message: string; threadEnvironment: Record<string, string> }
   | { type: "error"; error: string; errorCode?: "azure_login_required" }
-  | { type: "mcp_rpc"; record: McpRpcHistoryEntry }
+  | { type: "operation_log"; record: ThreadOperationLogEntry }
 ) | null {
   let parsed: unknown;
   try {
@@ -189,14 +189,14 @@ export function readChatStreamEvent(data: string): (
     };
   }
 
-  if (parsed.type === "mcp_rpc") {
-    const record = readMcpRpcHistoryEntryFromUnknown(parsed.record);
+  if (parsed.type === "operation_log") {
+    const record = readThreadOperationLogEntryFromUnknown(parsed.record);
     if (!record) {
       return null;
     }
 
     return {
-      type: "mcp_rpc",
+      type: "operation_log",
       record,
     };
   }
@@ -204,7 +204,7 @@ export function readChatStreamEvent(data: string): (
   return null;
 }
 
-export function readMcpRpcHistoryEntryFromUnknown(value: unknown): McpRpcHistoryEntry | null {
+export function readThreadOperationLogEntryFromUnknown(value: unknown): ThreadOperationLogEntry | null {
   if (!isRecord(value)) {
     return null;
   }
@@ -245,13 +245,13 @@ export function readMcpRpcHistoryEntryFromUnknown(value: unknown): McpRpcHistory
   };
 }
 
-export function upsertMcpRpcHistoryEntry(
-  current: McpRpcHistoryEntry[],
-  entry: McpRpcHistoryEntry,
-): McpRpcHistoryEntry[] {
+export function upsertThreadOperationLogEntry(
+  current: ThreadOperationLogEntry[],
+  entry: ThreadOperationLogEntry,
+): ThreadOperationLogEntry[] {
   const existingIndex = current.findIndex((existing) => existing.id === entry.id);
   if (existingIndex < 0) {
-    const insertIndex = findMcpRpcInsertIndex(current, entry);
+    const insertIndex = findThreadOperationLogInsertIndex(current, entry);
     if (insertIndex === current.length) {
       return [...current, entry];
     }
@@ -259,7 +259,7 @@ export function upsertMcpRpcHistoryEntry(
   }
 
   const existing = current[existingIndex];
-  if (compareMcpRpcHistoryOrder(existing, entry) === 0) {
+  if (compareThreadOperationLogOrder(existing, entry) === 0) {
     const next = [...current];
     next[existingIndex] = entry;
     return next;
@@ -269,7 +269,7 @@ export function upsertMcpRpcHistoryEntry(
     ...current.slice(0, existingIndex),
     ...current.slice(existingIndex + 1),
   ];
-  const insertIndex = findMcpRpcInsertIndex(withoutExisting, entry);
+  const insertIndex = findThreadOperationLogInsertIndex(withoutExisting, entry);
   if (insertIndex === withoutExisting.length) {
     return [...withoutExisting, entry];
   }
@@ -303,9 +303,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object";
 }
 
-function compareMcpRpcHistoryOrder(
-  left: Pick<McpRpcHistoryEntry, "startedAt" | "sequence">,
-  right: Pick<McpRpcHistoryEntry, "startedAt" | "sequence">,
+function compareThreadOperationLogOrder(
+  left: Pick<ThreadOperationLogEntry, "startedAt" | "sequence">,
+  right: Pick<ThreadOperationLogEntry, "startedAt" | "sequence">,
 ): number {
   const timeOrder = left.startedAt.localeCompare(right.startedAt);
   if (timeOrder !== 0) {
@@ -314,15 +314,15 @@ function compareMcpRpcHistoryOrder(
   return left.sequence - right.sequence;
 }
 
-function findMcpRpcInsertIndex(
-  entries: McpRpcHistoryEntry[],
-  entry: McpRpcHistoryEntry,
+function findThreadOperationLogInsertIndex(
+  entries: ThreadOperationLogEntry[],
+  entry: ThreadOperationLogEntry,
 ): number {
   let low = 0;
   let high = entries.length;
   while (low < high) {
     const middle = Math.floor((low + high) / 2);
-    if (compareMcpRpcHistoryOrder(entries[middle], entry) <= 0) {
+    if (compareThreadOperationLogOrder(entries[middle], entry) <= 0) {
       low = middle + 1;
     } else {
       high = middle;

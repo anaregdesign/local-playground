@@ -35,9 +35,9 @@ import { mcpServersRouteTestUtils } from "./api.mcp-servers";
 
 const {
   parseIncomingMcpServer,
-  upsertSavedMcpServer,
-  deleteSavedMcpServer,
-  mergeDefaultMcpServers,
+  upsertWorkspaceMcpServerProfile,
+  deleteWorkspaceMcpServerProfile,
+  mergeDefaultWorkspaceMcpServerProfiles,
   resolveDefaultFilesystemWorkingDirectory,
 } = mcpServersRouteTestUtils;
 
@@ -125,7 +125,7 @@ describe("parseIncomingMcpServer", () => {
   });
 });
 
-describe("upsertSavedMcpServer", () => {
+describe("upsertWorkspaceMcpServerProfile", () => {
   it("reuses duplicate configuration and emits rename warning", () => {
     const currentProfiles = [
       {
@@ -151,7 +151,7 @@ describe("upsertSavedMcpServer", () => {
       timeoutSeconds: MCP_DEFAULT_TIMEOUT_SECONDS,
     };
 
-    const result = upsertSavedMcpServer(currentProfiles, incoming);
+    const result = upsertWorkspaceMcpServerProfile(currentProfiles, incoming);
 
     expect(result.profile.id).toBe("profile-1");
     expect(result.profile.name).toBe("Renamed Server");
@@ -186,7 +186,7 @@ describe("upsertSavedMcpServer", () => {
       timeoutSeconds: 60,
     };
 
-    const result = upsertSavedMcpServer(currentProfiles, incoming);
+    const result = upsertWorkspaceMcpServerProfile(currentProfiles, incoming);
 
     expect(result.profiles).toHaveLength(1);
     expect(result.profile).toEqual({
@@ -228,7 +228,7 @@ describe("upsertSavedMcpServer", () => {
       },
     };
 
-    const result = upsertSavedMcpServer(currentProfiles, incoming);
+    const result = upsertWorkspaceMcpServerProfile(currentProfiles, incoming);
 
     expect(result.profiles).toHaveLength(2);
     expect(result.profile.id).toBe("profile-2");
@@ -236,7 +236,7 @@ describe("upsertSavedMcpServer", () => {
   });
 });
 
-describe("deleteSavedMcpServer", () => {
+describe("deleteWorkspaceMcpServerProfile", () => {
   it("deletes a profile when id matches", () => {
     const currentProfiles = [
       {
@@ -259,7 +259,7 @@ describe("deleteSavedMcpServer", () => {
       },
     ];
 
-    const result = deleteSavedMcpServer(currentProfiles, "profile-1");
+    const result = deleteWorkspaceMcpServerProfile(currentProfiles, "profile-1");
 
     expect(result.deleted).toBe(true);
     expect(result.profiles).toHaveLength(1);
@@ -280,17 +280,17 @@ describe("deleteSavedMcpServer", () => {
       },
     ];
 
-    const result = deleteSavedMcpServer(currentProfiles, "missing-id");
+    const result = deleteWorkspaceMcpServerProfile(currentProfiles, "missing-id");
 
     expect(result.deleted).toBe(false);
     expect(result.profiles).toEqual(currentProfiles);
   });
 });
 
-describe("mergeDefaultMcpServers", () => {
+describe("mergeDefaultWorkspaceMcpServerProfiles", () => {
   it("adds the default vendor profiles when missing", () => {
     const expectedFilesystemWorkingDirectory = resolveDefaultFilesystemWorkingDirectory();
-    const result = mergeDefaultMcpServers([]);
+    const result = mergeDefaultWorkspaceMcpServerProfiles([]);
 
     expect(result).toHaveLength(9);
     expect(result).toEqual(
@@ -452,7 +452,7 @@ describe("mergeDefaultMcpServers", () => {
       },
     ];
 
-    const result = mergeDefaultMcpServers(existing);
+    const result = mergeDefaultWorkspaceMcpServerProfiles(existing);
 
     expect(result).toEqual(existing);
   });
@@ -470,7 +470,7 @@ describe("mergeDefaultMcpServers", () => {
       },
     ];
 
-    const result = mergeDefaultMcpServers(existing);
+    const result = mergeDefaultWorkspaceMcpServerProfiles(existing);
 
     expect(result).toHaveLength(9);
     expect(result).toEqual(
@@ -548,7 +548,7 @@ describe("mergeDefaultMcpServers", () => {
       },
     ];
 
-    const result = mergeDefaultMcpServers(existing);
+    const result = mergeDefaultWorkspaceMcpServerProfiles(existing);
     const names = result.map((entry) => entry.name);
     expect(names).not.toContain("server-http");
     expect(names).not.toContain("server-shell");
@@ -568,7 +568,7 @@ describe("mergeDefaultMcpServers", () => {
       },
     ];
 
-    const result = mergeDefaultMcpServers(existing);
+    const result = mergeDefaultWorkspaceMcpServerProfiles(existing);
     const mermaidProfiles = result.filter(
       (entry) =>
         entry.transport === "stdio" &&
@@ -616,7 +616,7 @@ describe("mergeDefaultMcpServers", () => {
       },
     ];
 
-    const result = mergeDefaultMcpServers(existing);
+    const result = mergeDefaultWorkspaceMcpServerProfiles(existing);
     const names = result.map((entry) => entry.name);
     expect(names).toContain(MCP_DEFAULT_MICROSOFT_LEARN_SERVER_NAME);
     expect(names).toContain(MCP_DEFAULT_AZURE_MCP_SERVER_NAME);

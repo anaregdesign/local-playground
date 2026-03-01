@@ -15,7 +15,7 @@ export default [
   route("api/azure-selection", "routes/api.azure-selection.ts"),
   route("api/chat", "routes/api.chat.ts"),
   route("api/azure-session", "routes/api.azure-session.ts"),
-  route("api/app-event-logs", "routes/api.app-event-logs.ts"),
+  route("api/runtime-event-logs", "routes/api.runtime-event-logs.ts"),
   route("api/instruction-patches", "routes/api.instruction.ts"),
   route("api/threads/title-suggestions", "routes/api.thread-title.ts"),
   route("api/mcp-servers", "routes/api.mcp-servers.ts"),

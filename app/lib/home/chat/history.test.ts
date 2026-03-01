@@ -2,15 +2,15 @@
  * Test module verifying history behavior.
  */
 import { describe, expect, it } from "vitest";
-import type { McpRpcHistoryEntry } from "~/lib/home/chat/stream";
+import type { ThreadOperationLogEntry } from "~/lib/home/chat/stream";
 import {
-  buildMcpEntryCopyPayload,
-  buildMcpHistoryByTurnId,
+  buildThreadOperationLogCopyPayload,
+  buildThreadOperationLogsByTurnId,
   collectSuccessfulSkillGuideLocations,
   readOperationLogType,
 } from "./history";
 
-function createEntry(overrides: Partial<McpRpcHistoryEntry>): McpRpcHistoryEntry {
+function createEntry(overrides: Partial<ThreadOperationLogEntry>): ThreadOperationLogEntry {
   return {
     id: "rpc-1",
     sequence: 1,
@@ -27,9 +27,9 @@ function createEntry(overrides: Partial<McpRpcHistoryEntry>): McpRpcHistoryEntry
   };
 }
 
-describe("buildMcpHistoryByTurnId", () => {
+describe("buildThreadOperationLogsByTurnId", () => {
   it("groups entries by turnId and skips empty turn ids", () => {
-    const grouped = buildMcpHistoryByTurnId([
+    const grouped = buildThreadOperationLogsByTurnId([
       createEntry({ id: "a", turnId: "turn-1" }),
       createEntry({ id: "b", turnId: "" }),
       createEntry({ id: "c", turnId: "turn-2" }),
@@ -42,9 +42,9 @@ describe("buildMcpHistoryByTurnId", () => {
   });
 });
 
-describe("buildMcpEntryCopyPayload", () => {
+describe("buildThreadOperationLogCopyPayload", () => {
   it("normalizes request/response to null when undefined", () => {
-    const payload = buildMcpEntryCopyPayload(
+    const payload = buildThreadOperationLogCopyPayload(
       createEntry({
         request: undefined,
         response: undefined,

@@ -12,14 +12,14 @@ import {
   APP_EVENT_LOG_MAX_TEXT_LENGTH,
 } from "~/lib/constants";
 
-export type AppEventLogSource = "server" | "client";
-export type AppEventLogLevel = "error" | "warning" | "info";
+export type RuntimeEventLogSource = "server" | "client";
+export type RuntimeEventLogLevel = "error" | "warning" | "info";
 
-export type AppEventLogInput = {
+export type RuntimeEventLogInput = {
   id?: string;
   createdAt?: string;
-  source: AppEventLogSource;
-  level: AppEventLogLevel;
+  source: RuntimeEventLogSource;
+  level: RuntimeEventLogLevel;
   category: string;
   eventName: string;
   message: string;
@@ -37,8 +37,8 @@ export type AppEventLogInput = {
   context?: unknown;
 };
 
-export type ClientAppEventLogPayload = {
-  level: AppEventLogLevel;
+export type ClientRuntimeEventLogPayload = {
+  level: RuntimeEventLogLevel;
   category: string;
   eventName: string;
   message: string;
@@ -51,15 +51,15 @@ export type ClientAppEventLogPayload = {
   context?: unknown;
 };
 
-export function normalizeAppEventLogLevel(value: unknown): AppEventLogLevel {
+export function normalizeRuntimeEventLogLevel(value: unknown): RuntimeEventLogLevel {
   return value === "error" || value === "warning" || value === "info" ? value : "error";
 }
 
-export function normalizeAppEventLogSource(value: unknown): AppEventLogSource {
+export function normalizeRuntimeEventLogSource(value: unknown): RuntimeEventLogSource {
   return value === "client" || value === "server" ? value : "server";
 }
 
-export function readClientAppEventLogPayload(value: unknown): ClientAppEventLogPayload | null {
+export function readClientRuntimeEventLogPayload(value: unknown): ClientRuntimeEventLogPayload | null {
   if (!isRecord(value)) {
     return null;
   }
@@ -71,7 +71,7 @@ export function readClientAppEventLogPayload(value: unknown): ClientAppEventLogP
     return null;
   }
 
-  const level = normalizeAppEventLogLevel(value.level);
+  const level = normalizeRuntimeEventLogLevel(value.level);
   const errorName = normalizeOptionalText(value.errorName, APP_EVENT_LOG_MAX_EVENT_NAME_LENGTH);
   const location = normalizeOptionalText(value.location, APP_EVENT_LOG_MAX_PATH_LENGTH);
   const action = normalizeOptionalText(value.action, APP_EVENT_LOG_MAX_EVENT_NAME_LENGTH);
@@ -164,7 +164,7 @@ export function normalizeOptionalUserId(value: unknown): number | null {
   return normalizeOptionalSafeInteger(value);
 }
 
-export function serializeAppEventContext(context: unknown): string {
+export function serializeRuntimeEventContext(context: unknown): string {
   try {
     const safeContext = sanitizeJsonValue(context, 0);
     return JSON.stringify(safeContext ?? {});
@@ -175,7 +175,7 @@ export function serializeAppEventContext(context: unknown): string {
   }
 }
 
-export function createEventLogId(): string {
+export function createRuntimeEventLogId(): string {
   const maybeCrypto = globalThis.crypto;
   if (maybeCrypto && typeof maybeCrypto.randomUUID === "function") {
     return maybeCrypto.randomUUID();

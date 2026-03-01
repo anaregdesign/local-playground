@@ -2,7 +2,7 @@
  * Home runtime support module.
  */
 import {
-  THREAD_MCP_RPC_LOG_ROW_ID_PATTERN,
+  THREAD_OPERATION_LOG_ROW_ID_PATTERN,
   THREAD_MCP_SERVER_ROW_ID_PATTERN,
 } from "~/lib/constants";
 
@@ -31,12 +31,12 @@ export function buildThreadMcpServerRowId(threadId: string, sourceId: string, in
   return `thread:${normalizedThreadId}:mcp:${index}:${normalizedSourceId}`;
 }
 
-export function normalizeThreadMcpRpcLogSourceId(sourceId: string, index: number): string {
+export function normalizeThreadOperationLogSourceRpcId(sourceId: string, index: number): string {
   let normalized = sourceId.trim();
 
   // Unwrap persisted row-id prefixes to keep source ids stable across load/save cycles.
   while (normalized.length > 0) {
-    const match = normalized.match(THREAD_MCP_RPC_LOG_ROW_ID_PATTERN);
+    const match = normalized.match(THREAD_OPERATION_LOG_ROW_ID_PATTERN);
     if (!match?.[1]) {
       break;
     }
@@ -50,18 +50,18 @@ export function normalizeThreadMcpRpcLogSourceId(sourceId: string, index: number
   return normalized;
 }
 
-export function buildThreadMcpRpcLogRowId(threadId: string, sourceId: string, index: number): string {
+export function buildThreadOperationLogRowId(threadId: string, sourceId: string, index: number): string {
   const normalizedThreadId = threadId.trim();
-  const normalizedSourceId = normalizeThreadMcpRpcLogSourceId(sourceId, index);
+  const normalizedSourceId = normalizeThreadOperationLogSourceRpcId(sourceId, index);
   return `thread:${normalizedThreadId}:rpc:${index}:${normalizedSourceId}`;
 }
 
-export function buildThreadSkillSelectionRowId(threadId: string, index: number): string {
+export function buildThreadSkillActivationRowId(threadId: string, index: number): string {
   const normalizedThreadId = threadId.trim();
   return `thread:${normalizedThreadId}:skill:${index}`;
 }
 
-export function buildThreadMessageSkillSelectionRowId(
+export function buildThreadMessageSkillActivationRowId(
   messageId: string,
   index: number,
 ): string {

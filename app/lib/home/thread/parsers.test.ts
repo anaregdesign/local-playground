@@ -30,7 +30,7 @@ describe("readThreadSnapshotFromUnknown", () => {
           createdAt: "2026-02-20T00:00:00.000Z",
           turnId: "turn-1",
           attachments: [],
-          dialogueSkillSelections: [
+          skillActivations: [
             {
               name: "doc-retriever",
               location: "/skills/doc-retriever/SKILL.md",
@@ -50,7 +50,7 @@ describe("readThreadSnapshotFromUnknown", () => {
           timeoutSeconds: 30,
         },
       ],
-      mcpRpcHistory: [
+      mcpRpcLogs: [
         {
           id: "rpc-1",
           sequence: 1,
@@ -80,14 +80,14 @@ describe("readThreadSnapshotFromUnknown", () => {
       VIRTUAL_ENV: "/tmp/thread-1/.venv",
     });
     expect(parsed?.messages).toHaveLength(1);
-    expect(parsed?.messages[0]?.dialogueSkillSelections).toEqual([
+    expect(parsed?.messages[0]?.skillActivations).toEqual([
       {
         name: "doc-retriever",
         location: "/skills/doc-retriever/SKILL.md",
       },
     ]);
     expect(parsed?.mcpServers).toHaveLength(1);
-    expect(parsed?.mcpRpcHistory).toHaveLength(1);
+    expect(parsed?.mcpRpcLogs).toHaveLength(1);
   });
 
   it("returns null for invalid payload", () => {
@@ -164,7 +164,7 @@ describe("buildThreadSummary", () => {
           createdAt: "2026-02-20T00:00:00.000Z",
           turnId: "turn-1",
           attachments: [],
-          dialogueSkillSelections: [],
+          skillActivations: [],
         },
       ],
       mcpServers: [
@@ -177,7 +177,7 @@ describe("buildThreadSummary", () => {
           env: {},
         },
       ],
-      mcpRpcHistory: [],
+      mcpRpcLogs: [],
       skillSelections: [],
     });
 

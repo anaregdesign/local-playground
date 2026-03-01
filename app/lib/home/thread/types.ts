@@ -1,8 +1,8 @@
 /**
  * Home runtime support module.
  */
-import type { ChatMessage } from "~/lib/home/chat/messages";
-import type { McpRpcHistoryEntry } from "~/lib/home/chat/stream";
+import type { ThreadMessage } from "~/lib/home/chat/messages";
+import type { ThreadOperationLogEntry } from "~/lib/home/chat/stream";
 import type { McpServerConfig } from "~/lib/home/mcp/profile";
 import type { ReasoningEffort } from "~/lib/home/shared/view-types";
 import type { ThreadSkillActivation } from "~/lib/home/skills/types";
@@ -18,9 +18,9 @@ export type ThreadSnapshot = {
   webSearchEnabled: boolean;
   agentInstruction: string;
   threadEnvironment: ThreadEnvironment;
-  messages: ChatMessage[];
+  messages: ThreadMessage[];
   mcpServers: McpServerConfig[];
-  mcpRpcHistory: McpRpcHistoryEntry[];
+  mcpRpcLogs: ThreadOperationLogEntry[];
   skillSelections: ThreadSkillActivation[];
 };
 

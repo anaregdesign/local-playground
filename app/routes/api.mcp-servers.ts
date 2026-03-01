@@ -54,12 +54,12 @@ import { methodNotAllowedResponse } from "~/lib/server/http";
 import {
   installGlobalServerErrorLogging,
   logServerRouteEvent,
-} from "~/lib/server/observability/app-event-log";
+} from "~/lib/server/observability/runtime-event-log";
 import type { Route } from "./+types/api.mcp-servers";
 
 type McpTransport = "streamable_http" | "sse" | "stdio";
 
-type SavedMcpHttpServerConfig = {
+type WorkspaceMcpServerProfileHttpConfig = {
   id: string;
   name: string;
   transport: "streamable_http" | "sse";
@@ -70,7 +70,7 @@ type SavedMcpHttpServerConfig = {
   timeoutSeconds: number;
 };
 
-type SavedMcpStdioServerConfig = {
+type WorkspaceMcpServerProfileStdioConfig = {
   id: string;
   name: string;
   transport: "stdio";
@@ -80,9 +80,9 @@ type SavedMcpStdioServerConfig = {
   env: Record<string, string>;
 };
 
-export type SavedMcpServerConfig = SavedMcpHttpServerConfig | SavedMcpStdioServerConfig;
-type IncomingMcpHttpServerConfig = Omit<SavedMcpHttpServerConfig, "id"> & { id?: string };
-type IncomingMcpStdioServerConfig = Omit<SavedMcpStdioServerConfig, "id"> & { id?: string };
+export type WorkspaceMcpServerProfileConfig = WorkspaceMcpServerProfileHttpConfig | WorkspaceMcpServerProfileStdioConfig;
+type IncomingMcpHttpServerConfig = Omit<WorkspaceMcpServerProfileHttpConfig, "id"> & { id?: string };
+type IncomingMcpStdioServerConfig = Omit<WorkspaceMcpServerProfileStdioConfig, "id"> & { id?: string };
 export type IncomingMcpServerConfig = IncomingMcpHttpServerConfig | IncomingMcpStdioServerConfig;
 type ParseResult<T> = { ok: true; value: T } | { ok: false; error: string };
 const legacyUnavailableDefaultStdioNpxPackageNameSet = new Set<string>(
@@ -109,7 +109,7 @@ export async function loader({ request }: Route.LoaderArgs) {
   }
 
   try {
-    const profiles = await readSavedMcpServers(user.id);
+    const profiles = await readWorkspaceMcpServerProfiles(user.id);
     return Response.json({ profiles });
   } catch (error) {
     await logServerRouteEvent({
@@ -199,14 +199,14 @@ export async function action({ request }: Route.ActionArgs) {
   const incomingMcpServer = incomingResult.value;
 
   try {
-    const currentProfiles = await readSavedMcpServers(user.id);
-    const profilesWithDefaults = mergeDefaultMcpServers(currentProfiles);
+    const currentProfiles = await readWorkspaceMcpServerProfiles(user.id);
+    const profilesWithDefaults = mergeDefaultWorkspaceMcpServerProfiles(currentProfiles);
     const existingIds = new Set(profilesWithDefaults.map((profile) => profile.id));
-    const { profile, profiles, warning } = upsertSavedMcpServer(
+    const { profile, profiles, warning } = upsertWorkspaceMcpServerProfile(
       profilesWithDefaults,
       incomingMcpServer,
     );
-    await writeSavedMcpServers(user.id, profiles);
+    await writeWorkspaceMcpServerProfiles(user.id, profiles);
     const created = !existingIds.has(profile.id);
     const status = created ? 201 : 200;
 
@@ -258,7 +258,7 @@ export async function action({ request }: Route.ActionArgs) {
   }
 }
 
-export async function readSavedMcpServers(userId: number): Promise<SavedMcpServerConfig[]> {
+export async function readWorkspaceMcpServerProfiles(userId: number): Promise<WorkspaceMcpServerProfileConfig[]> {
   await ensurePersistenceDatabaseReady();
   const records = await prisma.workspaceMcpServerProfile.findMany({
     where: {
@@ -269,7 +269,7 @@ export async function readSavedMcpServers(userId: number): Promise<SavedMcpServe
     },
   });
 
-  const profiles: SavedMcpServerConfig[] = [];
+  const profiles: WorkspaceMcpServerProfileConfig[] = [];
   const keys = new Set<string>();
 
   for (const record of records) {
@@ -290,9 +290,9 @@ export async function readSavedMcpServers(userId: number): Promise<SavedMcpServe
   return profiles;
 }
 
-export async function writeSavedMcpServers(
+export async function writeWorkspaceMcpServerProfiles(
   userId: number,
-  profiles: SavedMcpServerConfig[],
+  profiles: WorkspaceMcpServerProfileConfig[],
 ): Promise<void> {
   await ensurePersistenceDatabaseReady();
   await prisma.$transaction(async (transaction) => {
@@ -309,9 +309,9 @@ export async function writeSavedMcpServers(
   });
 }
 
-export function mergeDefaultMcpServers(
-  currentProfiles: SavedMcpServerConfig[],
-): SavedMcpServerConfig[] {
+export function mergeDefaultWorkspaceMcpServerProfiles(
+  currentProfiles: WorkspaceMcpServerProfileConfig[],
+): WorkspaceMcpServerProfileConfig[] {
   const mergedProfiles = normalizeLegacyDefaultProfiles(currentProfiles);
   const profileKeys = new Set(mergedProfiles.map((profile) => buildProfileKey(profile)));
   for (const profile of buildDefaultMcpServerProfiles()) {
@@ -328,16 +328,16 @@ export function mergeDefaultMcpServers(
 }
 
 export async function ensureDefaultMcpServersForUser(userId: number): Promise<void> {
-  const currentProfiles = await readSavedMcpServers(userId);
-  const nextProfiles = mergeDefaultMcpServers(currentProfiles);
+  const currentProfiles = await readWorkspaceMcpServerProfiles(userId);
+  const nextProfiles = mergeDefaultWorkspaceMcpServerProfiles(currentProfiles);
   if (nextProfiles.length === currentProfiles.length) {
     return;
   }
 
-  await writeSavedMcpServers(userId, nextProfiles);
+  await writeWorkspaceMcpServerProfiles(userId, nextProfiles);
 }
 
-function buildDefaultMcpServerProfiles(): SavedMcpServerConfig[] {
+function buildDefaultMcpServerProfiles(): WorkspaceMcpServerProfileConfig[] {
   const defaultStdioWorkingDirectory = resolveDefaultFilesystemWorkingDirectory();
   return [
     {
@@ -422,10 +422,10 @@ function buildDefaultMcpServerProfiles(): SavedMcpServerConfig[] {
 }
 
 function normalizeLegacyDefaultProfiles(
-  currentProfiles: SavedMcpServerConfig[],
-): SavedMcpServerConfig[] {
+  currentProfiles: WorkspaceMcpServerProfileConfig[],
+): WorkspaceMcpServerProfileConfig[] {
   const defaultWorkingDirectory = resolveDefaultFilesystemWorkingDirectory();
-  const normalizedProfiles: SavedMcpServerConfig[] = [];
+  const normalizedProfiles: WorkspaceMcpServerProfileConfig[] = [];
 
   for (const profile of currentProfiles) {
     if (isLegacyUnavailableDefaultStdioProfile(profile)) {
@@ -446,7 +446,7 @@ function normalizeLegacyDefaultProfiles(
   return normalizedProfiles;
 }
 
-function isLegacyDefaultMermaidProfile(profile: SavedMcpServerConfig): profile is SavedMcpStdioServerConfig {
+function isLegacyDefaultMermaidProfile(profile: WorkspaceMcpServerProfileConfig): profile is WorkspaceMcpServerProfileStdioConfig {
   if (profile.transport !== "stdio") {
     return false;
   }
@@ -460,7 +460,7 @@ function isLegacyDefaultMermaidProfile(profile: SavedMcpServerConfig): profile i
   );
 }
 
-function isLegacyUnavailableDefaultStdioProfile(profile: SavedMcpServerConfig): boolean {
+function isLegacyUnavailableDefaultStdioProfile(profile: WorkspaceMcpServerProfileConfig): boolean {
   if (profile.transport !== "stdio") {
     return false;
   }
@@ -612,10 +612,10 @@ function parseIncomingStdioMcpServer(
   };
 }
 
-export function upsertSavedMcpServer(
-  currentProfiles: SavedMcpServerConfig[],
+export function upsertWorkspaceMcpServerProfile(
+  currentProfiles: WorkspaceMcpServerProfileConfig[],
   incoming: IncomingMcpServerConfig,
-): { profile: SavedMcpServerConfig; profiles: SavedMcpServerConfig[]; warning: string | null } {
+): { profile: WorkspaceMcpServerProfileConfig; profiles: WorkspaceMcpServerProfileConfig[]; warning: string | null } {
   const incomingKey = buildIncomingProfileKey(incoming);
   const keyIndex = currentProfiles.findIndex(
     (profile) => buildProfileKey(profile) === incomingKey,
@@ -635,7 +635,7 @@ export function upsertSavedMcpServer(
         ? incoming.id
         : createRandomId();
 
-  const profile: SavedMcpServerConfig =
+  const profile: WorkspaceMcpServerProfileConfig =
     incoming.transport === "stdio"
       ? {
           id: profileId,
@@ -673,10 +673,10 @@ export function upsertSavedMcpServer(
   return { profile, profiles, warning };
 }
 
-export function deleteSavedMcpServer(
-  currentProfiles: SavedMcpServerConfig[],
+export function deleteWorkspaceMcpServerProfile(
+  currentProfiles: WorkspaceMcpServerProfileConfig[],
   id: string,
-): { profiles: SavedMcpServerConfig[]; deleted: boolean } {
+): { profiles: WorkspaceMcpServerProfileConfig[]; deleted: boolean } {
   const nextProfiles = currentProfiles.filter((profile) => profile.id !== id);
   return {
     profiles: nextProfiles,
@@ -684,7 +684,7 @@ export function deleteSavedMcpServer(
   };
 }
 
-function normalizeStoredMcpServer(entry: unknown): SavedMcpServerConfig | null {
+function normalizeStoredMcpServer(entry: unknown): WorkspaceMcpServerProfileConfig | null {
   const parsed = parseIncomingMcpServer(entry);
   if (!parsed.ok) {
     return null;
@@ -730,7 +730,7 @@ function normalizeStoredMcpServerRecord(entry: {
   argsJson: string | null;
   cwd: string | null;
   envJson: string | null;
-}): SavedMcpServerConfig | null {
+}): WorkspaceMcpServerProfileConfig | null {
   const transport = readTransport(entry.transport);
   if (!transport) {
     return null;
@@ -771,7 +771,7 @@ function normalizeStoredMcpServerRecord(entry: {
   });
 }
 
-function mapProfileToDatabaseRecord(userId: number, profile: SavedMcpServerConfig, profileOrder: number): {
+function mapProfileToDatabaseRecord(userId: number, profile: WorkspaceMcpServerProfileConfig, profileOrder: number): {
   id: string;
   userId: number;
   profileOrder: number;
@@ -1090,7 +1090,7 @@ export async function readAuthenticatedUser(): Promise<{ id: number } | null> {
   return { id: user.id };
 }
 
-function buildProfileKey(profile: SavedMcpServerConfig): string {
+function buildProfileKey(profile: WorkspaceMcpServerProfileConfig): string {
   return buildIncomingProfileKey(profile);
 }
 
@@ -1113,9 +1113,9 @@ function createRandomId(): string {
 
 export const mcpServersRouteTestUtils = {
   parseIncomingMcpServer,
-  upsertSavedMcpServer,
-  deleteSavedMcpServer,
+  upsertWorkspaceMcpServerProfile,
+  deleteWorkspaceMcpServerProfile,
   buildIncomingProfileKey,
-  mergeDefaultMcpServers,
+  mergeDefaultWorkspaceMcpServerProfiles,
   resolveDefaultFilesystemWorkingDirectory,
 };

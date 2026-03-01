@@ -6,43 +6,43 @@ import { ConfigSection } from "~/components/home/shared/ConfigSection";
 import { StatusMessageList } from "~/components/home/shared/StatusMessageList";
 import { SelectableCardList } from "~/components/home/shared/SelectableCardList";
 import type { ContextActionMenuItem } from "~/components/home/shared/ContextActionMenu";
-import type { SavedMcpServerOption } from "~/lib/home/mcp/saved-profiles";
+import type { WorkspaceMcpServerProfileOption } from "~/lib/home/mcp/workspace-mcp-server-profiles";
 
 const { Button, Spinner } = FluentUI;
 
 /**
  * Props for rendering saved MCP profiles that can be attached/detached from the active thread.
  */
-export type McpSavedConfigsSectionProps = {
-  savedMcpServerOptions: SavedMcpServerOption[];
-  selectedSavedMcpServerCount: number;
+export type WorkspaceMcpServerProfilesSectionProps = {
+  workspaceMcpServerProfileOptions: WorkspaceMcpServerProfileOption[];
+  selectedWorkspaceMcpServerProfileCount: number;
   isSending: boolean;
   isThreadReadOnly: boolean;
-  isLoadingSavedMcpServers: boolean;
-  isMutatingSavedMcpServers: boolean;
-  savedMcpError: string | null;
-  onToggleSavedMcpServer: (id: string) => void;
-  onEditSavedMcpServer: (id: string) => void;
-  onDeleteSavedMcpServer: (id: string) => void;
-  onReloadSavedMcpServers: () => void;
+  isLoadingWorkspaceMcpServerProfiles: boolean;
+  isMutatingWorkspaceMcpServerProfiles: boolean;
+  workspaceMcpServerProfileError: string | null;
+  onToggleWorkspaceMcpServerProfile: (id: string) => void;
+  onEditWorkspaceMcpServerProfile: (id: string) => void;
+  onDeleteWorkspaceMcpServerProfile: (id: string) => void;
+  onReloadWorkspaceMcpServerProfiles: () => void;
 };
 
 /**
  * Section responsible for listing persisted MCP profiles and connecting them to the current thread.
  */
-export function McpSavedConfigsSection(props: McpSavedConfigsSectionProps) {
+export function WorkspaceMcpServerProfilesSection(props: WorkspaceMcpServerProfilesSectionProps) {
   const {
-    savedMcpServerOptions,
-    selectedSavedMcpServerCount,
+    workspaceMcpServerProfileOptions,
+    selectedWorkspaceMcpServerProfileCount,
     isSending,
     isThreadReadOnly,
-    isLoadingSavedMcpServers,
-    isMutatingSavedMcpServers,
-    savedMcpError,
-    onToggleSavedMcpServer,
-    onEditSavedMcpServer,
-    onDeleteSavedMcpServer,
-    onReloadSavedMcpServers,
+    isLoadingWorkspaceMcpServerProfiles,
+    isMutatingWorkspaceMcpServerProfiles,
+    workspaceMcpServerProfileError,
+    onToggleWorkspaceMcpServerProfile,
+    onEditWorkspaceMcpServerProfile,
+    onDeleteWorkspaceMcpServerProfile,
+    onReloadWorkspaceMcpServerProfiles,
   } = props;
 
   return (
@@ -56,7 +56,7 @@ export function McpSavedConfigsSection(props: McpSavedConfigsSectionProps) {
         </p>
       ) : null}
       <div className="selectable-card-header-row">
-        <p className="selectable-card-count">Added: {selectedSavedMcpServerCount}</p>
+        <p className="selectable-card-count">Added: {selectedWorkspaceMcpServerProfileCount}</p>
         <Button
           type="button"
           appearance="subtle"
@@ -64,28 +64,28 @@ export function McpSavedConfigsSection(props: McpSavedConfigsSectionProps) {
           className="selectable-card-reload-btn"
           title="Reload saved MCP servers."
           aria-label="Reload saved MCP servers"
-          onClick={onReloadSavedMcpServers}
-          disabled={isSending || isLoadingSavedMcpServers || isMutatingSavedMcpServers}
+          onClick={onReloadWorkspaceMcpServerProfiles}
+          disabled={isSending || isLoadingWorkspaceMcpServerProfiles || isMutatingWorkspaceMcpServerProfiles}
         >
           ↻ Reload
         </Button>
       </div>
-      {isLoadingSavedMcpServers ? (
+      {isLoadingWorkspaceMcpServerProfiles ? (
         <div className="azure-loading-notice" role="status" aria-live="polite">
           <Spinner size="tiny" />
           Loading MCP Servers...
         </div>
       ) : null}
       <SelectableCardList
-        items={savedMcpServerOptions}
+        items={workspaceMcpServerProfileOptions}
         listAriaLabel="Saved MCP Servers"
         emptyHint="No saved MCP servers."
-        isActionDisabled={isSending || isThreadReadOnly || isMutatingSavedMcpServers}
-        onToggleItem={onToggleSavedMcpServer}
+        isActionDisabled={isSending || isThreadReadOnly || isMutatingWorkspaceMcpServerProfiles}
+        onToggleItem={onToggleWorkspaceMcpServerProfile}
         buildContextMenuItems={(item) => {
           const itemName = item.name.trim() || "MCP server";
           const isContextActionDisabled =
-            isSending || isThreadReadOnly || isMutatingSavedMcpServers;
+            isSending || isThreadReadOnly || isMutatingWorkspaceMcpServerProfiles;
           const contextMenuItems: ContextActionMenuItem[] = [
             {
               id: "edit",
@@ -93,7 +93,7 @@ export function McpSavedConfigsSection(props: McpSavedConfigsSectionProps) {
               title: `Edit ${itemName}`,
               disabled: isContextActionDisabled,
               onSelect: () => {
-                onEditSavedMcpServer(item.id);
+                onEditWorkspaceMcpServerProfile(item.id);
               },
             },
             {
@@ -103,14 +103,14 @@ export function McpSavedConfigsSection(props: McpSavedConfigsSectionProps) {
               intent: "danger",
               disabled: isContextActionDisabled,
               onSelect: () => {
-                onDeleteSavedMcpServer(item.id);
+                onDeleteWorkspaceMcpServerProfile(item.id);
               },
             },
           ];
           return contextMenuItems;
         }}
       />
-      <StatusMessageList messages={[{ intent: "error", text: savedMcpError }]} />
+      <StatusMessageList messages={[{ intent: "error", text: workspaceMcpServerProfileError }]} />
     </ConfigSection>
   );
 }

@@ -5,8 +5,8 @@ import { describe, expect, it } from "vitest";
 import {
   parseSseDataBlock,
   readChatStreamEvent,
-  readMcpRpcHistoryEntryFromUnknown,
-  upsertMcpRpcHistoryEntry,
+  readThreadOperationLogEntryFromUnknown,
+  upsertThreadOperationLogEntry,
 } from "./stream";
 
 describe("parseSseDataBlock", () => {
@@ -22,10 +22,10 @@ describe("parseSseDataBlock", () => {
 });
 
 describe("readChatStreamEvent", () => {
-  it("parses mcp_rpc record payload", () => {
+  it("parses operation_log record payload", () => {
     const event = readChatStreamEvent(
       JSON.stringify({
-        type: "mcp_rpc",
+        type: "operation_log",
         record: {
           id: "rpc-1",
           sequence: 1,
@@ -42,7 +42,7 @@ describe("readChatStreamEvent", () => {
     );
 
     expect(event).not.toBeNull();
-    expect(event?.type).toBe("mcp_rpc");
+    expect(event?.type).toBe("operation_log");
   });
 
   it("parses final payload with thread environment", () => {
@@ -66,9 +66,9 @@ describe("readChatStreamEvent", () => {
   });
 });
 
-describe("readMcpRpcHistoryEntryFromUnknown", () => {
+describe("readThreadOperationLogEntryFromUnknown", () => {
   it("accepts valid MCP JSON-RPC history entries", () => {
-    const entry = readMcpRpcHistoryEntryFromUnknown({
+    const entry = readThreadOperationLogEntryFromUnknown({
       id: "rpc-2",
       sequence: 2,
       operationType: "mcp",
@@ -88,11 +88,11 @@ describe("readMcpRpcHistoryEntryFromUnknown", () => {
   });
 
   it("rejects invalid entries", () => {
-    expect(readMcpRpcHistoryEntryFromUnknown({ id: "", sequence: 1 })).toBeNull();
+    expect(readThreadOperationLogEntryFromUnknown({ id: "", sequence: 1 })).toBeNull();
   });
 });
 
-describe("upsertMcpRpcHistoryEntry", () => {
+describe("upsertThreadOperationLogEntry", () => {
   it("keeps history sorted by sequence and replaces duplicate ids", () => {
     const first = {
       id: "rpc-1",
@@ -121,11 +121,11 @@ describe("upsertMcpRpcHistoryEntry", () => {
       turnId: "turn-1",
     };
 
-    const next = upsertMcpRpcHistoryEntry([], first);
-    const sorted = upsertMcpRpcHistoryEntry(next, second);
+    const next = upsertThreadOperationLogEntry([], first);
+    const sorted = upsertThreadOperationLogEntry(next, second);
     expect(sorted.map((entry) => entry.id)).toEqual(["rpc-0", "rpc-1"]);
 
-    const replaced = upsertMcpRpcHistoryEntry(sorted, {
+    const replaced = upsertThreadOperationLogEntry(sorted, {
       ...first,
       method: "tools/call-updated",
     });
@@ -160,10 +160,10 @@ describe("upsertMcpRpcHistoryEntry", () => {
       turnId: "turn-1",
     };
 
-    const initial = upsertMcpRpcHistoryEntry(upsertMcpRpcHistoryEntry([], first), second);
+    const initial = upsertThreadOperationLogEntry(upsertThreadOperationLogEntry([], first), second);
     expect(initial.map((entry) => entry.id)).toEqual(["rpc-1", "rpc-2"]);
 
-    const moved = upsertMcpRpcHistoryEntry(initial, {
+    const moved = upsertThreadOperationLogEntry(initial, {
       ...second,
       startedAt: "2026-02-15T23:59:59.000Z",
     });

@@ -7,27 +7,27 @@ import {
   type McpAddServerSectionProps,
 } from "~/components/home/config/mcp/McpAddServerSection";
 import {
-  McpSavedConfigsSection,
-  type McpSavedConfigsSectionProps,
-} from "~/components/home/config/mcp/McpSavedConfigsSection";
+  WorkspaceMcpServerProfilesSection,
+  type WorkspaceMcpServerProfilesSectionProps,
+} from "~/components/home/config/mcp/WorkspaceMcpServerProfilesSection";
 
 type McpServersTabProps = {
   activeMainTab: MainViewTab;
-} & McpSavedConfigsSectionProps &
+} & WorkspaceMcpServerProfilesSectionProps &
   McpAddServerSectionProps;
 
 export function McpServersTab(props: McpServersTabProps) {
   const {
     activeMainTab,
-    savedMcpServerOptions,
-    selectedSavedMcpServerCount,
-    isLoadingSavedMcpServers,
-    isMutatingSavedMcpServers,
-    savedMcpError,
-    onToggleSavedMcpServer,
-    onEditSavedMcpServer,
-    onDeleteSavedMcpServer,
-    onReloadSavedMcpServers,
+    workspaceMcpServerProfileOptions,
+    selectedWorkspaceMcpServerProfileCount,
+    isLoadingWorkspaceMcpServerProfiles,
+    isMutatingWorkspaceMcpServerProfiles,
+    workspaceMcpServerProfileError,
+    onToggleWorkspaceMcpServerProfile,
+    onEditWorkspaceMcpServerProfile,
+    onDeleteWorkspaceMcpServerProfile,
+    onReloadWorkspaceMcpServerProfiles,
     isSending,
     isThreadReadOnly,
     isEditingMcpServer,
@@ -76,18 +76,18 @@ export function McpServersTab(props: McpServersTabProps) {
       hidden={activeMainTab !== "mcp"}
     >
       <div className="mcp-content">
-        <McpSavedConfigsSection
-          savedMcpServerOptions={savedMcpServerOptions}
-          selectedSavedMcpServerCount={selectedSavedMcpServerCount}
+        <WorkspaceMcpServerProfilesSection
+          workspaceMcpServerProfileOptions={workspaceMcpServerProfileOptions}
+          selectedWorkspaceMcpServerProfileCount={selectedWorkspaceMcpServerProfileCount}
           isSending={isSending}
           isThreadReadOnly={isThreadReadOnly}
-          isLoadingSavedMcpServers={isLoadingSavedMcpServers}
-          isMutatingSavedMcpServers={isMutatingSavedMcpServers}
-          savedMcpError={savedMcpError}
-          onToggleSavedMcpServer={onToggleSavedMcpServer}
-          onEditSavedMcpServer={onEditSavedMcpServer}
-          onDeleteSavedMcpServer={onDeleteSavedMcpServer}
-          onReloadSavedMcpServers={onReloadSavedMcpServers}
+          isLoadingWorkspaceMcpServerProfiles={isLoadingWorkspaceMcpServerProfiles}
+          isMutatingWorkspaceMcpServerProfiles={isMutatingWorkspaceMcpServerProfiles}
+          workspaceMcpServerProfileError={workspaceMcpServerProfileError}
+          onToggleWorkspaceMcpServerProfile={onToggleWorkspaceMcpServerProfile}
+          onEditWorkspaceMcpServerProfile={onEditWorkspaceMcpServerProfile}
+          onDeleteWorkspaceMcpServerProfile={onDeleteWorkspaceMcpServerProfile}
+          onReloadWorkspaceMcpServerProfiles={onReloadWorkspaceMcpServerProfiles}
         />
         <McpAddServerSection
           isSending={isSending}

@@ -54,19 +54,19 @@ import {
   readTenantIdFromUnknown,
 } from "~/lib/home/azure/parsers";
 import { isLikelyChatAzureAuthError } from "~/lib/home/azure/errors";
-import { buildMcpHistoryByTurnId } from "~/lib/home/chat/history";
+import { buildThreadOperationLogsByTurnId } from "~/lib/home/chat/history";
 import type { DraftChatAttachment } from "~/lib/home/chat/attachments";
 import { formatChatAttachmentSize, readFileAsDataUrl } from "~/lib/home/chat/attachments";
 import {
   readChatCommandMatchAtCursor,
   replaceChatCommandToken,
 } from "~/lib/home/chat/commands";
-import type { ChatMessage } from "~/lib/home/chat/messages";
-import { createMessage } from "~/lib/home/chat/messages";
-import type { ChatApiResponse, McpRpcHistoryEntry } from "~/lib/home/chat/stream";
+import type { ThreadMessage } from "~/lib/home/chat/messages";
+import { createThreadMessage } from "~/lib/home/chat/messages";
+import type { ChatApiResponse, ThreadOperationLogEntry } from "~/lib/home/chat/stream";
 import {
   readChatEventStreamPayload,
-  upsertMcpRpcHistoryEntry,
+  upsertThreadOperationLogEntry,
 } from "~/lib/home/chat/stream";
 import {
   applyInstructionUnifiedDiffPatch,
@@ -100,17 +100,17 @@ import {
   parseStdioEnvInput,
 } from "~/lib/home/mcp/stdio-inputs";
 import {
-  buildSavedMcpServerOptions,
-  countSelectedSavedMcpServerOptions,
+  buildWorkspaceMcpServerProfileOptions,
+  countSelectedWorkspaceMcpServerProfileOptions,
   isMcpServersAuthRequired,
-  shouldScheduleSavedMcpLoginRetry,
-} from "~/lib/home/mcp/saved-profiles";
+  shouldScheduleWorkspaceMcpServerProfileLoginRetry,
+} from "~/lib/home/mcp/workspace-mcp-server-profiles";
 import {
   installGlobalClientErrorLogging,
   reportClientEvent,
   reportClientError,
   reportClientWarning,
-} from "~/lib/home/observability/app-event-log-client";
+} from "~/lib/home/observability/runtime-event-log-client";
 import {
   buildThreadSummary,
   readThreadSnapshotFromUnknown,
@@ -119,10 +119,10 @@ import {
 import {
   cloneThreadEnvironment,
   buildThreadSaveSignature,
-  cloneMcpRpcHistory,
+  cloneThreadOperationLogs,
   cloneMcpServers,
   cloneMessages,
-  cloneThreadSkillSelections,
+  cloneThreadSkillActivations,
   hasThreadInteraction,
   hasThreadPersistableState,
   isThreadArchivedById,
@@ -200,7 +200,7 @@ export function useWorkspaceController() {
   const [activeAzurePrincipal, setActiveAzurePrincipal] = useState<AzurePrincipalProfile | null>(
     null,
   );
-  const [messages, setMessages] = useState<ChatMessage[]>([...HOME_INITIAL_MESSAGES]);
+  const [messages, setMessages] = useState<ThreadMessage[]>([...HOME_INITIAL_MESSAGES]);
   const [draft, setDraft] = useState("");
   const [chatComposerCursorIndex, setChatComposerCursorIndex] = useState(0);
   const [chatCommandHighlightedIndex, setChatCommandHighlightedIndex] = useState(0);
@@ -243,7 +243,7 @@ export function useWorkspaceController() {
   const [instructionEnhanceComparison, setInstructionEnhanceComparison] =
     useState<InstructionEnhanceComparison | null>(null);
   const [mcpServers, setMcpServers] = useState<McpServerConfig[]>([]);
-  const [savedMcpServers, setSavedMcpServers] = useState<McpServerConfig[]>([]);
+  const [workspaceMcpServerProfiles, setWorkspaceMcpServerProfiles] = useState<McpServerConfig[]>([]);
   const [mcpNameInput, setMcpNameInput] = useState("");
   const [mcpUrlInput, setMcpUrlInput] = useState("");
   const [mcpCommandInput, setMcpCommandInput] = useState("");
@@ -262,10 +262,10 @@ export function useWorkspaceController() {
   const [editingMcpServerId, setEditingMcpServerId] = useState("");
   const [mcpFormError, setMcpFormError] = useState<string | null>(null);
   const [mcpFormWarning, setMcpFormWarning] = useState<string | null>(null);
-  const [savedMcpError, setSavedMcpError] = useState<string | null>(null);
-  const [isLoadingSavedMcpServers, setIsLoadingSavedMcpServers] = useState(false);
+  const [workspaceMcpServerProfileError, setWorkspaceMcpServerProfileError] = useState<string | null>(null);
+  const [isLoadingWorkspaceMcpServerProfiles, setIsLoadingWorkspaceMcpServerProfiles] = useState(false);
   const [isSavingMcpServer, setIsSavingMcpServer] = useState(false);
-  const [isDeletingSavedMcpServer, setIsDeletingSavedMcpServer] = useState(false);
+  const [isDeletingWorkspaceMcpServerProfile, setIsDeletingWorkspaceMcpServerProfile] = useState(false);
   const [threadRequestStateById, setThreadRequestStateById] = useState<
     Record<string, ThreadRequestState>
   >({});
@@ -276,7 +276,7 @@ export function useWorkspaceController() {
   const [isStartingAzureLogout, setIsStartingAzureLogout] = useState(false);
   const [azureLoginError, setAzureLoginError] = useState<string | null>(null);
   const [azureLogoutError, setAzureLogoutError] = useState<string | null>(null);
-  const [mcpRpcHistory, setMcpRpcHistory] = useState<McpRpcHistoryEntry[]>([]);
+  const [mcpRpcLogs, setThreadOperationLogs] = useState<ThreadOperationLogEntry[]>([]);
   const [threads, setThreads] = useState<ThreadSnapshot[]>([]);
   const [activeThreadId, setActiveThreadId] = useState("");
   const [activeThreadNameInput, setActiveThreadNameInput] = useState("");
@@ -289,7 +289,7 @@ export function useWorkspaceController() {
   const [threadError, setThreadError] = useState<string | null>(null);
   const [availableSkills, setAvailableSkills] = useState<SkillCatalogEntry[]>([]);
   const [selectedThreadSkills, setSelectedThreadSkills] = useState<ThreadSkillActivation[]>([]);
-  const [selectedDialogueSkills, setSelectedDialogueSkills] = useState<ThreadSkillActivation[]>([]);
+  const [selectedMessageSkillActivations, setSelectedMessageSkillActivations] = useState<ThreadSkillActivation[]>([]);
   const [skillRegistryCatalogs, setSkillRegistryCatalogs] = useState<SkillRegistryCatalog[]>([]);
   const [isMutatingSkillRegistries, setIsMutatingSkillRegistries] = useState(false);
   const [skillRegistryError, setSkillRegistryError] = useState<string | null>(null);
@@ -318,8 +318,8 @@ export function useWorkspaceController() {
   const activeAzureTenantIdRef = useRef("");
   const activeAzurePrincipalIdRef = useRef("");
   const activeWorkspaceUserKeyRef = useRef("");
-  const savedMcpLoginRetryTimeoutRef = useRef<number | null>(null);
-  const savedMcpRequestSeqRef = useRef(0);
+  const workspaceMcpServerProfileLoginRetryTimeoutRef = useRef<number | null>(null);
+  const workspaceMcpServerProfileRequestSeqRef = useRef(0);
   const skillsRequestSeqRef = useRef(0);
   const previousIsAzureAuthRequiredRef = useRef(isAzureAuthRequired);
   const lastLoadedSkillsUserKeyRef = useRef("");
@@ -366,32 +366,32 @@ export function useWorkspaceController() {
   const activeTurnId = activeThreadRequestState.activeTurnId;
   const lastErrorTurnId = activeThreadRequestState.lastErrorTurnId;
   const error = uiError ?? activeThreadRequestState.error;
-  const mcpHistoryByTurnId = useMemo(
-    () => buildMcpHistoryByTurnId(mcpRpcHistory),
-    [mcpRpcHistory],
+  const threadOperationLogsByTurnId = useMemo(
+    () => buildThreadOperationLogsByTurnId(mcpRpcLogs),
+    [mcpRpcLogs],
   );
-  const activeTurnMcpHistory = useMemo(
-    () => (activeTurnId ? (mcpHistoryByTurnId.get(activeTurnId) ?? []) : []),
-    [activeTurnId, mcpHistoryByTurnId],
+  const activeTurnOperationLogs = useMemo(
+    () => (activeTurnId ? (threadOperationLogsByTurnId.get(activeTurnId) ?? []) : []),
+    [activeTurnId, threadOperationLogsByTurnId],
   );
-  const errorTurnMcpHistory = useMemo(
-    () => (lastErrorTurnId ? (mcpHistoryByTurnId.get(lastErrorTurnId) ?? []) : []),
-    [lastErrorTurnId, mcpHistoryByTurnId],
+  const errorTurnOperationLogs = useMemo(
+    () => (lastErrorTurnId ? (threadOperationLogsByTurnId.get(lastErrorTurnId) ?? []) : []),
+    [lastErrorTurnId, threadOperationLogsByTurnId],
   );
-  const savedMcpServerOptions = useMemo(
-    () => buildSavedMcpServerOptions(savedMcpServers, mcpServers),
-    [savedMcpServers, mcpServers],
+  const workspaceMcpServerProfileOptions = useMemo(
+    () => buildWorkspaceMcpServerProfileOptions(workspaceMcpServerProfiles, mcpServers),
+    [workspaceMcpServerProfiles, mcpServers],
   );
   const editingMcpServer =
     editingMcpServerId.trim().length > 0
-      ? savedMcpServers.find((server) => server.id === editingMcpServerId) ?? null
+      ? workspaceMcpServerProfiles.find((server) => server.id === editingMcpServerId) ?? null
       : null;
   const isEditingMcpServer = editingMcpServer !== null;
   const editingMcpServerName = editingMcpServer?.name ?? null;
-  const isMutatingSavedMcpServers = isSavingMcpServer || isDeletingSavedMcpServer;
-  const selectedSavedMcpServerCount = useMemo(
-    () => countSelectedSavedMcpServerOptions(savedMcpServerOptions),
-    [savedMcpServerOptions],
+  const isMutatingWorkspaceMcpServerProfiles = isSavingMcpServer || isDeletingWorkspaceMcpServerProfile;
+  const selectedWorkspaceMcpServerProfileCount = useMemo(
+    () => countSelectedWorkspaceMcpServerProfileOptions(workspaceMcpServerProfileOptions),
+    [workspaceMcpServerProfileOptions],
   );
   const draftAttachmentTotalSizeBytes = draftAttachments.reduce(
     (sum, attachment) => sum + attachment.sizeBytes,
@@ -453,9 +453,9 @@ export function useWorkspaceController() {
       return left.name.localeCompare(right.name);
     });
   }, [availableSkillByLocation, availableSkills, selectedThreadSkills]);
-  const dialogueSkillOptions = useMemo(() => {
-    const selectedDialogueSkillLocationSet = new Set(
-      selectedDialogueSkills.map((selection) => selection.location),
+  const messageSkillActivationOptions = useMemo(() => {
+    const selectedMessageSkillActivationLocationSet = new Set(
+      selectedMessageSkillActivations.map((selection) => selection.location),
     );
     return [
       ...availableSkills.map((skill) => ({
@@ -464,15 +464,15 @@ export function useWorkspaceController() {
         location: skill.location,
         source: skill.source,
         badge: resolveSkillBadgeLabel(skill.source, skill.location),
-        isSelected: selectedDialogueSkillLocationSet.has(skill.location),
+        isSelected: selectedMessageSkillActivationLocationSet.has(skill.location),
         isAvailable: true,
       })),
-      ...selectedDialogueSkills
+      ...selectedMessageSkillActivations
         .filter((selection) => !availableSkillByLocation.has(selection.location))
         .map((selection) => ({
           name: selection.name,
           description:
-            "Added for this dialogue, but the SKILL.md file is currently unavailable.",
+            "Added for this message, but the SKILL.md file is currently unavailable.",
           location: selection.location,
           source: "app_data" as const,
           badge: resolveSkillBadgeLabel("app_data", selection.location),
@@ -486,18 +486,18 @@ export function useWorkspaceController() {
 
       return left.name.localeCompare(right.name);
     });
-  }, [availableSkillByLocation, availableSkills, selectedDialogueSkills]);
+  }, [availableSkillByLocation, availableSkills, selectedMessageSkillActivations]);
   const chatCommandProviders: ChatCommandProvider[] = [
     {
       keyword: "$",
       emptyHint: "No matching Skills.",
-      readSuggestions: (query) => readSkillCommandSuggestions(dialogueSkillOptions, query),
+      readSuggestions: (query) => readSkillCommandSuggestions(messageSkillActivationOptions, query),
       applySuggestion: (suggestion) => {
         if (!suggestion.isAvailable) {
           return;
         }
 
-        handleAddDialogueSkill(suggestion.id);
+        handleAddMessageSkillActivation(suggestion.id);
       },
     },
   ];
@@ -1029,7 +1029,7 @@ export function useWorkspaceController() {
 
   useEffect(() => {
     return () => {
-      clearSavedMcpLoginRetryTimeout();
+      clearWorkspaceMcpServerProfileLoginRetryTimeout();
     };
   }, []);
 
@@ -1038,11 +1038,11 @@ export function useWorkspaceController() {
       return;
     }
 
-    const targetExists = savedMcpServers.some((server) => server.id === editingMcpServerId);
+    const targetExists = workspaceMcpServerProfiles.some((server) => server.id === editingMcpServerId);
     if (!targetExists) {
       clearMcpServerEditState();
     }
-  }, [editingMcpServerId, savedMcpServers]);
+  }, [editingMcpServerId, workspaceMcpServerProfiles]);
 
   useEffect(() => {
     activeThreadIdRef.current = activeThreadId;
@@ -1112,7 +1112,7 @@ export function useWorkspaceController() {
     agentInstruction,
     messages,
     mcpServers,
-    mcpRpcHistory,
+    mcpRpcLogs,
     selectedThreadSkills,
     threads,
     isSending,
@@ -1231,16 +1231,16 @@ export function useWorkspaceController() {
   ]);
 
   // Saved MCP / Skills loading flows.
-  async function loadSavedMcpServers() {
+  async function loadWorkspaceMcpServerProfiles() {
     const expectedUserKey = activeWorkspaceUserKeyRef.current.trim();
     if (!expectedUserKey) {
-      clearSavedMcpServersState();
+      clearWorkspaceMcpServerProfilesState();
       return;
     }
 
-    const requestSeq = savedMcpRequestSeqRef.current + 1;
-    savedMcpRequestSeqRef.current = requestSeq;
-    setIsLoadingSavedMcpServers(true);
+    const requestSeq = workspaceMcpServerProfileRequestSeqRef.current + 1;
+    workspaceMcpServerProfileRequestSeqRef.current = requestSeq;
+    setIsLoadingWorkspaceMcpServerProfiles(true);
 
     try {
       const response = await fetch("/api/mcp-servers", {
@@ -1251,7 +1251,7 @@ export function useWorkspaceController() {
         response,
         "saved MCP servers",
       );
-      if (requestSeq !== savedMcpRequestSeqRef.current) {
+      if (requestSeq !== workspaceMcpServerProfileRequestSeqRef.current) {
         return;
       }
       if (expectedUserKey !== activeWorkspaceUserKeyRef.current.trim()) {
@@ -1262,7 +1262,7 @@ export function useWorkspaceController() {
         const authRequired = isMcpServersAuthRequired(response.status, payload);
         if (authRequired) {
           setIsAzureAuthRequired(true);
-          clearSavedMcpServersState(
+          clearWorkspaceMcpServerProfilesState(
             "Azure login is required. Open Settings and sign in to load MCP servers.",
           );
           return;
@@ -1271,10 +1271,10 @@ export function useWorkspaceController() {
       }
 
       const parsedServers = readMcpServerList(payload.profiles);
-      setSavedMcpServers(parsedServers);
-      setSavedMcpError(null);
+      setWorkspaceMcpServerProfiles(parsedServers);
+      setWorkspaceMcpServerProfileError(null);
     } catch (loadError) {
-      if (requestSeq !== savedMcpRequestSeqRef.current) {
+      if (requestSeq !== workspaceMcpServerProfileRequestSeqRef.current) {
         return;
       }
       if (expectedUserKey !== activeWorkspaceUserKeyRef.current.trim()) {
@@ -1284,15 +1284,15 @@ export function useWorkspaceController() {
         action: "load_saved_mcp_servers",
         statusCode: 500,
       });
-      setSavedMcpError(
+      setWorkspaceMcpServerProfileError(
         loadError instanceof Error ? loadError.message : "Failed to load saved MCP servers.",
       );
     } finally {
       if (
-        requestSeq === savedMcpRequestSeqRef.current &&
+        requestSeq === workspaceMcpServerProfileRequestSeqRef.current &&
         expectedUserKey === activeWorkspaceUserKeyRef.current.trim()
       ) {
-        setIsLoadingSavedMcpServers(false);
+        setIsLoadingWorkspaceMcpServerProfiles(false);
       }
     }
   }
@@ -1445,31 +1445,31 @@ export function useWorkspaceController() {
   }
 
   // Timer and reset helpers.
-  function clearSavedMcpLoginRetryTimeout() {
-    const timeoutId = savedMcpLoginRetryTimeoutRef.current;
+  function clearWorkspaceMcpServerProfileLoginRetryTimeout() {
+    const timeoutId = workspaceMcpServerProfileLoginRetryTimeoutRef.current;
     if (timeoutId !== null) {
       window.clearTimeout(timeoutId);
-      savedMcpLoginRetryTimeoutRef.current = null;
+      workspaceMcpServerProfileLoginRetryTimeoutRef.current = null;
     }
   }
 
-  function scheduleSavedMcpLoginRetry(expectedUserKey: string) {
-    clearSavedMcpLoginRetryTimeout();
-    savedMcpLoginRetryTimeoutRef.current = window.setTimeout(() => {
-      savedMcpLoginRetryTimeoutRef.current = null;
+  function scheduleWorkspaceMcpServerProfileLoginRetry(expectedUserKey: string) {
+    clearWorkspaceMcpServerProfileLoginRetryTimeout();
+    workspaceMcpServerProfileLoginRetryTimeoutRef.current = window.setTimeout(() => {
+      workspaceMcpServerProfileLoginRetryTimeoutRef.current = null;
       if (activeWorkspaceUserKeyRef.current === expectedUserKey) {
-        void loadSavedMcpServers();
+        void loadWorkspaceMcpServerProfiles();
       }
     }, 1200);
   }
 
-  function clearSavedMcpServersState(nextError: string | null = null) {
-    clearSavedMcpLoginRetryTimeout();
+  function clearWorkspaceMcpServerProfilesState(nextError: string | null = null) {
+    clearWorkspaceMcpServerProfileLoginRetryTimeout();
     setEditingMcpServerId("");
-    setIsDeletingSavedMcpServer(false);
-    setSavedMcpServers([]);
-    setSavedMcpError(nextError);
-    setIsLoadingSavedMcpServers(false);
+    setIsDeletingWorkspaceMcpServerProfile(false);
+    setWorkspaceMcpServerProfiles([]);
+    setWorkspaceMcpServerProfileError(nextError);
+    setIsLoadingWorkspaceMcpServerProfiles(false);
   }
 
   function resetMcpServerFormInputs() {
@@ -1587,10 +1587,10 @@ export function useWorkspaceController() {
     setIsRestoringThread(false);
     setIsSavingThread(false);
     setMessages([...HOME_INITIAL_MESSAGES]);
-    setMcpRpcHistory([]);
+    setThreadOperationLogs([]);
     setMcpServers([]);
     setSelectedThreadSkills([]);
-    setSelectedDialogueSkills([]);
+    setSelectedMessageSkillActivations([]);
     setReasoningEffort(HOME_DEFAULT_REASONING_EFFORT);
     setWebSearchEnabled(HOME_DEFAULT_WEB_SEARCH_ENABLED);
     setAgentInstruction(DEFAULT_AGENT_INSTRUCTION);
@@ -1708,7 +1708,7 @@ export function useWorkspaceController() {
       threadEnvironment: {},
       messages: [],
       mcpServers: [],
-      mcpRpcHistory: [],
+      mcpRpcLogs: [],
       skillSelections: [],
     };
   }
@@ -1730,8 +1730,8 @@ export function useWorkspaceController() {
       threadEnvironment: cloneThreadEnvironment(base.threadEnvironment),
       messages: cloneMessages(messages),
       mcpServers: cloneMcpServers(mcpServers),
-      mcpRpcHistory: cloneMcpRpcHistory(mcpRpcHistory),
-      skillSelections: cloneThreadSkillSelections(selectedThreadSkills),
+      mcpRpcLogs: cloneThreadOperationLogs(mcpRpcLogs),
+      skillSelections: cloneThreadSkillActivations(selectedThreadSkills),
     };
   }
 
@@ -1767,11 +1767,11 @@ export function useWorkspaceController() {
     });
   }
 
-  function appendMessageToThreadState(threadId: string, message: ChatMessage): void {
-    const clonedMessage: ChatMessage = {
+  function appendMessageToThreadState(threadId: string, message: ThreadMessage): void {
+    const clonedMessage: ThreadMessage = {
       ...message,
       attachments: message.attachments.map((attachment) => ({ ...attachment })),
-      dialogueSkillSelections: message.dialogueSkillSelections.map((selection) => ({ ...selection })),
+      skillActivations: message.skillActivations.map((selection) => ({ ...selection })),
     };
 
     updateThreadSnapshotById(threadId, (thread) => ({
@@ -1785,17 +1785,17 @@ export function useWorkspaceController() {
     }
   }
 
-  function appendMcpRpcLogToThreadState(threadId: string, entry: McpRpcHistoryEntry): void {
-    const clonedEntry: McpRpcHistoryEntry = { ...entry };
+  function appendThreadOperationLogToThreadState(threadId: string, entry: ThreadOperationLogEntry): void {
+    const clonedEntry: ThreadOperationLogEntry = { ...entry };
 
     updateThreadSnapshotById(threadId, (thread) => ({
       ...thread,
       updatedAt: new Date().toISOString(),
-      mcpRpcHistory: upsertMcpRpcHistoryEntry(thread.mcpRpcHistory, clonedEntry),
+      mcpRpcLogs: upsertThreadOperationLogEntry(thread.mcpRpcLogs, clonedEntry),
     }));
 
     if (activeThreadIdRef.current === threadId) {
-      setMcpRpcHistory((current) => upsertMcpRpcHistoryEntry(current, clonedEntry));
+      setThreadOperationLogs((current) => upsertThreadOperationLogEntry(current, clonedEntry));
     }
   }
 
@@ -1820,17 +1820,17 @@ export function useWorkspaceController() {
 
     const clonedMessages = cloneMessages(thread.messages);
     const clonedMcpServers = cloneMcpServers(thread.mcpServers);
-    const clonedMcpRpcHistory = cloneMcpRpcHistory(thread.mcpRpcHistory);
-    const clonedSkillSelections = cloneThreadSkillSelections(thread.skillSelections);
+    const clonedThreadOperationLogs = cloneThreadOperationLogs(thread.mcpRpcLogs);
+    const clonedSkillSelections = cloneThreadSkillActivations(thread.skillSelections);
 
     activeThreadIdRef.current = thread.id;
     setActiveThreadId(thread.id);
     setActiveThreadNameInput(thread.name);
     setMessages(clonedMessages);
     setMcpServers(clonedMcpServers);
-    setMcpRpcHistory(clonedMcpRpcHistory);
+    setThreadOperationLogs(clonedThreadOperationLogs);
     setSelectedThreadSkills(clonedSkillSelections);
-    setSelectedDialogueSkills([]);
+    setSelectedMessageSkillActivations([]);
     setReasoningEffort(thread.reasoningEffort);
     setWebSearchEnabled(thread.webSearchEnabled);
     setAgentInstruction(thread.agentInstruction);
@@ -1930,7 +1930,7 @@ export function useWorkspaceController() {
           threadId: savedThread.id,
           messageCount: savedThread.messages.length,
           mcpServerCount: savedThread.mcpServers.length,
-          mcpRpcCount: savedThread.mcpRpcHistory.length,
+          operationLogCount: savedThread.mcpRpcLogs.length,
           skillSelectionCount: savedThread.skillSelections.length,
         },
       });
@@ -2752,7 +2752,7 @@ export function useWorkspaceController() {
       if (!response.ok) {
         const authRequired = payload.authRequired === true || response.status === 401;
         clearActiveAzureIdentity();
-        clearSavedMcpServersState();
+        clearWorkspaceMcpServerProfilesState();
         clearThreadsState(
           authRequired
             ? "Azure login is required. Open Settings and sign in to load threads."
@@ -2792,19 +2792,19 @@ export function useWorkspaceController() {
       const previousWorkspaceUserKey = activeWorkspaceUserKeyRef.current;
       const nextWorkspaceUserKey = updateActiveAzureIdentity(tenantId, principalId);
       if (!nextWorkspaceUserKey) {
-        clearSavedMcpServersState();
+        clearWorkspaceMcpServerProfilesState();
         clearThreadsState();
       } else if (previousWorkspaceUserKey !== nextWorkspaceUserKey) {
-        void loadSavedMcpServers();
+        void loadWorkspaceMcpServerProfiles();
         void loadThreads();
       } else if (!isThreadsReadyRef.current && !isLoadingThreads) {
         void loadThreads();
       }
-      if (shouldScheduleSavedMcpLoginRetry(isAzureAuthRequired, nextWorkspaceUserKey)) {
+      if (shouldScheduleWorkspaceMcpServerProfileLoginRetry(isAzureAuthRequired, nextWorkspaceUserKey)) {
         // After login completes, token propagation can briefly lag for MCP route auth.
-        scheduleSavedMcpLoginRetry(nextWorkspaceUserKey);
+        scheduleWorkspaceMcpServerProfileLoginRetry(nextWorkspaceUserKey);
       } else {
-        clearSavedMcpLoginRetryTimeout();
+        clearWorkspaceMcpServerProfileLoginRetryTimeout();
       }
       const preferredSelection =
         tenantId && principalId
@@ -2932,7 +2932,7 @@ export function useWorkspaceController() {
         loadError instanceof Error ? loadError.message : "Failed to load Azure projects.";
       const nextAuthRequired = isLikelyChatAzureAuthError(errorMessage);
       clearActiveAzureIdentity();
-      clearSavedMcpServersState();
+      clearWorkspaceMcpServerProfilesState();
       clearThreadsState(
         nextAuthRequired
           ? "Azure login is required. Open Settings and sign in to load threads."
@@ -3012,7 +3012,7 @@ export function useWorkspaceController() {
         const authRequired = payload.authRequired === true || response.status === 401;
         if (authRequired) {
           clearActiveAzureIdentity();
-          clearSavedMcpServersState();
+          clearWorkspaceMcpServerProfilesState();
           clearThreadsState("Azure login is required. Open Settings and sign in to load threads.");
         }
         setIsAzureAuthRequired(authRequired);
@@ -3199,9 +3199,9 @@ export function useWorkspaceController() {
 
     const profiles = readMcpServerList(payload.profiles);
     if (profiles.length > 0) {
-      setSavedMcpServers(profiles);
+      setWorkspaceMcpServerProfiles(profiles);
     } else {
-      setSavedMcpServers((current) => upsertMcpServer(current, profile));
+      setWorkspaceMcpServerProfiles((current) => upsertMcpServer(current, profile));
     }
 
     return {
@@ -3210,7 +3210,7 @@ export function useWorkspaceController() {
     };
   }
 
-  async function deleteSavedMcpServerFromConfig(serverId: string): Promise<McpServerConfig[]> {
+  async function deleteWorkspaceMcpServerProfileFromConfig(serverId: string): Promise<McpServerConfig[]> {
     const response = await fetch(`/api/mcp-servers/${encodeURIComponent(serverId)}`, {
       method: "DELETE",
     });
@@ -3307,10 +3307,10 @@ export function useWorkspaceController() {
       ({ id: _id, ...attachment }) => attachment,
     );
     const requestMcpServers = cloneMcpServers(mcpServers);
-    const requestDialogueSkillSelections = cloneThreadSkillSelections(selectedDialogueSkills);
+    const requestMessageSkillActivations = cloneThreadSkillActivations(selectedMessageSkillActivations);
     const requestSkillSelections = mergeSkillSelections(
       selectedThreadSkills,
-      requestDialogueSkillSelections,
+      requestMessageSkillActivations,
     );
     const requestThreadEnvironment = baseThread
       ? cloneThreadEnvironment(baseThread.threadEnvironment)
@@ -3319,12 +3319,12 @@ export function useWorkspaceController() {
       (selection) => selection.location,
     );
     const requestAgentInstruction = agentInstruction;
-    const userMessage: ChatMessage = createMessage(
+    const userMessage: ThreadMessage = createThreadMessage(
       "user",
       content,
       turnId,
       requestAttachments,
-      requestDialogueSkillSelections,
+      requestMessageSkillActivations,
     );
     const history = messages
       .map(({ role, content: previousContent, attachments }) => {
@@ -3344,7 +3344,7 @@ export function useWorkspaceController() {
 
     appendMessageToThreadState(threadId, userMessage);
     setDraft("");
-    setSelectedDialogueSkills([]);
+    setSelectedMessageSkillActivations([]);
     setDraftAttachments([]);
     setChatAttachmentError(null);
     setUiError(null);
@@ -3377,7 +3377,7 @@ export function useWorkspaceController() {
       });
     }
 
-    let receivedMcpRpcCount = 0;
+    let receivedOperationLogCount = 0;
     try {
       const response = await fetch("/api/chat", {
         method: "POST",
@@ -3435,9 +3435,9 @@ export function useWorkspaceController() {
           onProgress: (message) => {
             appendThreadProgressMessage(threadId, message);
           },
-          onMcpRpcRecord: (entry) => {
-            receivedMcpRpcCount += 1;
-            appendMcpRpcLogToThreadState(threadId, {
+          onOperationLogRecord: (entry) => {
+            receivedOperationLogCount += 1;
+            appendThreadOperationLogToThreadState(threadId, {
               ...entry,
               turnId,
             });
@@ -3462,7 +3462,7 @@ export function useWorkspaceController() {
         threadId,
         "threadEnvironment" in payload ? payload.threadEnvironment : requestThreadEnvironment,
       );
-      const assistantMessage = createMessage("assistant", payload.message, turnId);
+      const assistantMessage = createThreadMessage("assistant", payload.message, turnId);
       appendMessageToThreadState(threadId, assistantMessage);
       updateThreadRequestState(threadId, (current) => ({
         ...current,
@@ -3478,7 +3478,7 @@ export function useWorkspaceController() {
           threadId,
           turnId,
           responseLength: payload.message.length,
-          mcpRpcCount: receivedMcpRpcCount,
+          operationLogCount: receivedOperationLogCount,
           usedEventStream: isEventStream,
         },
       });
@@ -3588,19 +3588,19 @@ export function useWorkspaceController() {
     }
   }
 
-  function handleReloadSavedMcpServers() {
-    setSavedMcpError(null);
-    void loadSavedMcpServers();
+  function handleReloadWorkspaceMcpServerProfiles() {
+    setWorkspaceMcpServerProfileError(null);
+    void loadWorkspaceMcpServerProfiles();
   }
 
   function handleCancelMcpServerEdit() {
     clearMcpServerEditState();
-    setSavedMcpError(null);
+    setWorkspaceMcpServerProfileError(null);
   }
 
-  function handleEditSavedMcpServer(serverIdRaw: string) {
+  function handleEditWorkspaceMcpServerProfile(serverIdRaw: string) {
     if (isArchivedThread(activeThreadIdRef.current)) {
-      setSavedMcpError("Archived thread is read-only. Restore it from Archives to edit MCP servers.");
+      setWorkspaceMcpServerProfileError("Archived thread is read-only. Restore it from Archives to edit MCP servers.");
       return;
     }
 
@@ -3609,9 +3609,9 @@ export function useWorkspaceController() {
       return;
     }
 
-    const selected = savedMcpServers.find((server) => server.id === serverId);
+    const selected = workspaceMcpServerProfiles.find((server) => server.id === serverId);
     if (!selected) {
-      setSavedMcpError("Selected MCP server is not available.");
+      setWorkspaceMcpServerProfileError("Selected MCP server is not available.");
       return;
     }
 
@@ -3619,16 +3619,16 @@ export function useWorkspaceController() {
     populateMcpServerFormForEdit(selected);
     setMcpFormError(null);
     setMcpFormWarning(null);
-    setSavedMcpError(null);
+    setWorkspaceMcpServerProfileError(null);
   }
 
-  async function handleDeleteSavedMcpServer(serverIdRaw: string) {
+  async function handleDeleteWorkspaceMcpServerProfile(serverIdRaw: string) {
     if (isArchivedThread(activeThreadIdRef.current)) {
-      setSavedMcpError("Archived thread is read-only. Restore it from Archives to edit MCP servers.");
+      setWorkspaceMcpServerProfileError("Archived thread is read-only. Restore it from Archives to edit MCP servers.");
       return;
     }
 
-    if (isDeletingSavedMcpServer) {
+    if (isDeletingWorkspaceMcpServerProfile) {
       return;
     }
 
@@ -3637,18 +3637,18 @@ export function useWorkspaceController() {
       return;
     }
 
-    const selected = savedMcpServers.find((server) => server.id === serverId);
+    const selected = workspaceMcpServerProfiles.find((server) => server.id === serverId);
     if (!selected) {
-      setSavedMcpError("Selected MCP server is not available.");
+      setWorkspaceMcpServerProfileError("Selected MCP server is not available.");
       return;
     }
 
-    setIsDeletingSavedMcpServer(true);
-    setSavedMcpError(null);
+    setIsDeletingWorkspaceMcpServerProfile(true);
+    setWorkspaceMcpServerProfileError(null);
 
     try {
-      const nextSavedProfiles = await deleteSavedMcpServerFromConfig(serverId);
-      setSavedMcpServers(nextSavedProfiles);
+      const nextWorkspaceMcpServerProfiles = await deleteWorkspaceMcpServerProfileFromConfig(serverId);
+      setWorkspaceMcpServerProfiles(nextWorkspaceMcpServerProfiles);
 
       const deletedKey = buildMcpServerKey(selected);
       setMcpServers((current) =>
@@ -3666,11 +3666,11 @@ export function useWorkspaceController() {
           serverName: selected.name,
         },
       });
-      setSavedMcpError(
+      setWorkspaceMcpServerProfileError(
         deleteError instanceof Error ? deleteError.message : "Failed to delete MCP server.",
       );
     } finally {
-      setIsDeletingSavedMcpServer(false);
+      setIsDeletingWorkspaceMcpServerProfile(false);
     }
   }
 
@@ -3703,13 +3703,13 @@ export function useWorkspaceController() {
     });
   }
 
-  function handleAddDialogueSkill(locationRaw: string) {
+  function handleAddMessageSkillActivation(locationRaw: string) {
     const location = locationRaw.trim();
     if (!location) {
       return;
     }
 
-    setSelectedDialogueSkills((current) => {
+    setSelectedMessageSkillActivations((current) => {
       if (current.some((selection) => selection.location === location)) {
         return current;
       }
@@ -3729,13 +3729,13 @@ export function useWorkspaceController() {
     });
   }
 
-  function handleRemoveDialogueSkill(locationRaw: string) {
+  function handleRemoveMessageSkillActivation(locationRaw: string) {
     const location = locationRaw.trim();
     if (!location) {
       return;
     }
 
-    setSelectedDialogueSkills((current) =>
+    setSelectedMessageSkillActivations((current) =>
       current.filter((selection) => selection.location !== location),
     );
   }
@@ -4471,7 +4471,7 @@ export function useWorkspaceController() {
     const editingServerId = editingMcpServerId.trim();
     const isEditing = editingServerId.length > 0;
     const editingServer = isEditing
-      ? savedMcpServers.find((server) => server.id === editingServerId) ?? null
+      ? workspaceMcpServerProfiles.find((server) => server.id === editingServerId) ?? null
       : null;
     if (isEditing && !editingServer) {
       setEditingMcpServerId("");
@@ -4625,7 +4625,7 @@ export function useWorkspaceController() {
         connectMcpServerToAgent(savedProfile);
       }
 
-      setSavedMcpError(null);
+      setWorkspaceMcpServerProfileError(null);
     } catch (saveError) {
       logHomeError("save_mcp_server_failed", saveError, {
         action: "save_mcp_server",
@@ -4679,9 +4679,9 @@ export function useWorkspaceController() {
     resetMcpServerFormInputs();
   }
 
-  function handleToggleSavedMcpServer(serverIdRaw: string) {
+  function handleToggleWorkspaceMcpServerProfile(serverIdRaw: string) {
     if (isArchivedThread(activeThreadIdRef.current)) {
-      setSavedMcpError("Archived thread is read-only. Restore it from Archives to edit MCP servers.");
+      setWorkspaceMcpServerProfileError("Archived thread is read-only. Restore it from Archives to edit MCP servers.");
       return;
     }
 
@@ -4690,9 +4690,9 @@ export function useWorkspaceController() {
       return;
     }
 
-    const selected = savedMcpServers.find((server) => server.id === serverId);
+    const selected = workspaceMcpServerProfiles.find((server) => server.id === serverId);
     if (!selected) {
-      setSavedMcpError("Selected MCP server is not available.");
+      setWorkspaceMcpServerProfileError("Selected MCP server is not available.");
       return;
     }
 
@@ -4707,7 +4707,7 @@ export function useWorkspaceController() {
 
       return [...current, selected];
     });
-    setSavedMcpError(null);
+    setWorkspaceMcpServerProfileError(null);
   }
 
   function handleRemoveMcpServer(id: string) {
@@ -4910,19 +4910,19 @@ export function useWorkspaceController() {
   };
 
   const mcpServersTabProps = {
-    savedMcpServerOptions,
-    selectedSavedMcpServerCount,
+    workspaceMcpServerProfileOptions,
+    selectedWorkspaceMcpServerProfileCount,
     isSending,
     isThreadReadOnly: isActiveThreadArchived,
-    isLoadingSavedMcpServers,
-    isMutatingSavedMcpServers,
-    savedMcpError,
-    onToggleSavedMcpServer: handleToggleSavedMcpServer,
-    onEditSavedMcpServer: handleEditSavedMcpServer,
-    onDeleteSavedMcpServer: (serverId: string) => {
-      void handleDeleteSavedMcpServer(serverId);
+    isLoadingWorkspaceMcpServerProfiles,
+    isMutatingWorkspaceMcpServerProfiles,
+    workspaceMcpServerProfileError,
+    onToggleWorkspaceMcpServerProfile: handleToggleWorkspaceMcpServerProfile,
+    onEditWorkspaceMcpServerProfile: handleEditWorkspaceMcpServerProfile,
+    onDeleteWorkspaceMcpServerProfile: (serverId: string) => {
+      void handleDeleteWorkspaceMcpServerProfile(serverId);
     },
-    onReloadSavedMcpServers: handleReloadSavedMcpServers,
+    onReloadWorkspaceMcpServerProfiles: handleReloadWorkspaceMcpServerProfiles,
     isEditingMcpServer,
     editingMcpServerName,
     mcpNameInput,
@@ -5087,7 +5087,7 @@ export function useWorkspaceController() {
 
   const playgroundPanelProps = {
     messages,
-    mcpHistoryByTurnId,
+    threadOperationLogsByTurnId,
     isSending,
     isThreadReadOnly: isActiveThreadArchived,
     desktopUpdaterStatus,
@@ -5105,10 +5105,10 @@ export function useWorkspaceController() {
       void handleCreateThread();
     },
     onCopyMessage: handleCopyMessage,
-    onCopyMcpLog: handleCopyMcpLog,
+    onCopyOperationLog: handleCopyMcpLog,
     sendProgressMessages,
-    activeTurnMcpHistory,
-    errorTurnMcpHistory,
+    activeTurnOperationLogs,
+    errorTurnOperationLogs,
     endOfMessagesRef,
     systemNotice,
     onClearSystemNotice: () => {
@@ -5118,17 +5118,17 @@ export function useWorkspaceController() {
     azureLoginError,
     onSubmit: handleSubmit,
     chatInputRef,
-    chatAttachmentInputRef,
-    chatAttachmentAccept,
-    chatAttachmentFormatHint,
+    messageAttachmentInputRef: chatAttachmentInputRef,
+    messageAttachmentAccept: chatAttachmentAccept,
+    messageAttachmentFormatHint: chatAttachmentFormatHint,
     draft,
-    chatAttachments: draftAttachments,
-    chatAttachmentError,
+    messageAttachments: draftAttachments,
+    messageAttachmentError: chatAttachmentError,
     onDraftChange: handleDraftChange,
     onInputSelect: handleInputSelect,
-    onOpenChatAttachmentPicker: handleOpenChatAttachmentPicker,
-    onChatAttachmentFileChange: handleChatAttachmentFileChange,
-    onRemoveChatAttachment: handleRemoveDraftAttachment,
+    onOpenMessageAttachmentPicker: handleOpenChatAttachmentPicker,
+    onMessageAttachmentFileChange: handleChatAttachmentFileChange,
+    onRemoveMessageAttachment: handleRemoveDraftAttachment,
     onInputKeyDown: handleInputKeyDown,
     chatCommandMenu: activeChatCommandMenu,
     onSelectChatCommandSuggestion: handleSelectActiveChatCommandSuggestion,
@@ -5153,12 +5153,12 @@ export function useWorkspaceController() {
     onReasoningEffortChange: handleReasoningEffortChange,
     webSearchEnabled,
     onWebSearchEnabledChange: handleWebSearchEnabledChange,
-    maxChatAttachmentFiles: CHAT_ATTACHMENT_MAX_FILES,
+    maxMessageAttachmentFiles: CHAT_ATTACHMENT_MAX_FILES,
     canSendMessage,
     selectedThreadSkills,
-    selectedDialogueSkills,
+    selectedMessageSkillActivations,
     onRemoveThreadSkill: handleRemoveThreadSkill,
-    onRemoveDialogueSkill: handleRemoveDialogueSkill,
+    onRemoveMessageSkillActivation: handleRemoveMessageSkillActivation,
     mcpServers,
     onRemoveMcpServer: handleRemoveMcpServer,
   };
@@ -5190,10 +5190,10 @@ export function useWorkspaceController() {
 
 function mergeSkillSelections(
   threadSkills: ThreadSkillActivation[],
-  dialogueSkills: ThreadSkillActivation[],
+  messageSkillActivations: ThreadSkillActivation[],
 ): ThreadSkillActivation[] {
   const byLocation = new Map<string, ThreadSkillActivation>();
-  for (const selection of [...threadSkills, ...dialogueSkills]) {
+  for (const selection of [...threadSkills, ...messageSkillActivations]) {
     const location = selection.location.trim();
     if (!location || byLocation.has(location)) {
       continue;

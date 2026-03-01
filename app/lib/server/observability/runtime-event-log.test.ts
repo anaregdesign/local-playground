@@ -1,5 +1,5 @@
 /**
- * Test module verifying app-event-log behavior.
+ * Test module verifying runtime-event-log behavior.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -17,9 +17,9 @@ vi.mock("~/lib/server/persistence/prisma", () => ({
   },
 }));
 
-import { logAppEvent, logServerRouteEvent } from "./app-event-log";
+import { logRuntimeEvent, logServerRouteEvent } from "./runtime-event-log";
 
-describe("logAppEvent", () => {
+describe("logRuntimeEvent", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     ensurePersistenceDatabaseReadyMock.mockResolvedValue(undefined);
@@ -27,7 +27,7 @@ describe("logAppEvent", () => {
   });
 
   it("writes normalized app event logs to prisma", async () => {
-    await logAppEvent({
+    await logRuntimeEvent({
       source: "server",
       level: "error",
       category: "api",
@@ -59,7 +59,7 @@ describe("logAppEvent", () => {
     runtimeEventLogCreateMock.mockRejectedValueOnce(new Error("db failed"));
 
     await expect(
-      logAppEvent({
+      logRuntimeEvent({
         source: "server",
         level: "error",
         category: "api",

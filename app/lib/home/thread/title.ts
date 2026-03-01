@@ -2,12 +2,12 @@
  * Home runtime support module.
  */
 import { THREAD_AUTO_TITLE_MAX_LENGTH } from "~/lib/constants";
-import type { ChatMessage } from "~/lib/home/chat/messages";
+import type { ThreadMessage } from "~/lib/home/chat/messages";
 
 const threadAutoTitleContextMaxCharacters = 3_000;
 const threadAutoTitleContextMessageLimit = 8;
 
-export function buildThreadAutoTitlePlaygroundContent(messages: ChatMessage[]): string {
+export function buildThreadAutoTitlePlaygroundContent(messages: ThreadMessage[]): string {
   if (messages.length === 0) {
     return "";
   }

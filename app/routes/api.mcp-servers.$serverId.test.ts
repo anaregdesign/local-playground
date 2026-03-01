@@ -5,19 +5,19 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
   readAuthenticatedUser,
-  readSavedMcpServers,
-  deleteSavedMcpServer,
-  writeSavedMcpServers,
+  readWorkspaceMcpServerProfiles,
+  deleteWorkspaceMcpServerProfile,
+  writeWorkspaceMcpServerProfiles,
   parseIncomingMcpServer,
-  mergeDefaultMcpServers,
-  upsertSavedMcpServer,
+  mergeDefaultWorkspaceMcpServerProfiles,
+  upsertWorkspaceMcpServerProfile,
   readErrorMessage,
   logServerRouteEvent,
 } = vi.hoisted(() => ({
   readAuthenticatedUser: vi.fn(async () => ({ id: 1 })),
-  readSavedMcpServers: vi.fn(async () => []),
-  deleteSavedMcpServer: vi.fn(() => ({ profiles: [], deleted: false })),
-  writeSavedMcpServers: vi.fn(async () => undefined),
+  readWorkspaceMcpServerProfiles: vi.fn(async () => []),
+  deleteWorkspaceMcpServerProfile: vi.fn(() => ({ profiles: [], deleted: false })),
+  writeWorkspaceMcpServerProfiles: vi.fn(async () => undefined),
   parseIncomingMcpServer: vi.fn<any>(() => ({
     ok: true as const,
     value: {
@@ -28,8 +28,8 @@ const {
       env: {},
     },
   })),
-  mergeDefaultMcpServers: vi.fn((profiles: unknown) => profiles),
-  upsertSavedMcpServer: vi.fn<any>(() => ({
+  mergeDefaultWorkspaceMcpServerProfiles: vi.fn((profiles: unknown) => profiles),
+  upsertWorkspaceMcpServerProfile: vi.fn<any>(() => ({
     profile: { id: "srv-1" },
     profiles: [],
     warning: null,
@@ -40,16 +40,16 @@ const {
 
 vi.mock("./api.mcp-servers", () => ({
   readAuthenticatedUser,
-  readSavedMcpServers,
-  deleteSavedMcpServer,
-  writeSavedMcpServers,
+  readWorkspaceMcpServerProfiles,
+  deleteWorkspaceMcpServerProfile,
+  writeWorkspaceMcpServerProfiles,
   parseIncomingMcpServer,
-  mergeDefaultMcpServers,
-  upsertSavedMcpServer,
+  mergeDefaultWorkspaceMcpServerProfiles,
+  upsertWorkspaceMcpServerProfile,
   readErrorMessage,
 }));
 
-vi.mock("~/lib/server/observability/app-event-log", () => ({
+vi.mock("~/lib/server/observability/runtime-event-log", () => ({
   installGlobalServerErrorLogging: vi.fn(),
   logServerRouteEvent,
 }));
@@ -60,12 +60,12 @@ describe("/api/mcp-servers/:serverId", () => {
   beforeEach(() => {
     readAuthenticatedUser.mockReset();
     readAuthenticatedUser.mockResolvedValue({ id: 1 });
-    readSavedMcpServers.mockReset();
-    readSavedMcpServers.mockResolvedValue([]);
-    deleteSavedMcpServer.mockReset();
-    deleteSavedMcpServer.mockReturnValue({ profiles: [], deleted: false });
-    writeSavedMcpServers.mockReset();
-    writeSavedMcpServers.mockResolvedValue(undefined);
+    readWorkspaceMcpServerProfiles.mockReset();
+    readWorkspaceMcpServerProfiles.mockResolvedValue([]);
+    deleteWorkspaceMcpServerProfile.mockReset();
+    deleteWorkspaceMcpServerProfile.mockReturnValue({ profiles: [], deleted: false });
+    writeWorkspaceMcpServerProfiles.mockReset();
+    writeWorkspaceMcpServerProfiles.mockResolvedValue(undefined);
     parseIncomingMcpServer.mockReset();
     parseIncomingMcpServer.mockReturnValue({
       ok: true,
@@ -77,10 +77,10 @@ describe("/api/mcp-servers/:serverId", () => {
         env: {},
       },
     });
-    mergeDefaultMcpServers.mockReset();
-    mergeDefaultMcpServers.mockImplementation((profiles: unknown) => profiles);
-    upsertSavedMcpServer.mockReset();
-    upsertSavedMcpServer.mockReturnValue({
+    mergeDefaultWorkspaceMcpServerProfiles.mockReset();
+    mergeDefaultWorkspaceMcpServerProfiles.mockImplementation((profiles: unknown) => profiles);
+    upsertWorkspaceMcpServerProfile.mockReset();
+    upsertWorkspaceMcpServerProfile.mockReturnValue({
       profile: {
         id: "srv-1",
         name: "Server",
@@ -115,7 +115,7 @@ describe("/api/mcp-servers/:serverId", () => {
   });
 
   it("returns 404 when deleting unknown server", async () => {
-    deleteSavedMcpServer.mockReturnValueOnce({ profiles: [], deleted: false });
+    deleteWorkspaceMcpServerProfile.mockReturnValueOnce({ profiles: [], deleted: false });
 
     const response = await action({
       request: new Request("http://localhost/api/mcp-servers/srv-404", { method: "DELETE" }),

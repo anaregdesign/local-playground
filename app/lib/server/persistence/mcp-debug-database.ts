@@ -596,7 +596,7 @@ const tableDefinitions: DatabaseDebugTableDefinition[] = [
     tableName: "ThreadMessageSkillActivation",
     toolName: "debug_read_thread_message_skill_activation_table",
     purpose:
-      "Stores ordered dialogue skill selections by linking each message position to a workspace skill master row.",
+      "Stores ordered message skill activation selections by linking each message position to a workspace skill master row.",
     accumulatesErrors: false,
     fields: [
       {
@@ -615,7 +615,7 @@ const tableDefinitions: DatabaseDebugTableDefinition[] = [
         name: "selectionOrder",
         type: "INTEGER",
         nullable: false,
-        description: "Order of selected dialogue skills in the message.",
+        description: "Order of selected message skill activations in the message.",
       },
       {
         name: "skillProfileId",
@@ -1027,7 +1027,7 @@ export function buildDatabaseDebugLatestThreadToolDescription(): string {
     "- `found`: Whether a matching thread exists.",
     "- `snapshot.thread`: Thread core metadata. Includes parsed `threadEnvironment` alongside raw `threadEnvironmentJson`.",
     "- `snapshot.instruction`: Per-thread instruction row (or null when absent).",
-    "- `snapshot.messages[]`: Ordered thread messages. Includes parsed `attachments` plus linked `skillActivations` and normalized `dialogueSkillSelections`.",
+    "- `snapshot.messages[]`: Ordered thread messages. Includes parsed `attachments` plus linked `skillActivations` and normalized `normalizedSkillActivations`.",
     "- `snapshot.mcpServers[]`: Ordered MCP server snapshot rows. Includes parsed `headers`/`args`/`env` plus raw JSON fields.",
     "- `snapshot.mcpRpcLogs[]`: Ordered MCP RPC rows. Includes parsed `request`/`response` plus raw JSON fields.",
     "- `snapshot.skillSelections[]`: Ordered thread skill activations including linked `skillProfile` and optional `skillProfile.registryProfile`.",
@@ -1277,7 +1277,7 @@ export async function readDatabaseDebugLatestThreadSnapshot(
           : null,
       },
     })),
-    dialogueSkillSelections: message.skillActivations.map((activation) => ({
+    normalizedSkillActivations: message.skillActivations.map((activation) => ({
       name: activation.skillProfile.name,
       location: activation.skillProfile.location,
     })),

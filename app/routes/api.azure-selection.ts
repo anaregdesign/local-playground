@@ -9,7 +9,7 @@ import { readAzureArmUserContext } from "~/lib/server/auth/azure-user";
 import {
   installGlobalServerErrorLogging,
   logServerRouteEvent,
-} from "~/lib/server/observability/app-event-log";
+} from "~/lib/server/observability/runtime-event-log";
 import { methodNotAllowedResponse } from "~/lib/server/http";
 import { HOME_REASONING_EFFORT_OPTIONS } from "~/lib/constants";
 import type { ReasoningEffort } from "~/lib/home/shared/view-types";

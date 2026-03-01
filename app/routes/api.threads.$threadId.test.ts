@@ -39,7 +39,7 @@ vi.mock("~/lib/home/thread/parsers", () => ({
   readThreadSnapshotFromUnknown,
 }));
 
-vi.mock("~/lib/server/observability/app-event-log", () => ({
+vi.mock("~/lib/server/observability/runtime-event-log", () => ({
   installGlobalServerErrorLogging: vi.fn(),
   logServerRouteEvent,
 }));
@@ -89,7 +89,7 @@ describe("/api/threads/:threadId", () => {
       id: "thread-b",
       messages: [],
       mcpServers: [],
-      mcpRpcHistory: [],
+      mcpRpcLogs: [],
       skillSelections: [],
     });
 

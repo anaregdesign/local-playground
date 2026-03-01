@@ -28,7 +28,7 @@ describe("buildThreadAutoTitlePlaygroundContent", () => {
         createdAt: "2026-03-01T00:00:00.000Z",
         turnId: "t-1",
         attachments: [],
-        dialogueSkillSelections: [],
+        skillActivations: [],
       },
       {
         id: "m-2",
@@ -37,7 +37,7 @@ describe("buildThreadAutoTitlePlaygroundContent", () => {
         createdAt: "2026-03-01T00:00:01.000Z",
         turnId: "t-1",
         attachments: [],
-        dialogueSkillSelections: [],
+        skillActivations: [],
       },
     ]);
 

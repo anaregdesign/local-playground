@@ -2,12 +2,14 @@
  * Home runtime support module.
  */
 import type { ChatAttachment } from "~/lib/home/chat/attachments";
-import type { ChatMessage } from "~/lib/home/chat/messages";
-import type { McpRpcHistoryEntry } from "~/lib/home/chat/stream";
-import { readMcpRpcHistoryEntryFromUnknown } from "~/lib/home/chat/stream";
+import type { ThreadMessage } from "~/lib/home/chat/messages";
+import type { ThreadOperationLogEntry } from "~/lib/home/chat/stream";
+import {
+  readThreadOperationLogEntryFromUnknown as readThreadOperationLogEntryFromStream,
+} from "~/lib/home/chat/stream";
 import { readMcpServerFromUnknown } from "~/lib/home/mcp/profile";
 import type { ReasoningEffort } from "~/lib/home/shared/view-types";
-import { readThreadSkillSelectionList } from "~/lib/home/skills/parsers";
+import { readThreadSkillActivationList } from "~/lib/home/skills/parsers";
 import { readThreadEnvironmentFromUnknown } from "~/lib/home/thread/environment";
 import type { ThreadSnapshot, ThreadSummary } from "~/lib/home/thread/types";
 
@@ -74,8 +76,8 @@ export function readThreadSnapshotFromUnknown(
 
   const messages = readThreadMessageList(value.messages);
   const mcpServers = readThreadMcpServerList(value.mcpServers);
-  const mcpRpcHistory = readThreadMcpRpcHistoryList(value.mcpRpcHistory);
-  const skillSelections = readThreadSkillSelectionList(value.skillSelections);
+  const mcpRpcLogs = readThreadOperationLogEntryList(value.mcpRpcLogs);
+  const skillSelections = readThreadSkillActivationList(value.skillSelections);
 
   return {
     id,
@@ -89,7 +91,7 @@ export function readThreadSnapshotFromUnknown(
     threadEnvironment,
     messages,
     mcpServers,
-    mcpRpcHistory,
+    mcpRpcLogs,
     skillSelections,
   };
 }
@@ -106,12 +108,12 @@ export function buildThreadSummary(snapshot: ThreadSnapshot): ThreadSummary {
   };
 }
 
-function readThreadMessageList(value: unknown): ChatMessage[] {
+function readThreadMessageList(value: unknown): ThreadMessage[] {
   if (!Array.isArray(value)) {
     return [];
   }
 
-  const messages: ChatMessage[] = [];
+  const messages: ThreadMessage[] = [];
   const seenIds = new Set<string>();
 
   for (const entry of value) {
@@ -127,7 +129,7 @@ function readThreadMessageList(value: unknown): ChatMessage[] {
   return messages;
 }
 
-function readThreadMessageFromUnknown(value: unknown): ChatMessage | null {
+function readThreadMessageFromUnknown(value: unknown): ThreadMessage | null {
   if (!isRecord(value)) {
     return null;
   }
@@ -142,7 +144,7 @@ function readThreadMessageFromUnknown(value: unknown): ChatMessage | null {
   }
 
   const attachments = readChatAttachmentList(value.attachments);
-  const dialogueSkillSelections = readThreadSkillSelectionList(value.dialogueSkillSelections);
+  const skillActivations = readThreadSkillActivationList(value.skillActivations);
 
   return {
     id,
@@ -151,7 +153,7 @@ function readThreadMessageFromUnknown(value: unknown): ChatMessage | null {
     createdAt,
     turnId,
     attachments,
-    dialogueSkillSelections,
+    skillActivations,
   };
 }
 
@@ -216,16 +218,16 @@ function readThreadMcpServerList(value: unknown): ThreadSnapshot["mcpServers"] {
   return servers;
 }
 
-function readThreadMcpRpcHistoryList(value: unknown): McpRpcHistoryEntry[] {
+function readThreadOperationLogEntryList(value: unknown): ThreadOperationLogEntry[] {
   if (!Array.isArray(value)) {
     return [];
   }
 
-  const entries: McpRpcHistoryEntry[] = [];
+  const entries: ThreadOperationLogEntry[] = [];
   const seenIds = new Set<string>();
 
   for (const entry of value) {
-    const parsed = readThreadMcpRpcHistoryEntryFromUnknown(entry);
+    const parsed = readThreadOperationLogEntryFromUnknown(entry);
     if (!parsed || seenIds.has(parsed.id)) {
       continue;
     }
@@ -237,8 +239,8 @@ function readThreadMcpRpcHistoryList(value: unknown): McpRpcHistoryEntry[] {
   return entries;
 }
 
-function readThreadMcpRpcHistoryEntryFromUnknown(value: unknown): McpRpcHistoryEntry | null {
-  const parsed = readMcpRpcHistoryEntryFromUnknown(value);
+function readThreadOperationLogEntryFromUnknown(value: unknown): ThreadOperationLogEntry | null {
+  const parsed = readThreadOperationLogEntryFromStream(value);
   if (!parsed || !isRecord(value)) {
     return null;
   }

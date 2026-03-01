@@ -18,13 +18,13 @@ import { methodNotAllowedResponse } from "~/lib/server/http";
 import {
   installGlobalServerErrorLogging,
   logServerRouteEvent,
-} from "~/lib/server/observability/app-event-log";
+} from "~/lib/server/observability/runtime-event-log";
 import { readThreadSnapshotFromUnknown } from "~/lib/home/thread/parsers";
 import {
-  buildThreadMessageSkillSelectionRowId,
-  buildThreadMcpRpcLogRowId,
+  buildThreadMessageSkillActivationRowId,
+  buildThreadOperationLogRowId,
   buildThreadMcpServerRowId,
-  buildThreadSkillSelectionRowId,
+  buildThreadSkillActivationRowId,
 } from "~/lib/home/thread/server-ids";
 import {
   hasThreadInteraction,
@@ -389,10 +389,10 @@ export async function saveThreadSnapshot(
       },
     });
 
-    if (snapshot.mcpRpcHistory.length > 0) {
+    if (snapshot.mcpRpcLogs.length > 0) {
       await transaction.threadOperationLog.createMany({
-        data: snapshot.mcpRpcHistory.map((entry, index) => ({
-          rowId: buildThreadMcpRpcLogRowId(existing.id, entry.id, index),
+        data: snapshot.mcpRpcLogs.map((entry, index) => ({
+          rowId: buildThreadOperationLogRowId(existing.id, entry.id, index),
           sourceRpcId: entry.id,
           threadId: existing.id,
           conversationOrder: index,
@@ -415,7 +415,7 @@ export async function saveThreadSnapshot(
       userId,
       skillSelections: [
         ...snapshot.skillSelections,
-        ...snapshot.messages.flatMap((message) => message.dialogueSkillSelections),
+        ...snapshot.messages.flatMap((message) => message.skillActivations),
       ],
     });
 
@@ -436,7 +436,7 @@ export async function saveThreadSnapshot(
           }
 
           return {
-            id: buildThreadSkillSelectionRowId(existing.id, index),
+            id: buildThreadSkillActivationRowId(existing.id, index),
             threadId: existing.id,
             selectionOrder: index,
             skillProfileId,
@@ -454,7 +454,7 @@ export async function saveThreadSnapshot(
     });
 
     const messageSkillActivations = snapshot.messages.flatMap((message) =>
-      message.dialogueSkillSelections.map((selection, index) => {
+      message.skillActivations.map((selection, index) => {
         const skillProfileId = skillProfileIdsByLocation.get(selection.location);
         if (!skillProfileId) {
           throw new Error(
@@ -463,7 +463,7 @@ export async function saveThreadSnapshot(
         }
 
         return {
-          id: buildThreadMessageSkillSelectionRowId(message.id, index),
+          id: buildThreadMessageSkillActivationRowId(message.id, index),
           messageId: message.id,
           selectionOrder: index,
           skillProfileId,
@@ -856,7 +856,7 @@ function mapStoredThreadToSnapshot(value: {
         createdAt: message.createdAt,
         turnId: message.turnId,
         attachments: readJsonValue(message.attachmentsJson, []),
-        dialogueSkillSelections: message.skillActivations.map((activation) => ({
+        skillActivations: message.skillActivations.map((activation) => ({
           name: activation.skillProfile.name,
           location: activation.skillProfile.location,
         })),
@@ -883,7 +883,7 @@ function mapStoredThreadToSnapshot(value: {
               timeoutSeconds: server.timeoutSeconds,
             },
       ),
-      mcpRpcHistory: value.mcpRpcLogs.map((entry) => ({
+      mcpRpcLogs: value.mcpRpcLogs.map((entry) => ({
         id: entry.sourceRpcId,
         sequence: entry.sequence,
         operationType: entry.operationType,

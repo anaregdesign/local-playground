@@ -11,7 +11,7 @@ import {
 import {
   installGlobalServerErrorLogging,
   logServerRouteEvent,
-} from "~/lib/server/observability/app-event-log";
+} from "~/lib/server/observability/runtime-event-log";
 import { methodNotAllowedResponse } from "~/lib/server/http";
 import {
   CHAT_MAX_AGENT_INSTRUCTION_LENGTH,

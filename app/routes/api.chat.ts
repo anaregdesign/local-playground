@@ -32,7 +32,7 @@ import {
 import {
   installGlobalServerErrorLogging,
   logServerRouteEvent,
-} from "~/lib/server/observability/app-event-log";
+} from "~/lib/server/observability/runtime-event-log";
 import { methodNotAllowedResponse } from "~/lib/server/http";
 import {
   CHAT_ATTACHMENT_ALLOWED_EXTENSIONS,
@@ -102,7 +102,7 @@ import {
   type SkillResourceKind,
 } from "~/lib/server/skills/runtime";
 
-type ChatRole = "user" | "assistant";
+type ThreadMessageRole = "user" | "assistant";
 
 type ClientAttachment = {
   name: string;
@@ -112,7 +112,7 @@ type ClientAttachment = {
 };
 
 type ClientMessage = {
-  role: ChatRole;
+  role: ThreadMessageRole;
   content: string;
   attachments: ClientAttachment[];
 };
@@ -172,7 +172,7 @@ type ChatExecutionOptions = {
 type ChatExecutionResult = {
   message: string;
   threadEnvironment: ThreadEnvironment;
-  mcpRpcCount: number;
+  operationLogCount: number;
 };
 type JsonRpcRequestPayload = {
   jsonrpc: "2.0";
@@ -193,7 +193,7 @@ type JsonRpcResponsePayload =
         message: string;
       };
     };
-type McpRpcRecord = {
+type ThreadOperationLogRecord = {
   id: string;
   sequence: number;
   operationType: "mcp" | "skill";
@@ -212,8 +212,8 @@ type ChatExecutionEvent =
       isMcp?: boolean;
     }
   | {
-      type: "mcp_rpc";
-      record: McpRpcRecord;
+      type: "operation_log";
+      record: ThreadOperationLogRecord;
     };
 type ChatProgressEvent = {
   message: string;
@@ -231,8 +231,8 @@ type ChatStreamPayload =
       isMcp?: boolean;
     }
   | {
-      type: "mcp_rpc";
-      record: McpRpcRecord;
+      type: "operation_log";
+      record: ThreadOperationLogRecord;
     }
   | {
       type: "final";
@@ -272,7 +272,7 @@ type SkillRuntimeContext = {
 type SkillToolCategory = SkillResourceKind;
 type SkillToolLogHandlers = {
   nextSequence: () => number;
-  onRecord: (record: McpRpcRecord) => void;
+  onRecord: (record: ThreadOperationLogRecord) => void;
 };
 
 type SkillToolExecutionContext = {
@@ -540,7 +540,7 @@ export async function action({ request }: Route.ActionArgs) {
       context: {
         ...logContext,
         responseLength: result.message.length,
-        mcpRpcCount: result.mcpRpcCount,
+        operationLogCount: result.operationLogCount,
       },
     });
     return Response.json({
@@ -579,7 +579,7 @@ async function executeChat(
   const connectedMcpServers: MCPServer[] = [];
   let codeInterpreterContainerId = "";
   const toolNameByCallId = new Map<string, string>();
-  let mcpRpcSequence = 0;
+  let operationLogSequence = 0;
   const hasMcpServers = options.mcpServers.length > 0;
   const azureMcpAuthorizationTokenPromiseByScope = new Map<string, Promise<string>>();
   const skillExecutionContext: SkillToolExecutionContext = {
@@ -593,15 +593,15 @@ async function executeChat(
       ...(event.isMcp ? { isMcp: true } : {}),
     });
   };
-  const emitMcpRpcRecord = (record: McpRpcRecord) => {
+  const emitThreadOperationLogRecord = (record: ThreadOperationLogRecord) => {
     onEvent?.({
-      type: "mcp_rpc",
+      type: "operation_log",
       record,
     });
   };
-  const nextMcpRpcSequence = () => {
-    mcpRpcSequence += 1;
-    return mcpRpcSequence;
+  const nextThreadOperationLogSequence = () => {
+    operationLogSequence += 1;
+    return operationLogSequence;
   };
 
   try {
@@ -618,8 +618,8 @@ async function executeChat(
         isMcp: true,
       });
 
-      const connectSequence = nextMcpRpcSequence();
-      const connectRequestId = buildMcpRpcRequestId(serverConfig.name, connectSequence);
+      const connectSequence = nextThreadOperationLogSequence();
+      const connectRequestId = buildThreadOperationLogRequestId(serverConfig.name, connectSequence);
       const connectStartedAt = new Date().toISOString();
       const connectRequest: JsonRpcRequestPayload = {
         jsonrpc: "2.0",
@@ -647,8 +647,8 @@ async function executeChat(
           },
         });
         instrumentedServer = instrumentMcpServer(server, {
-          nextSequence: nextMcpRpcSequence,
-          onRecord: emitMcpRpcRecord,
+          nextSequence: nextThreadOperationLogSequence,
+          onRecord: emitThreadOperationLogRecord,
         });
 
         await instrumentedServer.connect();
@@ -660,7 +660,7 @@ async function executeChat(
             message: readErrorMessage(error),
           },
         };
-        emitMcpRpcRecord({
+        emitThreadOperationLogRecord({
           id: connectRequestId,
           sequence: connectSequence,
           operationType: "mcp",
@@ -685,7 +685,7 @@ async function executeChat(
           status: "connected",
         },
       };
-      emitMcpRpcRecord({
+      emitThreadOperationLogRecord({
         id: connectRequestId,
         sequence: connectSequence,
         operationType: "mcp",
@@ -707,8 +707,8 @@ async function executeChat(
       explicitSkillLocations: options.explicitSkillLocations,
     });
     emitSkillActivationOperationLogs(skillRuntime, {
-      nextSequence: nextMcpRpcSequence,
-      onRecord: emitMcpRpcRecord,
+      nextSequence: nextThreadOperationLogSequence,
+      onRecord: emitThreadOperationLogRecord,
     }, skillExecutionContext);
     const skillWarnings = collectSkillRuntimeWarnings(skillRuntime);
     if (skillWarnings.length > 0) {
@@ -766,8 +766,8 @@ async function executeChat(
     const enableCodeInterpreterTool =
       codeInterpreterEnabledForRun && codeInterpreterContainerId.length > 0;
     const skillTools = buildSkillTools(skillRuntime.activeSkills, {
-      nextSequence: nextMcpRpcSequence,
-      onRecord: emitMcpRpcRecord,
+      nextSequence: nextThreadOperationLogSequence,
+      onRecord: emitThreadOperationLogRecord,
     }, skillExecutionContext);
 
     const agent = new Agent({
@@ -861,7 +861,7 @@ async function executeChat(
       return {
         message: assistantMessage,
         threadEnvironment: cloneThreadEnvironment(skillExecutionContext.threadEnvironment),
-        mcpRpcCount: mcpRpcSequence,
+        operationLogCount: operationLogSequence,
       };
     }
 
@@ -883,7 +883,7 @@ async function executeChat(
     return {
       message: assistantMessage,
       threadEnvironment: cloneThreadEnvironment(skillExecutionContext.threadEnvironment),
-      mcpRpcCount: mcpRpcSequence,
+      operationLogCount: operationLogSequence,
     };
   } finally {
     await Promise.allSettled([
@@ -938,7 +938,7 @@ function streamChatResponse(options: ChatExecutionOptions): Response {
           }
 
           send({
-            type: "mcp_rpc",
+            type: "operation_log",
             record: event.record,
           });
         });
@@ -959,7 +959,7 @@ function streamChatResponse(options: ChatExecutionOptions): Response {
           context: {
             ...buildChatExecutionLogContext(options),
             responseLength: result.message.length,
-            mcpRpcCount: result.mcpRpcCount,
+            operationLogCount: result.operationLogCount,
           },
         });
       } catch (error) {
@@ -2355,7 +2355,7 @@ function instrumentMcpServer(
   server: MCPServer,
   handlers: {
     nextSequence: () => number;
-    onRecord: (record: McpRpcRecord) => void;
+    onRecord: (record: ThreadOperationLogRecord) => void;
   },
 ): MCPServer {
   const originalListTools = server.listTools.bind(server);
@@ -2376,7 +2376,7 @@ function instrumentMcpServer(
     }
 
     const sequence = handlers.nextSequence();
-    const requestId = buildMcpRpcRequestId(server.name, sequence);
+    const requestId = buildThreadOperationLogRequestId(server.name, sequence);
     const startedAt = new Date().toISOString();
     const requestPayload: JsonRpcRequestPayload = {
       jsonrpc: "2.0",
@@ -2453,7 +2453,7 @@ function instrumentMcpServer(
 
   server.callTool = async (toolName, args, meta) => {
     const sequence = handlers.nextSequence();
-    const requestId = buildMcpRpcRequestId(server.name, sequence);
+    const requestId = buildThreadOperationLogRequestId(server.name, sequence);
     const startedAt = new Date().toISOString();
     const requestPayload: JsonRpcRequestPayload = {
       jsonrpc: "2.0",
@@ -2517,7 +2517,7 @@ function instrumentMcpServer(
   return server;
 }
 
-function buildMcpRpcRequestId(serverName: string, sequence: number): string {
+function buildThreadOperationLogRequestId(serverName: string, sequence: number): string {
   const normalizedName = serverName.trim().toLowerCase().replace(/[^a-z0-9_-]+/g, "-") || "mcp";
   return `${normalizedName}-${Date.now()}-${sequence}`;
 }
@@ -3211,7 +3211,7 @@ function buildSkillTools(
     const operationParams = readSkillOperationParams(input);
     const sequence = logHandlers.nextSequence();
     const serverName = readSkillOperationServerName(input);
-    const requestId = buildMcpRpcRequestId(serverName, sequence);
+    const requestId = buildThreadOperationLogRequestId(serverName, sequence);
     const startedAt = new Date().toISOString();
     const requestPayload: JsonRpcRequestPayload = {
       jsonrpc: "2.0",
@@ -3950,7 +3950,7 @@ function emitSkillActivationOperationLogs(
   runtime: SkillRuntimeContext,
   handlers: {
     nextSequence: () => number;
-    onRecord: (record: McpRpcRecord) => void;
+    onRecord: (record: ThreadOperationLogRecord) => void;
   },
   executionContext: SkillToolExecutionContext,
 ): void {
@@ -3969,8 +3969,8 @@ function buildInitialSkillOperationRecords(
     nextSequence: () => number;
     threadEnvironment: ThreadEnvironment;
   },
-): McpRpcRecord[] {
-  const records: McpRpcRecord[] = [];
+): ThreadOperationLogRecord[] {
+  const records: ThreadOperationLogRecord[] = [];
   for (const skill of runtime.activeSkills) {
     records.push(buildSkillActivateOperationRecord(skill, options));
     if (skill.guidePreloadRequested) {
@@ -3987,9 +3987,9 @@ function buildSkillActivateOperationRecord(
     nextSequence: () => number;
     threadEnvironment: ThreadEnvironment;
   },
-): McpRpcRecord {
+): ThreadOperationLogRecord {
   const sequence = options.nextSequence();
-  const requestId = buildMcpRpcRequestId(skill.name, sequence);
+  const requestId = buildThreadOperationLogRequestId(skill.name, sequence);
   const startedAt = new Date().toISOString();
 
   return {
@@ -4034,9 +4034,9 @@ function buildSkillGuideReadOperationRecord(
     nextSequence: () => number;
     threadEnvironment: ThreadEnvironment;
   },
-): McpRpcRecord {
+): ThreadOperationLogRecord {
   const sequence = options.nextSequence();
-  const requestId = buildMcpRpcRequestId(skill.name, sequence);
+  const requestId = buildThreadOperationLogRequestId(skill.name, sequence);
   const startedAt = new Date().toISOString();
   const request: JsonRpcRequestPayload = {
     jsonrpc: "2.0",
@@ -4107,9 +4107,9 @@ function buildSkillGuideReadOperationRecord(
 function buildSkillEnvironmentSnapshotOperationRecord(options: {
   nextSequence: () => number;
   threadEnvironment: ThreadEnvironment;
-}): McpRpcRecord {
+}): ThreadOperationLogRecord {
   const sequence = options.nextSequence();
-  const requestId = buildMcpRpcRequestId("skill-runtime", sequence);
+  const requestId = buildThreadOperationLogRequestId("skill-runtime", sequence);
   const startedAt = new Date().toISOString();
   const threadEnvironment = cloneThreadEnvironment(options.threadEnvironment);
 

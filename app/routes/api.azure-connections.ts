@@ -22,7 +22,7 @@ import {
 import {
   installGlobalServerErrorLogging,
   logServerRouteEvent,
-} from "~/lib/server/observability/app-event-log";
+} from "~/lib/server/observability/runtime-event-log";
 import { methodNotAllowedResponse } from "~/lib/server/http";
 import type { AzureDependencies } from "~/lib/azure/dependencies";
 import type { Route } from "./+types/api.azure-connections";

@@ -4,26 +4,26 @@
 import type { ChatAttachment } from "~/lib/home/chat/attachments";
 import type { ThreadSkillActivation } from "~/lib/home/skills/types";
 
-export type ChatRole = "user" | "assistant";
+export type ThreadMessageRole = "user" | "assistant";
 
-export type ChatMessage = {
+export type ThreadMessage = {
   id: string;
-  role: ChatRole;
+  role: ThreadMessageRole;
   content: string;
   createdAt: string;
   turnId: string;
   attachments: ChatAttachment[];
-  dialogueSkillSelections: ThreadSkillActivation[];
+  skillActivations: ThreadSkillActivation[];
 };
 
-export function createMessage(
-  role: ChatRole,
+export function createThreadMessage(
+  role: ThreadMessageRole,
   content: string,
   turnId: string,
   attachments: ChatAttachment[] = [],
-  dialogueSkillSelections: ThreadSkillActivation[] = [],
+  skillActivations: ThreadSkillActivation[] = [],
   createdAt: string = new Date().toISOString(),
-): ChatMessage {
+): ThreadMessage {
   const randomPart = Math.random().toString(36).slice(2);
   const normalizedCreatedAt = typeof createdAt === "string" && createdAt.trim()
     ? createdAt.trim()
@@ -35,6 +35,6 @@ export function createMessage(
     createdAt: normalizedCreatedAt,
     turnId,
     attachments,
-    dialogueSkillSelections: dialogueSkillSelections.map((selection) => ({ ...selection })),
+    skillActivations: skillActivations.map((selection) => ({ ...selection })),
   };
 }

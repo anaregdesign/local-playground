@@ -1,13 +1,13 @@
 /**
- * API route module for /api/app-event-logs.
+ * API route module for /api/runtime-event-logs.
  */
-import { readClientAppEventLogPayload } from "~/lib/observability/app-event-log";
+import { readClientRuntimeEventLogPayload } from "~/lib/observability/runtime-event-log";
 import { readAzureArmUserContext } from "~/lib/server/auth/azure-user";
 import {
   installGlobalServerErrorLogging,
-  logAppEvent,
+  logRuntimeEvent,
   logServerRouteEvent,
-} from "~/lib/server/observability/app-event-log";
+} from "~/lib/server/observability/runtime-event-log";
 import { methodNotAllowedResponse } from "~/lib/server/http";
 
 const APP_EVENT_LOGS_ALLOWED_METHODS = ["POST"] as const;
@@ -30,7 +30,7 @@ export async function action({ request }: { request: Request }) {
   } catch {
     await logServerRouteEvent({
       request,
-      route: "/api/app-event-logs",
+      route: "/api/runtime-event-logs",
       eventName: "invalid_json_body",
       action: "parse_request_body",
       level: "warning",
@@ -40,11 +40,11 @@ export async function action({ request }: { request: Request }) {
     return Response.json({ error: "Invalid JSON body." }, { status: 400 });
   }
 
-  const parsed = readClientAppEventLogPayload(payload);
+  const parsed = readClientRuntimeEventLogPayload(payload);
   if (!parsed) {
     await logServerRouteEvent({
       request,
-      route: "/api/app-event-logs",
+      route: "/api/runtime-event-logs",
       eventName: "invalid_client_event_payload",
       action: "validate_payload",
       level: "warning",
@@ -59,7 +59,7 @@ export async function action({ request }: { request: Request }) {
   }
 
   const identity = await readAzureArmUserContext();
-  await logAppEvent({
+  await logRuntimeEvent({
     source: "client",
     level: parsed.level,
     category: parsed.category,

@@ -1,16 +1,16 @@
 /**
- * Test module verifying saved-profiles behavior.
+ * Test module verifying workspace-mcp-server-profiles behavior.
  */
 import { describe, expect, it } from "vitest";
 import {
-  buildSavedMcpServerOptions,
-  countSelectedSavedMcpServerOptions,
-  describeSavedMcpServer,
-  describeSavedMcpServerDetail,
+  buildWorkspaceMcpServerProfileOptions,
+  countSelectedWorkspaceMcpServerProfileOptions,
+  describeWorkspaceMcpServerProfile,
+  describeWorkspaceMcpServerProfileDetail,
   isMcpServersAuthRequired,
   resolveMcpTransportBadge,
-  shouldScheduleSavedMcpLoginRetry,
-} from "~/lib/home/mcp/saved-profiles";
+  shouldScheduleWorkspaceMcpServerProfileLoginRetry,
+} from "~/lib/home/mcp/workspace-mcp-server-profiles";
 
 describe("isMcpServersAuthRequired", () => {
   it("returns true for HTTP 401 even without payload", () => {
@@ -27,15 +27,15 @@ describe("isMcpServersAuthRequired", () => {
   });
 });
 
-describe("shouldScheduleSavedMcpLoginRetry", () => {
+describe("shouldScheduleWorkspaceMcpServerProfileLoginRetry", () => {
   it("returns true only when auth has just recovered and key exists", () => {
-    expect(shouldScheduleSavedMcpLoginRetry(true, "tenant::principal")).toBe(true);
+    expect(shouldScheduleWorkspaceMcpServerProfileLoginRetry(true, "tenant::principal")).toBe(true);
   });
 
   it("returns false when auth was not required or key is empty", () => {
-    expect(shouldScheduleSavedMcpLoginRetry(false, "tenant::principal")).toBe(false);
-    expect(shouldScheduleSavedMcpLoginRetry(true, "")).toBe(false);
-    expect(shouldScheduleSavedMcpLoginRetry(true, "   ")).toBe(false);
+    expect(shouldScheduleWorkspaceMcpServerProfileLoginRetry(false, "tenant::principal")).toBe(false);
+    expect(shouldScheduleWorkspaceMcpServerProfileLoginRetry(true, "")).toBe(false);
+    expect(shouldScheduleWorkspaceMcpServerProfileLoginRetry(true, "   ")).toBe(false);
   });
 });
 
@@ -78,10 +78,10 @@ describe("resolveMcpTransportBadge", () => {
   });
 });
 
-describe("describeSavedMcpServer", () => {
+describe("describeWorkspaceMcpServerProfile", () => {
   it("formats stdio server summaries", () => {
     expect(
-      describeSavedMcpServer({
+      describeWorkspaceMcpServerProfile({
         id: "stdio-1",
         name: "local",
         transport: "stdio",
@@ -96,7 +96,7 @@ describe("describeSavedMcpServer", () => {
 
   it("formats http server summaries", () => {
     expect(
-      describeSavedMcpServer({
+      describeWorkspaceMcpServerProfile({
         id: "http-1",
         name: "docs",
         transport: "streamable_http",
@@ -114,10 +114,10 @@ describe("describeSavedMcpServer", () => {
   });
 });
 
-describe("describeSavedMcpServerDetail", () => {
+describe("describeWorkspaceMcpServerProfileDetail", () => {
   it("formats details for stdio and http transports", () => {
     expect(
-      describeSavedMcpServerDetail({
+      describeWorkspaceMcpServerProfileDetail({
         id: "stdio-1",
         name: "local",
         transport: "stdio",
@@ -127,7 +127,7 @@ describe("describeSavedMcpServerDetail", () => {
       }),
     ).toBe("Working directory: (inherit current workspace)");
     expect(
-      describeSavedMcpServerDetail({
+      describeWorkspaceMcpServerProfileDetail({
         id: "http-1",
         name: "docs",
         transport: "streamable_http",
@@ -141,7 +141,7 @@ describe("describeSavedMcpServerDetail", () => {
   });
 });
 
-describe("buildSavedMcpServerOptions", () => {
+describe("buildWorkspaceMcpServerProfileOptions", () => {
   it("marks selected servers and sorts selected entries first", () => {
     const saved = [
       {
@@ -176,7 +176,7 @@ describe("buildSavedMcpServerOptions", () => {
       },
     ];
 
-    const options = buildSavedMcpServerOptions(saved, active);
+    const options = buildWorkspaceMcpServerProfileOptions(saved, active);
 
     expect(options).toEqual([
       expect.objectContaining({
@@ -193,10 +193,10 @@ describe("buildSavedMcpServerOptions", () => {
   });
 });
 
-describe("countSelectedSavedMcpServerOptions", () => {
+describe("countSelectedWorkspaceMcpServerProfileOptions", () => {
   it("counts selected options", () => {
     expect(
-      countSelectedSavedMcpServerOptions([
+      countSelectedWorkspaceMcpServerProfileOptions([
         {
           id: "1",
           name: "one",

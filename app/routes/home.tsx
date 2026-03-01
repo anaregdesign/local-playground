@@ -7,7 +7,7 @@ import { UnauthenticatedPanel } from "~/components/home/authorize/Unauthenticate
 import { PlaygroundPanel } from "~/components/home/playground/PlaygroundPanel";
 import {
   renderMessageContent,
-  renderTurnMcpLog,
+  renderTurnOperationLog,
 } from "~/components/home/playground/PlaygroundRenderers";
 import { useWorkspaceController } from "~/lib/home/controller/use-workspace-controller";
 import type { Route } from "./+types/home";
@@ -53,7 +53,7 @@ export default function Home() {
         <PlaygroundPanel
           {...playgroundPanelProps}
           renderMessageContent={renderMessageContent}
-          renderTurnMcpLog={renderTurnMcpLog}
+          renderTurnOperationLog={renderTurnOperationLog}
         />
 
         <div

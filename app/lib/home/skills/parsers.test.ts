@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import {
   readSkillCatalogList,
   readSkillRegistryCatalogList,
-  readThreadSkillSelectionList,
+  readThreadSkillActivationList,
 } from "~/lib/home/skills/parsers";
 
 describe("readSkillCatalogList", () => {
@@ -57,9 +57,9 @@ describe("readSkillCatalogList", () => {
   });
 });
 
-describe("readThreadSkillSelectionList", () => {
+describe("readThreadSkillActivationList", () => {
   it("parses valid selections and removes duplicates", () => {
-    const result = readThreadSkillSelectionList([
+    const result = readThreadSkillActivationList([
       {
         name: "local-playground-dev",
         location: "/repo/skills/local-playground-dev/SKILL.md",

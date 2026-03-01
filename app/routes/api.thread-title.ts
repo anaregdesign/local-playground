@@ -21,7 +21,7 @@ import type { ReasoningEffort } from "~/lib/home/shared/view-types";
 import {
   installGlobalServerErrorLogging,
   logServerRouteEvent,
-} from "~/lib/server/observability/app-event-log";
+} from "~/lib/server/observability/runtime-event-log";
 import { methodNotAllowedResponse } from "~/lib/server/http";
 
 type ParseResult<T> = { ok: true; value: T } | { ok: false; error: string };

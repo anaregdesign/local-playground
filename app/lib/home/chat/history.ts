@@ -1,13 +1,13 @@
 /**
  * Home runtime support module.
  */
-import type { McpRpcHistoryEntry } from "~/lib/home/chat/stream";
+import type { ThreadOperationLogEntry } from "~/lib/home/chat/stream";
 import type { ThreadSkillActivation } from "~/lib/home/skills/types";
 
-export function buildMcpHistoryByTurnId(
-  entries: McpRpcHistoryEntry[],
-): Map<string, McpRpcHistoryEntry[]> {
-  const byTurnId = new Map<string, McpRpcHistoryEntry[]>();
+export function buildThreadOperationLogsByTurnId(
+  entries: ThreadOperationLogEntry[],
+): Map<string, ThreadOperationLogEntry[]> {
+  const byTurnId = new Map<string, ThreadOperationLogEntry[]>();
   for (const entry of entries) {
     if (!entry.turnId) {
       continue;
@@ -20,7 +20,7 @@ export function buildMcpHistoryByTurnId(
   return byTurnId;
 }
 
-export function buildMcpEntryCopyPayload(entry: McpRpcHistoryEntry): Record<string, unknown> {
+export function buildThreadOperationLogCopyPayload(entry: ThreadOperationLogEntry): Record<string, unknown> {
   return {
     operationType: readOperationLogType(entry),
     id: entry.id,
@@ -37,8 +37,8 @@ export function buildMcpEntryCopyPayload(entry: McpRpcHistoryEntry): Record<stri
 }
 
 export function readOperationLogType(
-  entry: Pick<McpRpcHistoryEntry, "method"> &
-    Partial<Pick<McpRpcHistoryEntry, "operationType">>,
+  entry: Pick<ThreadOperationLogEntry, "method"> &
+    Partial<Pick<ThreadOperationLogEntry, "operationType">>,
 ): "mcp" | "skill" {
   if (entry.operationType === "skill") {
     return "skill";
@@ -51,7 +51,7 @@ export function readOperationLogType(
 }
 
 export function collectSuccessfulSkillGuideLocations(
-  entries: McpRpcHistoryEntry[],
+  entries: ThreadOperationLogEntry[],
   selectedSkills: Pick<ThreadSkillActivation, "location">[],
 ): string[] {
   if (entries.length === 0 || selectedSkills.length === 0) {

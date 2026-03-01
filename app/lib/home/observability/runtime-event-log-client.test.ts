@@ -1,5 +1,5 @@
 /**
- * Test module verifying app-event-log-client behavior.
+ * Test module verifying runtime-event-log-client behavior.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -8,14 +8,14 @@ async function flushMicrotasks(): Promise<void> {
   await Promise.resolve();
 }
 
-describe("app-event-log-client", () => {
+describe("runtime-event-log-client", () => {
   beforeEach(() => {
     vi.unstubAllGlobals();
     vi.clearAllMocks();
   });
 
   it("returns a no-op uninstall when window is unavailable", async () => {
-    const module = await import("./app-event-log-client");
+    const module = await import("./runtime-event-log-client");
     const uninstall = module.installGlobalClientErrorLogging();
     expect(typeof uninstall).toBe("function");
     uninstall();
@@ -25,7 +25,7 @@ describe("app-event-log-client", () => {
     vi.resetModules();
     const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 202 }));
     vi.stubGlobal("fetch", fetchMock);
-    const module = await import("./app-event-log-client");
+    const module = await import("./runtime-event-log-client");
 
     const payload = {
       level: "error" as const,
@@ -45,7 +45,7 @@ describe("app-event-log-client", () => {
     vi.resetModules();
     const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 202 }));
     vi.stubGlobal("fetch", fetchMock);
-    const module = await import("./app-event-log-client");
+    const module = await import("./runtime-event-log-client");
 
     const firstPayload = {
       level: "warning" as const,
@@ -73,7 +73,7 @@ describe("app-event-log-client", () => {
     vi.resetModules();
     const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 202 }));
     vi.stubGlobal("fetch", fetchMock);
-    const module = await import("./app-event-log-client");
+    const module = await import("./runtime-event-log-client");
 
     module.reportClientError("client_error_event", new Error("boom"), {
       category: "frontend",
