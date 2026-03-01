@@ -7,7 +7,7 @@ import type {
   SkillCatalogSource,
   SkillRegistryCatalog,
   SkillRegistrySkillEntry,
-  ThreadSkillSelection,
+  ThreadSkillActivation,
 } from "~/lib/home/skills/types";
 
 export function readSkillCatalogList(value: unknown): SkillCatalogEntry[] {
@@ -31,12 +31,12 @@ export function readSkillCatalogList(value: unknown): SkillCatalogEntry[] {
   return skills;
 }
 
-export function readThreadSkillSelectionList(value: unknown): ThreadSkillSelection[] {
+export function readThreadSkillSelectionList(value: unknown): ThreadSkillActivation[] {
   if (!Array.isArray(value)) {
     return [];
   }
 
-  const selections: ThreadSkillSelection[] = [];
+  const selections: ThreadSkillActivation[] = [];
   const seenLocations = new Set<string>();
 
   for (const entry of value) {
@@ -73,7 +73,7 @@ export function readSkillRegistryCatalogList(value: unknown): SkillRegistryCatal
   return catalogs;
 }
 
-export function readThreadSkillSelectionFromUnknown(value: unknown): ThreadSkillSelection | null {
+export function readThreadSkillSelectionFromUnknown(value: unknown): ThreadSkillActivation | null {
   if (!isRecord(value)) {
     return null;
   }

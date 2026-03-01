@@ -148,7 +148,7 @@ export async function logServerRouteEvent(input: ServerRouteEventInput): Promise
 export async function logAppEvent(input: AppEventLogInput): Promise<void> {
   try {
     await ensurePersistenceDatabaseReady();
-    await prisma.appEventLog.create({
+    await prisma.runtimeEventLog.create({
       data: {
         id: typeof input.id === "string" && input.id.trim() ? input.id.trim() : createEventLogId(),
         createdAt: normalizeCreatedAt(input.createdAt),

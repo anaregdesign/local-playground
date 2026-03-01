@@ -12,7 +12,7 @@ export type SkillCatalogEntry = {
   source: SkillCatalogSource;
 };
 
-export type ThreadSkillSelection = {
+export type ThreadSkillActivation = {
   name: string;
   location: string;
 };

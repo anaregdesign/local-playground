@@ -2,7 +2,7 @@
  * Home runtime support module.
  */
 import type { McpRpcHistoryEntry } from "~/lib/home/chat/stream";
-import type { ThreadSkillSelection } from "~/lib/home/skills/types";
+import type { ThreadSkillActivation } from "~/lib/home/skills/types";
 
 export function buildMcpHistoryByTurnId(
   entries: McpRpcHistoryEntry[],
@@ -52,7 +52,7 @@ export function readOperationLogType(
 
 export function collectSuccessfulSkillGuideLocations(
   entries: McpRpcHistoryEntry[],
-  selectedSkills: Pick<ThreadSkillSelection, "location">[],
+  selectedSkills: Pick<ThreadSkillActivation, "location">[],
 ): string[] {
   if (entries.length === 0 || selectedSkills.length === 0) {
     return [];

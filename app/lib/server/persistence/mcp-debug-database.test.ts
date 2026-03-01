@@ -8,12 +8,12 @@ import {
   buildDatabaseDebugLatestThreadToolDescription,
   buildDatabaseDebugTableToolDescription,
   databaseDebugDefaultReadLimit,
-  databaseDebugLatestThreadDefaultAppEventLimit,
+  databaseDebugLatestThreadDefaultRuntimeEventLimit,
   databaseDebugLatestThreadDefaultMcpRpcLimit,
   databaseDebugLatestThreadDefaultMcpServerLimit,
   databaseDebugLatestThreadDefaultMessageLimit,
   databaseDebugLatestThreadDefaultSkillSelectionLimit,
-  databaseDebugLatestThreadMaxAppEventLimit,
+  databaseDebugLatestThreadMaxRuntimeEventLimit,
   databaseDebugLatestThreadMaxMcpRpcLimit,
   databaseDebugLatestThreadMaxMcpServerLimit,
   databaseDebugLatestThreadMaxMessageLimit,
@@ -32,7 +32,7 @@ describe("mcp-debug-database metadata", () => {
     const tables = listDatabaseDebugTables();
     expect(tables).toHaveLength(11);
 
-    const appEventLog = tables.find((table) => table.tableName === "AppEventLog");
+    const appEventLog = tables.find((table) => table.tableName === "RuntimeEventLog");
     expect(appEventLog).toBeTruthy();
     expect(appEventLog?.accumulatesErrors).toBe(true);
     expect(appEventLog?.fields).toEqual(
@@ -60,7 +60,7 @@ describe("mcp-debug-database metadata", () => {
   });
 
   it("marks error accumulation tables in tool descriptions", () => {
-    const table = readDatabaseDebugTableByToolName("debug_read_thread_mcp_rpc_log_table");
+    const table = readDatabaseDebugTableByToolName("debug_read_thread_operation_log_table");
     expect(table).toBeTruthy();
     expect(table?.accumulatesErrors).toBe(true);
 
@@ -104,7 +104,7 @@ describe("mcp-debug-database metadata", () => {
   });
 
   it("normalizes table-scoped filters and ignores invalid entries", () => {
-    const table = readDatabaseDebugTableByToolName("debug_read_app_event_log_table");
+    const table = readDatabaseDebugTableByToolName("debug_read_runtime_event_log_table");
     expect(table).toBeTruthy();
 
     const result = normalizeDatabaseDebugReadOptions(
@@ -175,44 +175,44 @@ describe("mcp-debug-database metadata", () => {
     expect(description).toContain("Input options:");
     expect(description).toContain("Output fields:");
     expect(description).toContain("snapshot.messages[]");
-    expect(description).toContain("appEventLogs[]");
+    expect(description).toContain("runtimeEventLogs[]");
   });
 
   it("normalizes latest-thread read options with safe defaults and bounds", () => {
     expect(normalizeDatabaseDebugLatestThreadReadOptions()).toEqual({
       threadId: null,
       includeArchived: true,
-      includeAppEventLogs: true,
+      includeRuntimeEventLogs: true,
       includeAllRows: true,
       messageLimit: databaseDebugLatestThreadDefaultMessageLimit,
       mcpServerLimit: databaseDebugLatestThreadDefaultMcpServerLimit,
       mcpRpcLimit: databaseDebugLatestThreadDefaultMcpRpcLimit,
       skillSelectionLimit: databaseDebugLatestThreadDefaultSkillSelectionLimit,
-      appEventLimit: databaseDebugLatestThreadDefaultAppEventLimit,
+      runtimeEventLimit: databaseDebugLatestThreadDefaultRuntimeEventLimit,
     });
 
     expect(
       normalizeDatabaseDebugLatestThreadReadOptions({
         threadId: "  thread-001  ",
         includeArchived: false,
-        includeAppEventLogs: false,
+        includeRuntimeEventLogs: false,
         includeAllRows: false,
         messageLimit: databaseDebugLatestThreadMaxMessageLimit + 1000,
         mcpServerLimit: databaseDebugLatestThreadMaxMcpServerLimit + 1000,
         mcpRpcLimit: databaseDebugLatestThreadMaxMcpRpcLimit + 1000,
         skillSelectionLimit: databaseDebugLatestThreadMaxSkillSelectionLimit + 1000,
-        appEventLimit: databaseDebugLatestThreadMaxAppEventLimit + 1000,
+        runtimeEventLimit: databaseDebugLatestThreadMaxRuntimeEventLimit + 1000,
       }),
     ).toEqual({
       threadId: "thread-001",
       includeArchived: false,
-      includeAppEventLogs: false,
+      includeRuntimeEventLogs: false,
       includeAllRows: false,
       messageLimit: databaseDebugLatestThreadMaxMessageLimit,
       mcpServerLimit: databaseDebugLatestThreadMaxMcpServerLimit,
       mcpRpcLimit: databaseDebugLatestThreadMaxMcpRpcLimit,
       skillSelectionLimit: databaseDebugLatestThreadMaxSkillSelectionLimit,
-      appEventLimit: databaseDebugLatestThreadMaxAppEventLimit,
+      runtimeEventLimit: databaseDebugLatestThreadMaxRuntimeEventLimit,
     });
   });
 });

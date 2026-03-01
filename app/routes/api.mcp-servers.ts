@@ -264,7 +264,7 @@ export async function action({ request }: Route.ActionArgs) {
 
 async function readSavedMcpServers(userId: number): Promise<SavedMcpServerConfig[]> {
   await ensurePersistenceDatabaseReady();
-  const records = await prisma.mcpServerProfile.findMany({
+  const records = await prisma.workspaceMcpServerProfile.findMany({
     where: {
       userId,
     },
@@ -297,14 +297,14 @@ async function readSavedMcpServers(userId: number): Promise<SavedMcpServerConfig
 async function writeSavedMcpServers(userId: number, profiles: SavedMcpServerConfig[]): Promise<void> {
   await ensurePersistenceDatabaseReady();
   await prisma.$transaction(async (transaction) => {
-    await transaction.mcpServerProfile.deleteMany({
+    await transaction.workspaceMcpServerProfile.deleteMany({
       where: { userId },
     });
     if (profiles.length === 0) {
       return;
     }
 
-    await transaction.mcpServerProfile.createMany({
+    await transaction.workspaceMcpServerProfile.createMany({
       data: profiles.map((profile, index) => mapProfileToDatabaseRecord(userId, profile, index)),
     });
   });

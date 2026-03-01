@@ -85,7 +85,7 @@ import {
   THREAD_ENVIRONMENT_VARIABLES_MAX,
 } from "~/lib/constants";
 import type { AzureDependencies } from "~/lib/azure/dependencies";
-import type { ThreadSkillSelection } from "~/lib/home/skills/types";
+import type { ThreadSkillActivation } from "~/lib/home/skills/types";
 import {
   cloneThreadEnvironment,
   parseThreadEnvironmentFromUnknown,
@@ -136,7 +136,7 @@ type ClientMcpStdioServerConfig = {
   env: Record<string, string>;
 };
 type ClientMcpServerConfig = ClientMcpHttpServerConfig | ClientMcpStdioServerConfig;
-type ClientSkillSelection = ThreadSkillSelection;
+type ClientSkillSelection = ThreadSkillActivation;
 
 type ParseResult<T> = { ok: true; value: T } | { ok: false; error: string };
 const legacyUnavailableDefaultStdioNpxPackageNameSet = new Set<string>(

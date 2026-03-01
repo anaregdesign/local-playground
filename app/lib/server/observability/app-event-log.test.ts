@@ -3,16 +3,16 @@
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { ensurePersistenceDatabaseReadyMock, appEventLogCreateMock } = vi.hoisted(() => ({
+const { ensurePersistenceDatabaseReadyMock, runtimeEventLogCreateMock } = vi.hoisted(() => ({
   ensurePersistenceDatabaseReadyMock: vi.fn(),
-  appEventLogCreateMock: vi.fn(),
+  runtimeEventLogCreateMock: vi.fn(),
 }));
 
 vi.mock("~/lib/server/persistence/prisma", () => ({
   ensurePersistenceDatabaseReady: ensurePersistenceDatabaseReadyMock,
   prisma: {
-    appEventLog: {
-      create: appEventLogCreateMock,
+    runtimeEventLog: {
+      create: runtimeEventLogCreateMock,
     },
   },
 }));
@@ -23,7 +23,7 @@ describe("logAppEvent", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     ensurePersistenceDatabaseReadyMock.mockResolvedValue(undefined);
-    appEventLogCreateMock.mockResolvedValue(undefined);
+    runtimeEventLogCreateMock.mockResolvedValue(undefined);
   });
 
   it("writes normalized app event logs to prisma", async () => {
@@ -42,8 +42,8 @@ describe("logAppEvent", () => {
     });
 
     expect(ensurePersistenceDatabaseReadyMock).toHaveBeenCalledTimes(1);
-    expect(appEventLogCreateMock).toHaveBeenCalledTimes(1);
-    const call = appEventLogCreateMock.mock.calls[0]?.[0] as {
+    expect(runtimeEventLogCreateMock).toHaveBeenCalledTimes(1);
+    const call = runtimeEventLogCreateMock.mock.calls[0]?.[0] as {
       data: { contextJson: string; source: string; level: string; category: string; eventName: string };
     };
     expect(call.data.source).toBe("server");
@@ -56,7 +56,7 @@ describe("logAppEvent", () => {
   });
 
   it("never throws when database write fails", async () => {
-    appEventLogCreateMock.mockRejectedValueOnce(new Error("db failed"));
+    runtimeEventLogCreateMock.mockRejectedValueOnce(new Error("db failed"));
 
     await expect(
       logAppEvent({
@@ -74,7 +74,7 @@ describe("logServerRouteEvent", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     ensurePersistenceDatabaseReadyMock.mockResolvedValue(undefined);
-    appEventLogCreateMock.mockResolvedValue(undefined);
+    runtimeEventLogCreateMock.mockResolvedValue(undefined);
   });
 
   it("captures route request metadata and error details", async () => {
@@ -94,7 +94,7 @@ describe("logServerRouteEvent", () => {
       },
     });
 
-    const call = appEventLogCreateMock.mock.calls[0]?.[0] as {
+    const call = runtimeEventLogCreateMock.mock.calls[0]?.[0] as {
       data: {
         httpMethod: string;
         httpPath: string;

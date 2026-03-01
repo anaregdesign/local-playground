@@ -77,7 +77,7 @@ describe("mcp route", () => {
     expect(Array.isArray(body.result.tools)).toBe(true);
 
     const appEventTool = body.result.tools.find(
-      (entry: { name?: string }) => entry.name === "debug_read_app_event_log_table",
+      (entry: { name?: string }) => entry.name === "debug_read_runtime_event_log_table",
     );
     expect(appEventTool).toBeTruthy();
     expect(typeof appEventTool.description).toBe("string");
@@ -96,6 +96,6 @@ describe("mcp route", () => {
     expect(latestThreadTool.description).toContain("Schema source:");
     expect(latestThreadTool.description).toContain("Output fields:");
     expect(latestThreadTool.inputSchema?.properties?.threadId).toBeTruthy();
-    expect(latestThreadTool.inputSchema?.properties?.appEventLimit).toBeTruthy();
+    expect(latestThreadTool.inputSchema?.properties?.runtimeEventLimit).toBeTruthy();
   });
 });

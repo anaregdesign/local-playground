@@ -8,7 +8,7 @@ import {
 import type { McpServerConfig } from "~/lib/home/mcp/profile";
 import type { ChatMessage } from "~/lib/home/chat/messages";
 import type { McpRpcHistoryEntry } from "~/lib/home/chat/stream";
-import type { ThreadSkillSelection } from "~/lib/home/skills/types";
+import type { ThreadSkillActivation } from "~/lib/home/skills/types";
 import type { ThreadEnvironment } from "~/lib/home/thread/environment";
 import type { ThreadSnapshot } from "~/lib/home/thread/types";
 
@@ -41,7 +41,7 @@ export function cloneMcpRpcHistory(value: McpRpcHistoryEntry[]): McpRpcHistoryEn
   }));
 }
 
-export function cloneThreadSkillSelections(value: ThreadSkillSelection[]): ThreadSkillSelection[] {
+export function cloneThreadSkillSelections(value: ThreadSkillActivation[]): ThreadSkillActivation[] {
   return value.map((entry) => ({
     ...entry,
   }));

@@ -73,13 +73,13 @@ export type DatabaseDebugTableReadResult = {
 export type DatabaseDebugLatestThreadReadOptions = {
   threadId: string | null;
   includeArchived: boolean;
-  includeAppEventLogs: boolean;
+  includeRuntimeEventLogs: boolean;
   includeAllRows: boolean;
   messageLimit: number;
   mcpServerLimit: number;
   mcpRpcLimit: number;
   skillSelectionLimit: number;
-  appEventLimit: number;
+  runtimeEventLimit: number;
 };
 
 export type DatabaseDebugLatestThreadReadResult = {
@@ -90,20 +90,20 @@ export type DatabaseDebugLatestThreadReadResult = {
   };
   found: boolean;
   snapshot: Record<string, unknown> | null;
-  appEventLogs: Array<Record<string, unknown>>;
+  runtimeEventLogs: Array<Record<string, unknown>>;
   counts: {
     messages: number;
     mcpServers: number;
     mcpRpcLogs: number;
     skillSelections: number;
-    appEventLogs: number;
+    runtimeEventLogs: number;
   };
   truncation: {
     messages: boolean;
     mcpServers: boolean;
     mcpRpcLogs: boolean;
     skillSelections: boolean;
-    appEventLogs: boolean;
+    runtimeEventLogs: boolean;
   };
 };
 
@@ -115,12 +115,12 @@ export const databaseDebugLatestThreadDefaultMessageLimit = 400;
 export const databaseDebugLatestThreadDefaultMcpServerLimit = 64;
 export const databaseDebugLatestThreadDefaultMcpRpcLimit = 1_500;
 export const databaseDebugLatestThreadDefaultSkillSelectionLimit = 128;
-export const databaseDebugLatestThreadDefaultAppEventLimit = 400;
+export const databaseDebugLatestThreadDefaultRuntimeEventLimit = 400;
 export const databaseDebugLatestThreadMaxMessageLimit = 5_000;
 export const databaseDebugLatestThreadMaxMcpServerLimit = 512;
 export const databaseDebugLatestThreadMaxMcpRpcLimit = 10_000;
 export const databaseDebugLatestThreadMaxSkillSelectionLimit = 1_000;
-export const databaseDebugLatestThreadMaxAppEventLimit = 5_000;
+export const databaseDebugLatestThreadMaxRuntimeEventLimit = 5_000;
 
 const databaseDebugMaxReadInValues = 50;
 const databaseDebugMaxTextFilterLength = 2_000;
@@ -205,8 +205,8 @@ const tableDefinitions: DatabaseDebugTableDefinition[] = [
     ],
   },
   {
-    tableName: "McpServerProfile",
-    toolName: "debug_read_mcp_server_profile_table",
+    tableName: "WorkspaceMcpServerProfile",
+    toolName: "debug_read_workspace_mcp_server_profile_table",
     purpose:
       "Stores reusable MCP server profiles saved by each user (HTTP/SSE/stdio transport settings).",
     accumulatesErrors: false,
@@ -367,8 +367,8 @@ const tableDefinitions: DatabaseDebugTableDefinition[] = [
     ],
   },
   {
-    tableName: "ThreadSkillSelection",
-    toolName: "debug_read_thread_skill_selection_table",
+    tableName: "ThreadSkillActivation",
+    toolName: "debug_read_thread_skill_activation_table",
     purpose:
       "Stores ordered skill selections attached to each thread for agent runtime instructions.",
     accumulatesErrors: false,
@@ -489,8 +489,8 @@ const tableDefinitions: DatabaseDebugTableDefinition[] = [
     ],
   },
   {
-    tableName: "ThreadMcpServer",
-    toolName: "debug_read_thread_mcp_server_table",
+    tableName: "ThreadMcpConnection",
+    toolName: "debug_read_thread_mcp_connection_table",
     purpose:
       "Stores MCP server connections that were active for a specific thread snapshot.",
     accumulatesErrors: false,
@@ -582,8 +582,8 @@ const tableDefinitions: DatabaseDebugTableDefinition[] = [
     ],
   },
   {
-    tableName: "ThreadMcpRpcLog",
-    toolName: "debug_read_thread_mcp_rpc_log_table",
+    tableName: "ThreadOperationLog",
+    toolName: "debug_read_thread_operation_log_table",
     purpose:
       "Stores MCP RPC request/response logs for each thread and turn, including explicit error flags.",
     accumulatesErrors: true,
@@ -675,8 +675,8 @@ const tableDefinitions: DatabaseDebugTableDefinition[] = [
     ],
   },
   {
-    tableName: "AppEventLog",
-    toolName: "debug_read_app_event_log_table",
+    tableName: "RuntimeEventLog",
+    toolName: "debug_read_runtime_event_log_table",
     purpose:
       "Stores server/client observability events, including errors and warnings used for diagnostics.",
     accumulatesErrors: true,
@@ -874,17 +874,17 @@ export function buildDatabaseDebugLatestThreadToolDescription(): string {
   const lines = [
     "Debug read tool for retrieving a full thread snapshot in one call.",
     "Role: Reads the most-recent thread (or an explicit threadId) together with instruction, messages, MCP servers, MCP RPC logs, skill selections, and related app event logs.",
-    "Schema source: prisma/schema.prisma (Thread, ThreadInstruction, ThreadMessage, ThreadMcpServer, ThreadMcpRpcLog, ThreadSkillSelection, AppEventLog).",
+    "Schema source: prisma/schema.prisma (Thread, ThreadInstruction, ThreadMessage, ThreadMcpConnection, ThreadOperationLog, ThreadSkillActivation, RuntimeEventLog).",
     "Input options:",
     "- `threadId` (TEXT, optional): Specific thread ID to read. When omitted, the latest thread is selected by updatedAt.",
     "- `includeArchived` (BOOLEAN, optional): Include archived threads when selecting the latest thread. Defaults to true.",
-    "- `includeAppEventLogs` (BOOLEAN, optional): Include thread-linked AppEventLog rows. Defaults to true.",
+    "- `includeRuntimeEventLogs` (BOOLEAN, optional): Include thread-linked RuntimeEventLog rows. Defaults to true.",
     "- `includeAllRows` (BOOLEAN, optional): Return all related thread rows (messages/MCP/skills) without per-section take limits. Defaults to true.",
     `- \`messageLimit\` (INTEGER, optional): Applied when includeAllRows=false. Defaults to ${databaseDebugLatestThreadDefaultMessageLimit} (max ${databaseDebugLatestThreadMaxMessageLimit}).`,
     `- \`mcpServerLimit\` (INTEGER, optional): Applied when includeAllRows=false. Defaults to ${databaseDebugLatestThreadDefaultMcpServerLimit} (max ${databaseDebugLatestThreadMaxMcpServerLimit}).`,
     `- \`mcpRpcLimit\` (INTEGER, optional): Applied when includeAllRows=false. Defaults to ${databaseDebugLatestThreadDefaultMcpRpcLimit} (max ${databaseDebugLatestThreadMaxMcpRpcLimit}).`,
     `- \`skillSelectionLimit\` (INTEGER, optional): Applied when includeAllRows=false. Defaults to ${databaseDebugLatestThreadDefaultSkillSelectionLimit} (max ${databaseDebugLatestThreadMaxSkillSelectionLimit}).`,
-    `- \`appEventLimit\` (INTEGER, optional): Maximum AppEventLog rows when includeAppEventLogs=true. Defaults to ${databaseDebugLatestThreadDefaultAppEventLimit} (max ${databaseDebugLatestThreadMaxAppEventLimit}).`,
+    `- \`runtimeEventLimit\` (INTEGER, optional): Maximum RuntimeEventLog rows when includeRuntimeEventLogs=true. Defaults to ${databaseDebugLatestThreadDefaultRuntimeEventLimit} (max ${databaseDebugLatestThreadMaxRuntimeEventLimit}).`,
     "Output fields:",
     "- `target`: Which thread-selection mode was used (`latest` or `by_id`), and the effective threadId/includeArchived flags.",
     "- `found`: Whether a matching thread exists.",
@@ -894,7 +894,7 @@ export function buildDatabaseDebugLatestThreadToolDescription(): string {
     "- `snapshot.mcpServers[]`: Ordered MCP server snapshot rows. Includes parsed `headers`/`args`/`env` plus raw JSON fields.",
     "- `snapshot.mcpRpcLogs[]`: Ordered MCP RPC rows. Includes parsed `request`/`response` plus raw JSON fields.",
     "- `snapshot.skillSelections[]`: Ordered skill selections saved for the thread.",
-    "- `appEventLogs[]`: Related AppEventLog rows for the thread. Includes parsed `context` plus raw `contextJson`.",
+    "- `runtimeEventLogs[]`: Related RuntimeEventLog rows for the thread. Includes parsed `context` plus raw `contextJson`.",
     "- `counts`: Total row counts per section in storage.",
     "- `truncation`: True when returned rows are truncated by limits.",
   ];
@@ -906,19 +906,19 @@ export function normalizeDatabaseDebugLatestThreadReadOptions(
   options: {
     threadId?: unknown;
     includeArchived?: unknown;
-    includeAppEventLogs?: unknown;
+    includeRuntimeEventLogs?: unknown;
     includeAllRows?: unknown;
     messageLimit?: unknown;
     mcpServerLimit?: unknown;
     mcpRpcLimit?: unknown;
     skillSelectionLimit?: unknown;
-    appEventLimit?: unknown;
+    runtimeEventLimit?: unknown;
   } = {},
 ): DatabaseDebugLatestThreadReadOptions {
   return {
     threadId: readOptionalTextOption(options.threadId, 256),
     includeArchived: readBooleanOption(options.includeArchived, true),
-    includeAppEventLogs: readBooleanOption(options.includeAppEventLogs, true),
+    includeRuntimeEventLogs: readBooleanOption(options.includeRuntimeEventLogs, true),
     includeAllRows: readBooleanOption(options.includeAllRows, true),
     messageLimit: readBoundedIntegerOption(
       options.messageLimit,
@@ -944,11 +944,11 @@ export function normalizeDatabaseDebugLatestThreadReadOptions(
       1,
       databaseDebugLatestThreadMaxSkillSelectionLimit,
     ),
-    appEventLimit: readBoundedIntegerOption(
-      options.appEventLimit,
-      databaseDebugLatestThreadDefaultAppEventLimit,
+    runtimeEventLimit: readBoundedIntegerOption(
+      options.runtimeEventLimit,
+      databaseDebugLatestThreadDefaultRuntimeEventLimit,
       1,
-      databaseDebugLatestThreadMaxAppEventLimit,
+      databaseDebugLatestThreadMaxRuntimeEventLimit,
     ),
   };
 }
@@ -1036,34 +1036,34 @@ export async function readDatabaseDebugLatestThreadSnapshot(
       },
       found: false,
       snapshot: null,
-      appEventLogs: [],
+      runtimeEventLogs: [],
       counts: {
         messages: 0,
         mcpServers: 0,
         mcpRpcLogs: 0,
         skillSelections: 0,
-        appEventLogs: 0,
+        runtimeEventLogs: 0,
       },
       truncation: {
         messages: false,
         mcpServers: false,
         mcpRpcLogs: false,
         skillSelections: false,
-        appEventLogs: false,
+        runtimeEventLogs: false,
       },
     };
   }
 
-  const [appEventLogs, appEventLogCount] = options.includeAppEventLogs
+  const [runtimeEventLogs, runtimeEventLogCount] = options.includeRuntimeEventLogs
     ? await Promise.all([
-        prisma.appEventLog.findMany({
+        prisma.runtimeEventLog.findMany({
           where: {
             threadId: thread.id,
           },
           orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-          take: options.appEventLimit,
+          take: options.runtimeEventLimit,
         }),
-        prisma.appEventLog.count({
+        prisma.runtimeEventLog.count({
           where: {
             threadId: thread.id,
           },
@@ -1101,7 +1101,7 @@ export async function readDatabaseDebugLatestThreadSnapshot(
     threadEnvironment: normalizeUnknownForJson(readJsonValue(thread.threadEnvironmentJson, {})),
   };
   const instruction = thread.instruction ? { ...thread.instruction } : null;
-  const normalizedAppEventLogs = appEventLogs.map((event) => ({
+  const normalizedRuntimeEventLogs = runtimeEventLogs.map((event) => ({
     ...event,
     context: normalizeUnknownForJson(readJsonValue(event.contextJson, {})),
   }));
@@ -1121,20 +1121,20 @@ export async function readDatabaseDebugLatestThreadSnapshot(
       mcpRpcLogs,
       skillSelections,
     },
-    appEventLogs: normalizedAppEventLogs.map((row) => normalizeRecordForJson(row)),
+    runtimeEventLogs: normalizedRuntimeEventLogs.map((row) => normalizeRecordForJson(row)),
     counts: {
       messages: thread._count.messages,
       mcpServers: thread._count.mcpServers,
       mcpRpcLogs: thread._count.mcpRpcLogs,
       skillSelections: thread._count.skillSelections,
-      appEventLogs: appEventLogCount,
+      runtimeEventLogs: runtimeEventLogCount,
     },
     truncation: {
       messages: messages.length < thread._count.messages,
       mcpServers: mcpServers.length < thread._count.mcpServers,
       mcpRpcLogs: mcpRpcLogs.length < thread._count.mcpRpcLogs,
       skillSelections: skillSelections.length < thread._count.skillSelections,
-      appEventLogs: normalizedAppEventLogs.length < appEventLogCount,
+      runtimeEventLogs: normalizedRuntimeEventLogs.length < runtimeEventLogCount,
     },
   };
 }

@@ -532,14 +532,14 @@ async function saveThreadSnapshot(
       });
     }
 
-    await transaction.threadMcpServer.deleteMany({
+    await transaction.threadMcpConnection.deleteMany({
       where: {
         threadId: existing.id,
       },
     });
 
     if (snapshot.mcpServers.length > 0) {
-      await transaction.threadMcpServer.createMany({
+      await transaction.threadMcpConnection.createMany({
         data: snapshot.mcpServers.map((server, index) =>
           server.transport === "stdio"
             ? {
@@ -578,14 +578,14 @@ async function saveThreadSnapshot(
       });
     }
 
-    await transaction.threadMcpRpcLog.deleteMany({
+    await transaction.threadOperationLog.deleteMany({
       where: {
         threadId: existing.id,
       },
     });
 
     if (snapshot.mcpRpcHistory.length > 0) {
-      await transaction.threadMcpRpcLog.createMany({
+      await transaction.threadOperationLog.createMany({
         data: snapshot.mcpRpcHistory.map((entry, index) => ({
           rowId: buildThreadMcpRpcLogRowId(existing.id, entry.id, index),
           sourceRpcId: entry.id,
@@ -605,14 +605,14 @@ async function saveThreadSnapshot(
       });
     }
 
-    await transaction.threadSkillSelection.deleteMany({
+    await transaction.threadSkillActivation.deleteMany({
       where: {
         threadId: existing.id,
       },
     });
 
     if (snapshot.skillSelections.length > 0) {
-      await transaction.threadSkillSelection.createMany({
+      await transaction.threadSkillActivation.createMany({
         data: snapshot.skillSelections.map((selection, index) => ({
           id: buildThreadSkillSelectionRowId(existing.id, index),
           threadId: existing.id,

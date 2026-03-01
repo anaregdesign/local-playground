@@ -145,7 +145,7 @@ import {
 import type {
   SkillCatalogEntry,
   SkillRegistryCatalog,
-  ThreadSkillSelection,
+  ThreadSkillActivation,
 } from "~/lib/home/skills/types";
 import { copyTextToClipboard } from "~/lib/home/shared/clipboard";
 import { readStringList } from "~/lib/home/shared/collections";
@@ -288,8 +288,8 @@ export function useWorkspaceController() {
   const [isRestoringThread, setIsRestoringThread] = useState(false);
   const [threadError, setThreadError] = useState<string | null>(null);
   const [availableSkills, setAvailableSkills] = useState<SkillCatalogEntry[]>([]);
-  const [selectedThreadSkills, setSelectedThreadSkills] = useState<ThreadSkillSelection[]>([]);
-  const [selectedDialogueSkills, setSelectedDialogueSkills] = useState<ThreadSkillSelection[]>([]);
+  const [selectedThreadSkills, setSelectedThreadSkills] = useState<ThreadSkillActivation[]>([]);
+  const [selectedDialogueSkills, setSelectedDialogueSkills] = useState<ThreadSkillActivation[]>([]);
   const [skillRegistryCatalogs, setSkillRegistryCatalogs] = useState<SkillRegistryCatalog[]>([]);
   const [isMutatingSkillRegistries, setIsMutatingSkillRegistries] = useState(false);
   const [skillRegistryError, setSkillRegistryError] = useState<string | null>(null);
@@ -5113,10 +5113,10 @@ export function useWorkspaceController() {
 }
 
 function mergeSkillSelections(
-  threadSkills: ThreadSkillSelection[],
-  dialogueSkills: ThreadSkillSelection[],
-): ThreadSkillSelection[] {
-  const byLocation = new Map<string, ThreadSkillSelection>();
+  threadSkills: ThreadSkillActivation[],
+  dialogueSkills: ThreadSkillActivation[],
+): ThreadSkillActivation[] {
+  const byLocation = new Map<string, ThreadSkillActivation>();
   for (const selection of [...threadSkills, ...dialogueSkills]) {
     const location = selection.location.trim();
     if (!location || byLocation.has(location)) {

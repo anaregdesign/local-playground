@@ -9,12 +9,12 @@ import {
   buildDatabaseDebugTableToolDescription,
   databaseDebugDefaultReadLimit,
   databaseDebugFilterOperatorValues,
-  databaseDebugLatestThreadDefaultAppEventLimit,
+  databaseDebugLatestThreadDefaultRuntimeEventLimit,
   databaseDebugLatestThreadDefaultMcpRpcLimit,
   databaseDebugLatestThreadDefaultMcpServerLimit,
   databaseDebugLatestThreadDefaultMessageLimit,
   databaseDebugLatestThreadDefaultSkillSelectionLimit,
-  databaseDebugLatestThreadMaxAppEventLimit,
+  databaseDebugLatestThreadMaxRuntimeEventLimit,
   databaseDebugLatestThreadMaxMcpRpcLimit,
   databaseDebugLatestThreadMaxMcpServerLimit,
   databaseDebugLatestThreadMaxMessageLimit,
@@ -98,10 +98,10 @@ const latestThreadReadInputSchema = {
     .boolean()
     .optional()
     .describe("Include archived threads when selecting the latest thread. Defaults to true."),
-  includeAppEventLogs: z
+  includeRuntimeEventLogs: z
     .boolean()
     .optional()
-    .describe("Include AppEventLog rows linked to the selected thread. Defaults to true."),
+    .describe("Include RuntimeEventLog rows linked to the selected thread. Defaults to true."),
   includeAllRows: z
     .boolean()
     .optional()
@@ -144,14 +144,14 @@ const latestThreadReadInputSchema = {
     .describe(
       `Applied only when includeAllRows=false. Defaults to ${databaseDebugLatestThreadDefaultSkillSelectionLimit} (max ${databaseDebugLatestThreadMaxSkillSelectionLimit}).`,
     ),
-  appEventLimit: z
+  runtimeEventLimit: z
     .number()
     .int()
     .min(1)
-    .max(databaseDebugLatestThreadMaxAppEventLimit)
+    .max(databaseDebugLatestThreadMaxRuntimeEventLimit)
     .optional()
     .describe(
-      `Maximum related AppEventLog rows to return. Defaults to ${databaseDebugLatestThreadDefaultAppEventLimit} (max ${databaseDebugLatestThreadMaxAppEventLimit}).`,
+      `Maximum related RuntimeEventLog rows to return. Defaults to ${databaseDebugLatestThreadDefaultRuntimeEventLimit} (max ${databaseDebugLatestThreadMaxRuntimeEventLimit}).`,
     ),
 };
 

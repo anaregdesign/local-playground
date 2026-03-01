@@ -12,7 +12,7 @@ model WorkspaceUser {
   tenantId          String
   principalId       String
   azureSelection    AzureSelectionPreference?
-  mcpServerProfiles McpServerProfile[]
+  mcpServerProfiles WorkspaceMcpServerProfile[]
   threads           Thread[]
 
   @@unique([tenantId, principalId])
@@ -29,7 +29,7 @@ model AzureSelectionPreference {
   user                  WorkspaceUser @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
-model McpServerProfile {
+model WorkspaceMcpServerProfile {
   id             String  @id
   userId         Int
   sortOrder      Int
@@ -64,14 +64,14 @@ model Thread {
   user                  WorkspaceUser      @relation(fields: [userId], references: [id], onDelete: Cascade)
   instruction           ThreadInstruction?
   messages              ThreadMessage[]
-  mcpServers            ThreadMcpServer[]
-  mcpRpcLogs            ThreadMcpRpcLog[]
-  skillSelections       ThreadSkillSelection[]
+  mcpServers            ThreadMcpConnection[]
+  mcpRpcLogs            ThreadOperationLog[]
+  skillSelections       ThreadSkillActivation[]
 
   @@index([userId, updatedAt])
 }
 
-model ThreadSkillSelection {
+model ThreadSkillActivation {
   id            String @id
   threadId      String
   sortOrder     Int
@@ -103,7 +103,7 @@ model ThreadMessage {
   @@index([threadId, sortOrder])
 }
 
-model ThreadMcpServer {
+model ThreadMcpConnection {
   id             String  @id
   threadId       String
   sortOrder      Int
@@ -123,7 +123,7 @@ model ThreadMcpServer {
   @@index([threadId, sortOrder])
 }
 
-model ThreadMcpRpcLog {
+model ThreadOperationLog {
   rowId          String  @id
   sourceRpcId    String
   threadId       String
@@ -143,7 +143,7 @@ model ThreadMcpRpcLog {
   @@index([threadId, persistedOrder])
 }
 
-model AppEventLog {
+model RuntimeEventLog {
   id          String @id
   createdAt   String
   source      String
