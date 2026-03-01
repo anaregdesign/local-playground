@@ -1,7 +1,7 @@
 /**
- * Test module verifying /mcp behavior.
+ * Test module verifying /mcp/debug behavior.
  */
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
   ensurePersistenceDatabaseReadyMock,
@@ -22,18 +22,61 @@ vi.mock("~/lib/server/observability/runtime-event-log", () => ({
   logServerRouteEvent: logServerRouteEventMock,
 }));
 
-import { action, loader } from "./mcp";
+import { action, loader } from "./mcp.debug";
 
 describe("mcp route", () => {
+  const originalNodeEnv = process.env.NODE_ENV;
+
   beforeEach(() => {
     vi.clearAllMocks();
+    process.env.NODE_ENV = "development";
     ensurePersistenceDatabaseReadyMock.mockResolvedValue(undefined);
     logServerRouteEventMock.mockResolvedValue(undefined);
   });
 
+  afterAll(() => {
+    if (typeof originalNodeEnv === "string") {
+      process.env.NODE_ENV = originalNodeEnv;
+      return;
+    }
+
+    delete process.env.NODE_ENV;
+  });
+
+  it("returns not found outside development mode", async () => {
+    process.env.NODE_ENV = "production";
+
+    const response = await action({
+      request: new Request("http://localhost/mcp/debug", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json, text/event-stream",
+        },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: "tools-1",
+          method: "tools/list",
+          params: {},
+        }),
+      }),
+    });
+
+    expect(response.status).toBe(404);
+    expect(await response.json()).toEqual({
+      jsonrpc: "2.0",
+      error: {
+        code: -32004,
+        message: "Not found.",
+      },
+      id: null,
+    });
+    expect(ensurePersistenceDatabaseReadyMock).not.toHaveBeenCalled();
+  });
+
   it("returns a method error for GET requests", async () => {
     const response = await loader({
-      request: new Request("http://localhost/mcp", {
+      request: new Request("http://localhost/mcp/debug", {
         method: "GET",
         headers: {
           Accept: "text/event-stream",
@@ -46,7 +89,7 @@ describe("mcp route", () => {
       jsonrpc: "2.0",
       error: {
         code: -32000,
-        message: "Method not allowed. Use POST /mcp.",
+        message: "Method not allowed. Use POST /mcp/debug.",
       },
       id: null,
     });
@@ -55,7 +98,7 @@ describe("mcp route", () => {
 
   it("publishes table definitions through tools/list", async () => {
     const response = await action({
-      request: new Request("http://localhost/mcp", {
+      request: new Request("http://localhost/mcp/debug", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

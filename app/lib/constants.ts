@@ -121,6 +121,41 @@ export const AGENT_SKILL_SCRIPT_TIMEOUT_MAX_MS = 120_000;
 export const AGENT_SKILL_SCRIPT_OUTPUT_MAX_CHARS = 24_000;
 export const SKILL_REGISTRY_LIST_CACHE_TTL_MS = 5 * 60_000;
 export const SKILL_REGISTRY_TREE_CACHE_TTL_MS = 10 * 60_000;
+export const HOME_DEFAULT_SKILL_REGISTRY_OPTIONS = [
+  {
+    id: "openai_curated",
+    label: "OpenAI Curated",
+    description: "Official curated Skill registry from openai/skills.",
+    repository: "openai/skills",
+    ref: "main",
+    sourcePath: "skills/.curated",
+    sourceUrl: "https://github.com/openai/skills/tree/main/skills/.curated",
+    installDirectoryName: "openai-curated",
+    skillPathLayout: "flat",
+  },
+  {
+    id: "anthropic_public",
+    label: "Anthropic Public",
+    description: "Public Skill registry from anthropics/skills.",
+    repository: "anthropics/skills",
+    ref: "main",
+    sourcePath: "skills",
+    sourceUrl: "https://github.com/anthropics/skills/tree/main/skills",
+    installDirectoryName: "anthropic-public",
+    skillPathLayout: "flat",
+  },
+  {
+    id: "anaregdesign_public",
+    label: "Anaregdesign Public",
+    description: "Public tagged Skill registry from anaregdesign/skills.",
+    repository: "anaregdesign/skills",
+    ref: "main",
+    sourcePath: "skills",
+    sourceUrl: "https://github.com/anaregdesign/skills/tree/main/skills",
+    installDirectoryName: "anaregdesign-public",
+    skillPathLayout: "tagged",
+  },
+] as const;
 
 /**
  * Impact scope:
@@ -139,29 +174,6 @@ export const MCP_DEFAULT_AZURE_AUTH_SCOPE = AZURE_COGNITIVE_SERVICES_SCOPE;
 export const MCP_DEFAULT_HTTP_HEADERS: Record<string, string> = {
   "Content-Type": "application/json",
 };
-export const MCP_DEFAULT_OPENAI_DOCS_SERVER_NAME = "openai-docs";
-export const MCP_DEFAULT_OPENAI_DOCS_SERVER_URL = "https://developers.openai.com/mcp";
-export const MCP_DEFAULT_MICROSOFT_LEARN_SERVER_NAME = "microsoft-learn";
-export const MCP_DEFAULT_MICROSOFT_LEARN_SERVER_URL = "https://learn.microsoft.com/api/mcp";
-export const MCP_DEFAULT_WORKIQ_SERVER_NAME = "workiq";
-export const MCP_DEFAULT_WORKIQ_SERVER_COMMAND = "npx";
-export const MCP_DEFAULT_WORKIQ_SERVER_ARGS = ["-y", "@microsoft/workiq", "mcp"] as const;
-export const MCP_DEFAULT_FILESYSTEM_MCP_SERVER_NAME = "filesystem";
-export const MCP_DEFAULT_FILESYSTEM_MCP_SERVER_COMMAND = "npx";
-export const MCP_DEFAULT_FILESYSTEM_MCP_SERVER_ARGS = [
-  "-y",
-  "@modelcontextprotocol/server-filesystem",
-  ".",
-] as const;
-export const MCP_DEFAULT_MEMORY_MCP_SERVER_NAME = "server-memory";
-export const MCP_DEFAULT_MEMORY_MCP_SERVER_COMMAND = "npx";
-export const MCP_DEFAULT_MEMORY_MCP_SERVER_ARGS = ["-y", "@modelcontextprotocol/server-memory"] as const;
-export const MCP_DEFAULT_EVERYTHING_MCP_SERVER_NAME = "server-everything";
-export const MCP_DEFAULT_EVERYTHING_MCP_SERVER_COMMAND = "npx";
-export const MCP_DEFAULT_EVERYTHING_MCP_SERVER_ARGS = [
-  "-y",
-  "@modelcontextprotocol/server-everything",
-] as const;
 export const MCP_LEGACY_UNAVAILABLE_DEFAULT_STDIO_NPX_PACKAGE_NAMES = [
   "@modelcontextprotocol/server-git",
   "@modelcontextprotocol/server-http",
@@ -170,20 +182,102 @@ export const MCP_LEGACY_UNAVAILABLE_DEFAULT_STDIO_NPX_PACKAGE_NAMES = [
   "@modelcontextprotocol/server-shell",
   "@modelcontextprotocol/server-playwright",
 ] as const;
-export const MCP_DEFAULT_AZURE_MCP_SERVER_NAME = "azure-mcp";
-export const MCP_DEFAULT_AZURE_MCP_SERVER_COMMAND = "npx";
-export const MCP_DEFAULT_AZURE_MCP_SERVER_ARGS = [
-  "-y",
-  "@azure/mcp@latest",
-  "server",
-  "start",
-] as const;
-export const MCP_DEFAULT_PLAYWRIGHT_MCP_SERVER_NAME = "playwright";
-export const MCP_DEFAULT_PLAYWRIGHT_MCP_SERVER_COMMAND = "npx";
-export const MCP_DEFAULT_PLAYWRIGHT_MCP_SERVER_ARGS = ["-y", "@playwright/mcp@latest"] as const;
-export const MCP_DEFAULT_MERMAID_MCP_SERVER_NAME = "mcp-mermaid";
-export const MCP_DEFAULT_MERMAID_MCP_SERVER_COMMAND = "npx";
-export const MCP_DEFAULT_MERMAID_MCP_SERVER_ARGS = ["-y", "mcp-mermaid"] as const;
+type HomeDefaultWorkspaceMcpServerProfileHttpRow = {
+  name: string;
+  transport: "streamable_http" | "sse";
+  url: string;
+  headers: Record<string, string>;
+  useAzureAuth: boolean;
+  azureAuthScope: string;
+  timeoutSeconds: number;
+};
+type HomeDefaultWorkspaceMcpServerProfileStdioRow = {
+  name: string;
+  transport: "stdio";
+  command: string;
+  args: readonly string[];
+  cwd: "default" | null;
+  env: Record<string, string>;
+};
+export type HomeDefaultWorkspaceMcpServerProfileRow =
+  | HomeDefaultWorkspaceMcpServerProfileHttpRow
+  | HomeDefaultWorkspaceMcpServerProfileStdioRow;
+export const HOME_DEFAULT_WORKSPACE_MCP_SERVER_PROFILE_ROWS = [
+  {
+    name: "openai-docs",
+    transport: "streamable_http",
+    url: "https://developers.openai.com/mcp",
+    headers: {},
+    useAzureAuth: false,
+    azureAuthScope: MCP_DEFAULT_AZURE_AUTH_SCOPE,
+    timeoutSeconds: MCP_DEFAULT_TIMEOUT_SECONDS,
+  },
+  {
+    name: "microsoft-learn",
+    transport: "streamable_http",
+    url: "https://learn.microsoft.com/api/mcp",
+    headers: {},
+    useAzureAuth: false,
+    azureAuthScope: MCP_DEFAULT_AZURE_AUTH_SCOPE,
+    timeoutSeconds: MCP_DEFAULT_TIMEOUT_SECONDS,
+  },
+  {
+    name: "filesystem",
+    transport: "stdio",
+    command: "npx",
+    args: ["-y", "@modelcontextprotocol/server-filesystem", "."],
+    cwd: "default",
+    env: {},
+  },
+  {
+    name: "workiq",
+    transport: "stdio",
+    command: "npx",
+    args: ["-y", "@microsoft/workiq", "mcp"],
+    cwd: null,
+    env: {},
+  },
+  {
+    name: "server-memory",
+    transport: "stdio",
+    command: "npx",
+    args: ["-y", "@modelcontextprotocol/server-memory"],
+    cwd: null,
+    env: {},
+  },
+  {
+    name: "server-everything",
+    transport: "stdio",
+    command: "npx",
+    args: ["-y", "@modelcontextprotocol/server-everything"],
+    cwd: null,
+    env: {},
+  },
+  {
+    name: "azure-mcp",
+    transport: "stdio",
+    command: "npx",
+    args: ["-y", "@azure/mcp@latest", "server", "start"],
+    cwd: null,
+    env: {},
+  },
+  {
+    name: "playwright",
+    transport: "stdio",
+    command: "npx",
+    args: ["-y", "@playwright/mcp@latest"],
+    cwd: null,
+    env: {},
+  },
+  {
+    name: "mcp-mermaid",
+    transport: "stdio",
+    command: "npx",
+    args: ["-y", "mcp-mermaid"],
+    cwd: "default",
+    env: {},
+  },
+] as const satisfies readonly HomeDefaultWorkspaceMcpServerProfileRow[];
 export const ENV_KEY_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
 export const HTTP_HEADER_NAME_PATTERN = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/;
 

@@ -1,4 +1,4 @@
 /**
- * Route module for /mcp/.well-known probes.
+ * Route module for /mcp/debug/.well-known probes.
  */
 export { action, loader } from "./well-known";

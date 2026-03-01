@@ -4,40 +4,16 @@
 import path from "node:path";
 import nodeOs from "node:os";
 import {
+  ENV_KEY_PATTERN,
   FOUNDRY_LEGACY_CONFIG_DIRECTORY_NAME,
   FOUNDRY_WINDOWS_CONFIG_DIRECTORY_NAME,
-  ENV_KEY_PATTERN,
+  HOME_DEFAULT_WORKSPACE_MCP_SERVER_PROFILE_ROWS,
   HTTP_HEADER_NAME_PATTERN,
   MCP_AZURE_AUTH_SCOPE_MAX_LENGTH,
-  MCP_DEFAULT_AZURE_MCP_SERVER_ARGS,
-  MCP_DEFAULT_AZURE_MCP_SERVER_COMMAND,
-  MCP_DEFAULT_AZURE_MCP_SERVER_NAME,
   MCP_DEFAULT_AZURE_AUTH_SCOPE,
-  MCP_DEFAULT_EVERYTHING_MCP_SERVER_ARGS,
-  MCP_DEFAULT_EVERYTHING_MCP_SERVER_COMMAND,
-  MCP_DEFAULT_EVERYTHING_MCP_SERVER_NAME,
-  MCP_DEFAULT_FILESYSTEM_MCP_SERVER_ARGS,
-  MCP_DEFAULT_FILESYSTEM_MCP_SERVER_COMMAND,
-  MCP_DEFAULT_FILESYSTEM_MCP_SERVER_NAME,
-  MCP_DEFAULT_MEMORY_MCP_SERVER_ARGS,
-  MCP_DEFAULT_MEMORY_MCP_SERVER_COMMAND,
-  MCP_DEFAULT_MEMORY_MCP_SERVER_NAME,
-  MCP_LEGACY_UNAVAILABLE_DEFAULT_STDIO_NPX_PACKAGE_NAMES,
-  MCP_DEFAULT_MICROSOFT_LEARN_SERVER_NAME,
-  MCP_DEFAULT_MICROSOFT_LEARN_SERVER_URL,
-  MCP_DEFAULT_MERMAID_MCP_SERVER_ARGS,
-  MCP_DEFAULT_MERMAID_MCP_SERVER_COMMAND,
-  MCP_DEFAULT_MERMAID_MCP_SERVER_NAME,
-  MCP_DEFAULT_OPENAI_DOCS_SERVER_NAME,
-  MCP_DEFAULT_OPENAI_DOCS_SERVER_URL,
-  MCP_DEFAULT_PLAYWRIGHT_MCP_SERVER_ARGS,
-  MCP_DEFAULT_PLAYWRIGHT_MCP_SERVER_COMMAND,
-  MCP_DEFAULT_PLAYWRIGHT_MCP_SERVER_NAME,
-  MCP_DEFAULT_WORKIQ_SERVER_ARGS,
-  MCP_DEFAULT_WORKIQ_SERVER_COMMAND,
-  MCP_DEFAULT_WORKIQ_SERVER_NAME,
   MCP_DEFAULT_TIMEOUT_SECONDS,
   MCP_HTTP_HEADERS_MAX,
+  MCP_LEGACY_UNAVAILABLE_DEFAULT_STDIO_NPX_PACKAGE_NAMES,
   MCP_SERVER_NAME_MAX_LENGTH,
   MCP_STDIO_ARGS_MAX,
   MCP_STDIO_ENV_VARS_MAX,
@@ -88,6 +64,17 @@ type ParseResult<T> = { ok: true; value: T } | { ok: false; error: string };
 const legacyUnavailableDefaultStdioNpxPackageNameSet = new Set<string>(
   MCP_LEGACY_UNAVAILABLE_DEFAULT_STDIO_NPX_PACKAGE_NAMES,
 );
+type HomeDefaultWorkspaceMcpServerProfileRow =
+  (typeof HOME_DEFAULT_WORKSPACE_MCP_SERVER_PROFILE_ROWS)[number];
+type HomeDefaultWorkspaceMcpServerProfileStdioRow = Extract<
+  HomeDefaultWorkspaceMcpServerProfileRow,
+  { transport: "stdio" }
+>;
+const defaultMermaidWorkspaceMcpServerProfile =
+  HOME_DEFAULT_WORKSPACE_MCP_SERVER_PROFILE_ROWS.find(
+    (profile): profile is HomeDefaultWorkspaceMcpServerProfileStdioRow =>
+      profile.transport === "stdio" && profile.name === "mcp-mermaid",
+  ) ?? null;
 const MCP_SERVERS_COLLECTION_ALLOWED_METHODS = ["GET", "POST"] as const;
 
 export async function loader({ request }: Route.LoaderArgs) {
@@ -339,86 +326,31 @@ export async function ensureDefaultMcpServersForUser(userId: number): Promise<vo
 
 function buildDefaultMcpServerProfiles(): WorkspaceMcpServerProfileConfig[] {
   const defaultStdioWorkingDirectory = resolveDefaultFilesystemWorkingDirectory();
-  return [
-    {
+  return HOME_DEFAULT_WORKSPACE_MCP_SERVER_PROFILE_ROWS.map((defaultProfile) => {
+    if (defaultProfile.transport === "stdio") {
+      return {
+        id: createRandomId(),
+        name: defaultProfile.name,
+        transport: "stdio",
+        command: defaultProfile.command,
+        args: [...defaultProfile.args],
+        cwd:
+          defaultProfile.cwd === "default" ? defaultStdioWorkingDirectory : undefined,
+        env: { ...defaultProfile.env },
+      };
+    }
+
+    return {
       id: createRandomId(),
-      name: MCP_DEFAULT_OPENAI_DOCS_SERVER_NAME,
-      transport: "streamable_http",
-      url: MCP_DEFAULT_OPENAI_DOCS_SERVER_URL,
-      headers: {},
-      useAzureAuth: false,
-      azureAuthScope: MCP_DEFAULT_AZURE_AUTH_SCOPE,
-      timeoutSeconds: MCP_DEFAULT_TIMEOUT_SECONDS,
-    },
-    {
-      id: createRandomId(),
-      name: MCP_DEFAULT_MICROSOFT_LEARN_SERVER_NAME,
-      transport: "streamable_http",
-      url: MCP_DEFAULT_MICROSOFT_LEARN_SERVER_URL,
-      headers: {},
-      useAzureAuth: false,
-      azureAuthScope: MCP_DEFAULT_AZURE_AUTH_SCOPE,
-      timeoutSeconds: MCP_DEFAULT_TIMEOUT_SECONDS,
-    },
-    {
-      id: createRandomId(),
-      name: MCP_DEFAULT_FILESYSTEM_MCP_SERVER_NAME,
-      transport: "stdio",
-      command: MCP_DEFAULT_FILESYSTEM_MCP_SERVER_COMMAND,
-      args: [...MCP_DEFAULT_FILESYSTEM_MCP_SERVER_ARGS],
-      cwd: defaultStdioWorkingDirectory,
-      env: {},
-    },
-    {
-      id: createRandomId(),
-      name: MCP_DEFAULT_WORKIQ_SERVER_NAME,
-      transport: "stdio",
-      command: MCP_DEFAULT_WORKIQ_SERVER_COMMAND,
-      args: [...MCP_DEFAULT_WORKIQ_SERVER_ARGS],
-      env: {},
-    },
-    {
-      id: createRandomId(),
-      name: MCP_DEFAULT_MEMORY_MCP_SERVER_NAME,
-      transport: "stdio",
-      command: MCP_DEFAULT_MEMORY_MCP_SERVER_COMMAND,
-      args: [...MCP_DEFAULT_MEMORY_MCP_SERVER_ARGS],
-      env: {},
-    },
-    {
-      id: createRandomId(),
-      name: MCP_DEFAULT_EVERYTHING_MCP_SERVER_NAME,
-      transport: "stdio",
-      command: MCP_DEFAULT_EVERYTHING_MCP_SERVER_COMMAND,
-      args: [...MCP_DEFAULT_EVERYTHING_MCP_SERVER_ARGS],
-      env: {},
-    },
-    {
-      id: createRandomId(),
-      name: MCP_DEFAULT_AZURE_MCP_SERVER_NAME,
-      transport: "stdio",
-      command: MCP_DEFAULT_AZURE_MCP_SERVER_COMMAND,
-      args: [...MCP_DEFAULT_AZURE_MCP_SERVER_ARGS],
-      env: {},
-    },
-    {
-      id: createRandomId(),
-      name: MCP_DEFAULT_PLAYWRIGHT_MCP_SERVER_NAME,
-      transport: "stdio",
-      command: MCP_DEFAULT_PLAYWRIGHT_MCP_SERVER_COMMAND,
-      args: [...MCP_DEFAULT_PLAYWRIGHT_MCP_SERVER_ARGS],
-      env: {},
-    },
-    {
-      id: createRandomId(),
-      name: MCP_DEFAULT_MERMAID_MCP_SERVER_NAME,
-      transport: "stdio",
-      command: MCP_DEFAULT_MERMAID_MCP_SERVER_COMMAND,
-      args: [...MCP_DEFAULT_MERMAID_MCP_SERVER_ARGS],
-      cwd: defaultStdioWorkingDirectory,
-      env: {},
-    },
-  ];
+      name: defaultProfile.name,
+      transport: defaultProfile.transport,
+      url: defaultProfile.url,
+      headers: { ...defaultProfile.headers },
+      useAzureAuth: defaultProfile.useAzureAuth,
+      azureAuthScope: defaultProfile.azureAuthScope,
+      timeoutSeconds: defaultProfile.timeoutSeconds,
+    };
+  });
 }
 
 function normalizeLegacyDefaultProfiles(
@@ -447,14 +379,14 @@ function normalizeLegacyDefaultProfiles(
 }
 
 function isLegacyDefaultMermaidProfile(profile: WorkspaceMcpServerProfileConfig): profile is WorkspaceMcpServerProfileStdioConfig {
-  if (profile.transport !== "stdio") {
+  if (profile.transport !== "stdio" || !defaultMermaidWorkspaceMcpServerProfile) {
     return false;
   }
 
   return (
-    profile.command === MCP_DEFAULT_MERMAID_MCP_SERVER_COMMAND &&
-    profile.args.length === MCP_DEFAULT_MERMAID_MCP_SERVER_ARGS.length &&
-    profile.args.every((arg, index) => arg === MCP_DEFAULT_MERMAID_MCP_SERVER_ARGS[index]) &&
+    profile.command === defaultMermaidWorkspaceMcpServerProfile.command &&
+    profile.args.length === defaultMermaidWorkspaceMcpServerProfile.args.length &&
+    profile.args.every((arg, index) => arg === defaultMermaidWorkspaceMcpServerProfile.args[index]) &&
     Object.keys(profile.env).length === 0 &&
     !profile.cwd
   );

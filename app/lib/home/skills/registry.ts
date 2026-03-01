@@ -1,43 +1,12 @@
 /**
  * Home runtime support module.
  */
-import { AGENT_SKILL_NAME_PATTERN } from "~/lib/constants";
+import {
+  AGENT_SKILL_NAME_PATTERN,
+  HOME_DEFAULT_SKILL_REGISTRY_OPTIONS,
+} from "~/lib/constants";
 
-export const SKILL_REGISTRY_OPTIONS = [
-  {
-    id: "openai_curated",
-    label: "OpenAI Curated",
-    description: "Official curated Skill registry from openai/skills.",
-    repository: "openai/skills",
-    ref: "main",
-    sourcePath: "skills/.curated",
-    sourceUrl: "https://github.com/openai/skills/tree/main/skills/.curated",
-    installDirectoryName: "openai-curated",
-    skillPathLayout: "flat",
-  },
-  {
-    id: "anthropic_public",
-    label: "Anthropic Public",
-    description: "Public Skill registry from anthropics/skills.",
-    repository: "anthropics/skills",
-    ref: "main",
-    sourcePath: "skills",
-    sourceUrl: "https://github.com/anthropics/skills/tree/main/skills",
-    installDirectoryName: "anthropic-public",
-    skillPathLayout: "flat",
-  },
-  {
-    id: "anaregdesign_public",
-    label: "Anaregdesign Public",
-    description: "Public tagged Skill registry from anaregdesign/skills.",
-    repository: "anaregdesign/skills",
-    ref: "main",
-    sourcePath: "skills",
-    sourceUrl: "https://github.com/anaregdesign/skills/tree/main/skills",
-    installDirectoryName: "anaregdesign-public",
-    skillPathLayout: "tagged",
-  },
-] as const;
+export const SKILL_REGISTRY_OPTIONS = HOME_DEFAULT_SKILL_REGISTRY_OPTIONS;
 
 export type SkillRegistryOption = (typeof SKILL_REGISTRY_OPTIONS)[number];
 export type SkillRegistryId = SkillRegistryOption["id"];

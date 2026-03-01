@@ -3,33 +3,9 @@
  */
 import { describe, expect, it } from "vitest";
 import {
-  MCP_DEFAULT_AZURE_MCP_SERVER_ARGS,
-  MCP_DEFAULT_AZURE_MCP_SERVER_COMMAND,
-  MCP_DEFAULT_AZURE_MCP_SERVER_NAME,
   MCP_DEFAULT_AZURE_AUTH_SCOPE,
-  MCP_DEFAULT_EVERYTHING_MCP_SERVER_ARGS,
-  MCP_DEFAULT_EVERYTHING_MCP_SERVER_COMMAND,
-  MCP_DEFAULT_EVERYTHING_MCP_SERVER_NAME,
-  MCP_DEFAULT_FILESYSTEM_MCP_SERVER_ARGS,
-  MCP_DEFAULT_FILESYSTEM_MCP_SERVER_COMMAND,
-  MCP_DEFAULT_FILESYSTEM_MCP_SERVER_NAME,
-  MCP_DEFAULT_MEMORY_MCP_SERVER_ARGS,
-  MCP_DEFAULT_MEMORY_MCP_SERVER_COMMAND,
-  MCP_DEFAULT_MEMORY_MCP_SERVER_NAME,
-  MCP_DEFAULT_MERMAID_MCP_SERVER_ARGS,
-  MCP_DEFAULT_MERMAID_MCP_SERVER_COMMAND,
-  MCP_DEFAULT_MERMAID_MCP_SERVER_NAME,
-  MCP_DEFAULT_MICROSOFT_LEARN_SERVER_NAME,
-  MCP_DEFAULT_MICROSOFT_LEARN_SERVER_URL,
-  MCP_DEFAULT_OPENAI_DOCS_SERVER_NAME,
-  MCP_DEFAULT_OPENAI_DOCS_SERVER_URL,
-  MCP_DEFAULT_PLAYWRIGHT_MCP_SERVER_ARGS,
-  MCP_DEFAULT_PLAYWRIGHT_MCP_SERVER_COMMAND,
-  MCP_DEFAULT_PLAYWRIGHT_MCP_SERVER_NAME,
   MCP_DEFAULT_TIMEOUT_SECONDS,
-  MCP_DEFAULT_WORKIQ_SERVER_ARGS,
-  MCP_DEFAULT_WORKIQ_SERVER_COMMAND,
-  MCP_DEFAULT_WORKIQ_SERVER_NAME,
+  HOME_DEFAULT_WORKSPACE_MCP_SERVER_PROFILE_ROWS,
 } from "~/lib/constants";
 import { mcpServersRouteTestUtils } from "./api.mcp-servers";
 
@@ -40,6 +16,49 @@ const {
   mergeDefaultWorkspaceMcpServerProfiles,
   resolveDefaultFilesystemWorkingDirectory,
 } = mcpServersRouteTestUtils;
+type HomeDefaultWorkspaceMcpServerProfileRow =
+  (typeof HOME_DEFAULT_WORKSPACE_MCP_SERVER_PROFILE_ROWS)[number];
+type HomeDefaultWorkspaceMcpServerProfileStdioRow = Extract<
+  HomeDefaultWorkspaceMcpServerProfileRow,
+  { transport: "stdio" }
+>;
+type HomeDefaultWorkspaceMcpServerProfileHttpRow = Extract<
+  HomeDefaultWorkspaceMcpServerProfileRow,
+  { transport: "streamable_http" | "sse" }
+>;
+const defaultOpenaiDocsMcpServerProfile = readDefaultHttpMcpServerProfile("openai-docs");
+const defaultMicrosoftLearnMcpServerProfile = readDefaultHttpMcpServerProfile("microsoft-learn");
+const defaultFilesystemMcpServerProfile = readDefaultStdioMcpServerProfile("filesystem");
+const defaultWorkiqMcpServerProfile = readDefaultStdioMcpServerProfile("workiq");
+const defaultMemoryMcpServerProfile = readDefaultStdioMcpServerProfile("server-memory");
+const defaultEverythingMcpServerProfile = readDefaultStdioMcpServerProfile("server-everything");
+const defaultAzureMcpServerProfile = readDefaultStdioMcpServerProfile("azure-mcp");
+const defaultPlaywrightMcpServerProfile = readDefaultStdioMcpServerProfile("playwright");
+const defaultMermaidMcpServerProfile = readDefaultStdioMcpServerProfile("mcp-mermaid");
+
+function readDefaultStdioMcpServerProfile(name: string): HomeDefaultWorkspaceMcpServerProfileStdioRow {
+  const profile = HOME_DEFAULT_WORKSPACE_MCP_SERVER_PROFILE_ROWS.find(
+    (entry): entry is HomeDefaultWorkspaceMcpServerProfileStdioRow =>
+      entry.transport === "stdio" && entry.name === name,
+  );
+  if (!profile) {
+    throw new Error(`Missing default stdio MCP server profile: ${name}`);
+  }
+
+  return profile;
+}
+
+function readDefaultHttpMcpServerProfile(name: string): HomeDefaultWorkspaceMcpServerProfileHttpRow {
+  const profile = HOME_DEFAULT_WORKSPACE_MCP_SERVER_PROFILE_ROWS.find(
+    (entry): entry is HomeDefaultWorkspaceMcpServerProfileHttpRow =>
+      entry.transport !== "stdio" && entry.name === name,
+  );
+  if (!profile) {
+    throw new Error(`Missing default HTTP MCP server profile: ${name}`);
+  }
+
+  return profile;
+}
 
 describe("parseIncomingMcpServer", () => {
   it("parses HTTP payload and applies defaults", () => {
@@ -296,71 +315,71 @@ describe("mergeDefaultWorkspaceMcpServerProfiles", () => {
     expect(result).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          name: MCP_DEFAULT_OPENAI_DOCS_SERVER_NAME,
+          name: defaultOpenaiDocsMcpServerProfile.name,
           transport: "streamable_http",
-          url: MCP_DEFAULT_OPENAI_DOCS_SERVER_URL,
+          url: defaultOpenaiDocsMcpServerProfile.url,
           headers: {},
           useAzureAuth: false,
           azureAuthScope: MCP_DEFAULT_AZURE_AUTH_SCOPE,
           timeoutSeconds: MCP_DEFAULT_TIMEOUT_SECONDS,
         }),
         expect.objectContaining({
-          name: MCP_DEFAULT_MICROSOFT_LEARN_SERVER_NAME,
+          name: defaultMicrosoftLearnMcpServerProfile.name,
           transport: "streamable_http",
-          url: MCP_DEFAULT_MICROSOFT_LEARN_SERVER_URL,
+          url: defaultMicrosoftLearnMcpServerProfile.url,
           headers: {},
           useAzureAuth: false,
           azureAuthScope: MCP_DEFAULT_AZURE_AUTH_SCOPE,
           timeoutSeconds: MCP_DEFAULT_TIMEOUT_SECONDS,
         }),
         expect.objectContaining({
-          name: MCP_DEFAULT_FILESYSTEM_MCP_SERVER_NAME,
+          name: defaultFilesystemMcpServerProfile.name,
           transport: "stdio",
-          command: MCP_DEFAULT_FILESYSTEM_MCP_SERVER_COMMAND,
-          args: [...MCP_DEFAULT_FILESYSTEM_MCP_SERVER_ARGS],
+          command: defaultFilesystemMcpServerProfile.command,
+          args: [...defaultFilesystemMcpServerProfile.args],
           cwd: expectedFilesystemWorkingDirectory,
           env: {},
         }),
         expect.objectContaining({
-          name: MCP_DEFAULT_WORKIQ_SERVER_NAME,
+          name: defaultWorkiqMcpServerProfile.name,
           transport: "stdio",
-          command: MCP_DEFAULT_WORKIQ_SERVER_COMMAND,
-          args: [...MCP_DEFAULT_WORKIQ_SERVER_ARGS],
+          command: defaultWorkiqMcpServerProfile.command,
+          args: [...defaultWorkiqMcpServerProfile.args],
           env: {},
         }),
         expect.objectContaining({
-          name: MCP_DEFAULT_MEMORY_MCP_SERVER_NAME,
+          name: defaultMemoryMcpServerProfile.name,
           transport: "stdio",
-          command: MCP_DEFAULT_MEMORY_MCP_SERVER_COMMAND,
-          args: [...MCP_DEFAULT_MEMORY_MCP_SERVER_ARGS],
+          command: defaultMemoryMcpServerProfile.command,
+          args: [...defaultMemoryMcpServerProfile.args],
           env: {},
         }),
         expect.objectContaining({
-          name: MCP_DEFAULT_EVERYTHING_MCP_SERVER_NAME,
+          name: defaultEverythingMcpServerProfile.name,
           transport: "stdio",
-          command: MCP_DEFAULT_EVERYTHING_MCP_SERVER_COMMAND,
-          args: [...MCP_DEFAULT_EVERYTHING_MCP_SERVER_ARGS],
+          command: defaultEverythingMcpServerProfile.command,
+          args: [...defaultEverythingMcpServerProfile.args],
           env: {},
         }),
         expect.objectContaining({
-          name: MCP_DEFAULT_AZURE_MCP_SERVER_NAME,
+          name: defaultAzureMcpServerProfile.name,
           transport: "stdio",
-          command: MCP_DEFAULT_AZURE_MCP_SERVER_COMMAND,
-          args: [...MCP_DEFAULT_AZURE_MCP_SERVER_ARGS],
+          command: defaultAzureMcpServerProfile.command,
+          args: [...defaultAzureMcpServerProfile.args],
           env: {},
         }),
         expect.objectContaining({
-          name: MCP_DEFAULT_PLAYWRIGHT_MCP_SERVER_NAME,
+          name: defaultPlaywrightMcpServerProfile.name,
           transport: "stdio",
-          command: MCP_DEFAULT_PLAYWRIGHT_MCP_SERVER_COMMAND,
-          args: [...MCP_DEFAULT_PLAYWRIGHT_MCP_SERVER_ARGS],
+          command: defaultPlaywrightMcpServerProfile.command,
+          args: [...defaultPlaywrightMcpServerProfile.args],
           env: {},
         }),
         expect.objectContaining({
-          name: MCP_DEFAULT_MERMAID_MCP_SERVER_NAME,
+          name: defaultMermaidMcpServerProfile.name,
           transport: "stdio",
-          command: MCP_DEFAULT_MERMAID_MCP_SERVER_COMMAND,
-          args: [...MCP_DEFAULT_MERMAID_MCP_SERVER_ARGS],
+          command: defaultMermaidMcpServerProfile.command,
+          args: [...defaultMermaidMcpServerProfile.args],
           cwd: expectedFilesystemWorkingDirectory,
           env: {},
         }),
@@ -376,7 +395,7 @@ describe("mergeDefaultWorkspaceMcpServerProfiles", () => {
         id: "profile-openai-docs",
         name: "OpenAI Docs (Custom Name)",
         transport: "streamable_http" as const,
-        url: MCP_DEFAULT_OPENAI_DOCS_SERVER_URL,
+        url: defaultOpenaiDocsMcpServerProfile.url,
         headers: {},
         useAzureAuth: false,
         azureAuthScope: MCP_DEFAULT_AZURE_AUTH_SCOPE,
@@ -386,31 +405,31 @@ describe("mergeDefaultWorkspaceMcpServerProfiles", () => {
         id: "profile-workiq",
         name: "Custom WorkIQ",
         transport: "stdio" as const,
-        command: MCP_DEFAULT_WORKIQ_SERVER_COMMAND,
-        args: [...MCP_DEFAULT_WORKIQ_SERVER_ARGS],
+        command: defaultWorkiqMcpServerProfile.command,
+        args: [...defaultWorkiqMcpServerProfile.args],
         env: {},
       },
       {
         id: "profile-server-memory",
         name: "Server Memory (Custom Name)",
         transport: "stdio" as const,
-        command: MCP_DEFAULT_MEMORY_MCP_SERVER_COMMAND,
-        args: [...MCP_DEFAULT_MEMORY_MCP_SERVER_ARGS],
+        command: defaultMemoryMcpServerProfile.command,
+        args: [...defaultMemoryMcpServerProfile.args],
         env: {},
       },
       {
         id: "profile-server-everything",
         name: "Server Everything (Custom Name)",
         transport: "stdio" as const,
-        command: MCP_DEFAULT_EVERYTHING_MCP_SERVER_COMMAND,
-        args: [...MCP_DEFAULT_EVERYTHING_MCP_SERVER_ARGS],
+        command: defaultEverythingMcpServerProfile.command,
+        args: [...defaultEverythingMcpServerProfile.args],
         env: {},
       },
       {
         id: "profile-mslearn",
         name: "Microsoft Learn (Custom Name)",
         transport: "streamable_http" as const,
-        url: MCP_DEFAULT_MICROSOFT_LEARN_SERVER_URL,
+        url: defaultMicrosoftLearnMcpServerProfile.url,
         headers: {},
         useAzureAuth: false,
         azureAuthScope: MCP_DEFAULT_AZURE_AUTH_SCOPE,
@@ -420,8 +439,8 @@ describe("mergeDefaultWorkspaceMcpServerProfiles", () => {
         id: "profile-filesystem",
         name: "Filesystem (Custom Name)",
         transport: "stdio" as const,
-        command: MCP_DEFAULT_FILESYSTEM_MCP_SERVER_COMMAND,
-        args: [...MCP_DEFAULT_FILESYSTEM_MCP_SERVER_ARGS],
+        command: defaultFilesystemMcpServerProfile.command,
+        args: [...defaultFilesystemMcpServerProfile.args],
         cwd: resolveDefaultFilesystemWorkingDirectory(),
         env: {},
       },
@@ -429,24 +448,24 @@ describe("mergeDefaultWorkspaceMcpServerProfiles", () => {
         id: "profile-azure-mcp",
         name: "Azure MCP (Custom Name)",
         transport: "stdio" as const,
-        command: MCP_DEFAULT_AZURE_MCP_SERVER_COMMAND,
-        args: [...MCP_DEFAULT_AZURE_MCP_SERVER_ARGS],
+        command: defaultAzureMcpServerProfile.command,
+        args: [...defaultAzureMcpServerProfile.args],
         env: {},
       },
       {
         id: "profile-playwright",
         name: "Playwright (Custom Name)",
         transport: "stdio" as const,
-        command: MCP_DEFAULT_PLAYWRIGHT_MCP_SERVER_COMMAND,
-        args: [...MCP_DEFAULT_PLAYWRIGHT_MCP_SERVER_ARGS],
+        command: defaultPlaywrightMcpServerProfile.command,
+        args: [...defaultPlaywrightMcpServerProfile.args],
         env: {},
       },
       {
         id: "profile-mermaid",
         name: "Mermaid (Custom Name)",
         transport: "stdio" as const,
-        command: MCP_DEFAULT_MERMAID_MCP_SERVER_COMMAND,
-        args: [...MCP_DEFAULT_MERMAID_MCP_SERVER_ARGS],
+        command: defaultMermaidMcpServerProfile.command,
+        args: [...defaultMermaidMcpServerProfile.args],
         cwd: expectedFilesystemWorkingDirectory,
         env: {},
       },
@@ -464,8 +483,8 @@ describe("mergeDefaultWorkspaceMcpServerProfiles", () => {
         id: "profile-workiq",
         name: "Custom WorkIQ",
         transport: "stdio" as const,
-        command: MCP_DEFAULT_WORKIQ_SERVER_COMMAND,
-        args: [...MCP_DEFAULT_WORKIQ_SERVER_ARGS],
+        command: defaultWorkiqMcpServerProfile.command,
+        args: [...defaultWorkiqMcpServerProfile.args],
         env: {},
       },
     ];
@@ -478,42 +497,42 @@ describe("mergeDefaultWorkspaceMcpServerProfiles", () => {
         existing[0],
         expect.objectContaining({
           transport: "streamable_http",
-          url: MCP_DEFAULT_OPENAI_DOCS_SERVER_URL,
+          url: defaultOpenaiDocsMcpServerProfile.url,
         }),
         expect.objectContaining({
           transport: "streamable_http",
-          url: MCP_DEFAULT_MICROSOFT_LEARN_SERVER_URL,
+          url: defaultMicrosoftLearnMcpServerProfile.url,
         }),
         expect.objectContaining({
           transport: "stdio",
-          command: MCP_DEFAULT_FILESYSTEM_MCP_SERVER_COMMAND,
-          args: [...MCP_DEFAULT_FILESYSTEM_MCP_SERVER_ARGS],
+          command: defaultFilesystemMcpServerProfile.command,
+          args: [...defaultFilesystemMcpServerProfile.args],
           cwd: resolveDefaultFilesystemWorkingDirectory(),
         }),
         expect.objectContaining({
           transport: "stdio",
-          command: MCP_DEFAULT_MEMORY_MCP_SERVER_COMMAND,
-          args: [...MCP_DEFAULT_MEMORY_MCP_SERVER_ARGS],
+          command: defaultMemoryMcpServerProfile.command,
+          args: [...defaultMemoryMcpServerProfile.args],
         }),
         expect.objectContaining({
           transport: "stdio",
-          command: MCP_DEFAULT_EVERYTHING_MCP_SERVER_COMMAND,
-          args: [...MCP_DEFAULT_EVERYTHING_MCP_SERVER_ARGS],
+          command: defaultEverythingMcpServerProfile.command,
+          args: [...defaultEverythingMcpServerProfile.args],
         }),
         expect.objectContaining({
           transport: "stdio",
-          command: MCP_DEFAULT_AZURE_MCP_SERVER_COMMAND,
-          args: [...MCP_DEFAULT_AZURE_MCP_SERVER_ARGS],
+          command: defaultAzureMcpServerProfile.command,
+          args: [...defaultAzureMcpServerProfile.args],
         }),
         expect.objectContaining({
           transport: "stdio",
-          command: MCP_DEFAULT_PLAYWRIGHT_MCP_SERVER_COMMAND,
-          args: [...MCP_DEFAULT_PLAYWRIGHT_MCP_SERVER_ARGS],
+          command: defaultPlaywrightMcpServerProfile.command,
+          args: [...defaultPlaywrightMcpServerProfile.args],
         }),
         expect.objectContaining({
           transport: "stdio",
-          command: MCP_DEFAULT_MERMAID_MCP_SERVER_COMMAND,
-          args: [...MCP_DEFAULT_MERMAID_MCP_SERVER_ARGS],
+          command: defaultMermaidMcpServerProfile.command,
+          args: [...defaultMermaidMcpServerProfile.args],
           cwd: expectedFilesystemWorkingDirectory,
         }),
       ]),
@@ -562,8 +581,8 @@ describe("mergeDefaultWorkspaceMcpServerProfiles", () => {
         id: "legacy-mermaid",
         name: "Legacy Mermaid",
         transport: "stdio" as const,
-        command: MCP_DEFAULT_MERMAID_MCP_SERVER_COMMAND,
-        args: [...MCP_DEFAULT_MERMAID_MCP_SERVER_ARGS],
+        command: defaultMermaidMcpServerProfile.command,
+        args: [...defaultMermaidMcpServerProfile.args],
         env: {},
       },
     ];
@@ -572,9 +591,9 @@ describe("mergeDefaultWorkspaceMcpServerProfiles", () => {
     const mermaidProfiles = result.filter(
       (entry) =>
         entry.transport === "stdio" &&
-        entry.command === MCP_DEFAULT_MERMAID_MCP_SERVER_COMMAND &&
-        entry.args.length === MCP_DEFAULT_MERMAID_MCP_SERVER_ARGS.length &&
-        entry.args.every((arg, index) => arg === MCP_DEFAULT_MERMAID_MCP_SERVER_ARGS[index]),
+        entry.command === defaultMermaidMcpServerProfile.command &&
+        entry.args.length === defaultMermaidMcpServerProfile.args.length &&
+        entry.args.every((arg, index) => arg === defaultMermaidMcpServerProfile.args[index]),
     );
 
     expect(mermaidProfiles).toHaveLength(1);
@@ -590,9 +609,9 @@ describe("mergeDefaultWorkspaceMcpServerProfiles", () => {
     const existing = [
       {
         id: "legacy-mslearn",
-        name: MCP_DEFAULT_MICROSOFT_LEARN_SERVER_NAME,
+        name: defaultMicrosoftLearnMcpServerProfile.name,
         transport: "streamable_http" as const,
-        url: MCP_DEFAULT_MICROSOFT_LEARN_SERVER_URL,
+        url: defaultMicrosoftLearnMcpServerProfile.url,
         headers: {},
         useAzureAuth: false,
         azureAuthScope: MCP_DEFAULT_AZURE_AUTH_SCOPE,
@@ -600,10 +619,10 @@ describe("mergeDefaultWorkspaceMcpServerProfiles", () => {
       },
       {
         id: "legacy-azure-mcp",
-        name: MCP_DEFAULT_AZURE_MCP_SERVER_NAME,
+        name: defaultAzureMcpServerProfile.name,
         transport: "stdio" as const,
-        command: MCP_DEFAULT_AZURE_MCP_SERVER_COMMAND,
-        args: [...MCP_DEFAULT_AZURE_MCP_SERVER_ARGS],
+        command: defaultAzureMcpServerProfile.command,
+        args: [...defaultAzureMcpServerProfile.args],
         env: {},
       },
       {
@@ -618,8 +637,8 @@ describe("mergeDefaultWorkspaceMcpServerProfiles", () => {
 
     const result = mergeDefaultWorkspaceMcpServerProfiles(existing);
     const names = result.map((entry) => entry.name);
-    expect(names).toContain(MCP_DEFAULT_MICROSOFT_LEARN_SERVER_NAME);
-    expect(names).toContain(MCP_DEFAULT_AZURE_MCP_SERVER_NAME);
+    expect(names).toContain(defaultMicrosoftLearnMcpServerProfile.name);
+    expect(names).toContain(defaultAzureMcpServerProfile.name);
     expect(names).toContain("custom-local");
   });
 });

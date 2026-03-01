@@ -6,7 +6,7 @@ import { type RouteConfig, index, route } from "@react-router/dev/routes";
 export default [
   index("routes/home.tsx"),
   route(".well-known/*", "routes/well-known.ts"),
-  route("mcp/.well-known/*", "routes/mcp.well-known.ts"),
+  route("mcp/debug/.well-known/*", "routes/mcp.debug.well-known.ts"),
   route("api/azure-projects", "routes/api.azure-connections.ts"),
   route(
     "api/azure-projects/:projectId/deployments",
@@ -20,7 +20,7 @@ export default [
   route("api/threads/title-suggestions", "routes/api.thread-title.ts"),
   route("api/mcp-servers", "routes/api.mcp-servers.ts"),
   route("api/mcp-servers/:serverId", "routes/api.mcp-servers.$serverId.ts"),
-  route("mcp", "routes/mcp.ts"),
+  route("mcp/debug", "routes/mcp.debug.ts"),
   route("api/threads", "routes/api.threads.ts"),
   route("api/threads/:threadId", "routes/api.threads.$threadId.ts"),
   route("api/skills", "routes/api.skills.ts"),

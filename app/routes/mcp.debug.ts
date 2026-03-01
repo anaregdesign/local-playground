@@ -1,5 +1,5 @@
 /**
- * MCP route module for /mcp database debug server.
+ * MCP route module for /mcp/debug database debug server.
  */
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
@@ -33,6 +33,8 @@ import {
   installGlobalServerErrorLogging,
   logServerRouteEvent,
 } from "~/lib/server/observability/runtime-event-log";
+
+const MCP_DEBUG_ROUTE_PATH = "/mcp/debug";
 
 const tableReadInputSchema = {
   limit: z
@@ -166,13 +168,27 @@ export async function action({ request }: { request: Request }) {
 }
 
 async function handleMcpRequest(request: Request): Promise<Response> {
+  if (!isDevelopmentMcpDebugRequest()) {
+    return Response.json(
+      {
+        jsonrpc: "2.0",
+        error: {
+          code: -32004,
+          message: "Not found.",
+        },
+        id: null,
+      },
+      { status: 404 },
+    );
+  }
+
   if (request.method !== "POST") {
     return Response.json(
       {
         jsonrpc: "2.0",
         error: {
           code: -32000,
-          message: "Method not allowed. Use POST /mcp.",
+          message: `Method not allowed. Use POST ${MCP_DEBUG_ROUTE_PATH}.`,
         },
         id: null,
       },
@@ -193,7 +209,7 @@ async function handleMcpRequest(request: Request): Promise<Response> {
   } catch (error) {
     await logServerRouteEvent({
       request,
-      route: "/mcp",
+      route: MCP_DEBUG_ROUTE_PATH,
       eventName: "mcp_debug_route_failed",
       action: "handle_mcp_request",
       statusCode: 500,
@@ -217,6 +233,10 @@ async function handleMcpRequest(request: Request): Promise<Response> {
       server.close(),
     ]);
   }
+}
+
+function isDevelopmentMcpDebugRequest(): boolean {
+  return process.env.NODE_ENV === "development";
 }
 
 function createDatabaseDebugMcpServer(): McpServer {
