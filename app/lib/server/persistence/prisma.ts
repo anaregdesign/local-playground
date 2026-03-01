@@ -214,12 +214,27 @@ async function readTableColumns(tableName: string): Promise<Set<string>> {
   return columns;
 }
 
+async function renameTableColumnIfExists(
+  tableName: string,
+  fromColumnName: string,
+  toColumnName: string,
+): Promise<void> {
+  const columns = await readTableColumns(tableName);
+  if (columns.has(toColumnName) || !columns.has(fromColumnName)) {
+    return;
+  }
+
+  await prisma.$executeRawUnsafe(
+    `ALTER TABLE "${tableName}" RENAME COLUMN "${fromColumnName}" TO "${toColumnName}"`,
+  );
+}
+
 async function ensureMcpServerProfileSchema(): Promise<void> {
   await prisma.$executeRawUnsafe(`
     CREATE TABLE IF NOT EXISTS "WorkspaceMcpServerProfile" (
       "id" TEXT NOT NULL PRIMARY KEY,
       "userId" INTEGER NOT NULL,
-      "sortOrder" INTEGER NOT NULL,
+      "profileOrder" INTEGER NOT NULL,
       "configKey" TEXT NOT NULL,
       "name" TEXT NOT NULL,
       "transport" TEXT NOT NULL,
@@ -236,14 +251,25 @@ async function ensureMcpServerProfileSchema(): Promise<void> {
     )
   `);
 
+  await renameTableColumnIfExists(
+    "WorkspaceMcpServerProfile",
+    "sortOrder",
+    "profileOrder",
+  );
+  await ensureTableColumn(
+    "WorkspaceMcpServerProfile",
+    "profileOrder",
+    "INTEGER NOT NULL DEFAULT 0",
+  );
+
   await prisma.$executeRawUnsafe(`
     CREATE UNIQUE INDEX IF NOT EXISTS "WorkspaceMcpServerProfile_userId_configKey_key"
     ON "WorkspaceMcpServerProfile" ("userId", "configKey")
   `);
 
   await prisma.$executeRawUnsafe(`
-    CREATE INDEX IF NOT EXISTS "WorkspaceMcpServerProfile_userId_sortOrder_idx"
-    ON "WorkspaceMcpServerProfile" ("userId", "sortOrder")
+    CREATE INDEX IF NOT EXISTS "WorkspaceMcpServerProfile_userId_profileOrder_idx"
+    ON "WorkspaceMcpServerProfile" ("userId", "profileOrder")
   `);
 }
 
@@ -298,7 +324,7 @@ async function ensureThreadSchema(): Promise<void> {
     CREATE TABLE IF NOT EXISTS "ThreadMessage" (
       "id" TEXT NOT NULL PRIMARY KEY,
       "threadId" TEXT NOT NULL,
-      "sortOrder" INTEGER NOT NULL,
+      "conversationOrder" INTEGER NOT NULL,
       "role" TEXT NOT NULL,
       "content" TEXT NOT NULL,
       "turnId" TEXT NOT NULL,
@@ -308,6 +334,21 @@ async function ensureThreadSchema(): Promise<void> {
     )
   `);
 
+  await renameTableColumnIfExists(
+    "ThreadMessage",
+    "sortOrder",
+    "conversationOrder",
+  );
+  await renameTableColumnIfExists(
+    "ThreadMessage",
+    "threadOrder",
+    "conversationOrder",
+  );
+  await ensureTableColumn(
+    "ThreadMessage",
+    "conversationOrder",
+    "INTEGER NOT NULL DEFAULT 0",
+  );
   await ensureTableColumn(
     "ThreadMessage",
     "dialogueSkillSelectionsJson",
@@ -315,15 +356,15 @@ async function ensureThreadSchema(): Promise<void> {
   );
 
   await prisma.$executeRawUnsafe(`
-    CREATE INDEX IF NOT EXISTS "ThreadMessage_threadId_sortOrder_idx"
-    ON "ThreadMessage" ("threadId", "sortOrder")
+    CREATE INDEX IF NOT EXISTS "ThreadMessage_threadId_conversationOrder_idx"
+    ON "ThreadMessage" ("threadId", "conversationOrder")
   `);
 
   await prisma.$executeRawUnsafe(`
     CREATE TABLE IF NOT EXISTS "ThreadMcpConnection" (
       "id" TEXT NOT NULL PRIMARY KEY,
       "threadId" TEXT NOT NULL,
-      "sortOrder" INTEGER NOT NULL,
+      "selectionOrder" INTEGER NOT NULL,
       "name" TEXT NOT NULL,
       "transport" TEXT NOT NULL,
       "url" TEXT,
@@ -339,9 +380,24 @@ async function ensureThreadSchema(): Promise<void> {
     )
   `);
 
+  await renameTableColumnIfExists(
+    "ThreadMcpConnection",
+    "sortOrder",
+    "selectionOrder",
+  );
+  await renameTableColumnIfExists(
+    "ThreadMcpConnection",
+    "threadOrder",
+    "selectionOrder",
+  );
+  await ensureTableColumn(
+    "ThreadMcpConnection",
+    "selectionOrder",
+    "INTEGER NOT NULL DEFAULT 0",
+  );
   await prisma.$executeRawUnsafe(`
-    CREATE INDEX IF NOT EXISTS "ThreadMcpConnection_threadId_sortOrder_idx"
-    ON "ThreadMcpConnection" ("threadId", "sortOrder")
+    CREATE INDEX IF NOT EXISTS "ThreadMcpConnection_threadId_selectionOrder_idx"
+    ON "ThreadMcpConnection" ("threadId", "selectionOrder")
   `);
 
   await prisma.$executeRawUnsafe(`
@@ -349,7 +405,7 @@ async function ensureThreadSchema(): Promise<void> {
       "rowId" TEXT NOT NULL PRIMARY KEY,
       "sourceRpcId" TEXT NOT NULL,
       "threadId" TEXT NOT NULL,
-      "persistedOrder" INTEGER NOT NULL,
+      "conversationOrder" INTEGER NOT NULL,
       "sequence" INTEGER NOT NULL,
       "operationType" TEXT NOT NULL DEFAULT 'mcp',
       "serverName" TEXT NOT NULL,
@@ -376,9 +432,19 @@ async function ensureThreadSchema(): Promise<void> {
     "TEXT NOT NULL DEFAULT ''",
   );
 
-  await ensureTableColumn(
+  await renameTableColumnIfExists(
     "ThreadOperationLog",
     "persistedOrder",
+    "conversationOrder",
+  );
+  await renameTableColumnIfExists(
+    "ThreadOperationLog",
+    "threadOrder",
+    "conversationOrder",
+  );
+  await ensureTableColumn(
+    "ThreadOperationLog",
+    "conversationOrder",
     "INTEGER NOT NULL DEFAULT 0",
   );
 
@@ -389,21 +455,36 @@ async function ensureThreadSchema(): Promise<void> {
   );
 
   await prisma.$executeRawUnsafe(`
-    CREATE INDEX IF NOT EXISTS "ThreadOperationLog_threadId_persistedOrder_idx"
-    ON "ThreadOperationLog" ("threadId", "persistedOrder")
+    CREATE INDEX IF NOT EXISTS "ThreadOperationLog_threadId_conversationOrder_idx"
+    ON "ThreadOperationLog" ("threadId", "conversationOrder")
   `);
 
   await prisma.$executeRawUnsafe(`
     CREATE TABLE IF NOT EXISTS "ThreadSkillActivation" (
       "id" TEXT NOT NULL PRIMARY KEY,
       "threadId" TEXT NOT NULL,
-      "sortOrder" INTEGER NOT NULL,
+      "selectionOrder" INTEGER NOT NULL,
       "skillName" TEXT NOT NULL,
       "skillLocation" TEXT NOT NULL,
       FOREIGN KEY ("threadId") REFERENCES "Thread" ("id") ON DELETE CASCADE
     )
   `);
 
+  await renameTableColumnIfExists(
+    "ThreadSkillActivation",
+    "sortOrder",
+    "selectionOrder",
+  );
+  await renameTableColumnIfExists(
+    "ThreadSkillActivation",
+    "threadOrder",
+    "selectionOrder",
+  );
+  await ensureTableColumn(
+    "ThreadSkillActivation",
+    "selectionOrder",
+    "INTEGER NOT NULL DEFAULT 0",
+  );
   await ensureTableColumn(
     "ThreadSkillActivation",
     "skillLocation",
@@ -411,8 +492,8 @@ async function ensureThreadSchema(): Promise<void> {
   );
 
   await prisma.$executeRawUnsafe(`
-    CREATE INDEX IF NOT EXISTS "ThreadSkillActivation_threadId_sortOrder_idx"
-    ON "ThreadSkillActivation" ("threadId", "sortOrder")
+    CREATE INDEX IF NOT EXISTS "ThreadSkillActivation_threadId_selectionOrder_idx"
+    ON "ThreadSkillActivation" ("threadId", "selectionOrder")
   `);
 }
 

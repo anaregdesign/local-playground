@@ -346,22 +346,22 @@ async function readUserThreads(userId: number): Promise<ThreadSnapshot[]> {
       instruction: true,
       messages: {
         orderBy: {
-          sortOrder: "asc",
+          conversationOrder: "asc",
         },
       },
       mcpServers: {
         orderBy: {
-          sortOrder: "asc",
+          selectionOrder: "asc",
         },
       },
       mcpRpcLogs: {
         orderBy: {
-          persistedOrder: "asc",
+          conversationOrder: "asc",
         },
       },
       skillSelections: {
         orderBy: {
-          sortOrder: "asc",
+          selectionOrder: "asc",
         },
       },
     },
@@ -392,22 +392,22 @@ async function readThreadById(userId: number, threadId: string): Promise<ThreadS
       instruction: true,
       messages: {
         orderBy: {
-          sortOrder: "asc",
+          conversationOrder: "asc",
         },
       },
       mcpServers: {
         orderBy: {
-          sortOrder: "asc",
+          selectionOrder: "asc",
         },
       },
       mcpRpcLogs: {
         orderBy: {
-          persistedOrder: "asc",
+          conversationOrder: "asc",
         },
       },
       skillSelections: {
         orderBy: {
-          sortOrder: "asc",
+          selectionOrder: "asc",
         },
       },
     },
@@ -522,7 +522,7 @@ async function saveThreadSnapshot(
         data: snapshot.messages.map((message, index) => ({
           id: message.id,
           threadId: existing.id,
-          sortOrder: index,
+          conversationOrder: index,
           role: message.role,
           content: message.content,
           turnId: message.turnId,
@@ -545,7 +545,7 @@ async function saveThreadSnapshot(
             ? {
                 id: buildThreadMcpServerRowId(existing.id, server.id, index),
                 threadId: existing.id,
-                sortOrder: index,
+                selectionOrder: index,
                 name: server.name,
                 transport: server.transport,
                 url: null,
@@ -561,7 +561,7 @@ async function saveThreadSnapshot(
             : {
                 id: buildThreadMcpServerRowId(existing.id, server.id, index),
                 threadId: existing.id,
-                sortOrder: index,
+                selectionOrder: index,
                 name: server.name,
                 transport: server.transport,
                 url: server.url,
@@ -590,7 +590,7 @@ async function saveThreadSnapshot(
           rowId: buildThreadMcpRpcLogRowId(existing.id, entry.id, index),
           sourceRpcId: entry.id,
           threadId: existing.id,
-          persistedOrder: index,
+          conversationOrder: index,
           sequence: entry.sequence,
           operationType: entry.operationType,
           serverName: entry.serverName,
@@ -616,7 +616,7 @@ async function saveThreadSnapshot(
         data: snapshot.skillSelections.map((selection, index) => ({
           id: buildThreadSkillSelectionRowId(existing.id, index),
           threadId: existing.id,
-          sortOrder: index,
+          selectionOrder: index,
           skillName: selection.name,
           skillLocation: selection.location,
         })),
@@ -771,7 +771,7 @@ function mapStoredThreadToSnapshot(value: {
   }>;
   skillSelections: Array<{
     id: string;
-    sortOrder: number;
+    selectionOrder: number;
     skillName: string;
     skillLocation: string;
   }>;

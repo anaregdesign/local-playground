@@ -224,7 +224,7 @@ const tableDefinitions: DatabaseDebugTableDefinition[] = [
         description: "Foreign key to WorkspaceUser.id.",
       },
       {
-        name: "sortOrder",
+        name: "profileOrder",
         type: "INTEGER",
         nullable: false,
         description: "Display order in MCP Servers tab.",
@@ -386,7 +386,7 @@ const tableDefinitions: DatabaseDebugTableDefinition[] = [
         description: "Foreign key to Thread.id.",
       },
       {
-        name: "sortOrder",
+        name: "selectionOrder",
         type: "INTEGER",
         nullable: false,
         description: "Order of selected skills in the thread.",
@@ -451,7 +451,7 @@ const tableDefinitions: DatabaseDebugTableDefinition[] = [
         description: "Foreign key to Thread.id.",
       },
       {
-        name: "sortOrder",
+        name: "conversationOrder",
         type: "INTEGER",
         nullable: false,
         description: "Message order within the thread.",
@@ -508,7 +508,7 @@ const tableDefinitions: DatabaseDebugTableDefinition[] = [
         description: "Foreign key to Thread.id.",
       },
       {
-        name: "sortOrder",
+        name: "selectionOrder",
         type: "INTEGER",
         nullable: false,
         description: "Order of MCP servers attached to the thread.",
@@ -607,7 +607,7 @@ const tableDefinitions: DatabaseDebugTableDefinition[] = [
         description: "Foreign key to Thread.id.",
       },
       {
-        name: "persistedOrder",
+        name: "conversationOrder",
         type: "INTEGER",
         nullable: false,
         description: "Persisted ordering index used for thread replay.",
@@ -966,19 +966,19 @@ export async function readDatabaseDebugLatestThreadSnapshot(
         include: {
           instruction: true,
           messages: {
-            orderBy: { sortOrder: "asc" },
+            orderBy: { conversationOrder: "asc" },
             ...(includeAllRows ? {} : { take: options.messageLimit }),
           },
           mcpServers: {
-            orderBy: { sortOrder: "asc" },
+            orderBy: { selectionOrder: "asc" },
             ...(includeAllRows ? {} : { take: options.mcpServerLimit }),
           },
           mcpRpcLogs: {
-            orderBy: { persistedOrder: "asc" },
+            orderBy: { conversationOrder: "asc" },
             ...(includeAllRows ? {} : { take: options.mcpRpcLimit }),
           },
           skillSelections: {
-            orderBy: { sortOrder: "asc" },
+            orderBy: { selectionOrder: "asc" },
             ...(includeAllRows ? {} : { take: options.skillSelectionLimit }),
           },
           _count: {
@@ -1001,19 +1001,19 @@ export async function readDatabaseDebugLatestThreadSnapshot(
         include: {
           instruction: true,
           messages: {
-            orderBy: { sortOrder: "asc" },
+            orderBy: { conversationOrder: "asc" },
             ...(includeAllRows ? {} : { take: options.messageLimit }),
           },
           mcpServers: {
-            orderBy: { sortOrder: "asc" },
+            orderBy: { selectionOrder: "asc" },
             ...(includeAllRows ? {} : { take: options.mcpServerLimit }),
           },
           mcpRpcLogs: {
-            orderBy: { persistedOrder: "asc" },
+            orderBy: { conversationOrder: "asc" },
             ...(includeAllRows ? {} : { take: options.mcpRpcLimit }),
           },
           skillSelections: {
-            orderBy: { sortOrder: "asc" },
+            orderBy: { selectionOrder: "asc" },
             ...(includeAllRows ? {} : { take: options.skillSelectionLimit }),
           },
           _count: {

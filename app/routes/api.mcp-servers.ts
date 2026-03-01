@@ -269,7 +269,7 @@ async function readSavedMcpServers(userId: number): Promise<SavedMcpServerConfig
       userId,
     },
     orderBy: {
-      sortOrder: "asc",
+      profileOrder: "asc",
     },
   });
 
@@ -773,10 +773,10 @@ function normalizeStoredMcpServerRecord(entry: {
   });
 }
 
-function mapProfileToDatabaseRecord(userId: number, profile: SavedMcpServerConfig, sortOrder: number): {
+function mapProfileToDatabaseRecord(userId: number, profile: SavedMcpServerConfig, profileOrder: number): {
   id: string;
   userId: number;
-  sortOrder: number;
+  profileOrder: number;
   configKey: string;
   name: string;
   transport: string;
@@ -794,7 +794,7 @@ function mapProfileToDatabaseRecord(userId: number, profile: SavedMcpServerConfi
     return {
       id: profile.id,
       userId,
-      sortOrder,
+      profileOrder,
       configKey: buildProfileKey(profile),
       name: profile.name,
       transport: profile.transport,
@@ -813,7 +813,7 @@ function mapProfileToDatabaseRecord(userId: number, profile: SavedMcpServerConfi
   return {
     id: profile.id,
     userId,
-    sortOrder,
+    profileOrder,
     configKey: buildProfileKey(profile),
     name: profile.name,
     transport: profile.transport,

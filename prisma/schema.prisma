@@ -32,7 +32,7 @@ model AzureSelectionPreference {
 model WorkspaceMcpServerProfile {
   id             String  @id
   userId         Int
-  sortOrder      Int
+  profileOrder   Int
   configKey      String
   name           String
   transport      String
@@ -48,7 +48,7 @@ model WorkspaceMcpServerProfile {
   user           WorkspaceUser @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, configKey])
-  @@index([userId, sortOrder])
+  @@index([userId, profileOrder])
 }
 
 model Thread {
@@ -74,12 +74,12 @@ model Thread {
 model ThreadSkillActivation {
   id            String @id
   threadId      String
-  sortOrder     Int
+  selectionOrder Int
   skillName     String
   skillLocation String
   thread        Thread @relation(fields: [threadId], references: [id], onDelete: Cascade)
 
-  @@index([threadId, sortOrder])
+  @@index([threadId, selectionOrder])
 }
 
 model ThreadInstruction {
@@ -92,7 +92,7 @@ model ThreadInstruction {
 model ThreadMessage {
   id                          String @id
   threadId                    String
-  sortOrder                   Int
+  conversationOrder           Int
   role                        String
   content                     String
   turnId                      String
@@ -100,13 +100,13 @@ model ThreadMessage {
   dialogueSkillSelectionsJson String @default("[]")
   thread                      Thread @relation(fields: [threadId], references: [id], onDelete: Cascade)
 
-  @@index([threadId, sortOrder])
+  @@index([threadId, conversationOrder])
 }
 
 model ThreadMcpConnection {
   id             String  @id
   threadId       String
-  sortOrder      Int
+  selectionOrder Int
   name           String
   transport      String
   url            String?
@@ -120,14 +120,14 @@ model ThreadMcpConnection {
   envJson        String?
   thread         Thread  @relation(fields: [threadId], references: [id], onDelete: Cascade)
 
-  @@index([threadId, sortOrder])
+  @@index([threadId, selectionOrder])
 }
 
 model ThreadOperationLog {
   rowId          String  @id
   sourceRpcId    String
   threadId       String
-  persistedOrder Int
+  conversationOrder Int
   sequence       Int
   operationType  String  @default("mcp")
   serverName     String
@@ -140,7 +140,7 @@ model ThreadOperationLog {
   turnId         String
   thread         Thread  @relation(fields: [threadId], references: [id], onDelete: Cascade)
 
-  @@index([threadId, persistedOrder])
+  @@index([threadId, conversationOrder])
 }
 
 model RuntimeEventLog {

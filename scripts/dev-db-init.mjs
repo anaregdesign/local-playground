@@ -165,7 +165,7 @@ async function initializeSchema(databaseUrl) {
       CREATE TABLE IF NOT EXISTS "WorkspaceMcpServerProfile" (
         "id" TEXT NOT NULL PRIMARY KEY,
         "userId" INTEGER NOT NULL,
-        "sortOrder" INTEGER NOT NULL,
+        "profileOrder" INTEGER NOT NULL,
         "configKey" TEXT NOT NULL,
         "name" TEXT NOT NULL,
         "transport" TEXT NOT NULL,
@@ -188,8 +188,8 @@ async function initializeSchema(databaseUrl) {
     `);
 
     await prisma.$executeRawUnsafe(`
-      CREATE INDEX IF NOT EXISTS "WorkspaceMcpServerProfile_userId_sortOrder_idx"
-      ON "WorkspaceMcpServerProfile" ("userId", "sortOrder")
+      CREATE INDEX IF NOT EXISTS "WorkspaceMcpServerProfile_userId_profileOrder_idx"
+      ON "WorkspaceMcpServerProfile" ("userId", "profileOrder")
     `);
 
     await prisma.$executeRawUnsafe(`
@@ -224,7 +224,7 @@ async function initializeSchema(databaseUrl) {
       CREATE TABLE IF NOT EXISTS "ThreadMessage" (
         "id" TEXT NOT NULL PRIMARY KEY,
         "threadId" TEXT NOT NULL,
-        "sortOrder" INTEGER NOT NULL,
+        "conversationOrder" INTEGER NOT NULL,
         "role" TEXT NOT NULL,
         "content" TEXT NOT NULL,
         "turnId" TEXT NOT NULL,
@@ -234,15 +234,15 @@ async function initializeSchema(databaseUrl) {
     `);
 
     await prisma.$executeRawUnsafe(`
-      CREATE INDEX IF NOT EXISTS "ThreadMessage_threadId_sortOrder_idx"
-      ON "ThreadMessage" ("threadId", "sortOrder")
+      CREATE INDEX IF NOT EXISTS "ThreadMessage_threadId_conversationOrder_idx"
+      ON "ThreadMessage" ("threadId", "conversationOrder")
     `);
 
     await prisma.$executeRawUnsafe(`
       CREATE TABLE IF NOT EXISTS "ThreadMcpConnection" (
         "id" TEXT NOT NULL PRIMARY KEY,
         "threadId" TEXT NOT NULL,
-        "sortOrder" INTEGER NOT NULL,
+        "selectionOrder" INTEGER NOT NULL,
         "name" TEXT NOT NULL,
         "transport" TEXT NOT NULL,
         "url" TEXT,
@@ -259,8 +259,8 @@ async function initializeSchema(databaseUrl) {
     `);
 
     await prisma.$executeRawUnsafe(`
-      CREATE INDEX IF NOT EXISTS "ThreadMcpConnection_threadId_sortOrder_idx"
-      ON "ThreadMcpConnection" ("threadId", "sortOrder")
+      CREATE INDEX IF NOT EXISTS "ThreadMcpConnection_threadId_selectionOrder_idx"
+      ON "ThreadMcpConnection" ("threadId", "selectionOrder")
     `);
 
     await prisma.$executeRawUnsafe(`
@@ -268,7 +268,7 @@ async function initializeSchema(databaseUrl) {
         "rowId" TEXT NOT NULL PRIMARY KEY,
         "sourceRpcId" TEXT NOT NULL,
         "threadId" TEXT NOT NULL,
-        "persistedOrder" INTEGER NOT NULL,
+        "conversationOrder" INTEGER NOT NULL,
         "sequence" INTEGER NOT NULL,
         "operationType" TEXT NOT NULL DEFAULT 'mcp',
         "serverName" TEXT NOT NULL,
@@ -284,8 +284,8 @@ async function initializeSchema(databaseUrl) {
     `);
 
     await prisma.$executeRawUnsafe(`
-      CREATE INDEX IF NOT EXISTS "ThreadOperationLog_threadId_persistedOrder_idx"
-      ON "ThreadOperationLog" ("threadId", "persistedOrder")
+      CREATE INDEX IF NOT EXISTS "ThreadOperationLog_threadId_conversationOrder_idx"
+      ON "ThreadOperationLog" ("threadId", "conversationOrder")
     `);
   } finally {
     await prisma.$disconnect();
