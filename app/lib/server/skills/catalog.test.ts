@@ -31,6 +31,7 @@ describe("resolveCodexHomeDirectory", () => {
 describe("resolveSkillCatalogRoots", () => {
   it("builds CODEX_HOME and app data skill roots", () => {
     const roots = resolveSkillCatalogRoots({
+      workspaceUserId: 42,
       codexHome: "/Users/hiroki/.codex",
       foundryConfigDirectory: "/Users/hiroki/.foundry_local_playground",
     });
@@ -42,7 +43,7 @@ describe("resolveSkillCatalogRoots", () => {
         createIfMissing: false,
       },
       {
-        path: "/Users/hiroki/.foundry_local_playground/skills",
+        path: "/Users/hiroki/.foundry_local_playground/skills/42",
         source: "app_data",
         createIfMissing: true,
       },
@@ -57,11 +58,12 @@ describe("resolveSkillCatalogRoots", () => {
 
     try {
       const roots = resolveSkillCatalogRoots({
+        workspaceUserId: 7,
         codexHome: "/Users/hiroki/.codex",
       });
 
       expect(roots[1]).toEqual({
-        path: "/tmp/skills",
+        path: "/tmp/skills/7",
         source: "app_data",
         createIfMissing: true,
       });
@@ -102,6 +104,7 @@ describe("discoverSkillCatalog", () => {
     );
 
     const result = await discoverSkillCatalog({
+      workspaceUserId: 5,
       codexHome,
       foundryConfigDirectory,
     });
@@ -125,6 +128,7 @@ describe("discoverSkillCatalog", () => {
     await writeFile(path.join(skillDirectory, "SKILL.md"), "# missing frontmatter", "utf8");
 
     const result = await discoverSkillCatalog({
+      workspaceUserId: 5,
       codexHome,
       foundryConfigDirectory,
     });
@@ -142,11 +146,12 @@ describe("discoverSkillCatalog", () => {
     tempDirectories.push(codexHome, path.dirname(foundryConfigDirectory));
 
     await discoverSkillCatalog({
+      workspaceUserId: 9,
       codexHome,
       foundryConfigDirectory,
     });
 
-    const appDataSkillsDirectory = path.join(foundryConfigDirectory, "skills");
+    const appDataSkillsDirectory = path.join(foundryConfigDirectory, "skills", "9");
     const directoryStats = await stat(appDataSkillsDirectory);
     expect(directoryStats.isDirectory()).toBe(true);
   });
@@ -159,6 +164,7 @@ describe("discoverSkillCatalog", () => {
     const nestedSkillDirectory = path.join(
       foundryConfigDirectory,
       "skills",
+      "31",
       "openai-curated",
       "gh-fix-ci",
     );
@@ -176,6 +182,7 @@ describe("discoverSkillCatalog", () => {
     );
 
     const result = await discoverSkillCatalog({
+      workspaceUserId: 31,
       codexHome,
       foundryConfigDirectory,
     });
@@ -186,9 +193,9 @@ describe("discoverSkillCatalog", () => {
       description: "GitHub checks troubleshooting workflow",
       source: "app_data",
     });
-    expect(result.skills[0]?.location.endsWith("/skills/openai-curated/gh-fix-ci/SKILL.md")).toBe(
-      true,
-    );
+    expect(
+      result.skills[0]?.location.endsWith("/skills/31/openai-curated/gh-fix-ci/SKILL.md"),
+    ).toBe(true);
     expect(result.warnings).toEqual([]);
   });
 
@@ -219,6 +226,7 @@ describe("discoverSkillCatalog", () => {
 
       try {
         const result = await discoverSkillCatalog({
+          workspaceUserId: 12,
           codexHome,
           foundryConfigDirectory,
         });

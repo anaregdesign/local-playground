@@ -1,6 +1,7 @@
 /**
  * API route module for /api/threads.
  */
+import type { Prisma } from "@prisma/client";
 import {
   DEFAULT_AGENT_INSTRUCTION,
   HOME_DEFAULT_REASONING_EFFORT,
@@ -19,6 +20,7 @@ import {
 } from "~/lib/server/observability/app-event-log";
 import { readThreadSnapshotFromUnknown } from "~/lib/home/thread/parsers";
 import {
+  buildThreadMessageSkillSelectionRowId,
   buildThreadMcpRpcLogRowId,
   buildThreadMcpServerRowId,
   buildThreadSkillSelectionRowId,
@@ -27,6 +29,7 @@ import {
   hasThreadInteraction,
   hasThreadPersistableState,
 } from "~/lib/home/thread/snapshot-state";
+import { SKILL_REGISTRY_OPTIONS } from "~/lib/home/skills/registry";
 import type { ThreadSnapshot } from "~/lib/home/thread/types";
 import type { Route } from "./+types/api.threads";
 
@@ -348,6 +351,16 @@ async function readUserThreads(userId: number): Promise<ThreadSnapshot[]> {
         orderBy: {
           conversationOrder: "asc",
         },
+        include: {
+          skillActivations: {
+            orderBy: {
+              selectionOrder: "asc",
+            },
+            include: {
+              skillProfile: true,
+            },
+          },
+        },
       },
       mcpServers: {
         orderBy: {
@@ -362,6 +375,13 @@ async function readUserThreads(userId: number): Promise<ThreadSnapshot[]> {
       skillSelections: {
         orderBy: {
           selectionOrder: "asc",
+        },
+        include: {
+          skillProfile: {
+            include: {
+              registryProfile: true,
+            },
+          },
         },
       },
     },
@@ -394,6 +414,16 @@ async function readThreadById(userId: number, threadId: string): Promise<ThreadS
         orderBy: {
           conversationOrder: "asc",
         },
+        include: {
+          skillActivations: {
+            orderBy: {
+              selectionOrder: "asc",
+            },
+            include: {
+              skillProfile: true,
+            },
+          },
+        },
       },
       mcpServers: {
         orderBy: {
@@ -408,6 +438,13 @@ async function readThreadById(userId: number, threadId: string): Promise<ThreadS
       skillSelections: {
         orderBy: {
           selectionOrder: "asc",
+        },
+        include: {
+          skillProfile: {
+            include: {
+              registryProfile: true,
+            },
+          },
         },
       },
     },
@@ -528,7 +565,6 @@ async function saveThreadSnapshot(
           createdAt: message.createdAt,
           turnId: message.turnId,
           attachmentsJson: JSON.stringify(message.attachments),
-          dialogueSkillSelectionsJson: JSON.stringify(message.dialogueSkillSelections),
         })),
       });
     }
@@ -606,6 +642,15 @@ async function saveThreadSnapshot(
       });
     }
 
+    const skillProfileIdsByLocation = await upsertThreadSkillProfiles({
+      transaction,
+      userId,
+      skillSelections: [
+        ...snapshot.skillSelections,
+        ...snapshot.messages.flatMap((message) => message.dialogueSkillSelections),
+      ],
+    });
+
     await transaction.threadSkillActivation.deleteMany({
       where: {
         threadId: existing.id,
@@ -614,13 +659,53 @@ async function saveThreadSnapshot(
 
     if (snapshot.skillSelections.length > 0) {
       await transaction.threadSkillActivation.createMany({
-        data: snapshot.skillSelections.map((selection, index) => ({
-          id: buildThreadSkillSelectionRowId(existing.id, index),
+        data: snapshot.skillSelections.map((selection, index) => {
+          const skillProfileId = skillProfileIdsByLocation.get(selection.location);
+          if (!skillProfileId) {
+            throw new Error(
+              `Skill profile is not available for location: ${selection.location}`,
+            );
+          }
+
+          return {
+            id: buildThreadSkillSelectionRowId(existing.id, index),
+            threadId: existing.id,
+            selectionOrder: index,
+            skillProfileId,
+          };
+        }),
+      });
+    }
+
+    await transaction.threadMessageSkillActivation.deleteMany({
+      where: {
+        message: {
           threadId: existing.id,
+        },
+      },
+    });
+
+    const messageSkillActivations = snapshot.messages.flatMap((message) =>
+      message.dialogueSkillSelections.map((selection, index) => {
+        const skillProfileId = skillProfileIdsByLocation.get(selection.location);
+        if (!skillProfileId) {
+          throw new Error(
+            `Skill profile is not available for location: ${selection.location}`,
+          );
+        }
+
+        return {
+          id: buildThreadMessageSkillSelectionRowId(message.id, index),
+          messageId: message.id,
           selectionOrder: index,
-          skillName: selection.name,
-          skillLocation: selection.location,
-        })),
+          skillProfileId,
+        };
+      }),
+    );
+
+    if (messageSkillActivations.length > 0) {
+      await transaction.threadMessageSkillActivation.createMany({
+        data: messageSkillActivations,
       });
     }
   });
@@ -722,6 +807,174 @@ async function logicalRestoreThread(
   };
 }
 
+async function upsertThreadSkillProfiles(options: {
+  transaction: Prisma.TransactionClient;
+  userId: number;
+  skillSelections: ThreadSnapshot["skillSelections"];
+}): Promise<Map<string, number>> {
+  const uniqueSelections = new Map<
+    string,
+    {
+      name: string;
+      location: string;
+      source: string;
+      registryOption: (typeof SKILL_REGISTRY_OPTIONS)[number] | null;
+    }
+  >();
+
+  for (const selection of options.skillSelections) {
+    const location = selection.location.trim();
+    const name = selection.name.trim();
+    if (!location || !name || uniqueSelections.has(location)) {
+      continue;
+    }
+
+    const registryOption = readSkillRegistryOptionFromSkillLocation(location);
+    uniqueSelections.set(location, {
+      name,
+      location,
+      source: registryOption ? "app_data" : readSkillSourceFromLocation(location),
+      registryOption,
+    });
+  }
+
+  const registryProfileIdByRegistryId = new Map<string, number>();
+  for (const selection of uniqueSelections.values()) {
+    if (!selection.registryOption) {
+      continue;
+    }
+
+    const registryOption = selection.registryOption;
+    if (registryProfileIdByRegistryId.has(registryOption.id)) {
+      continue;
+    }
+
+    const registryProfile = await options.transaction.workspaceSkillRegistryProfile.upsert({
+      where: {
+        userId_registryId: {
+          userId: options.userId,
+          registryId: registryOption.id,
+        },
+      },
+      create: {
+        userId: options.userId,
+        registryId: registryOption.id,
+        registryLabel: registryOption.label,
+        registryDescription: registryOption.description,
+        repository: registryOption.repository,
+        repositoryUrl: `https://github.com/${registryOption.repository}`,
+        sourcePath: registryOption.sourcePath,
+        installDirectoryName: registryOption.installDirectoryName,
+      },
+      update: {
+        registryLabel: registryOption.label,
+        registryDescription: registryOption.description,
+        repository: registryOption.repository,
+        repositoryUrl: `https://github.com/${registryOption.repository}`,
+        sourcePath: registryOption.sourcePath,
+        installDirectoryName: registryOption.installDirectoryName,
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    registryProfileIdByRegistryId.set(registryOption.id, registryProfile.id);
+  }
+
+  const skillProfileIdByLocation = new Map<string, number>();
+  for (const selection of uniqueSelections.values()) {
+    const registryProfileId = selection.registryOption
+      ? registryProfileIdByRegistryId.get(selection.registryOption.id) ?? null
+      : null;
+
+    const skillProfile = await options.transaction.workspaceSkillProfile.upsert({
+      where: {
+        userId_location: {
+          userId: options.userId,
+          location: selection.location,
+        },
+      },
+      create: {
+        userId: options.userId,
+        registryProfileId,
+        name: selection.name,
+        location: selection.location,
+        source: selection.source,
+      },
+      update: {
+        registryProfileId,
+        name: selection.name,
+        source: selection.source,
+      },
+      select: {
+        id: true,
+        location: true,
+      },
+    });
+
+    skillProfileIdByLocation.set(skillProfile.location, skillProfile.id);
+  }
+
+  return skillProfileIdByLocation;
+}
+
+function readSkillRegistryOptionFromSkillLocation(
+  location: string,
+): (typeof SKILL_REGISTRY_OPTIONS)[number] | null {
+  const normalizedSegments = location
+    .trim()
+    .replaceAll("\\", "/")
+    .split("/")
+    .filter((segment) => segment.length > 0);
+  if (normalizedSegments.length === 0) {
+    return null;
+  }
+
+  for (let index = 0; index < normalizedSegments.length - 1; index += 1) {
+    if (normalizedSegments[index] !== "skills") {
+      continue;
+    }
+
+    const firstCandidate = normalizedSegments[index + 1] ?? "";
+    const secondCandidate = normalizedSegments[index + 2] ?? "";
+    const candidates = [firstCandidate];
+    if (isPositiveIntegerString(firstCandidate)) {
+      candidates.push(secondCandidate);
+    }
+
+    for (const candidate of candidates) {
+      const registry = SKILL_REGISTRY_OPTIONS.find(
+        (option) => option.installDirectoryName === candidate,
+      );
+      if (registry) {
+        return registry;
+      }
+    }
+  }
+
+  return null;
+}
+
+function readSkillSourceFromLocation(location: string): string {
+  const normalizedLocation = location.trim().replaceAll("\\", "/").toLowerCase();
+  if (!normalizedLocation) {
+    return "workspace";
+  }
+  if (normalizedLocation.includes("/.codex/skills/")) {
+    return "codex_home";
+  }
+  if (normalizedLocation.includes("/skills/")) {
+    return "app_data";
+  }
+
+  return "workspace";
+}
+
+function isPositiveIntegerString(value: string): boolean {
+  return /^[1-9]\d*$/.test(value.trim());
+}
+
 function mapStoredThreadToSnapshot(value: {
   id: string;
   name: string;
@@ -741,7 +994,20 @@ function mapStoredThreadToSnapshot(value: {
     createdAt: string;
     turnId: string;
     attachmentsJson: string;
-    dialogueSkillSelectionsJson: string;
+    skillActivations: Array<{
+      id: string;
+      messageId: string;
+      selectionOrder: number;
+      skillProfileId: number;
+      skillProfile: {
+        id: number;
+        userId: number;
+        registryProfileId: number | null;
+        name: string;
+        location: string;
+        source: string;
+      };
+    }>;
   }>;
   mcpServers: Array<{
     id: string;
@@ -774,8 +1040,26 @@ function mapStoredThreadToSnapshot(value: {
   skillSelections: Array<{
     id: string;
     selectionOrder: number;
-    skillName: string;
-    skillLocation: string;
+    skillProfileId: number;
+    skillProfile: {
+      id: number;
+      userId: number;
+      registryProfileId: number | null;
+      name: string;
+      location: string;
+      source: string;
+      registryProfile: {
+        id: number;
+        userId: number;
+        registryId: string;
+        registryLabel: string;
+        registryDescription: string;
+        repository: string;
+        repositoryUrl: string;
+        sourcePath: string;
+        installDirectoryName: string;
+      } | null;
+    };
   }>;
 }): ThreadSnapshot | null {
   const parsed = readThreadSnapshotFromUnknown(
@@ -796,7 +1080,10 @@ function mapStoredThreadToSnapshot(value: {
         createdAt: message.createdAt,
         turnId: message.turnId,
         attachments: readJsonValue(message.attachmentsJson, []),
-        dialogueSkillSelections: readJsonValue(message.dialogueSkillSelectionsJson, []),
+        dialogueSkillSelections: message.skillActivations.map((activation) => ({
+          name: activation.skillProfile.name,
+          location: activation.skillProfile.location,
+        })),
       })),
       mcpServers: value.mcpServers.map((server) =>
         server.transport === "stdio"
@@ -834,8 +1121,8 @@ function mapStoredThreadToSnapshot(value: {
         turnId: entry.turnId,
       })),
       skillSelections: value.skillSelections.map((selection) => ({
-        name: selection.skillName,
-        location: selection.skillLocation,
+        name: selection.skillProfile.name,
+        location: selection.skillProfile.location,
       })),
     },
     {

@@ -160,16 +160,28 @@ export function readSkillRegistryLabelFromSkillLocation(
       continue;
     }
 
-    const registryDirectoryName = segments[index + 1] ?? "";
-    const registry = SKILL_REGISTRY_OPTIONS.find(
-      (option) => option.installDirectoryName === registryDirectoryName,
-    );
-    if (registry) {
-      return registry.label;
+    const firstCandidate = segments[index + 1] ?? "";
+    const secondCandidate = segments[index + 2] ?? "";
+    const registryDirectoryCandidates = [firstCandidate];
+    if (isPositiveIntegerString(firstCandidate)) {
+      registryDirectoryCandidates.push(secondCandidate);
+    }
+
+    for (const registryDirectoryName of registryDirectoryCandidates) {
+      const registry = SKILL_REGISTRY_OPTIONS.find(
+        (option) => option.installDirectoryName === registryDirectoryName,
+      );
+      if (registry) {
+        return registry.label;
+      }
     }
   }
 
   return null;
+}
+
+function isPositiveIntegerString(value: string): boolean {
+  return /^[1-9]\d*$/.test(value.trim());
 }
 
 function readNormalizedPathSegments(value: string): string[] | null {

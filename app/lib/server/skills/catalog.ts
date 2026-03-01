@@ -30,6 +30,7 @@ export type SkillCatalogDiscoveryResult = {
 };
 
 type ResolveSkillCatalogRootsOptions = {
+  workspaceUserId: number;
   codexHome?: string;
   foundryConfigDirectory?: string;
   platform?: NodeJS.Platform;
@@ -41,7 +42,7 @@ const SKILL_FRONTMATTER_READ_CHUNK_BYTES = 4 * 1024;
 const SKILL_FRONTMATTER_READ_MAX_BYTES = 128 * 1024;
 
 export function resolveSkillCatalogRoots(
-  options: ResolveSkillCatalogRootsOptions = {},
+  options: ResolveSkillCatalogRootsOptions,
 ): SkillCatalogRoot[] {
   const codexHomeRoot = path.resolve(
     resolveCodexHomeDirectory(options.codexHome),
@@ -50,6 +51,7 @@ export function resolveSkillCatalogRoots(
   const configuredFoundryDirectory =
     typeof options.foundryConfigDirectory === "string" ? options.foundryConfigDirectory.trim() : "";
   const foundrySkillsRoot = resolveAppDataSkillsRoot({
+    workspaceUserId: options.workspaceUserId,
     configuredFoundryDirectory,
     platform: options.platform,
     homeDirectory: options.homeDirectory,
@@ -80,7 +82,7 @@ export function resolveSkillCatalogRoots(
 }
 
 export async function discoverSkillCatalog(
-  options: ResolveSkillCatalogRootsOptions = {},
+  options: ResolveSkillCatalogRootsOptions,
 ): Promise<SkillCatalogDiscoveryResult> {
   const roots = resolveSkillCatalogRoots(options);
   const skills: SkillCatalogEntry[] = [];
@@ -351,28 +353,52 @@ function readErrorMessage(error: unknown): string {
 }
 
 function resolveAppDataSkillsRoot(options: {
+  workspaceUserId: number;
   configuredFoundryDirectory: string;
   platform?: NodeJS.Platform;
   homeDirectory?: string;
   appDataDirectory?: string | null;
 }): string {
+  const workspaceUserSkillsDirectoryName = readWorkspaceUserSkillsDirectoryName(
+    options.workspaceUserId,
+  );
+
   if (options.configuredFoundryDirectory) {
-    return path.resolve(options.configuredFoundryDirectory, AGENT_SKILLS_DIRECTORY_NAME);
+    return path.resolve(
+      options.configuredFoundryDirectory,
+      AGENT_SKILLS_DIRECTORY_NAME,
+      workspaceUserSkillsDirectoryName,
+    );
   }
 
   const configuredDatabaseUrl = resolveConfiguredDatabaseUrlFromEnvironment();
   if (configuredDatabaseUrl) {
     const sqliteFilePath = resolveSqliteDatabaseFilePath(configuredDatabaseUrl);
     if (sqliteFilePath) {
-      return path.resolve(path.dirname(sqliteFilePath), AGENT_SKILLS_DIRECTORY_NAME);
+      return path.resolve(
+        path.dirname(sqliteFilePath),
+        AGENT_SKILLS_DIRECTORY_NAME,
+        workspaceUserSkillsDirectoryName,
+      );
     }
   }
 
-  return resolveFoundrySkillsDirectory({
-    platform: options.platform,
-    homeDirectory: options.homeDirectory,
-    appDataDirectory: options.appDataDirectory,
-  });
+  return path.resolve(
+    resolveFoundrySkillsDirectory({
+      platform: options.platform,
+      homeDirectory: options.homeDirectory,
+      appDataDirectory: options.appDataDirectory,
+    }),
+    workspaceUserSkillsDirectoryName,
+  );
+}
+
+function readWorkspaceUserSkillsDirectoryName(workspaceUserId: number): string {
+  if (!Number.isInteger(workspaceUserId) || workspaceUserId <= 0) {
+    throw new Error("`workspaceUserId` must be a positive integer.");
+  }
+
+  return String(workspaceUserId);
 }
 
 function resolveConfiguredDatabaseUrlFromEnvironment(): string {

@@ -1277,9 +1277,23 @@ export function useWorkspaceController() {
       });
       const payload = await readJsonPayload<SkillsApiResponse>(response, "Skills");
       if (!response.ok) {
+        const authRequired = payload.authRequired === true || response.status === 401;
+        if (authRequired) {
+          setIsAzureAuthRequired(true);
+          setAvailableSkills([]);
+          setSkillRegistryCatalogs([]);
+          setSkillsError(
+            "Azure login is required. Open Settings and sign in to load Skills.",
+          );
+          setSkillRegistryError(
+            "Azure login is required. Open Settings and sign in to load Skills.",
+          );
+          return;
+        }
         throw new Error(payload.error || "Failed to load Skills.");
       }
 
+      setIsAzureAuthRequired(false);
       applySkillsApiPayload(payload);
       setSkillRegistrySuccess(null);
     } catch (loadError) {
@@ -1338,9 +1352,17 @@ export function useWorkspaceController() {
       });
       const payload = await readJsonPayload<SkillsApiResponse>(response, "Skills");
       if (!response.ok) {
+        const authRequired = payload.authRequired === true || response.status === 401;
+        if (authRequired) {
+          setIsAzureAuthRequired(true);
+          throw new Error(
+            "Azure login is required. Open Settings and sign in to update Skill registries.",
+          );
+        }
         throw new Error(payload.error || "Failed to update Skill registry.");
       }
 
+      setIsAzureAuthRequired(false);
       applySkillsApiPayload(payload);
       const message = typeof payload.message === "string" ? payload.message.trim() : "";
       setSkillRegistrySuccess(message || null);

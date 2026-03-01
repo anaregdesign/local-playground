@@ -76,6 +76,7 @@ export type SkillsApiResponse = {
   registryWarnings?: unknown;
   warnings?: unknown;
   message?: string;
+  authRequired?: boolean;
   error?: string;
 };
 

@@ -60,7 +60,7 @@ describe("readSkillRegistryLabelFromSkillLocation", () => {
   it("returns the registry label for installed app-data paths", () => {
     expect(
       readSkillRegistryLabelFromSkillLocation(
-        "/Users/test/.foundry_local_playground/skills/anaregdesign-public/finance/nisa-growth-tech/SKILL.md",
+        "/Users/test/.foundry_local_playground/skills/42/anaregdesign-public/finance/nisa-growth-tech/SKILL.md",
       ),
     ).toBe("Anaregdesign Public");
   });

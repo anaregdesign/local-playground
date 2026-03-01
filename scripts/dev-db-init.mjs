@@ -193,6 +193,59 @@ async function initializeSchema(databaseUrl) {
     `);
 
     await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "WorkspaceSkillRegistryProfile" (
+        "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+        "userId" INTEGER NOT NULL,
+        "registryId" TEXT NOT NULL,
+        "registryLabel" TEXT NOT NULL,
+        "registryDescription" TEXT NOT NULL,
+        "repository" TEXT NOT NULL,
+        "repositoryUrl" TEXT NOT NULL,
+        "sourcePath" TEXT NOT NULL,
+        "installDirectoryName" TEXT NOT NULL,
+        FOREIGN KEY ("userId") REFERENCES "WorkspaceUser" ("id") ON DELETE CASCADE
+      )
+    `);
+
+    await prisma.$executeRawUnsafe(`
+      CREATE UNIQUE INDEX IF NOT EXISTS "WorkspaceSkillRegistryProfile_userId_registryId_key"
+      ON "WorkspaceSkillRegistryProfile" ("userId", "registryId")
+    `);
+
+    await prisma.$executeRawUnsafe(`
+      CREATE INDEX IF NOT EXISTS "WorkspaceSkillRegistryProfile_userId_registryId_idx"
+      ON "WorkspaceSkillRegistryProfile" ("userId", "registryId")
+    `);
+
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "WorkspaceSkillProfile" (
+        "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+        "userId" INTEGER NOT NULL,
+        "registryProfileId" INTEGER,
+        "name" TEXT NOT NULL,
+        "location" TEXT NOT NULL,
+        "source" TEXT NOT NULL,
+        FOREIGN KEY ("userId") REFERENCES "WorkspaceUser" ("id") ON DELETE CASCADE,
+        FOREIGN KEY ("registryProfileId") REFERENCES "WorkspaceSkillRegistryProfile" ("id") ON DELETE SET NULL
+      )
+    `);
+
+    await prisma.$executeRawUnsafe(`
+      CREATE UNIQUE INDEX IF NOT EXISTS "WorkspaceSkillProfile_userId_location_key"
+      ON "WorkspaceSkillProfile" ("userId", "location")
+    `);
+
+    await prisma.$executeRawUnsafe(`
+      CREATE INDEX IF NOT EXISTS "WorkspaceSkillProfile_userId_name_idx"
+      ON "WorkspaceSkillProfile" ("userId", "name")
+    `);
+
+    await prisma.$executeRawUnsafe(`
+      CREATE INDEX IF NOT EXISTS "WorkspaceSkillProfile_registryProfileId_idx"
+      ON "WorkspaceSkillProfile" ("registryProfileId")
+    `);
+
+    await prisma.$executeRawUnsafe(`
       CREATE TABLE IF NOT EXISTS "Thread" (
         "id" TEXT NOT NULL PRIMARY KEY,
         "userId" INTEGER NOT NULL,
@@ -202,6 +255,7 @@ async function initializeSchema(databaseUrl) {
         "deletedAt" TEXT,
         "reasoningEffort" TEXT NOT NULL DEFAULT 'none',
         "webSearchEnabled" BOOLEAN NOT NULL DEFAULT false,
+        "threadEnvironmentJson" TEXT NOT NULL DEFAULT '{}',
         FOREIGN KEY ("userId") REFERENCES "WorkspaceUser" ("id") ON DELETE CASCADE
       )
     `);
@@ -237,6 +291,27 @@ async function initializeSchema(databaseUrl) {
     await prisma.$executeRawUnsafe(`
       CREATE INDEX IF NOT EXISTS "ThreadMessage_threadId_conversationOrder_idx"
       ON "ThreadMessage" ("threadId", "conversationOrder")
+    `);
+
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "ThreadMessageSkillActivation" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "messageId" TEXT NOT NULL,
+        "selectionOrder" INTEGER NOT NULL,
+        "skillProfileId" INTEGER NOT NULL,
+        FOREIGN KEY ("messageId") REFERENCES "ThreadMessage" ("id") ON DELETE CASCADE,
+        FOREIGN KEY ("skillProfileId") REFERENCES "WorkspaceSkillProfile" ("id") ON DELETE CASCADE
+      )
+    `);
+
+    await prisma.$executeRawUnsafe(`
+      CREATE INDEX IF NOT EXISTS "ThreadMessageSkillActivation_messageId_selectionOrder_idx"
+      ON "ThreadMessageSkillActivation" ("messageId", "selectionOrder")
+    `);
+
+    await prisma.$executeRawUnsafe(`
+      CREATE INDEX IF NOT EXISTS "ThreadMessageSkillActivation_skillProfileId_idx"
+      ON "ThreadMessageSkillActivation" ("skillProfileId")
     `);
 
     await prisma.$executeRawUnsafe(`
@@ -287,6 +362,27 @@ async function initializeSchema(databaseUrl) {
     await prisma.$executeRawUnsafe(`
       CREATE INDEX IF NOT EXISTS "ThreadOperationLog_threadId_conversationOrder_idx"
       ON "ThreadOperationLog" ("threadId", "conversationOrder")
+    `);
+
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "ThreadSkillActivation" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "threadId" TEXT NOT NULL,
+        "selectionOrder" INTEGER NOT NULL,
+        "skillProfileId" INTEGER NOT NULL,
+        FOREIGN KEY ("threadId") REFERENCES "Thread" ("id") ON DELETE CASCADE,
+        FOREIGN KEY ("skillProfileId") REFERENCES "WorkspaceSkillProfile" ("id") ON DELETE CASCADE
+      )
+    `);
+
+    await prisma.$executeRawUnsafe(`
+      CREATE INDEX IF NOT EXISTS "ThreadSkillActivation_threadId_selectionOrder_idx"
+      ON "ThreadSkillActivation" ("threadId", "selectionOrder")
+    `);
+
+    await prisma.$executeRawUnsafe(`
+      CREATE INDEX IF NOT EXISTS "ThreadSkillActivation_skillProfileId_idx"
+      ON "ThreadSkillActivation" ("skillProfileId")
     `);
   } finally {
     await prisma.$disconnect();

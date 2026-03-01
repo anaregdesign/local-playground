@@ -30,7 +30,7 @@ import {
 describe("mcp-debug-database metadata", () => {
   it("publishes table catalog with role and field definitions", () => {
     const tables = listDatabaseDebugTables();
-    expect(tables).toHaveLength(11);
+    expect(tables).toHaveLength(14);
 
     const appEventLog = tables.find((table) => table.tableName === "RuntimeEventLog");
     expect(appEventLog).toBeTruthy();
@@ -40,6 +40,17 @@ describe("mcp-debug-database metadata", () => {
         expect.objectContaining({
           name: "eventName",
           type: "TEXT",
+        }),
+      ]),
+    );
+
+    const skillProfile = tables.find((table) => table.tableName === "WorkspaceSkillProfile");
+    expect(skillProfile).toBeTruthy();
+    expect(skillProfile?.fields).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: "registryProfileId",
+          type: "INTEGER",
         }),
       ]),
     );

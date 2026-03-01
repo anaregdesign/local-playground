@@ -101,7 +101,7 @@ describe("readSkillRegistryCatalogList", () => {
             tag: null,
             remotePath: "skills/.curated/gh-fix-ci",
             installLocation:
-              "/Users/hiroki/.foundry_local_playground/skills/openai-curated/gh-fix-ci/SKILL.md",
+              "/Users/hiroki/.foundry_local_playground/skills/42/openai-curated/gh-fix-ci/SKILL.md",
             isInstalled: false,
           },
           {
@@ -111,7 +111,7 @@ describe("readSkillRegistryCatalogList", () => {
             tag: null,
             remotePath: "skills/.curated/gh-fix-ci",
             installLocation:
-              "/Users/hiroki/.foundry_local_playground/skills/openai-curated/gh-fix-ci/SKILL.md",
+              "/Users/hiroki/.foundry_local_playground/skills/42/openai-curated/gh-fix-ci/SKILL.md",
             isInstalled: false,
           },
         ],
@@ -140,7 +140,7 @@ describe("readSkillRegistryCatalogList", () => {
             tag: null,
             remotePath: "skills/pdf",
             installLocation:
-              "/Users/hiroki/.foundry_local_playground/skills/anthropic-public/pdf/SKILL.md",
+              "/Users/hiroki/.foundry_local_playground/skills/42/anthropic-public/pdf/SKILL.md",
             isInstalled: true,
           },
         ],
@@ -169,7 +169,7 @@ describe("readSkillRegistryCatalogList", () => {
             tag: "example",
             remotePath: "skills/example/python-current-time",
             installLocation:
-              "/Users/hiroki/.foundry_local_playground/skills/anaregdesign-public/example/python-current-time/SKILL.md",
+              "/Users/hiroki/.foundry_local_playground/skills/42/anaregdesign-public/example/python-current-time/SKILL.md",
             isInstalled: false,
           },
           {
@@ -179,7 +179,7 @@ describe("readSkillRegistryCatalogList", () => {
             tag: "finance",
             remotePath: "skills/finance/nisa-growth-tech",
             installLocation:
-              "/Users/hiroki/.foundry_local_playground/skills/anaregdesign-public/finance/nisa-growth-tech/SKILL.md",
+              "/Users/hiroki/.foundry_local_playground/skills/42/anaregdesign-public/finance/nisa-growth-tech/SKILL.md",
             isInstalled: true,
           },
         ],
@@ -202,7 +202,7 @@ describe("readSkillRegistryCatalogList", () => {
             tag: null,
             remotePath: "skills/.curated/gh-fix-ci",
             installLocation:
-              "/Users/hiroki/.foundry_local_playground/skills/openai-curated/gh-fix-ci/SKILL.md",
+              "/Users/hiroki/.foundry_local_playground/skills/42/openai-curated/gh-fix-ci/SKILL.md",
             isInstalled: false,
           },
         ],
@@ -222,7 +222,7 @@ describe("readSkillRegistryCatalogList", () => {
             tag: null,
             remotePath: "skills/pdf",
             installLocation:
-              "/Users/hiroki/.foundry_local_playground/skills/anthropic-public/pdf/SKILL.md",
+              "/Users/hiroki/.foundry_local_playground/skills/42/anthropic-public/pdf/SKILL.md",
             isInstalled: true,
           },
         ],
@@ -242,7 +242,7 @@ describe("readSkillRegistryCatalogList", () => {
             tag: "example",
             remotePath: "skills/example/python-current-time",
             installLocation:
-              "/Users/hiroki/.foundry_local_playground/skills/anaregdesign-public/example/python-current-time/SKILL.md",
+              "/Users/hiroki/.foundry_local_playground/skills/42/anaregdesign-public/example/python-current-time/SKILL.md",
             isInstalled: false,
           },
           {
@@ -252,7 +252,7 @@ describe("readSkillRegistryCatalogList", () => {
             tag: "finance",
             remotePath: "skills/finance/nisa-growth-tech",
             installLocation:
-              "/Users/hiroki/.foundry_local_playground/skills/anaregdesign-public/finance/nisa-growth-tech/SKILL.md",
+              "/Users/hiroki/.foundry_local_playground/skills/42/anaregdesign-public/finance/nisa-growth-tech/SKILL.md",
             isInstalled: true,
           },
         ],

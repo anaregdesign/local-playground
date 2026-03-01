@@ -128,6 +128,7 @@ async function ensureDatabaseSchema(): Promise<void> {
   await ensureUserSchema();
   await ensureAzureSelectionSchema();
   await ensureMcpServerProfileSchema();
+  await ensureSkillProfileSchema();
   await ensureThreadSchema();
   await ensureAppEventLogSchema();
   await ensureSkillRegistryCacheSchema();
@@ -273,6 +274,61 @@ async function ensureMcpServerProfileSchema(): Promise<void> {
   `);
 }
 
+async function ensureSkillProfileSchema(): Promise<void> {
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS "WorkspaceSkillRegistryProfile" (
+      "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+      "userId" INTEGER NOT NULL,
+      "registryId" TEXT NOT NULL,
+      "registryLabel" TEXT NOT NULL,
+      "registryDescription" TEXT NOT NULL,
+      "repository" TEXT NOT NULL,
+      "repositoryUrl" TEXT NOT NULL,
+      "sourcePath" TEXT NOT NULL,
+      "installDirectoryName" TEXT NOT NULL,
+      FOREIGN KEY ("userId") REFERENCES "WorkspaceUser" ("id") ON DELETE CASCADE
+    )
+  `);
+
+  await prisma.$executeRawUnsafe(`
+    CREATE UNIQUE INDEX IF NOT EXISTS "WorkspaceSkillRegistryProfile_userId_registryId_key"
+    ON "WorkspaceSkillRegistryProfile" ("userId", "registryId")
+  `);
+
+  await prisma.$executeRawUnsafe(`
+    CREATE INDEX IF NOT EXISTS "WorkspaceSkillRegistryProfile_userId_registryId_idx"
+    ON "WorkspaceSkillRegistryProfile" ("userId", "registryId")
+  `);
+
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS "WorkspaceSkillProfile" (
+      "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+      "userId" INTEGER NOT NULL,
+      "registryProfileId" INTEGER,
+      "name" TEXT NOT NULL,
+      "location" TEXT NOT NULL,
+      "source" TEXT NOT NULL,
+      FOREIGN KEY ("userId") REFERENCES "WorkspaceUser" ("id") ON DELETE CASCADE,
+      FOREIGN KEY ("registryProfileId") REFERENCES "WorkspaceSkillRegistryProfile" ("id") ON DELETE SET NULL
+    )
+  `);
+
+  await prisma.$executeRawUnsafe(`
+    CREATE UNIQUE INDEX IF NOT EXISTS "WorkspaceSkillProfile_userId_location_key"
+    ON "WorkspaceSkillProfile" ("userId", "location")
+  `);
+
+  await prisma.$executeRawUnsafe(`
+    CREATE INDEX IF NOT EXISTS "WorkspaceSkillProfile_userId_name_idx"
+    ON "WorkspaceSkillProfile" ("userId", "name")
+  `);
+
+  await prisma.$executeRawUnsafe(`
+    CREATE INDEX IF NOT EXISTS "WorkspaceSkillProfile_registryProfileId_idx"
+    ON "WorkspaceSkillProfile" ("registryProfileId")
+  `);
+}
+
 async function ensureThreadSchema(): Promise<void> {
   await prisma.$executeRawUnsafe(`
     CREATE TABLE IF NOT EXISTS "Thread" (
@@ -320,6 +376,8 @@ async function ensureThreadSchema(): Promise<void> {
     )
   `);
 
+  await recreateThreadMessageTableIfLegacySchema();
+
   await prisma.$executeRawUnsafe(`
     CREATE TABLE IF NOT EXISTS "ThreadMessage" (
       "id" TEXT NOT NULL PRIMARY KEY,
@@ -330,7 +388,6 @@ async function ensureThreadSchema(): Promise<void> {
       "createdAt" TEXT NOT NULL,
       "turnId" TEXT NOT NULL,
       "attachmentsJson" TEXT NOT NULL,
-      "dialogueSkillSelectionsJson" TEXT NOT NULL DEFAULT '[]',
       FOREIGN KEY ("threadId") REFERENCES "Thread" ("id") ON DELETE CASCADE
     )
   `);
@@ -355,15 +412,42 @@ async function ensureThreadSchema(): Promise<void> {
     "createdAt",
     "TEXT NOT NULL DEFAULT ''",
   );
-  await ensureTableColumn(
-    "ThreadMessage",
-    "dialogueSkillSelectionsJson",
-    "TEXT NOT NULL DEFAULT '[]'",
-  );
 
   await prisma.$executeRawUnsafe(`
     CREATE INDEX IF NOT EXISTS "ThreadMessage_threadId_conversationOrder_idx"
     ON "ThreadMessage" ("threadId", "conversationOrder")
+  `);
+
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS "ThreadMessageSkillActivation" (
+      "id" TEXT NOT NULL PRIMARY KEY,
+      "messageId" TEXT NOT NULL,
+      "selectionOrder" INTEGER NOT NULL,
+      "skillProfileId" INTEGER NOT NULL,
+      FOREIGN KEY ("messageId") REFERENCES "ThreadMessage" ("id") ON DELETE CASCADE,
+      FOREIGN KEY ("skillProfileId") REFERENCES "WorkspaceSkillProfile" ("id") ON DELETE CASCADE
+    )
+  `);
+
+  await renameTableColumnIfExists(
+    "ThreadMessageSkillActivation",
+    "sortOrder",
+    "selectionOrder",
+  );
+  await ensureTableColumn(
+    "ThreadMessageSkillActivation",
+    "selectionOrder",
+    "INTEGER NOT NULL DEFAULT 0",
+  );
+
+  await prisma.$executeRawUnsafe(`
+    CREATE INDEX IF NOT EXISTS "ThreadMessageSkillActivation_messageId_selectionOrder_idx"
+    ON "ThreadMessageSkillActivation" ("messageId", "selectionOrder")
+  `);
+
+  await prisma.$executeRawUnsafe(`
+    CREATE INDEX IF NOT EXISTS "ThreadMessageSkillActivation_skillProfileId_idx"
+    ON "ThreadMessageSkillActivation" ("skillProfileId")
   `);
 
   await prisma.$executeRawUnsafe(`
@@ -465,14 +549,16 @@ async function ensureThreadSchema(): Promise<void> {
     ON "ThreadOperationLog" ("threadId", "conversationOrder")
   `);
 
+  await recreateThreadSkillActivationTableIfLegacySchema();
+
   await prisma.$executeRawUnsafe(`
     CREATE TABLE IF NOT EXISTS "ThreadSkillActivation" (
       "id" TEXT NOT NULL PRIMARY KEY,
       "threadId" TEXT NOT NULL,
       "selectionOrder" INTEGER NOT NULL,
-      "skillName" TEXT NOT NULL,
-      "skillLocation" TEXT NOT NULL,
-      FOREIGN KEY ("threadId") REFERENCES "Thread" ("id") ON DELETE CASCADE
+      "skillProfileId" INTEGER NOT NULL,
+      FOREIGN KEY ("threadId") REFERENCES "Thread" ("id") ON DELETE CASCADE,
+      FOREIGN KEY ("skillProfileId") REFERENCES "WorkspaceSkillProfile" ("id") ON DELETE CASCADE
     )
   `);
 
@@ -491,16 +577,46 @@ async function ensureThreadSchema(): Promise<void> {
     "selectionOrder",
     "INTEGER NOT NULL DEFAULT 0",
   );
-  await ensureTableColumn(
-    "ThreadSkillActivation",
-    "skillLocation",
-    "TEXT NOT NULL DEFAULT ''",
-  );
 
   await prisma.$executeRawUnsafe(`
     CREATE INDEX IF NOT EXISTS "ThreadSkillActivation_threadId_selectionOrder_idx"
     ON "ThreadSkillActivation" ("threadId", "selectionOrder")
   `);
+
+  await prisma.$executeRawUnsafe(`
+    CREATE INDEX IF NOT EXISTS "ThreadSkillActivation_skillProfileId_idx"
+    ON "ThreadSkillActivation" ("skillProfileId")
+  `);
+}
+
+async function recreateThreadSkillActivationTableIfLegacySchema(): Promise<void> {
+  const columns = await readTableColumns("ThreadSkillActivation");
+  if (columns.size === 0) {
+    return;
+  }
+
+  const usesLegacyColumns = columns.has("skillName") || columns.has("skillLocation");
+  const missingCurrentColumn = !columns.has("skillProfileId");
+  if (!usesLegacyColumns && !missingCurrentColumn) {
+    return;
+  }
+
+  await prisma.$executeRawUnsafe(`DROP TABLE IF EXISTS "ThreadSkillActivation"`);
+}
+
+async function recreateThreadMessageTableIfLegacySchema(): Promise<void> {
+  const columns = await readTableColumns("ThreadMessage");
+  if (columns.size === 0) {
+    return;
+  }
+
+  const hasLegacyColumn = columns.has("dialogueSkillSelectionsJson");
+  if (!hasLegacyColumn) {
+    return;
+  }
+
+  await prisma.$executeRawUnsafe(`DROP TABLE IF EXISTS "ThreadMessageSkillActivation"`);
+  await prisma.$executeRawUnsafe(`DROP TABLE IF EXISTS "ThreadMessage"`);
 }
 
 async function ensureAppEventLogSchema(): Promise<void> {

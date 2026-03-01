@@ -13,6 +13,8 @@ model WorkspaceUser {
   principalId       String
   azureSelection    AzureSelectionPreference?
   mcpServerProfiles WorkspaceMcpServerProfile[]
+  skillRegistryProfiles WorkspaceSkillRegistryProfile[]
+  skillProfiles     WorkspaceSkillProfile[]
   threads           Thread[]
 
   @@unique([tenantId, principalId])
@@ -72,14 +74,49 @@ model Thread {
 }
 
 model ThreadSkillActivation {
-  id            String @id
-  threadId      String
+  id             String @id
+  threadId       String
   selectionOrder Int
-  skillName     String
-  skillLocation String
-  thread        Thread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  skillProfileId Int
+  thread         Thread                @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  skillProfile   WorkspaceSkillProfile @relation(fields: [skillProfileId], references: [id], onDelete: Cascade)
 
   @@index([threadId, selectionOrder])
+  @@index([skillProfileId])
+}
+
+model WorkspaceSkillRegistryProfile {
+  id                   Int    @id @default(autoincrement())
+  userId               Int
+  registryId           String
+  registryLabel        String
+  registryDescription  String
+  repository           String
+  repositoryUrl        String
+  sourcePath           String
+  installDirectoryName String
+  user                 WorkspaceUser         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  skills               WorkspaceSkillProfile[]
+
+  @@unique([userId, registryId])
+  @@index([userId, registryId])
+}
+
+model WorkspaceSkillProfile {
+  id                Int    @id @default(autoincrement())
+  userId            Int
+  registryProfileId Int?
+  name              String
+  location          String
+  source            String
+  user              WorkspaceUser                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  registryProfile   WorkspaceSkillRegistryProfile? @relation(fields: [registryProfileId], references: [id], onDelete: SetNull)
+  threadActivations ThreadSkillActivation[]
+  messageActivations ThreadMessageSkillActivation[]
+
+  @@unique([userId, location])
+  @@index([userId, name])
+  @@index([registryProfileId])
 }
 
 model ThreadInstruction {
@@ -98,10 +135,22 @@ model ThreadMessage {
   createdAt                   String
   turnId                      String
   attachmentsJson             String
-  dialogueSkillSelectionsJson String @default("[]")
+  skillActivations            ThreadMessageSkillActivation[]
   thread                      Thread @relation(fields: [threadId], references: [id], onDelete: Cascade)
 
   @@index([threadId, conversationOrder])
+}
+
+model ThreadMessageSkillActivation {
+  id             String @id
+  messageId      String
+  selectionOrder Int
+  skillProfileId Int
+  message        ThreadMessage         @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  skillProfile   WorkspaceSkillProfile @relation(fields: [skillProfileId], references: [id], onDelete: Cascade)
+
+  @@index([messageId, selectionOrder])
+  @@index([skillProfileId])
 }
 
 model ThreadMcpConnection {

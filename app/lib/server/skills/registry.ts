@@ -29,6 +29,7 @@ import {
 } from "~/lib/server/persistence/prisma";
 
 type ResolveSkillRegistryOptions = {
+  workspaceUserId: number;
   foundryConfigDirectory?: string;
   platform?: NodeJS.Platform;
   homeDirectory?: string;
@@ -87,7 +88,7 @@ const CACHE_VERSION = "v1";
 const INSTALLED_SKILL_METADATA_FILE_NAME = ".local-playground-skill.json";
 
 export async function discoverSkillRegistries(
-  options: ResolveSkillRegistryOptions = {},
+  options: ResolveSkillRegistryOptions,
 ): Promise<SkillRegistryCatalogDiscoveryResult> {
   const appDataSkillsRoot = resolveAppDataSkillsRoot(options);
   const catalogs: SkillRegistryCatalog[] = [];
@@ -444,25 +445,39 @@ async function writeInstalledSkillMetadata(options: {
 }
 
 function resolveAppDataSkillsRoot(options: ResolveSkillRegistryOptions): string {
+  const workspaceUserSkillsDirectoryName = readWorkspaceUserSkillsDirectoryName(
+    options.workspaceUserId,
+  );
   const configuredFoundryDirectory =
     typeof options.foundryConfigDirectory === "string" ? options.foundryConfigDirectory.trim() : "";
   if (configuredFoundryDirectory) {
-    return path.resolve(configuredFoundryDirectory, FOUNDRY_SKILLS_DIRECTORY_NAME);
+    return path.resolve(
+      configuredFoundryDirectory,
+      FOUNDRY_SKILLS_DIRECTORY_NAME,
+      workspaceUserSkillsDirectoryName,
+    );
   }
 
   const configuredDatabaseUrl = resolveConfiguredDatabaseUrlFromEnvironment();
   if (configuredDatabaseUrl) {
     const sqliteFilePath = resolveSqliteDatabaseFilePath(configuredDatabaseUrl);
     if (sqliteFilePath) {
-      return path.resolve(path.dirname(sqliteFilePath), FOUNDRY_SKILLS_DIRECTORY_NAME);
+      return path.resolve(
+        path.dirname(sqliteFilePath),
+        FOUNDRY_SKILLS_DIRECTORY_NAME,
+        workspaceUserSkillsDirectoryName,
+      );
     }
   }
 
-  return resolveFoundrySkillsDirectory({
-    platform: options.platform,
-    homeDirectory: options.homeDirectory,
-    appDataDirectory: options.appDataDirectory,
-  });
+  return path.resolve(
+    resolveFoundrySkillsDirectory({
+      platform: options.platform,
+      homeDirectory: options.homeDirectory,
+      appDataDirectory: options.appDataDirectory,
+    }),
+    workspaceUserSkillsDirectoryName,
+  );
 }
 
 function buildRepositoryUrl(repository: string): string {
@@ -811,6 +826,14 @@ function readErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Unknown error.";
 }
 
+function readWorkspaceUserSkillsDirectoryName(workspaceUserId: number): string {
+  if (!Number.isInteger(workspaceUserId) || workspaceUserId <= 0) {
+    throw new Error("`workspaceUserId` must be a positive integer.");
+  }
+
+  return String(workspaceUserId);
+}
+
 function resolveConfiguredDatabaseUrlFromEnvironment(): string {
   const candidateKeys = ["LOCAL_PLAYGROUND_DATABASE_URL", "DATABASE_URL"];
   for (const key of candidateKeys) {
@@ -866,4 +889,5 @@ export const skillRegistryServerTestUtils = {
   buildRegistryListCacheKey,
   buildRegistryTreeCacheKey,
   isSafeRelativePath,
+  resolveAppDataSkillsRoot,
 };

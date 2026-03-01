@@ -1,0 +1,180 @@
+erDiagram
+  WorkspaceUser {
+    Int id PK
+    String tenantId
+    String principalId
+  }
+
+  AzureSelectionPreference {
+    Int id PK
+    Int userId FK
+    String projectId
+    String deploymentName
+    String utilityProjectId
+    String utilityDeploymentName
+    String utilityReasoningEffort
+  }
+
+  WorkspaceMcpServerProfile {
+    String id PK
+    Int userId FK
+    Int profileOrder
+    String configKey
+    String name
+    String transport
+    String url
+    String headersJson
+    Boolean useAzureAuth
+    String azureAuthScope
+    Int timeoutSeconds
+    String command
+    String argsJson
+    String cwd
+    String envJson
+  }
+
+  WorkspaceSkillRegistryProfile {
+    Int id PK
+    Int userId FK
+    String registryId
+    String registryLabel
+    String registryDescription
+    String repository
+    String repositoryUrl
+    String sourcePath
+    String installDirectoryName
+  }
+
+  WorkspaceSkillProfile {
+    Int id PK
+    Int userId FK
+    Int registryProfileId FK
+    String name
+    String location
+    String source
+  }
+
+  Thread {
+    String id PK
+    Int userId FK
+    String name
+    String createdAt
+    String updatedAt
+    String deletedAt
+    String reasoningEffort
+    Boolean webSearchEnabled
+    String threadEnvironmentJson
+  }
+
+  ThreadInstruction {
+    Int id PK
+    String threadId FK
+    String content
+  }
+
+  ThreadMessage {
+    String id PK
+    String threadId FK
+    Int conversationOrder
+    String role
+    String content
+    String createdAt
+    String turnId
+    String attachmentsJson
+  }
+
+  ThreadMessageSkillActivation {
+    String id PK
+    String messageId FK
+    Int selectionOrder
+    Int skillProfileId FK
+  }
+
+  ThreadMcpConnection {
+    String id PK
+    String threadId FK
+    Int selectionOrder
+    String name
+    String transport
+    String url
+    String headersJson
+    Boolean useAzureAuth
+    String azureAuthScope
+    Int timeoutSeconds
+    String command
+    String argsJson
+    String cwd
+    String envJson
+  }
+
+  ThreadOperationLog {
+    String rowId PK
+    String sourceRpcId
+    String threadId FK
+    Int conversationOrder
+    Int sequence
+    String operationType
+    String serverName
+    String method
+    String startedAt
+    String completedAt
+    String requestJson
+    String responseJson
+    Boolean isError
+    String turnId
+  }
+
+  ThreadSkillActivation {
+    String id PK
+    String threadId FK
+    Int selectionOrder
+    Int skillProfileId FK
+  }
+
+  RuntimeEventLog {
+    String id PK
+    String createdAt
+    String source
+    String level
+    String category
+    String eventName
+    String message
+    String errorName
+    String location
+    String action
+    Int statusCode
+    String httpMethod
+    String httpPath
+    String threadId
+    String tenantId
+    String principalId
+    Int userId
+    String stack
+    String contextJson
+  }
+
+  SkillRegistryCache {
+    String cacheKey PK
+    String payloadJson
+    String updatedAt
+    String expiresAt
+  }
+
+  WorkspaceUser ||--o| AzureSelectionPreference : has
+  WorkspaceUser ||--o{ WorkspaceMcpServerProfile : has
+  WorkspaceUser ||--o{ WorkspaceSkillRegistryProfile : has
+  WorkspaceUser ||--o{ WorkspaceSkillProfile : has
+  WorkspaceUser ||--o{ Thread : has
+
+  WorkspaceSkillRegistryProfile ||--o{ WorkspaceSkillProfile : groups
+
+  Thread ||--o| ThreadInstruction : has
+  Thread ||--o{ ThreadMessage : has
+  Thread ||--o{ ThreadMcpConnection : has
+  Thread ||--o{ ThreadOperationLog : has
+  Thread ||--o{ ThreadSkillActivation : has
+
+  ThreadMessage ||--o{ ThreadMessageSkillActivation : has
+
+  WorkspaceSkillProfile ||--o{ ThreadSkillActivation : used_by_thread
+  WorkspaceSkillProfile ||--o{ ThreadMessageSkillActivation : used_by_message

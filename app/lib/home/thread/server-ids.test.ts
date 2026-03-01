@@ -3,6 +3,7 @@
  */
 import { describe, expect, it } from "vitest";
 import {
+  buildThreadMessageSkillSelectionRowId,
   buildThreadMcpRpcLogRowId,
   buildThreadMcpServerRowId,
   buildThreadSkillSelectionRowId,
@@ -70,5 +71,16 @@ describe("buildThreadSkillSelectionRowId", () => {
   it("builds deterministic row ids from thread id and order", () => {
     expect(buildThreadSkillSelectionRowId("thread-1", 0)).toBe("thread:thread-1:skill:0");
     expect(buildThreadSkillSelectionRowId("thread-1", 3)).toBe("thread:thread-1:skill:3");
+  });
+});
+
+describe("buildThreadMessageSkillSelectionRowId", () => {
+  it("builds deterministic row ids from message id and order", () => {
+    expect(buildThreadMessageSkillSelectionRowId("message-1", 0)).toBe(
+      "message:message-1:skill:0",
+    );
+    expect(buildThreadMessageSkillSelectionRowId("message-1", 2)).toBe(
+      "message:message-1:skill:2",
+    );
   });
 });

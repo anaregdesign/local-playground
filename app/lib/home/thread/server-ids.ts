@@ -60,3 +60,11 @@ export function buildThreadSkillSelectionRowId(threadId: string, index: number):
   const normalizedThreadId = threadId.trim();
   return `thread:${normalizedThreadId}:skill:${index}`;
 }
+
+export function buildThreadMessageSkillSelectionRowId(
+  messageId: string,
+  index: number,
+): string {
+  const normalizedMessageId = messageId.trim();
+  return `message:${normalizedMessageId}:skill:${index}`;
+}

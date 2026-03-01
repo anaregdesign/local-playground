@@ -304,6 +304,114 @@ const tableDefinitions: DatabaseDebugTableDefinition[] = [
     ],
   },
   {
+    tableName: "WorkspaceSkillRegistryProfile",
+    toolName: "debug_read_workspace_skill_registry_profile_table",
+    purpose:
+      "Stores per-user Skill registry master rows used to classify and group installed Skills.",
+    accumulatesErrors: false,
+    fields: [
+      {
+        name: "id",
+        type: "INTEGER",
+        nullable: false,
+        description: "Internal auto-increment primary key.",
+      },
+      {
+        name: "userId",
+        type: "INTEGER",
+        nullable: false,
+        description: "Foreign key to WorkspaceUser.id.",
+      },
+      {
+        name: "registryId",
+        type: "TEXT",
+        nullable: false,
+        description: "Stable registry identifier (for example openai_curated).",
+      },
+      {
+        name: "registryLabel",
+        type: "TEXT",
+        nullable: false,
+        description: "Registry display label.",
+      },
+      {
+        name: "registryDescription",
+        type: "TEXT",
+        nullable: false,
+        description: "Registry description text.",
+      },
+      {
+        name: "repository",
+        type: "TEXT",
+        nullable: false,
+        description: "Source repository in owner/name format.",
+      },
+      {
+        name: "repositoryUrl",
+        type: "TEXT",
+        nullable: false,
+        description: "Repository URL.",
+      },
+      {
+        name: "sourcePath",
+        type: "TEXT",
+        nullable: false,
+        description: "Path inside the repository used as registry source root.",
+      },
+      {
+        name: "installDirectoryName",
+        type: "TEXT",
+        nullable: false,
+        description: "Directory name used under app-data skills for this registry.",
+      },
+    ],
+  },
+  {
+    tableName: "WorkspaceSkillProfile",
+    toolName: "debug_read_workspace_skill_profile_table",
+    purpose:
+      "Stores per-user Skill master rows normalized by Skill location and linked to optional Skill registry masters.",
+    accumulatesErrors: false,
+    fields: [
+      {
+        name: "id",
+        type: "INTEGER",
+        nullable: false,
+        description: "Internal auto-increment primary key.",
+      },
+      {
+        name: "userId",
+        type: "INTEGER",
+        nullable: false,
+        description: "Foreign key to WorkspaceUser.id.",
+      },
+      {
+        name: "registryProfileId",
+        type: "INTEGER",
+        nullable: true,
+        description: "Foreign key to WorkspaceSkillRegistryProfile.id when the Skill came from a registry.",
+      },
+      {
+        name: "name",
+        type: "TEXT",
+        nullable: false,
+        description: "Skill display name.",
+      },
+      {
+        name: "location",
+        type: "TEXT",
+        nullable: false,
+        description: "Skill source path or URI.",
+      },
+      {
+        name: "source",
+        type: "TEXT",
+        nullable: false,
+        description: "Skill source kind (for example codex_home or app_data).",
+      },
+    ],
+  },
+  {
     tableName: "Thread",
     toolName: "debug_read_thread_table",
     purpose:
@@ -370,7 +478,7 @@ const tableDefinitions: DatabaseDebugTableDefinition[] = [
     tableName: "ThreadSkillActivation",
     toolName: "debug_read_thread_skill_activation_table",
     purpose:
-      "Stores ordered skill selections attached to each thread for agent runtime instructions.",
+      "Stores ordered thread skill selections by linking each thread position to a workspace skill master row.",
     accumulatesErrors: false,
     fields: [
       {
@@ -392,16 +500,10 @@ const tableDefinitions: DatabaseDebugTableDefinition[] = [
         description: "Order of selected skills in the thread.",
       },
       {
-        name: "skillName",
-        type: "TEXT",
+        name: "skillProfileId",
+        type: "INTEGER",
         nullable: false,
-        description: "Skill display name.",
-      },
-      {
-        name: "skillLocation",
-        type: "TEXT",
-        nullable: false,
-        description: "Skill source path or URI.",
+        description: "Foreign key to WorkspaceSkillProfile.id.",
       },
     ],
   },
@@ -435,7 +537,7 @@ const tableDefinitions: DatabaseDebugTableDefinition[] = [
     tableName: "ThreadMessage",
     toolName: "debug_read_thread_message_table",
     purpose:
-      "Stores ordered chat messages per thread, including role, content, turn ID, serialized attachments, and serialized per-dialogue Dialogue Skill selections.",
+      "Stores ordered chat messages per thread, including role, content, turn ID, and serialized attachments.",
     accumulatesErrors: false,
     fields: [
       {
@@ -486,11 +588,38 @@ const tableDefinitions: DatabaseDebugTableDefinition[] = [
         nullable: false,
         description: "Serialized attachment list JSON.",
       },
+    ],
+  },
+  {
+    tableName: "ThreadMessageSkillActivation",
+    toolName: "debug_read_thread_message_skill_activation_table",
+    purpose:
+      "Stores ordered dialogue skill selections by linking each message position to a workspace skill master row.",
+    accumulatesErrors: false,
+    fields: [
       {
-        name: "dialogueSkillSelectionsJson",
+        name: "id",
         type: "TEXT",
         nullable: false,
-        description: "Serialized Dialogue Skill selections JSON captured for that dialogue turn.",
+        description: "Message skill activation row ID.",
+      },
+      {
+        name: "messageId",
+        type: "TEXT",
+        nullable: false,
+        description: "Foreign key to ThreadMessage.id.",
+      },
+      {
+        name: "selectionOrder",
+        type: "INTEGER",
+        nullable: false,
+        description: "Order of selected dialogue skills in the message.",
+      },
+      {
+        name: "skillProfileId",
+        type: "INTEGER",
+        nullable: false,
+        description: "Foreign key to WorkspaceSkillProfile.id.",
       },
     ],
   },
@@ -880,7 +1009,7 @@ export function buildDatabaseDebugLatestThreadToolDescription(): string {
   const lines = [
     "Debug read tool for retrieving a full thread snapshot in one call.",
     "Role: Reads the most-recent thread (or an explicit threadId) together with instruction, messages, MCP servers, MCP RPC logs, skill selections, and related app event logs.",
-    "Schema source: prisma/schema.prisma (Thread, ThreadInstruction, ThreadMessage, ThreadMcpConnection, ThreadOperationLog, ThreadSkillActivation, RuntimeEventLog).",
+    "Schema source: prisma/schema.prisma (Thread, ThreadInstruction, ThreadMessage, ThreadMessageSkillActivation, ThreadMcpConnection, ThreadOperationLog, ThreadSkillActivation, WorkspaceSkillProfile, WorkspaceSkillRegistryProfile, RuntimeEventLog).",
     "Input options:",
     "- `threadId` (TEXT, optional): Specific thread ID to read. When omitted, the latest thread is selected by updatedAt.",
     "- `includeArchived` (BOOLEAN, optional): Include archived threads when selecting the latest thread. Defaults to true.",
@@ -896,10 +1025,10 @@ export function buildDatabaseDebugLatestThreadToolDescription(): string {
     "- `found`: Whether a matching thread exists.",
     "- `snapshot.thread`: Thread core metadata. Includes parsed `threadEnvironment` alongside raw `threadEnvironmentJson`.",
     "- `snapshot.instruction`: Per-thread instruction row (or null when absent).",
-    "- `snapshot.messages[]`: Ordered thread messages. Includes parsed `attachments`/`dialogueSkillSelections` alongside raw `attachmentsJson`/`dialogueSkillSelectionsJson`.",
+    "- `snapshot.messages[]`: Ordered thread messages. Includes parsed `attachments` plus linked `skillActivations` and normalized `dialogueSkillSelections`.",
     "- `snapshot.mcpServers[]`: Ordered MCP server snapshot rows. Includes parsed `headers`/`args`/`env` plus raw JSON fields.",
     "- `snapshot.mcpRpcLogs[]`: Ordered MCP RPC rows. Includes parsed `request`/`response` plus raw JSON fields.",
-    "- `snapshot.skillSelections[]`: Ordered skill selections saved for the thread.",
+    "- `snapshot.skillSelections[]`: Ordered thread skill activations including linked `skillProfile` and optional `skillProfile.registryProfile`.",
     "- `runtimeEventLogs[]`: Related RuntimeEventLog rows for the thread. Includes parsed `context` plus raw `contextJson`.",
     "- `counts`: Total row counts per section in storage.",
     "- `truncation`: True when returned rows are truncated by limits.",
@@ -974,6 +1103,18 @@ export async function readDatabaseDebugLatestThreadSnapshot(
           messages: {
             orderBy: { conversationOrder: "asc" },
             ...(includeAllRows ? {} : { take: options.messageLimit }),
+            include: {
+              skillActivations: {
+                orderBy: { selectionOrder: "asc" },
+                include: {
+                  skillProfile: {
+                    include: {
+                      registryProfile: true,
+                    },
+                  },
+                },
+              },
+            },
           },
           mcpServers: {
             orderBy: { selectionOrder: "asc" },
@@ -986,6 +1127,13 @@ export async function readDatabaseDebugLatestThreadSnapshot(
           skillSelections: {
             orderBy: { selectionOrder: "asc" },
             ...(includeAllRows ? {} : { take: options.skillSelectionLimit }),
+            include: {
+              skillProfile: {
+                include: {
+                  registryProfile: true,
+                },
+              },
+            },
           },
           _count: {
             select: {
@@ -1009,6 +1157,18 @@ export async function readDatabaseDebugLatestThreadSnapshot(
           messages: {
             orderBy: { conversationOrder: "asc" },
             ...(includeAllRows ? {} : { take: options.messageLimit }),
+            include: {
+              skillActivations: {
+                orderBy: { selectionOrder: "asc" },
+                include: {
+                  skillProfile: {
+                    include: {
+                      registryProfile: true,
+                    },
+                  },
+                },
+              },
+            },
           },
           mcpServers: {
             orderBy: { selectionOrder: "asc" },
@@ -1021,6 +1181,13 @@ export async function readDatabaseDebugLatestThreadSnapshot(
           skillSelections: {
             orderBy: { selectionOrder: "asc" },
             ...(includeAllRows ? {} : { take: options.skillSelectionLimit }),
+            include: {
+              skillProfile: {
+                include: {
+                  registryProfile: true,
+                },
+              },
+            },
           },
           _count: {
             select: {
@@ -1080,7 +1247,19 @@ export async function readDatabaseDebugLatestThreadSnapshot(
   const messages = thread.messages.map((message) => ({
     ...message,
     attachments: normalizeUnknownForJson(readJsonValue(message.attachmentsJson, [])),
-    dialogueSkillSelections: normalizeUnknownForJson(readJsonValue(message.dialogueSkillSelectionsJson, [])),
+    skillActivations: message.skillActivations.map((activation) => ({
+      ...activation,
+      skillProfile: {
+        ...activation.skillProfile,
+        registryProfile: activation.skillProfile.registryProfile
+          ? { ...activation.skillProfile.registryProfile }
+          : null,
+      },
+    })),
+    dialogueSkillSelections: message.skillActivations.map((activation) => ({
+      name: activation.skillProfile.name,
+      location: activation.skillProfile.location,
+    })),
   }));
   const mcpServers = thread.mcpServers.map((server) => ({
     ...server,
@@ -1093,7 +1272,15 @@ export async function readDatabaseDebugLatestThreadSnapshot(
     request: normalizeUnknownForJson(readJsonValue(entry.requestJson, null)),
     response: normalizeUnknownForJson(readJsonValue(entry.responseJson, null)),
   }));
-  const skillSelections = thread.skillSelections.map((selection) => ({ ...selection }));
+  const skillSelections = thread.skillSelections.map((selection) => ({
+    ...selection,
+    skillProfile: {
+      ...selection.skillProfile,
+      registryProfile: selection.skillProfile.registryProfile
+        ? { ...selection.skillProfile.registryProfile }
+        : null,
+    },
+  }));
   const threadRecord = {
     id: thread.id,
     userId: thread.userId,
