@@ -320,6 +320,9 @@ export function useWorkspaceController() {
   const activeWorkspaceUserKeyRef = useRef("");
   const savedMcpLoginRetryTimeoutRef = useRef<number | null>(null);
   const savedMcpRequestSeqRef = useRef(0);
+  const skillsRequestSeqRef = useRef(0);
+  const previousIsAzureAuthRequiredRef = useRef(isAzureAuthRequired);
+  const lastLoadedSkillsUserKeyRef = useRef("");
   const preferredAzureSelectionRef = useRef<AzureSelectionPreference | null>(null);
   const activeThreadIdRef = useRef("");
   const activeMainTabRef = useRef<MainViewTab>("threads");
@@ -828,6 +831,41 @@ export function useWorkspaceController() {
   }, [isAzureAuthRequired]);
 
   useEffect(() => {
+    const wasAzureAuthRequired = previousIsAzureAuthRequiredRef.current;
+    previousIsAzureAuthRequiredRef.current = isAzureAuthRequired;
+
+    const tenantId = activeAzurePrincipal?.tenantId.trim() ?? "";
+    const principalId = activeAzurePrincipal?.principalId.trim() ?? "";
+    const activeUserKey =
+      !isAzureAuthRequired && tenantId && principalId ? `${tenantId}::${principalId}` : "";
+
+    if (!activeUserKey) {
+      if (isAzureAuthRequired) {
+        lastLoadedSkillsUserKeyRef.current = "";
+      }
+      return;
+    }
+
+    const hasAuthRequiredSkillsError =
+      skillsError?.includes("Azure login is required.") === true ||
+      skillRegistryError?.includes("Azure login is required.") === true;
+    const shouldReloadForIdentityChange =
+      lastLoadedSkillsUserKeyRef.current !== activeUserKey;
+    if (!shouldReloadForIdentityChange && !wasAzureAuthRequired && !hasAuthRequiredSkillsError) {
+      return;
+    }
+
+    lastLoadedSkillsUserKeyRef.current = activeUserKey;
+    void loadAvailableSkills();
+  }, [
+    activeAzurePrincipal?.principalId,
+    activeAzurePrincipal?.tenantId,
+    isAzureAuthRequired,
+    skillRegistryError,
+    skillsError,
+  ]);
+
+  useEffect(() => {
     if (!activePlaygroundAzureConnection) {
       setPlaygroundAzureDeployments([]);
       setSelectedPlaygroundAzureDeploymentName("");
@@ -1262,6 +1300,10 @@ export function useWorkspaceController() {
   async function loadAvailableSkills(options: {
     clearStatus?: boolean;
   } = {}): Promise<void> {
+    const expectedUserKey = activeWorkspaceUserKeyRef.current.trim();
+    const requestSeq = skillsRequestSeqRef.current + 1;
+    skillsRequestSeqRef.current = requestSeq;
+
     if (options.clearStatus !== false) {
       setSkillsError(null);
       setSkillsWarning(null);
@@ -1276,6 +1318,13 @@ export function useWorkspaceController() {
         method: "GET",
       });
       const payload = await readJsonPayload<SkillsApiResponse>(response, "Skills");
+      if (requestSeq !== skillsRequestSeqRef.current) {
+        return;
+      }
+      if (expectedUserKey !== activeWorkspaceUserKeyRef.current.trim()) {
+        return;
+      }
+
       if (!response.ok) {
         const authRequired = payload.authRequired === true || response.status === 401;
         if (authRequired) {
@@ -1297,6 +1346,13 @@ export function useWorkspaceController() {
       applySkillsApiPayload(payload);
       setSkillRegistrySuccess(null);
     } catch (loadError) {
+      if (requestSeq !== skillsRequestSeqRef.current) {
+        return;
+      }
+      if (expectedUserKey !== activeWorkspaceUserKeyRef.current.trim()) {
+        return;
+      }
+
       logHomeError("load_skills_failed", loadError, {
         action: "load_skills",
       });
@@ -1309,7 +1365,9 @@ export function useWorkspaceController() {
           : "Failed to load Skill registries.",
       );
     } finally {
-      setIsLoadingSkills(false);
+      if (requestSeq === skillsRequestSeqRef.current) {
+        setIsLoadingSkills(false);
+      }
     }
   }
 
