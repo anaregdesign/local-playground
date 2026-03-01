@@ -106,7 +106,7 @@ const latestThreadReadInputSchema = {
     .boolean()
     .optional()
     .describe(
-      "Return all messages/MCP rows/skill selections for the selected thread. Defaults to true.",
+      "Return all messages/message skill activations/MCP rows/thread skill selections for the selected thread. Defaults to true.",
     ),
   messageLimit: z
     .number()

@@ -93,6 +93,7 @@ export type DatabaseDebugLatestThreadReadResult = {
   runtimeEventLogs: Array<Record<string, unknown>>;
   counts: {
     messages: number;
+    messageSkillActivations: number;
     mcpServers: number;
     mcpRpcLogs: number;
     skillSelections: number;
@@ -100,6 +101,7 @@ export type DatabaseDebugLatestThreadReadResult = {
   };
   truncation: {
     messages: boolean;
+    messageSkillActivations: boolean;
     mcpServers: boolean;
     mcpRpcLogs: boolean;
     skillSelections: boolean;
@@ -1008,7 +1010,7 @@ export function buildDatabaseDebugTableToolDescription(
 export function buildDatabaseDebugLatestThreadToolDescription(): string {
   const lines = [
     "Debug read tool for retrieving a full thread snapshot in one call.",
-    "Role: Reads the most-recent thread (or an explicit threadId) together with instruction, messages, MCP servers, MCP RPC logs, skill selections, and related app event logs.",
+    "Role: Reads the most-recent thread (or an explicit threadId) together with instruction, messages, message skill activations, MCP servers, MCP RPC logs, thread skill selections, and related app event logs.",
     "Schema source: prisma/schema.prisma (Thread, ThreadInstruction, ThreadMessage, ThreadMessageSkillActivation, ThreadMcpConnection, ThreadOperationLog, ThreadSkillActivation, WorkspaceSkillProfile, WorkspaceSkillRegistryProfile, RuntimeEventLog).",
     "Input options:",
     "- `threadId` (TEXT, optional): Specific thread ID to read. When omitted, the latest thread is selected by updatedAt.",
@@ -1212,6 +1214,7 @@ export async function readDatabaseDebugLatestThreadSnapshot(
       runtimeEventLogs: [],
       counts: {
         messages: 0,
+        messageSkillActivations: 0,
         mcpServers: 0,
         mcpRpcLogs: 0,
         skillSelections: 0,
@@ -1219,6 +1222,7 @@ export async function readDatabaseDebugLatestThreadSnapshot(
       },
       truncation: {
         messages: false,
+        messageSkillActivations: false,
         mcpServers: false,
         mcpRpcLogs: false,
         skillSelections: false,
@@ -1227,7 +1231,7 @@ export async function readDatabaseDebugLatestThreadSnapshot(
     };
   }
 
-  const [runtimeEventLogs, runtimeEventLogCount] = options.includeRuntimeEventLogs
+  const [runtimeEventLogs, runtimeEventLogCount, messageSkillActivationCount] = options.includeRuntimeEventLogs
     ? await Promise.all([
         prisma.runtimeEventLog.findMany({
           where: {
@@ -1241,8 +1245,25 @@ export async function readDatabaseDebugLatestThreadSnapshot(
             threadId: thread.id,
           },
         }),
+        prisma.threadMessageSkillActivation.count({
+          where: {
+            message: {
+              threadId: thread.id,
+            },
+          },
+        }),
       ])
-    : [[], 0];
+    : await Promise.all([
+        Promise.resolve([]),
+        Promise.resolve(0),
+        prisma.threadMessageSkillActivation.count({
+          where: {
+            message: {
+              threadId: thread.id,
+            },
+          },
+        }),
+      ]);
 
   const messages = thread.messages.map((message) => ({
     ...message,
@@ -1261,6 +1282,7 @@ export async function readDatabaseDebugLatestThreadSnapshot(
       location: activation.skillProfile.location,
     })),
   }));
+  const messageSkillActivationRows = messages.flatMap((message) => message.skillActivations);
   const mcpServers = thread.mcpServers.map((server) => ({
     ...server,
     headers: normalizeUnknownForJson(readJsonValue(server.headersJson, {})),
@@ -1317,6 +1339,7 @@ export async function readDatabaseDebugLatestThreadSnapshot(
     runtimeEventLogs: normalizedRuntimeEventLogs.map((row) => normalizeRecordForJson(row)),
     counts: {
       messages: thread._count.messages,
+      messageSkillActivations: messageSkillActivationCount,
       mcpServers: thread._count.mcpServers,
       mcpRpcLogs: thread._count.mcpRpcLogs,
       skillSelections: thread._count.skillSelections,
@@ -1324,6 +1347,7 @@ export async function readDatabaseDebugLatestThreadSnapshot(
     },
     truncation: {
       messages: messages.length < thread._count.messages,
+      messageSkillActivations: messageSkillActivationRows.length < messageSkillActivationCount,
       mcpServers: mcpServers.length < thread._count.mcpServers,
       mcpRpcLogs: mcpRpcLogs.length < thread._count.mcpRpcLogs,
       skillSelections: skillSelections.length < thread._count.skillSelections,
