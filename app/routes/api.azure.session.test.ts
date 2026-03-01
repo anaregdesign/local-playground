@@ -80,7 +80,7 @@ describe("/api/azure/session", () => {
   it("returns 405 for loader and includes Allow", async () => {
     const response = loader();
     expect(response.status).toBe(405);
-    expect(response.headers.get("allow")).toBe("POST, DELETE");
+    expect(response.headers.get("allow")).toBe("PUT, DELETE");
     expect(await response.json()).toEqual({ error: "Method not allowed." });
   });
 
@@ -89,17 +89,17 @@ describe("/api/azure/session", () => {
       request: new Request("http://localhost/api/azure/session", { method: "GET" }),
     } as never);
     expect(response.status).toBe(405);
-    expect(response.headers.get("allow")).toBe("POST, DELETE");
+    expect(response.headers.get("allow")).toBe("PUT, DELETE");
   });
 
-  it("runs interactive azure authentication on POST", async () => {
+  it("runs interactive azure authentication on PUT", async () => {
     const response = await action({
-      request: new Request("http://localhost/api/azure/session", { method: "POST" }),
+      request: new Request("http://localhost/api/azure/session", { method: "PUT" }),
     } as never);
     const payload = (await response.json()) as { message?: string };
 
     expect(response.status).toBe(200);
-    expect(payload.message).toBe("Azure login completed. Azure connections were refreshed.");
+    expect(payload.message).toBe("Azure login completed. Azure projects were refreshed.");
     expect(authenticateAzure).toHaveBeenCalledTimes(1);
     expect(authenticateAzure).toHaveBeenCalledWith(AZURE_ARM_SCOPE);
     expect(getOrCreateUserByIdentity).toHaveBeenCalledWith({
@@ -113,7 +113,7 @@ describe("/api/azure/session", () => {
     readAzureArmUserContext.mockResolvedValueOnce(null);
 
     const response = await action({
-      request: new Request("http://localhost/api/azure/session", { method: "POST" }),
+      request: new Request("http://localhost/api/azure/session", { method: "PUT" }),
     } as never);
 
     expect(response.status).toBe(200);
@@ -136,7 +136,7 @@ describe("/api/azure/session", () => {
     authenticateAzure.mockRejectedValueOnce(new Error("manual login cancelled"));
 
     const response = await action({
-      request: new Request("http://localhost/api/azure/session", { method: "POST" }),
+      request: new Request("http://localhost/api/azure/session", { method: "PUT" }),
     } as never);
     const payload = (await response.json()) as { error?: string };
 

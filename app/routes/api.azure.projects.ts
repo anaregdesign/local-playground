@@ -149,7 +149,7 @@ export async function loader({ request }: Route.LoaderArgs) {
     await logServerRouteEvent({
       request,
       route: "/api/azure/projects",
-      eventName: "load_azure_connections_failed",
+      eventName: "load_azure_projects_failed",
       action: "list_projects",
       statusCode: 502,
       error,
@@ -157,7 +157,7 @@ export async function loader({ request }: Route.LoaderArgs) {
 
     return Response.json(
       {
-        error: `Failed to load Azure connection data: ${readErrorMessage(error)}`,
+        error: `Failed to load Azure project data: ${readErrorMessage(error)}`,
       },
       { status: 502 },
     );

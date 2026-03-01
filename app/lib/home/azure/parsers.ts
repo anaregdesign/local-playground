@@ -4,7 +4,7 @@
 import type { ReasoningEffort } from "~/lib/home/shared/view-types";
 import { uniqueStringsCaseInsensitive } from "~/lib/home/shared/collections";
 
-export type AzureConnectionOption = {
+export type AzureProjectOption = {
   id: string;
   projectName: string;
   baseUrl: string;
@@ -111,12 +111,12 @@ export function readAzureSelectionFromUnknown(
   };
 }
 
-export function readAzureProjectList(value: unknown): AzureConnectionOption[] {
+export function readAzureProjectList(value: unknown): AzureProjectOption[] {
   if (!Array.isArray(value)) {
     return [];
   }
 
-  const projects: AzureConnectionOption[] = [];
+  const projects: AzureProjectOption[] = [];
   for (const entry of value) {
     const project = readAzureProjectFromUnknown(entry);
     if (!project) {
@@ -142,7 +142,7 @@ export function readAzureDeploymentList(value: unknown): string[] {
   );
 }
 
-function readAzureProjectFromUnknown(value: unknown): AzureConnectionOption | null {
+function readAzureProjectFromUnknown(value: unknown): AzureProjectOption | null {
   if (!isRecord(value)) {
     return null;
   }

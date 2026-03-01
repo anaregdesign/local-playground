@@ -15,7 +15,7 @@ import {
   readAuthenticatedUser,
   readErrorMessage,
   readJsonPayload,
-  saveThreadSnapshot,
+  updateThreadSnapshot,
 } from "./api.threads";
 import type { Route } from "./+types/api.threads.$threadId";
 
@@ -123,13 +123,13 @@ export async function action({ request, params }: Route.ActionArgs) {
         );
       }
 
-      const saveResult = await saveThreadSnapshot(user.id, thread);
-      if (!saveResult) {
+      const updatedThread = await updateThreadSnapshot(user.id, thread);
+      if (!updatedThread) {
         await logServerRouteEvent({
           request,
           route: "/api/threads/:threadId",
           eventName: "thread_not_found",
-          action: "save_thread",
+          action: "update_thread",
           level: "warning",
           statusCode: 404,
           message: "Thread is not available.",
@@ -140,36 +140,24 @@ export async function action({ request, params }: Route.ActionArgs) {
         return Response.json({ error: "Thread is not available." }, { status: 404 });
       }
 
-      const status = saveResult.created ? 201 : 200;
       await logServerRouteEvent({
         request,
         route: "/api/threads/:threadId",
-        eventName: "save_thread_succeeded",
-        action: "save_thread",
+        eventName: "update_thread_succeeded",
+        action: "update_thread",
         level: "info",
-        statusCode: status,
-        message: "Thread saved.",
+        statusCode: 200,
+        message: "Thread updated.",
         userId: user.id,
-        threadId: saveResult.thread.id,
+        threadId: updatedThread.id,
         context: {
-          messageCount: saveResult.thread.messages.length,
-          mcpServerCount: saveResult.thread.mcpServers.length,
-          operationLogCount: saveResult.thread.mcpRpcLogs.length,
-          skillSelectionCount: saveResult.thread.skillSelections.length,
-          created: saveResult.created,
+          messageCount: updatedThread.messages.length,
+          mcpServerCount: updatedThread.mcpServers.length,
+          operationLogCount: updatedThread.mcpRpcLogs.length,
+          skillSelectionCount: updatedThread.skillSelections.length,
         },
       });
-      return Response.json(
-        { thread: saveResult.thread },
-        {
-          status,
-          headers: saveResult.created
-            ? {
-                Location: `/api/threads/${encodeURIComponent(saveResult.thread.id)}`,
-              }
-            : undefined,
-        },
-      );
+      return Response.json({ thread: updatedThread }, { status: 200 });
     }
 
     if (request.method === "DELETE") {
@@ -287,13 +275,13 @@ export async function action({ request, params }: Route.ActionArgs) {
   } catch (error) {
     const eventName =
       request.method === "PUT"
-        ? "save_thread_failed"
+        ? "update_thread_failed"
         : request.method === "DELETE"
           ? "delete_thread_failed"
           : "restore_thread_failed";
     const action =
       request.method === "PUT"
-        ? "save_thread"
+        ? "update_thread"
         : request.method === "DELETE"
           ? "delete_thread"
           : "restore_thread";

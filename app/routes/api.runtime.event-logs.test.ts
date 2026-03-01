@@ -6,12 +6,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const {
   readAzureArmUserContextMock,
   installGlobalServerErrorLoggingMock,
-  logAppEventMock,
+  logRuntimeEventWithIdMock,
   logServerRouteEventMock,
 } = vi.hoisted(() => ({
   readAzureArmUserContextMock: vi.fn(),
   installGlobalServerErrorLoggingMock: vi.fn(),
-  logAppEventMock: vi.fn(),
+  logRuntimeEventWithIdMock: vi.fn(),
   logServerRouteEventMock: vi.fn(),
 }));
 
@@ -21,7 +21,7 @@ vi.mock("~/lib/server/auth/azure-user", () => ({
 
 vi.mock("~/lib/server/observability/runtime-event-log", () => ({
   installGlobalServerErrorLogging: installGlobalServerErrorLoggingMock,
-  logRuntimeEvent: logAppEventMock,
+  logRuntimeEventWithId: logRuntimeEventWithIdMock,
   logServerRouteEvent: logServerRouteEventMock,
 }));
 
@@ -45,7 +45,7 @@ describe("api.runtime.event-logs action", () => {
       principalId: "principal-a",
       token: "token",
     });
-    logAppEventMock.mockResolvedValue(undefined);
+    logRuntimeEventWithIdMock.mockResolvedValue("runtime-event-log-1");
     logServerRouteEventMock.mockResolvedValue(undefined);
   });
 
@@ -81,7 +81,7 @@ describe("api.runtime.event-logs action", () => {
         statusCode: 400,
       }),
     );
-    expect(logAppEventMock).not.toHaveBeenCalled();
+    expect(logRuntimeEventWithIdMock).not.toHaveBeenCalled();
   });
 
   it("returns 400 for invalid payload shape and logs warning", async () => {
@@ -108,7 +108,7 @@ describe("api.runtime.event-logs action", () => {
         statusCode: 400,
       }),
     );
-    expect(logAppEventMock).not.toHaveBeenCalled();
+    expect(logRuntimeEventWithIdMock).not.toHaveBeenCalled();
   });
 
   it("accepts valid payload and forwards structured client log", async () => {
@@ -136,9 +136,15 @@ describe("api.runtime.event-logs action", () => {
     });
 
     expect(response.status).toBe(201);
-    expect(await response.json()).toEqual({ ok: true });
+    expect(await response.json()).toEqual({
+      ok: true,
+      eventLogId: "runtime-event-log-1",
+    });
+    expect(response.headers.get("location")).toBe(
+      "/api/runtime/event-logs/runtime-event-log-1",
+    );
     expect(logServerRouteEventMock).not.toHaveBeenCalled();
-    expect(logAppEventMock).toHaveBeenCalledWith(
+    expect(logRuntimeEventWithIdMock).toHaveBeenCalledWith(
       expect.objectContaining({
         source: "client",
         level: "error",
@@ -155,6 +161,37 @@ describe("api.runtime.event-logs action", () => {
           userAgent: "VitestAgent",
           referer: "http://localhost/home",
         }),
+      }),
+    );
+  });
+
+  it("returns 500 when runtime event log persistence fails", async () => {
+    logRuntimeEventWithIdMock.mockResolvedValueOnce(null);
+
+    const response = await action({
+      request: new Request("http://localhost/api/runtime/event-logs", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          level: "info",
+          category: "frontend",
+          eventName: "event_log_failed",
+          message: "failed",
+        }),
+      }),
+    });
+
+    expect(response.status).toBe(500);
+    expect(await response.json()).toEqual({
+      error: "Failed to persist runtime event log.",
+    });
+    expect(logServerRouteEventMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        route: "/api/runtime/event-logs",
+        eventName: "create_client_event_log_failed",
+        statusCode: 500,
       }),
     );
   });

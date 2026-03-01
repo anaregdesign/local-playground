@@ -13,7 +13,7 @@ import { readAzureArmUserContext } from "~/lib/server/auth/azure-user";
 import { ensureDefaultMcpServersForUser } from "./api.mcp.servers";
 import type { Route } from "./+types/api.azure.session";
 
-const AZURE_SESSION_ALLOWED_METHODS = ["POST", "DELETE"] as const;
+const AZURE_SESSION_ALLOWED_METHODS = ["PUT", "DELETE"] as const;
 
 export function loader() {
   installGlobalServerErrorLogging();
@@ -23,11 +23,11 @@ export function loader() {
 export async function action({ request }: Route.ActionArgs) {
   installGlobalServerErrorLogging();
 
-  if (request.method !== "POST" && request.method !== "DELETE") {
+  if (request.method !== "PUT" && request.method !== "DELETE") {
     return methodNotAllowedResponse(AZURE_SESSION_ALLOWED_METHODS);
   }
 
-  if (request.method === "POST") {
+  if (request.method === "PUT") {
     try {
       const dependencies = getAzureDependencies();
       await dependencies.authenticateAzure(AZURE_ARM_SCOPE);
@@ -41,7 +41,7 @@ export async function action({ request }: Route.ActionArgs) {
       }
 
       return Response.json({
-        message: "Azure login completed. Azure connections were refreshed.",
+        message: "Azure login completed. Azure projects were refreshed.",
       });
     } catch (error) {
       await logServerRouteEvent({

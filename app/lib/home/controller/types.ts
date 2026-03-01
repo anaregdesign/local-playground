@@ -28,7 +28,7 @@ export type AzureActionApiResponse = {
  * `/api/azure/projects/:projectId/deployments`.
  * Unknown-typed payload fields are normalized by parser helpers in `~/lib/home/azure/parsers`.
  */
-export type AzureConnectionsApiResponse = {
+export type AzureProjectsApiResponse = {
   projects?: unknown;
   deployments?: unknown;
   principal?: unknown;

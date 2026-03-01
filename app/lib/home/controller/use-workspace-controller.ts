@@ -41,7 +41,7 @@ import {
   THREAD_DEFAULT_NAME,
 } from "~/lib/constants";
 import type {
-  AzureConnectionOption,
+  AzureProjectOption,
   AzurePrincipalProfile,
   AzureSelectionPreference,
 } from "~/lib/home/azure/parsers";
@@ -160,7 +160,7 @@ import {
 import { readJsonPayload } from "~/lib/home/controller/http";
 import {
   type AzureActionApiResponse,
-  type AzureConnectionsApiResponse,
+  type AzureProjectsApiResponse,
   type AzureSelectionApiResponse,
   type InstructionEnhanceComparison,
   type McpServersApiResponse,
@@ -194,7 +194,7 @@ type ChatCommandProvider = {
  */
 export function useWorkspaceController() {
   // Primary runtime state for Home.
-  const [azureConnections, setAzureConnections] = useState<AzureConnectionOption[]>([]);
+  const [azureConnections, setAzureConnections] = useState<AzureProjectOption[]>([]);
   const [playgroundAzureDeployments, setPlaygroundAzureDeployments] = useState<string[]>([]);
   const [utilityAzureDeployments, setUtilityAzureDeployments] = useState<string[]>([]);
   const [activeAzurePrincipal, setActiveAzurePrincipal] = useState<AzurePrincipalProfile | null>(
@@ -795,7 +795,7 @@ export function useWorkspaceController() {
   }, [activeChatCommandSuggestions.length]);
 
   useEffect(() => {
-    void loadAzureConnections();
+    void loadAzureProjects();
   }, []);
 
   useEffect(() => {
@@ -813,7 +813,7 @@ export function useWorkspaceController() {
       }
 
       void (async () => {
-        const stillAuthRequired = await loadAzureConnections();
+        const stillAuthRequired = await loadAzureProjects();
         if (!stillAuthRequired) {
           setAzureLoginError(null);
           setUiError(null);
@@ -1888,6 +1888,11 @@ export function useWorkspaceController() {
     }
 
     const expectedThreadId = snapshot.id;
+    const hasPersistedSignature = threadSaveSignatureByIdRef.current.has(expectedThreadId);
+    const endpoint = hasPersistedSignature
+      ? `/api/threads/${encodeURIComponent(expectedThreadId)}`
+      : "/api/threads";
+    const method = hasPersistedSignature ? "PUT" : "POST";
     const requestSeq = threadSaveRequestSeqRef.current + 1;
     threadSaveRequestSeqRef.current = requestSeq;
     if (showBusy) {
@@ -1895,16 +1900,13 @@ export function useWorkspaceController() {
     }
 
     try {
-      const response = await fetch(
-        `/api/threads/${encodeURIComponent(snapshot.id)}`,
-        {
-        method: "PUT",
+      const response = await fetch(endpoint, {
+        method,
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify(snapshot),
-        },
-      );
+      });
 
       const payload = (await response.json()) as ThreadsApiResponse;
       if (!response.ok) {
@@ -1942,6 +1944,7 @@ export function useWorkspaceController() {
       logHomeInfo("save_thread_snapshot_succeeded", "Thread snapshot saved.", {
         action: "save_thread_snapshot",
         context: {
+          method,
           threadId: savedThread.id,
           messageCount: savedThread.messages.length,
           mcpServerCount: savedThread.mcpServers.length,
@@ -2867,7 +2870,7 @@ export function useWorkspaceController() {
     return nextWorkspaceUserKey;
   }
 
-  async function loadAzureConnections(): Promise<boolean> {
+  async function loadAzureProjects(): Promise<boolean> {
     const requestSeq = azureConnectionsRequestSeqRef.current + 1;
     azureConnectionsRequestSeqRef.current = requestSeq;
     setIsLoadingAzureConnections(true);
@@ -2877,7 +2880,7 @@ export function useWorkspaceController() {
         method: "GET",
       });
 
-      const payload = (await response.json()) as AzureConnectionsApiResponse;
+      const payload = (await response.json()) as AzureProjectsApiResponse;
       if (requestSeq !== azureConnectionsRequestSeqRef.current) {
         return isAzureAuthRequired;
       }
@@ -2985,7 +2988,7 @@ export function useWorkspaceController() {
               method: "GET",
             },
           );
-          const deploymentPayload = (await deploymentResponse.json()) as AzureConnectionsApiResponse;
+          const deploymentPayload = (await deploymentResponse.json()) as AzureProjectsApiResponse;
           if (requestSeq !== azureConnectionsRequestSeqRef.current) {
             return false;
           }
@@ -3057,8 +3060,8 @@ export function useWorkspaceController() {
       if (requestSeq !== azureConnectionsRequestSeqRef.current) {
         return isAzureAuthRequired;
       }
-      logHomeError("load_azure_connections_failed", loadError, {
-        action: "load_azure_connections",
+      logHomeError("load_azure_projects_failed", loadError, {
+        action: "load_azure_projects",
       });
       const errorMessage =
         loadError instanceof Error ? loadError.message : "Failed to load Azure projects.";
@@ -3131,7 +3134,7 @@ export function useWorkspaceController() {
         },
       );
 
-      const payload = (await response.json()) as AzureConnectionsApiResponse;
+      const payload = (await response.json()) as AzureProjectsApiResponse;
       const activeRequestSeq =
         target === "playground"
           ? playgroundAzureDeploymentRequestSeqRef.current
@@ -3657,7 +3660,7 @@ export function useWorkspaceController() {
     setIsStartingAzureLogin(true);
     try {
       const response = await fetch("/api/azure/session", {
-        method: "POST",
+        method: "PUT",
       });
       const payload = (await response.json()) as AzureActionApiResponse;
       if (!response.ok) {
@@ -3669,7 +3672,7 @@ export function useWorkspaceController() {
       setAzureConnectionError(null);
       let stillAuthRequired = true;
       for (let attempt = 0; attempt < 3; attempt += 1) {
-        stillAuthRequired = await loadAzureConnections();
+        stillAuthRequired = await loadAzureProjects();
         if (!stillAuthRequired) {
           break;
         }
@@ -3713,7 +3716,7 @@ export function useWorkspaceController() {
       setSystemNotice(payload.message || "Azure logout completed.");
       setPlaygroundAzureDeploymentError(null);
       setUtilityAzureDeploymentError(null);
-      await loadAzureConnections();
+      await loadAzureProjects();
     } catch (logoutError) {
       logHomeError("azure_logout_flow_failed", logoutError, {
         action: "azure_logout",
@@ -4996,7 +4999,7 @@ export function useWorkspaceController() {
         !selectedPlaygroundAzureDeploymentName.trim());
 
     if (needsProjectReload || needsDeploymentReload) {
-      void loadAzureConnections();
+      void loadAzureProjects();
     }
   }
 

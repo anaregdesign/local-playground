@@ -1,7 +1,7 @@
 /**
  * API route module for /api/threads.
  */
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import {
   DEFAULT_AGENT_INSTRUCTION,
   HOME_DEFAULT_REASONING_EFFORT,
@@ -34,7 +34,14 @@ import { SKILL_REGISTRY_OPTIONS } from "~/lib/home/skills/registry";
 import type { ThreadSnapshot } from "~/lib/home/thread/types";
 import type { Route } from "./+types/api.threads";
 
-const THREADS_COLLECTION_ALLOWED_METHODS = ["GET"] as const;
+const THREADS_COLLECTION_ALLOWED_METHODS = ["GET", "POST"] as const;
+
+export const threadCollectionActionHandlers = {
+  createThreadSnapshot: (
+    userId: number,
+    snapshot: ThreadSnapshot,
+  ): Promise<CreateThreadSnapshotResult> => createThreadSnapshot(userId, snapshot),
+};
 
 export async function loader({ request }: Route.LoaderArgs) {
   installGlobalServerErrorLogging();
@@ -93,7 +100,144 @@ export async function loader({ request }: Route.LoaderArgs) {
 
 export async function action({ request }: Route.ActionArgs) {
   installGlobalServerErrorLogging();
-  return methodNotAllowedResponse(THREADS_COLLECTION_ALLOWED_METHODS);
+
+  if (request.method !== "POST") {
+    return methodNotAllowedResponse(THREADS_COLLECTION_ALLOWED_METHODS);
+  }
+
+  const user = await readAuthenticatedUser();
+  if (!user) {
+    return Response.json(
+      {
+        authRequired: true,
+        error: "Azure login is required. Click Azure Login to continue.",
+      },
+      { status: 401 },
+    );
+  }
+
+  const payload = await readJsonPayload(request);
+  if (!payload.ok) {
+    await logServerRouteEvent({
+      request,
+      route: "/api/threads",
+      eventName: "invalid_json_body",
+      action: "parse_request_body",
+      level: "warning",
+      statusCode: 400,
+      message: "Invalid JSON body.",
+      userId: user.id,
+    });
+
+    return Response.json({ error: "Invalid JSON body." }, { status: 400 });
+  }
+
+  const thread = readThreadSnapshotFromUnknown(payload.value, {
+    fallbackInstruction: DEFAULT_AGENT_INSTRUCTION,
+  });
+  if (!thread) {
+    await logServerRouteEvent({
+      request,
+      route: "/api/threads",
+      eventName: "invalid_thread_payload",
+      action: "read_thread_snapshot",
+      level: "warning",
+      statusCode: 400,
+      message: "Invalid thread payload.",
+      userId: user.id,
+    });
+
+    return Response.json({ error: "Invalid thread payload." }, { status: 400 });
+  }
+
+  try {
+    const created = await threadCollectionActionHandlers.createThreadSnapshot(user.id, thread);
+    if (created.status === "conflict") {
+      await logServerRouteEvent({
+        request,
+        route: "/api/threads",
+        eventName: "thread_conflict",
+        action: "create_thread",
+        level: "warning",
+        statusCode: 409,
+        message: "Thread id already exists.",
+        userId: user.id,
+        threadId: thread.id,
+      });
+
+      return Response.json(
+        {
+          error: "Thread id already exists.",
+        },
+        { status: 409 },
+      );
+    }
+
+    if (created.status === "invalid") {
+      await logServerRouteEvent({
+        request,
+        route: "/api/threads",
+        eventName: "invalid_thread_payload",
+        action: "create_thread",
+        level: "warning",
+        statusCode: 400,
+        message: "Thread payload is not persistable.",
+        userId: user.id,
+        threadId: thread.id,
+      });
+
+      return Response.json(
+        {
+          error: "Thread payload is not persistable.",
+        },
+        { status: 400 },
+      );
+    }
+
+    await logServerRouteEvent({
+      request,
+      route: "/api/threads",
+      eventName: "create_thread_succeeded",
+      action: "create_thread",
+      level: "info",
+      statusCode: 201,
+      message: "Thread created.",
+      userId: user.id,
+      threadId: created.thread.id,
+      context: {
+        messageCount: created.thread.messages.length,
+        mcpServerCount: created.thread.mcpServers.length,
+        operationLogCount: created.thread.mcpRpcLogs.length,
+        skillSelectionCount: created.thread.skillSelections.length,
+      },
+    });
+    return Response.json(
+      { thread: created.thread },
+      {
+        status: 201,
+        headers: {
+          Location: `/api/threads/${encodeURIComponent(created.thread.id)}`,
+        },
+      },
+    );
+  } catch (error) {
+    await logServerRouteEvent({
+      request,
+      route: "/api/threads",
+      eventName: "create_thread_failed",
+      action: "create_thread",
+      statusCode: 500,
+      error,
+      userId: user.id,
+      threadId: thread.id,
+    });
+    return Response.json(
+      {
+        error: `Failed to create thread in database: ${readErrorMessage(error)}`,
+      },
+      { status: 500 },
+    );
+  }
 }
 
 async function readUserThreads(userId: number): Promise<ThreadSnapshot[]> {
@@ -221,6 +365,88 @@ async function readThreadById(userId: number, threadId: string): Promise<ThreadS
   }
 
   return mapStoredThreadToSnapshot(record);
+}
+
+type ThreadRecordHead = {
+  deletedAt: string | null;
+};
+
+type CreateThreadSnapshotResult =
+  | {
+      status: "created";
+      thread: ThreadSnapshot;
+    }
+  | {
+      status: "conflict";
+    }
+  | {
+      status: "invalid";
+    };
+
+async function readThreadRecordHead(userId: number, threadId: string): Promise<ThreadRecordHead | null> {
+  await ensurePersistenceDatabaseReady();
+
+  const record = await prisma.thread.findFirst({
+    where: {
+      id: threadId,
+      userId,
+    },
+    select: {
+      deletedAt: true,
+    },
+  });
+
+  return record;
+}
+
+export async function createThreadSnapshot(
+  userId: number,
+  snapshot: ThreadSnapshot,
+): Promise<CreateThreadSnapshotResult> {
+  const existing = await readThreadRecordHead(userId, snapshot.id);
+  if (existing) {
+    return {
+      status: "conflict",
+    };
+  }
+
+  try {
+    const saved = await saveThreadSnapshot(userId, snapshot);
+    if (!saved || !saved.created) {
+      return {
+        status: "invalid",
+      };
+    }
+
+    return {
+      status: "created",
+      thread: saved.thread,
+    };
+  } catch (error) {
+    if (isThreadIdConflictError(error)) {
+      return {
+        status: "conflict",
+      };
+    }
+    throw error;
+  }
+}
+
+export async function updateThreadSnapshot(
+  userId: number,
+  snapshot: ThreadSnapshot,
+): Promise<ThreadSnapshot | null> {
+  const existing = await readThreadRecordHead(userId, snapshot.id);
+  if (!existing || existing.deletedAt !== null) {
+    return null;
+  }
+
+  const saved = await saveThreadSnapshot(userId, snapshot);
+  if (!saved || saved.created) {
+    return null;
+  }
+
+  return saved.thread;
 }
 
 export async function saveThreadSnapshot(
@@ -487,6 +713,25 @@ export async function saveThreadSnapshot(
     thread,
     created,
   };
+}
+
+function isThreadIdConflictError(error: unknown): boolean {
+  if (!(error instanceof Prisma.PrismaClientKnownRequestError)) {
+    return false;
+  }
+  if (error.code !== "P2002") {
+    return false;
+  }
+
+  const target = error.meta?.target;
+  if (Array.isArray(target)) {
+    return target.includes("id");
+  }
+  if (typeof target === "string") {
+    return target.includes("id");
+  }
+
+  return false;
 }
 
 export type LogicalDeleteThreadResult =

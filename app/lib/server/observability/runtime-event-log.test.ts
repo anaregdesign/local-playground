@@ -17,7 +17,11 @@ vi.mock("~/lib/server/persistence/prisma", () => ({
   },
 }));
 
-import { logRuntimeEvent, logServerRouteEvent } from "./runtime-event-log";
+import {
+  logRuntimeEvent,
+  logRuntimeEventWithId,
+  logServerRouteEvent,
+} from "./runtime-event-log";
 
 describe("logRuntimeEvent", () => {
   beforeEach(() => {
@@ -67,6 +71,42 @@ describe("logRuntimeEvent", () => {
         message: "save failed",
       }),
     ).resolves.toBeUndefined();
+  });
+});
+
+describe("logRuntimeEventWithId", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    ensurePersistenceDatabaseReadyMock.mockResolvedValue(undefined);
+    runtimeEventLogCreateMock.mockResolvedValue(undefined);
+  });
+
+  it("returns created event log id on success", async () => {
+    const eventLogId = await logRuntimeEventWithId({
+      source: "server",
+      level: "info",
+      category: "api",
+      eventName: "event_log_created",
+      message: "created",
+    });
+
+    expect(typeof eventLogId).toBe("string");
+    expect(eventLogId && eventLogId.length > 0).toBe(true);
+    expect(runtimeEventLogCreateMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns null when database write fails", async () => {
+    runtimeEventLogCreateMock.mockRejectedValueOnce(new Error("db failed"));
+
+    await expect(
+      logRuntimeEventWithId({
+        source: "server",
+        level: "error",
+        category: "api",
+        eventName: "event_log_failed",
+        message: "failed",
+      }),
+    ).resolves.toBeNull();
   });
 });
 

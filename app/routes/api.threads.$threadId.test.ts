@@ -6,7 +6,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const {
   readAuthenticatedUser,
   readJsonPayload,
-  saveThreadSnapshot,
+  updateThreadSnapshot,
   logicalDeleteThread,
   logicalRestoreThread,
   isThreadRestorePayload,
@@ -16,7 +16,7 @@ const {
 } = vi.hoisted(() => ({
   readAuthenticatedUser: vi.fn(async () => ({ id: 1 })),
   readJsonPayload: vi.fn(async () => ({ ok: true as const, value: {} })),
-  saveThreadSnapshot: vi.fn(async () => null),
+  updateThreadSnapshot: vi.fn<any>(async () => null),
   logicalDeleteThread: vi.fn<any>(async () => ({ status: "not_found" as const })),
   logicalRestoreThread: vi.fn(async () => ({ status: "not_found" as const })),
   isThreadRestorePayload: vi.fn(() => false),
@@ -28,7 +28,7 @@ const {
 vi.mock("./api.threads", () => ({
   readAuthenticatedUser,
   readJsonPayload,
-  saveThreadSnapshot,
+  updateThreadSnapshot,
   logicalDeleteThread,
   logicalRestoreThread,
   isThreadRestorePayload,
@@ -52,8 +52,8 @@ describe("/api/threads/:threadId", () => {
     readAuthenticatedUser.mockResolvedValue({ id: 1 });
     readJsonPayload.mockReset();
     readJsonPayload.mockResolvedValue({ ok: true, value: {} });
-    saveThreadSnapshot.mockReset();
-    saveThreadSnapshot.mockResolvedValue(null);
+    updateThreadSnapshot.mockReset();
+    updateThreadSnapshot.mockResolvedValue(null);
     logicalDeleteThread.mockReset();
     logicalDeleteThread.mockResolvedValue({ status: "not_found" });
     logicalRestoreThread.mockReset();
@@ -101,6 +101,51 @@ describe("/api/threads/:threadId", () => {
 
     expect(response.status).toBe(400);
     expect(payload.error).toBe("`thread.id` must match path `threadId`.");
+  });
+
+  it("returns 404 when PUT target thread does not exist", async () => {
+    readThreadSnapshotFromUnknown.mockReturnValue({
+      id: "thread-a",
+      messages: [],
+      mcpServers: [],
+      mcpRpcLogs: [],
+      skillSelections: [],
+    });
+    updateThreadSnapshot.mockResolvedValueOnce(null);
+
+    const response = await action({
+      request: new Request("http://localhost/api/threads/thread-a", { method: "PUT" }),
+      params: { threadId: "thread-a" },
+    } as never);
+    const payload = (await response.json()) as { error?: string };
+
+    expect(response.status).toBe(404);
+    expect(payload.error).toBe("Thread is not available.");
+  });
+
+  it("returns 200 on successful PUT update", async () => {
+    readThreadSnapshotFromUnknown.mockReturnValue({
+      id: "thread-a",
+      messages: [],
+      mcpServers: [],
+      mcpRpcLogs: [],
+      skillSelections: [],
+    });
+    updateThreadSnapshot.mockResolvedValueOnce({
+      id: "thread-a",
+      messages: [],
+      mcpServers: [],
+      mcpRpcLogs: [],
+      skillSelections: [],
+    });
+
+    const response = await action({
+      request: new Request("http://localhost/api/threads/thread-a", { method: "PUT" }),
+      params: { threadId: "thread-a" },
+    } as never);
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("location")).toBeNull();
   });
 
   it("returns 409 when deleting an empty thread", async () => {

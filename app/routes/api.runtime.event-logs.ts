@@ -5,7 +5,7 @@ import { readClientRuntimeEventLogPayload } from "~/lib/observability/runtime-ev
 import { readAzureArmUserContext } from "~/lib/server/auth/azure-user";
 import {
   installGlobalServerErrorLogging,
-  logRuntimeEvent,
+  logRuntimeEventWithId,
   logServerRouteEvent,
 } from "~/lib/server/observability/runtime-event-log";
 import { methodNotAllowedResponse } from "~/lib/server/http";
@@ -59,7 +59,7 @@ export async function action({ request }: { request: Request }) {
   }
 
   const identity = await readAzureArmUserContext();
-  await logRuntimeEvent({
+  const eventLogId = await logRuntimeEventWithId({
     source: "client",
     level: parsed.level,
     category: parsed.category,
@@ -82,7 +82,30 @@ export async function action({ request }: { request: Request }) {
     },
   });
 
-  return Response.json({ ok: true }, { status: 201 });
+  if (!eventLogId) {
+    await logServerRouteEvent({
+      request,
+      route: "/api/runtime/event-logs",
+      eventName: "create_client_event_log_failed",
+      action: "create_client_event_log",
+      statusCode: 500,
+      message: "Failed to persist runtime event log.",
+    });
+    return Response.json({ error: "Failed to persist runtime event log." }, { status: 500 });
+  }
+
+  return Response.json(
+    {
+      ok: true,
+      eventLogId,
+    },
+    {
+      status: 201,
+      headers: {
+        Location: `/api/runtime/event-logs/${encodeURIComponent(eventLogId)}`,
+      },
+    },
+  );
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -146,11 +146,22 @@ export async function logServerRouteEvent(input: ServerRouteEventInput): Promise
 }
 
 export async function logRuntimeEvent(input: RuntimeEventLogInput): Promise<void> {
+  await createRuntimeEventLog(input);
+}
+
+export async function logRuntimeEventWithId(input: RuntimeEventLogInput): Promise<string | null> {
+  return await createRuntimeEventLog(input);
+}
+
+async function createRuntimeEventLog(input: RuntimeEventLogInput): Promise<string | null> {
+  const runtimeEventLogId =
+    typeof input.id === "string" && input.id.trim() ? input.id.trim() : createRuntimeEventLogId();
+
   try {
     await ensurePersistenceDatabaseReady();
     await prisma.runtimeEventLog.create({
       data: {
-        id: typeof input.id === "string" && input.id.trim() ? input.id.trim() : createRuntimeEventLogId(),
+        id: runtimeEventLogId,
         createdAt: normalizeCreatedAt(input.createdAt),
         source: normalizeRuntimeEventLogSource(input.source),
         level: normalizeRuntimeEventLogLevel(input.level),
@@ -171,7 +182,9 @@ export async function logRuntimeEvent(input: RuntimeEventLogInput): Promise<void
         contextJson: serializeRuntimeEventContext(input.context),
       },
     });
+    return runtimeEventLogId;
   } catch {
     // Logging must not throw into business logic.
+    return null;
   }
 }

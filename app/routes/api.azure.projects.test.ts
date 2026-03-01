@@ -122,7 +122,7 @@ describe("isLikelyAzureAuthError", () => {
 
   it("returns false for non-auth errors", () => {
     expect(
-      isLikelyAzureAuthError(new Error("Failed to load Azure connection data: Bad gateway.")),
+      isLikelyAzureAuthError(new Error("Failed to load Azure project data: Bad gateway.")),
     ).toBe(false);
     expect(isLikelyAzureAuthError(new Error("Network timeout"))).toBe(false);
     expect(isLikelyAzureAuthError("invalid")).toBe(false);
