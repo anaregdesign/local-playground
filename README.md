@@ -95,7 +95,7 @@ After updating the skill link, restart Codex (or start a new session).
 - Optional Azure Bearer token injection per server (`Authorization: Bearer <token>`).
 - Timeout range: `1-600` seconds.
 - MCP operation logs are shown inline per turn and collapsed by default.
-- During local development, the web server `/mcp` endpoint hosts an MCP server and can be used for debugging (including inspecting SQLite tables).
+- During local development, the web server `/mcp/debug` endpoint hosts an MCP server and can be used for debugging (including inspecting SQLite tables). The endpoint is available only in development mode.
 
 Default saved MCP profiles (created if missing):
 
