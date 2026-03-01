@@ -202,7 +202,7 @@ async function readStoredSelection(
   },
 ): Promise<AzureSelectionPreference | null> {
   await ensurePersistenceDatabaseReady();
-  const user = await prisma.user.findUnique({
+  const user = await prisma.workspaceUser.findUnique({
     where: {
       tenantId_principalId: {
         tenantId: identity.tenantId,
@@ -229,7 +229,7 @@ async function saveStoredSelection(
   preference: AzureSelectionPreferencePayload,
 ): Promise<AzureSelectionPreference> {
   await ensurePersistenceDatabaseReady();
-  const user = await prisma.user.upsert({
+  const user = await prisma.workspaceUser.upsert({
     where: {
       tenantId_principalId: {
         tenantId: identity.tenantId,

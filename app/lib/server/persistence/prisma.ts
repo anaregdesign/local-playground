@@ -139,7 +139,7 @@ async function ensureUserSchema(): Promise<void> {
 
 async function createUserTable(): Promise<void> {
   await prisma.$executeRawUnsafe(`
-    CREATE TABLE IF NOT EXISTS "User" (
+    CREATE TABLE IF NOT EXISTS "WorkspaceUser" (
       "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
       "tenantId" TEXT NOT NULL,
       "principalId" TEXT NOT NULL
@@ -147,8 +147,8 @@ async function createUserTable(): Promise<void> {
   `);
 
   await prisma.$executeRawUnsafe(`
-    CREATE UNIQUE INDEX IF NOT EXISTS "User_tenantId_principalId_key"
-    ON "User" ("tenantId", "principalId")
+    CREATE UNIQUE INDEX IF NOT EXISTS "WorkspaceUser_tenantId_principalId_key"
+    ON "WorkspaceUser" ("tenantId", "principalId")
   `);
 }
 
@@ -162,7 +162,7 @@ async function ensureAzureSelectionSchema(): Promise<void> {
       "utilityProjectId" TEXT NOT NULL DEFAULT '',
       "utilityDeploymentName" TEXT NOT NULL DEFAULT '',
       "utilityReasoningEffort" TEXT NOT NULL DEFAULT 'high',
-      FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE CASCADE
+      FOREIGN KEY ("userId") REFERENCES "WorkspaceUser" ("id") ON DELETE CASCADE
     )
   `);
 
@@ -232,7 +232,7 @@ async function ensureMcpServerProfileSchema(): Promise<void> {
       "argsJson" TEXT,
       "cwd" TEXT,
       "envJson" TEXT,
-      FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE CASCADE
+      FOREIGN KEY ("userId") REFERENCES "WorkspaceUser" ("id") ON DELETE CASCADE
     )
   `);
 
@@ -259,7 +259,7 @@ async function ensureThreadSchema(): Promise<void> {
       "reasoningEffort" TEXT NOT NULL DEFAULT 'none',
       "webSearchEnabled" BOOLEAN NOT NULL DEFAULT false,
       "threadEnvironmentJson" TEXT NOT NULL DEFAULT '{}',
-      FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE CASCADE
+      FOREIGN KEY ("userId") REFERENCES "WorkspaceUser" ("id") ON DELETE CASCADE
     )
   `);
 
@@ -303,14 +303,14 @@ async function ensureThreadSchema(): Promise<void> {
       "content" TEXT NOT NULL,
       "turnId" TEXT NOT NULL,
       "attachmentsJson" TEXT NOT NULL,
-      "dialogueSkillsJson" TEXT NOT NULL DEFAULT '[]',
+      "dialogueSkillSelectionsJson" TEXT NOT NULL DEFAULT '[]',
       FOREIGN KEY ("threadId") REFERENCES "Thread" ("id") ON DELETE CASCADE
     )
   `);
 
   await ensureTableColumn(
     "ThreadMessage",
-    "dialogueSkillsJson",
+    "dialogueSkillSelectionsJson",
     "TEXT NOT NULL DEFAULT '[]'",
   );
 
@@ -346,9 +346,10 @@ async function ensureThreadSchema(): Promise<void> {
 
   await prisma.$executeRawUnsafe(`
     CREATE TABLE IF NOT EXISTS "ThreadMcpRpcLog" (
-      "id" TEXT NOT NULL PRIMARY KEY,
+      "rowId" TEXT NOT NULL PRIMARY KEY,
+      "sourceRpcId" TEXT NOT NULL,
       "threadId" TEXT NOT NULL,
-      "sortOrder" INTEGER NOT NULL,
+      "persistedOrder" INTEGER NOT NULL,
       "sequence" INTEGER NOT NULL,
       "operationType" TEXT NOT NULL DEFAULT 'mcp',
       "serverName" TEXT NOT NULL,
@@ -365,13 +366,31 @@ async function ensureThreadSchema(): Promise<void> {
 
   await ensureTableColumn(
     "ThreadMcpRpcLog",
+    "rowId",
+    "TEXT NOT NULL DEFAULT ''",
+  );
+
+  await ensureTableColumn(
+    "ThreadMcpRpcLog",
+    "sourceRpcId",
+    "TEXT NOT NULL DEFAULT ''",
+  );
+
+  await ensureTableColumn(
+    "ThreadMcpRpcLog",
+    "persistedOrder",
+    "INTEGER NOT NULL DEFAULT 0",
+  );
+
+  await ensureTableColumn(
+    "ThreadMcpRpcLog",
     "operationType",
     "TEXT NOT NULL DEFAULT 'mcp'",
   );
 
   await prisma.$executeRawUnsafe(`
-    CREATE INDEX IF NOT EXISTS "ThreadMcpRpcLog_threadId_sortOrder_idx"
-    ON "ThreadMcpRpcLog" ("threadId", "sortOrder")
+    CREATE INDEX IF NOT EXISTS "ThreadMcpRpcLog_threadId_persistedOrder_idx"
+    ON "ThreadMcpRpcLog" ("threadId", "persistedOrder")
   `);
 
   await prisma.$executeRawUnsafe(`
@@ -380,10 +399,16 @@ async function ensureThreadSchema(): Promise<void> {
       "threadId" TEXT NOT NULL,
       "sortOrder" INTEGER NOT NULL,
       "skillName" TEXT NOT NULL,
-      "skillPath" TEXT NOT NULL,
+      "skillLocation" TEXT NOT NULL,
       FOREIGN KEY ("threadId") REFERENCES "Thread" ("id") ON DELETE CASCADE
     )
   `);
+
+  await ensureTableColumn(
+    "ThreadSkillSelection",
+    "skillLocation",
+    "TEXT NOT NULL DEFAULT ''",
+  );
 
   await prisma.$executeRawUnsafe(`
     CREATE INDEX IF NOT EXISTS "ThreadSkillSelection_threadId_sortOrder_idx"
@@ -412,9 +437,15 @@ async function ensureAppEventLogSchema(): Promise<void> {
       "principalId" TEXT,
       "userId" INTEGER,
       "stack" TEXT,
-      "context" TEXT NOT NULL
+      "contextJson" TEXT NOT NULL
     )
   `);
+
+  await ensureTableColumn(
+    "AppEventLog",
+    "contextJson",
+    "TEXT NOT NULL DEFAULT '{}'",
+  );
 
   await prisma.$executeRawUnsafe(`
     CREATE INDEX IF NOT EXISTS "AppEventLog_createdAt_idx"

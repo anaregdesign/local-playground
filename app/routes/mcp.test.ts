@@ -83,7 +83,7 @@ describe("mcp route", () => {
     expect(typeof appEventTool.description).toBe("string");
     expect(appEventTool.description).toContain("Role:");
     expect(appEventTool.description).toContain("Error accumulation note: This table stores error records");
-    expect(appEventTool.description).toContain("context (TEXT, required)");
+    expect(appEventTool.description).toContain("contextJson (TEXT, required)");
     expect(appEventTool.description).toContain("Query options:");
     expect(appEventTool.inputSchema?.properties?.filters).toBeTruthy();
     expect(appEventTool.inputSchema?.properties?.filterMode).toBeTruthy();

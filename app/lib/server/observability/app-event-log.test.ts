@@ -44,13 +44,13 @@ describe("logAppEvent", () => {
     expect(ensurePersistenceDatabaseReadyMock).toHaveBeenCalledTimes(1);
     expect(appEventLogCreateMock).toHaveBeenCalledTimes(1);
     const call = appEventLogCreateMock.mock.calls[0]?.[0] as {
-      data: { context: string; source: string; level: string; category: string; eventName: string };
+      data: { contextJson: string; source: string; level: string; category: string; eventName: string };
     };
     expect(call.data.source).toBe("server");
     expect(call.data.level).toBe("error");
     expect(call.data.category).toBe("api");
     expect(call.data.eventName).toBe("chat_execution_failed");
-    expect(JSON.parse(call.data.context)).toEqual({
+    expect(JSON.parse(call.data.contextJson)).toEqual({
       attempt: 1,
     });
   });
@@ -101,7 +101,7 @@ describe("logServerRouteEvent", () => {
         location: string;
         errorName: string | null;
         message: string;
-        context: string;
+        contextJson: string;
       };
     };
 
@@ -110,7 +110,7 @@ describe("logServerRouteEvent", () => {
     expect(call.data.location).toBe("/api/chat");
     expect(call.data.errorName).toBe("Error");
     expect(call.data.message).toBe("Bad gateway");
-    expect(JSON.parse(call.data.context)).toEqual({
+    expect(JSON.parse(call.data.contextJson)).toEqual({
       turnId: "turn-1",
     });
   });

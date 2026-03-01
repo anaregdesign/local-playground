@@ -127,7 +127,7 @@ const databaseDebugMaxTextFilterLength = 2_000;
 
 const tableDefinitions: DatabaseDebugTableDefinition[] = [
   {
-    tableName: "User",
+    tableName: "WorkspaceUser",
     toolName: "debug_read_user_table",
     purpose:
       "Stores Local Playground users identified by Azure tenant and principal; parent row for per-user persisted data.",
@@ -170,7 +170,7 @@ const tableDefinitions: DatabaseDebugTableDefinition[] = [
         name: "userId",
         type: "INTEGER",
         nullable: false,
-        description: "Foreign key to User.id (one row per user).",
+        description: "Foreign key to WorkspaceUser.id (one row per user).",
       },
       {
         name: "projectId",
@@ -221,7 +221,7 @@ const tableDefinitions: DatabaseDebugTableDefinition[] = [
         name: "userId",
         type: "INTEGER",
         nullable: false,
-        description: "Foreign key to User.id.",
+        description: "Foreign key to WorkspaceUser.id.",
       },
       {
         name: "sortOrder",
@@ -320,7 +320,7 @@ const tableDefinitions: DatabaseDebugTableDefinition[] = [
         name: "userId",
         type: "INTEGER",
         nullable: false,
-        description: "Foreign key to User.id.",
+        description: "Foreign key to WorkspaceUser.id.",
       },
       {
         name: "name",
@@ -398,7 +398,7 @@ const tableDefinitions: DatabaseDebugTableDefinition[] = [
         description: "Skill display name.",
       },
       {
-        name: "skillPath",
+        name: "skillLocation",
         type: "TEXT",
         nullable: false,
         description: "Skill source path or URI.",
@@ -481,7 +481,7 @@ const tableDefinitions: DatabaseDebugTableDefinition[] = [
         description: "Serialized attachment list JSON.",
       },
       {
-        name: "dialogueSkillsJson",
+        name: "dialogueSkillSelectionsJson",
         type: "TEXT",
         nullable: false,
         description: "Serialized Dialogue Skill selections JSON captured for that dialogue turn.",
@@ -589,10 +589,16 @@ const tableDefinitions: DatabaseDebugTableDefinition[] = [
     accumulatesErrors: true,
     fields: [
       {
-        name: "id",
+        name: "rowId",
         type: "TEXT",
         nullable: false,
         description: "MCP log row ID.",
+      },
+      {
+        name: "sourceRpcId",
+        type: "TEXT",
+        nullable: false,
+        description: "Original RPC identifier from runtime history.",
       },
       {
         name: "threadId",
@@ -601,10 +607,10 @@ const tableDefinitions: DatabaseDebugTableDefinition[] = [
         description: "Foreign key to Thread.id.",
       },
       {
-        name: "sortOrder",
+        name: "persistedOrder",
         type: "INTEGER",
         nullable: false,
-        description: "Ordering index for persisted logs.",
+        description: "Persisted ordering index used for thread replay.",
       },
       {
         name: "sequence",
@@ -775,7 +781,7 @@ const tableDefinitions: DatabaseDebugTableDefinition[] = [
         name: "userId",
         type: "INTEGER",
         nullable: true,
-        description: "User.id when available.",
+        description: "WorkspaceUser.id when available.",
       },
       {
         name: "stack",
@@ -784,7 +790,7 @@ const tableDefinitions: DatabaseDebugTableDefinition[] = [
         description: "Stack trace text for error events.",
       },
       {
-        name: "context",
+        name: "contextJson",
         type: "TEXT",
         nullable: false,
         description: "Serialized structured context payload.",
@@ -884,7 +890,7 @@ export function buildDatabaseDebugLatestThreadToolDescription(): string {
     "- `found`: Whether a matching thread exists.",
     "- `snapshot.thread`: Thread core metadata. Includes parsed `threadEnvironment` alongside raw `threadEnvironmentJson`.",
     "- `snapshot.instruction`: Per-thread instruction row (or null when absent).",
-    "- `snapshot.messages[]`: Ordered thread messages. Includes parsed `attachments`/`dialogueSkillSelections` alongside raw `attachmentsJson`/`dialogueSkillsJson`.",
+    "- `snapshot.messages[]`: Ordered thread messages. Includes parsed `attachments`/`dialogueSkillSelections` alongside raw `attachmentsJson`/`dialogueSkillSelectionsJson`.",
     "- `snapshot.mcpServers[]`: Ordered MCP server snapshot rows. Includes parsed `headers`/`args`/`env` plus raw JSON fields.",
     "- `snapshot.mcpRpcLogs[]`: Ordered MCP RPC rows. Includes parsed `request`/`response` plus raw JSON fields.",
     "- `snapshot.skillSelections[]`: Ordered skill selections saved for the thread.",
@@ -968,7 +974,7 @@ export async function readDatabaseDebugLatestThreadSnapshot(
             ...(includeAllRows ? {} : { take: options.mcpServerLimit }),
           },
           mcpRpcLogs: {
-            orderBy: { sortOrder: "asc" },
+            orderBy: { persistedOrder: "asc" },
             ...(includeAllRows ? {} : { take: options.mcpRpcLimit }),
           },
           skillSelections: {
@@ -1003,7 +1009,7 @@ export async function readDatabaseDebugLatestThreadSnapshot(
             ...(includeAllRows ? {} : { take: options.mcpServerLimit }),
           },
           mcpRpcLogs: {
-            orderBy: { sortOrder: "asc" },
+            orderBy: { persistedOrder: "asc" },
             ...(includeAllRows ? {} : { take: options.mcpRpcLimit }),
           },
           skillSelections: {
@@ -1068,7 +1074,7 @@ export async function readDatabaseDebugLatestThreadSnapshot(
   const messages = thread.messages.map((message) => ({
     ...message,
     attachments: normalizeUnknownForJson(readJsonValue(message.attachmentsJson, [])),
-    dialogueSkillSelections: normalizeUnknownForJson(readJsonValue(message.dialogueSkillsJson, [])),
+    dialogueSkillSelections: normalizeUnknownForJson(readJsonValue(message.dialogueSkillSelectionsJson, [])),
   }));
   const mcpServers = thread.mcpServers.map((server) => ({
     ...server,
@@ -1097,8 +1103,7 @@ export async function readDatabaseDebugLatestThreadSnapshot(
   const instruction = thread.instruction ? { ...thread.instruction } : null;
   const normalizedAppEventLogs = appEventLogs.map((event) => ({
     ...event,
-    contextJson: event.context,
-    context: normalizeUnknownForJson(readJsonValue(event.context, {})),
+    context: normalizeUnknownForJson(readJsonValue(event.contextJson, {})),
   }));
 
   return {

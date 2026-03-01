@@ -18,7 +18,7 @@ export async function getOrCreateUserByIdentity(
   identity: UserIdentity,
 ): Promise<PersistedUser> {
   await ensurePersistenceDatabaseReady();
-  return prisma.user.upsert({
+  return prisma.workspaceUser.upsert({
     where: {
       tenantId_principalId: {
         tenantId: identity.tenantId,

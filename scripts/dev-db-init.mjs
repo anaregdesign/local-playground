@@ -139,7 +139,7 @@ async function initializeSchema(databaseUrl) {
 
   try {
     await prisma.$executeRawUnsafe(`
-      CREATE TABLE IF NOT EXISTS "User" (
+      CREATE TABLE IF NOT EXISTS "WorkspaceUser" (
         "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
         "tenantId" TEXT NOT NULL,
         "principalId" TEXT NOT NULL
@@ -147,8 +147,8 @@ async function initializeSchema(databaseUrl) {
     `);
 
     await prisma.$executeRawUnsafe(`
-      CREATE UNIQUE INDEX IF NOT EXISTS "User_tenantId_principalId_key"
-      ON "User" ("tenantId", "principalId")
+      CREATE UNIQUE INDEX IF NOT EXISTS "WorkspaceUser_tenantId_principalId_key"
+      ON "WorkspaceUser" ("tenantId", "principalId")
     `);
 
     await prisma.$executeRawUnsafe(`
@@ -157,7 +157,7 @@ async function initializeSchema(databaseUrl) {
         "userId" INTEGER NOT NULL UNIQUE,
         "projectId" TEXT NOT NULL,
         "deploymentName" TEXT NOT NULL,
-        FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE CASCADE
+        FOREIGN KEY ("userId") REFERENCES "WorkspaceUser" ("id") ON DELETE CASCADE
       )
     `);
 
@@ -178,7 +178,7 @@ async function initializeSchema(databaseUrl) {
         "argsJson" TEXT,
         "cwd" TEXT,
         "envJson" TEXT,
-        FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE CASCADE
+        FOREIGN KEY ("userId") REFERENCES "WorkspaceUser" ("id") ON DELETE CASCADE
       )
     `);
 
@@ -202,7 +202,7 @@ async function initializeSchema(databaseUrl) {
         "deletedAt" TEXT,
         "reasoningEffort" TEXT NOT NULL DEFAULT 'none',
         "webSearchEnabled" BOOLEAN NOT NULL DEFAULT false,
-        FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE CASCADE
+        FOREIGN KEY ("userId") REFERENCES "WorkspaceUser" ("id") ON DELETE CASCADE
       )
     `);
 
@@ -265,10 +265,12 @@ async function initializeSchema(databaseUrl) {
 
     await prisma.$executeRawUnsafe(`
       CREATE TABLE IF NOT EXISTS "ThreadMcpRpcLog" (
-        "id" TEXT NOT NULL PRIMARY KEY,
+        "rowId" TEXT NOT NULL PRIMARY KEY,
+        "sourceRpcId" TEXT NOT NULL,
         "threadId" TEXT NOT NULL,
-        "sortOrder" INTEGER NOT NULL,
+        "persistedOrder" INTEGER NOT NULL,
         "sequence" INTEGER NOT NULL,
+        "operationType" TEXT NOT NULL DEFAULT 'mcp',
         "serverName" TEXT NOT NULL,
         "method" TEXT NOT NULL,
         "startedAt" TEXT NOT NULL,
@@ -282,8 +284,8 @@ async function initializeSchema(databaseUrl) {
     `);
 
     await prisma.$executeRawUnsafe(`
-      CREATE INDEX IF NOT EXISTS "ThreadMcpRpcLog_threadId_sortOrder_idx"
-      ON "ThreadMcpRpcLog" ("threadId", "sortOrder")
+      CREATE INDEX IF NOT EXISTS "ThreadMcpRpcLog_threadId_persistedOrder_idx"
+      ON "ThreadMcpRpcLog" ("threadId", "persistedOrder")
     `);
   } finally {
     await prisma.$disconnect();

@@ -168,7 +168,7 @@ export async function logAppEvent(input: AppEventLogInput): Promise<void> {
         principalId: normalizeOptionalLabel(input.principalId),
         userId: normalizeOptionalUserId(input.userId),
         stack: normalizeOptionalTextValue(input.stack),
-        context: serializeAppEventContext(input.context),
+        contextJson: serializeAppEventContext(input.context),
       },
     });
   } catch {
