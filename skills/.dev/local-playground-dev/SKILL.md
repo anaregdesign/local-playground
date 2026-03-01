@@ -30,6 +30,7 @@ Run this loop for every implementation task.
 4. Report gate:
    - Report policy conformance status explicitly.
    - If a rule is intentionally violated, explain reason and scope.
+   - For naming/API refactors, include whether static drift checks reached zero findings.
 
 ### Development Phase Override
 
@@ -40,6 +41,13 @@ Run this loop for every implementation task.
 ## 2) Enforce Core Architecture Constraints
 
 - Keep UI terminology consistent: `Playground`, `Threads`, `MCP Servers`, `Skills`, `Settings`.
+- Treat Prisma schema entity/field terminology as the canonical domain vocabulary.
+- Keep a single term per domain concept across schema references, runtime types, API contracts, component props, tests, and docs.
+- When terminology changes, perform an end-to-end rename in one batch and remove legacy aliases (unless explicitly requested).
+- Use semantic naming for ordering and log concepts:
+  - same behavior -> same identifier family
+  - different behavior -> different identifier family
+  - avoid protocol- or storage-specific names when the app-level concept is broader
 - Keep Home route modules in `app/routes/` as visual composition and panel wiring only.
 - Keep Home runtime ownership in `app/lib/home/controller/`.
 - Map each change to the approved `home` structure:
@@ -76,6 +84,7 @@ Run this loop for every implementation task.
 
 - Use `references/review-checklist.md` at pre-change, in-change, and final gates.
 - Treat sections 0-4 as continuous guardrails during implementation.
+- For naming/contract refactors, run repeated static drift checks plus dynamic gates until findings are zero.
 
 ## 6) Run Mandatory Quality Gates
 

@@ -20,6 +20,69 @@
 - Do not add backward compatibility shims or fallback behavior unless explicitly requested.
 - Prefer clean replacement of old contracts over dual-path support.
 
+## Domain Vocabulary and Naming Source of Truth
+
+- Treat Prisma schema entity/table/field names as the canonical domain vocabulary.
+- Use the same term for the same entity across:
+  - Prisma schema
+  - server/client TypeScript identifiers
+  - API route names and payload keys
+  - component names and UI labels when practical
+  - tests, mocks, fixtures, and documentation
+- Do not keep parallel aliases for a single entity (for example, `Message` vs `Dialogue`).
+- When naming drift is found, rename code to Prisma vocabulary rather than introducing adapters.
+- In development phase, remove legacy names directly instead of keeping compatibility aliases.
+- When terminology is updated, apply the rename end-to-end in one pass (schema references, code identifiers, API contracts, UI text, tests, docs) to avoid mixed vocabulary states.
+
+## Data Modeling and Normalization
+
+- Prefer normalized relational structures over JSON blobs when data has stable entity boundaries.
+- Introduce and use master tables for reusable entities (for example, Workspace-level skill and registry masters).
+- Reference master entities from thread/message linkage tables instead of duplicating denormalized payloads.
+- Keep per-user persisted resources user-scoped by default (DB ownership and storage directory partitioning).
+- For log-like entities, persist explicit timestamps and preserve insertion order semantics.
+
+## Ordering Field Semantics
+
+- Use order field names that encode their purpose, not generic sorting intent.
+- Reuse one field name per ordering semantic across entities (same behavior -> same name).
+- Use different field names for different ordering semantics (different behavior -> different name).
+- Do not overload one field name to represent multiple ordering concepts.
+- Prefer names that describe user-facing behavior (timeline order, selection order, configuration order), not implementation detail.
+
+## REST API Contract Standards (`api.*`)
+
+- Design resource-first endpoints:
+  - collection routes for list/create
+  - item routes for update/delete/restore on identified resources
+- Put resource identifiers in path params, not mutation query params.
+- Keep `GET` handlers side-effect free (no persistent writes).
+- Return `405` via `methodNotAllowedResponse` so `Allow` is always present.
+- Return `201` with `Location` for resource creation.
+- Use conflict status (`409`) for state conflicts rather than generic `400`.
+- Remove superseded contracts instead of keeping dual API paths unless explicitly requested.
+
+## Agents SDK Command API Exceptions
+
+- Keep command-style APIs where they are required for Agents SDK runtime behavior:
+  - `/api/chat`
+  - `/api/instruction-patches`
+  - `/api/threads/title-suggestions`
+- For these endpoints, prioritize streaming/turn control/context management efficiency over REST purity.
+- Document command-style exceptions explicitly when auditing REST compliance.
+
+## Refactor Verification Loop
+
+- Run a static audit after each rename/refactor batch:
+  - old term search (`rg`) for deprecated entity names and payload keys
+  - raw `405` search in `api.*` implementations
+  - old query-contract search (resource IDs passed by query for mutations)
+- Run dynamic validation after static cleanup:
+  - `npm run test:core -- app/routes/api.*.test.ts`
+  - `npm run typecheck:core`
+  - `npm run quality:gate`
+- Repeat static + dynamic audit until new findings are zero.
+
 ## Product Identity
 
 - App name is `Local Playground`.
@@ -80,7 +143,7 @@
 - Keep per-thread state ownership in the controller:
   - messages
   - active MCP servers
-  - MCP RPC history
+  - thread-scoped execution logs
   - agent instruction
   - thread request status (send/progress/error)
 - Keep persistent interactive state in React/controller runtime first.
@@ -158,7 +221,7 @@
   - instruction
   - messages
   - connected MCP servers
-  - MCP RPC history
+  - execution logs linked to thread turns
 - Save active thread changes from controller logic (debounced/autosave where implemented).
 - Agent instruction workflow lives in `Threads` tab and supports:
   - text edit

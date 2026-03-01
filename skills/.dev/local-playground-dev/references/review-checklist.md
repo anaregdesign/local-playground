@@ -92,12 +92,22 @@ git diff --name-only
 4. Confirm top-level panel directories mirror DOM hierarchy:
    - top-level panels are siblings under `app/components/home/`
    - no nesting of one top-level panel inside another panel directory
+5. Validate schema-aligned terminology:
+   - changed identifiers use Prisma schema vocabulary for the same domain concept
+   - no parallel aliases remain for one concept across API/runtime/UI/tests/docs
+6. Validate semantic identifier consistency:
+   - same behavior uses the same identifier family across entities/modules
+   - different behaviors use different identifier families
+   - ordering/log identifiers reflect app behavior, not incidental implementation detail
+7. If a rename/refactor happened, run static drift search for deprecated terms and contract keys.
+   - Build a focused `rg` pattern list from replaced terms in this task and verify zero matches in `app/`.
 
 ### Pass Criteria
 
 - File placement matches feature ownership.
 - Names communicate structural role (`Panel`, `Tab`, `Section`).
 - Top-level panel placement matches DOM hierarchy.
+- No naming-drift findings remain for this change batch.
 
 ## 3) Route vs Controller Ownership
 
@@ -210,6 +220,7 @@ npm run build:core
 
 - All required checks pass.
 - Any intentional exceptions are documented in the final response.
+- Static drift checks for renamed/deprecated terminology are zero when naming/contract refactors are in scope.
 
 ## Compliance Report Format
 
