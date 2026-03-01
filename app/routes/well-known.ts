@@ -4,6 +4,7 @@
 import {
   installGlobalServerErrorLogging,
 } from "~/lib/server/observability/app-event-log";
+import { methodNotAllowedResponse } from "~/lib/server/http";
 
 const unsupportedMetadataResponse = {
   error: "OAuth metadata is not configured for this Local Playground endpoint.",
@@ -26,11 +27,5 @@ export function loader() {
 
 export function action() {
   installGlobalServerErrorLogging();
-
-  return Response.json(
-    {
-      error: "Method not allowed.",
-    },
-    { status: 405 },
-  );
+  return methodNotAllowedResponse(["GET"]);
 }

@@ -1339,17 +1339,13 @@ export function useWorkspaceController() {
     setSkillRegistrySuccess(null);
 
     try {
-      const response = await fetch("/api/skills", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
+      const mutationMethod = options.action === "install_registry_skill" ? "PUT" : "DELETE";
+      const response = await fetch(
+        `/api/skills?registryId=${encodeURIComponent(options.registryId)}&skillName=${encodeURIComponent(options.skillName)}`,
+        {
+          method: mutationMethod,
         },
-        body: JSON.stringify({
-          action: options.action,
-          registryId: options.registryId,
-          skillName: options.skillName,
-        }),
-      });
+      );
       const payload = await readJsonPayload<SkillsApiResponse>(response, "Skills");
       if (!response.ok) {
         const authRequired = payload.authRequired === true || response.status === 401;
@@ -1819,14 +1815,11 @@ export function useWorkspaceController() {
 
     try {
       const response = await fetch("/api/threads", {
-        method: "POST",
+        method: "PUT",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          action: "save",
-          thread: snapshot,
-        }),
+        body: JSON.stringify(snapshot),
       });
 
       const payload = (await response.json()) as ThreadsApiResponse;
@@ -2019,7 +2012,7 @@ export function useWorkspaceController() {
           : baseThread.agentInstruction;
 
     try {
-      const response = await fetch("/api/thread-title", {
+      const response = await fetch("/api/threads/title-suggestions", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -2362,15 +2355,8 @@ export function useWorkspaceController() {
         }
       }
 
-      const response = await fetch("/api/threads", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          action: "delete",
-          threadId,
-        }),
+      const response = await fetch(`/api/threads?threadId=${encodeURIComponent(threadId)}`, {
+        method: "DELETE",
       });
 
       const payload = (await response.json()) as ThreadsApiResponse;
@@ -2456,14 +2442,13 @@ export function useWorkspaceController() {
         }
       }
 
-      const response = await fetch("/api/threads", {
-        method: "POST",
+      const response = await fetch(`/api/threads?threadId=${encodeURIComponent(threadId)}`, {
+        method: "PATCH",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          action: "restore",
-          threadId,
+          archived: false,
         }),
       });
 
@@ -2640,7 +2625,7 @@ export function useWorkspaceController() {
 
     try {
       const response = await fetch("/api/azure-selection", {
-        method: "POST",
+        method: "PUT",
         headers: {
           "Content-Type": "application/json",
         },
@@ -2687,7 +2672,7 @@ export function useWorkspaceController() {
     setIsLoadingAzureConnections(true);
 
     try {
-      const response = await fetch("/api/azure-connections", {
+      const response = await fetch("/api/azure-projects", {
         method: "GET",
       });
 
@@ -2794,7 +2779,7 @@ export function useWorkspaceController() {
 
         try {
           const deploymentResponse = await fetch(
-            `/api/azure-connections?projectId=${encodeURIComponent(normalizedProjectId)}`,
+            `/api/azure-projects/${encodeURIComponent(normalizedProjectId)}/deployments`,
             {
               method: "GET",
             },
@@ -2939,7 +2924,7 @@ export function useWorkspaceController() {
 
     try {
       const response = await fetch(
-        `/api/azure-connections?projectId=${encodeURIComponent(projectId)}`,
+        `/api/azure-projects/${encodeURIComponent(projectId)}/deployments`,
         {
           method: "GET",
         },
@@ -3464,7 +3449,7 @@ export function useWorkspaceController() {
     setSystemNotice(null);
     setIsStartingAzureLogin(true);
     try {
-      const response = await fetch("/api/azure-login", {
+      const response = await fetch("/api/azure-session", {
         method: "POST",
       });
       const payload = (await response.json()) as AzureActionApiResponse;
@@ -3510,8 +3495,8 @@ export function useWorkspaceController() {
     setSystemNotice(null);
     setIsStartingAzureLogout(true);
     try {
-      const response = await fetch("/api/azure-logout", {
-        method: "POST",
+      const response = await fetch("/api/azure-session", {
+        method: "DELETE",
       });
       const payload = (await response.json()) as AzureActionApiResponse;
       if (!response.ok) {
@@ -4273,7 +4258,7 @@ export function useWorkspaceController() {
     setIsEnhancingInstruction(true);
 
     try {
-      const response = await fetch("/api/instruction", {
+      const response = await fetch("/api/instruction-patches", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

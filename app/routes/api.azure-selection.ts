@@ -10,9 +10,12 @@ import {
   installGlobalServerErrorLogging,
   logServerRouteEvent,
 } from "~/lib/server/observability/app-event-log";
+import { methodNotAllowedResponse } from "~/lib/server/http";
 import { HOME_REASONING_EFFORT_OPTIONS } from "~/lib/constants";
 import type { ReasoningEffort } from "~/lib/home/shared/view-types";
 import type { Route } from "./+types/api.azure-selection";
+
+const AZURE_SELECTION_ALLOWED_METHODS = ["GET", "PUT"] as const;
 
 type AzureSelectionPreferencePayload = {
   target: AzureSelectionTarget;
@@ -43,7 +46,7 @@ export async function loader({ request }: Route.LoaderArgs) {
   installGlobalServerErrorLogging();
 
   if (request.method !== "GET") {
-    return Response.json({ error: "Method not allowed." }, { status: 405 });
+    return methodNotAllowedResponse(AZURE_SELECTION_ALLOWED_METHODS);
   }
 
   const identity = await readAuthenticatedIdentity();
@@ -84,8 +87,8 @@ export async function loader({ request }: Route.LoaderArgs) {
 export async function action({ request }: Route.ActionArgs) {
   installGlobalServerErrorLogging();
 
-  if (request.method !== "POST") {
-    return Response.json({ error: "Method not allowed." }, { status: 405 });
+  if (request.method !== "PUT") {
+    return methodNotAllowedResponse(AZURE_SELECTION_ALLOWED_METHODS);
   }
 
   const identity = await readAuthenticatedIdentity();
@@ -139,8 +142,13 @@ export async function action({ request }: Route.ActionArgs) {
   }
 
   try {
-    const selection = await saveStoredSelection(identity, preference);
-    return Response.json({ selection });
+    const saved = await saveStoredSelection(identity, preference);
+    return Response.json(
+      { selection: saved.selection },
+      {
+        status: saved.created ? 201 : 200,
+      },
+    );
   } catch (error) {
     await logServerRouteEvent({
       request,
@@ -227,7 +235,7 @@ async function saveStoredSelection(
     principalId: string;
   },
   preference: AzureSelectionPreferencePayload,
-): Promise<AzureSelectionPreference> {
+): Promise<{ selection: AzureSelectionPreference; created: boolean }> {
   await ensurePersistenceDatabaseReady();
   const user = await prisma.workspaceUser.upsert({
     where: {
@@ -241,6 +249,11 @@ async function saveStoredSelection(
       principalId: identity.principalId,
     },
     update: {},
+  });
+
+  const existing = await prisma.azureSelectionPreference.findUnique({
+    where: { userId: user.id },
+    select: { userId: true },
   });
 
   const saved = await prisma.azureSelectionPreference.upsert({
@@ -276,7 +289,10 @@ async function saveStoredSelection(
           },
   });
 
-  return mapSelectionRecord(user, saved);
+  return {
+    selection: mapSelectionRecord(user, saved),
+    created: !existing,
+  };
 }
 
 async function readAuthenticatedIdentity(): Promise<{ tenantId: string; principalId: string } | null> {

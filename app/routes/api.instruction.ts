@@ -1,5 +1,5 @@
 /**
- * API route module for /api/instruction.
+ * API route module for /api/instruction-patches.
  */
 import type { Route } from "./+types/api.instruction";
 import { Agent, run, user } from "@openai/agents";
@@ -12,6 +12,7 @@ import {
   installGlobalServerErrorLogging,
   logServerRouteEvent,
 } from "~/lib/server/observability/app-event-log";
+import { methodNotAllowedResponse } from "~/lib/server/http";
 import {
   CHAT_MAX_AGENT_INSTRUCTION_LENGTH,
   HOME_REASONING_EFFORT_OPTIONS,
@@ -31,6 +32,7 @@ import {
 import type { ReasoningEffort } from "~/lib/home/shared/view-types";
 
 type ParseResult<T> = { ok: true; value: T } | { ok: false; error: string };
+const INSTRUCTION_PATCHES_ALLOWED_METHODS = ["POST"] as const;
 
 type ResolvedAzureConfig = {
   projectName: string;
@@ -70,20 +72,14 @@ type InstructionDiffPatchOutput = {
 export function loader({}: Route.LoaderArgs) {
   installGlobalServerErrorLogging();
 
-  return Response.json(
-    {
-      error:
-        "Use POST /api/instruction with { message, azureConfig, ... } to enhance instructions.",
-    },
-    { status: 405 },
-  );
+  return methodNotAllowedResponse(INSTRUCTION_PATCHES_ALLOWED_METHODS);
 }
 
 export async function action({ request }: Route.ActionArgs) {
   installGlobalServerErrorLogging();
 
   if (request.method !== "POST") {
-    return Response.json({ error: "Method not allowed." }, { status: 405 });
+    return methodNotAllowedResponse(INSTRUCTION_PATCHES_ALLOWED_METHODS);
   }
 
   let payload: unknown;
@@ -92,7 +88,7 @@ export async function action({ request }: Route.ActionArgs) {
   } catch {
     await logServerRouteEvent({
       request,
-      route: "/api/instruction",
+      route: "/api/instruction-patches",
       eventName: "invalid_json_body",
       action: "parse_request_body",
       level: "warning",
@@ -116,7 +112,7 @@ export async function action({ request }: Route.ActionArgs) {
   if (!message) {
     await logServerRouteEvent({
       request,
-      route: "/api/instruction",
+      route: "/api/instruction-patches",
       eventName: "missing_message",
       action: "validate_payload",
       level: "warning",
@@ -132,7 +128,7 @@ export async function action({ request }: Route.ActionArgs) {
   if (!reasoningEffortResult.ok) {
     await logServerRouteEvent({
       request,
-      route: "/api/instruction",
+      route: "/api/instruction-patches",
       eventName: "invalid_reasoning_effort",
       action: "validate_payload",
       level: "warning",
@@ -147,7 +143,7 @@ export async function action({ request }: Route.ActionArgs) {
   if (!azureConfigResult.ok) {
     await logServerRouteEvent({
       request,
-      route: "/api/instruction",
+      route: "/api/instruction-patches",
       eventName: "invalid_azure_config",
       action: "validate_payload",
       level: "warning",
@@ -160,10 +156,12 @@ export async function action({ request }: Route.ActionArgs) {
   const azureConfig = azureConfigResult.value;
 
   if (!azureConfig.baseUrl) {
-    return Response.json({
-      message: "Azure OpenAI base URL is missing.",
-      placeholder: true,
-    });
+    return Response.json(
+      {
+        error: "Azure OpenAI base URL is missing.",
+      },
+      { status: 400 },
+    );
   }
   if (!azureConfig.deploymentName) {
     return Response.json(
@@ -194,7 +192,7 @@ export async function action({ request }: Route.ActionArgs) {
     const upstreamError = buildUpstreamErrorPayload(error, azureConfig.deploymentName);
     await logServerRouteEvent({
       request,
-      route: "/api/instruction",
+      route: "/api/instruction-patches",
       eventName: "enhance_instruction_failed",
       action: "enhance_instruction",
       statusCode: upstreamError.status,

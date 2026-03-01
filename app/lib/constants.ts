@@ -284,7 +284,7 @@ export const HOME_MAIN_VIEW_TAB_OPTIONS = [
 /**
  * Impact scope:
  * These constants define instruction diff patch schema validation contracts.
- * Changing them affects API /api/instruction output validation and patch parsing.
+ * Changing them affects API /api/instruction-patches output validation and patch parsing.
  */
 export const INSTRUCTION_DIFF_PATCH_FILE_NAME_PATTERN =
   /^[A-Za-z0-9._-]+\.(?:md|txt|xml|json)$/;

@@ -1,9 +1,9 @@
 /**
  * Server runtime module.
  */
-import { mkdir } from "node:fs/promises";
+import nodeFsPromises from "node:fs/promises";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import nodeUrl from "node:url";
 import { PrismaClient } from "@prisma/client";
 import { resolveFoundryDatabaseUrl } from "~/lib/foundry/config";
 
@@ -72,7 +72,7 @@ async function ensureDatabaseParentDirectoryExists(databaseUrl: string): Promise
     return;
   }
 
-  await mkdir(path.dirname(databaseFilePath), { recursive: true });
+  await nodeFsPromises.mkdir(path.dirname(databaseFilePath), { recursive: true });
 }
 
 function resolveSqliteDatabaseFilePath(databaseUrl: string): string | null {
@@ -90,7 +90,7 @@ function resolveSqliteDatabaseFilePath(databaseUrl: string): string | null {
 
   try {
     if (databaseUrl.startsWith("file://")) {
-      return fileURLToPath(databaseUrl);
+      return nodeUrl.fileURLToPath(databaseUrl);
     }
   } catch {
     return null;

@@ -1,5 +1,5 @@
 /**
- * API route module for /api/thread-title.
+ * API route module for /api/threads/title-suggestions.
  */
 import type { Route } from "./+types/api.thread-title";
 import { Agent, run, user } from "@openai/agents";
@@ -22,6 +22,7 @@ import {
   installGlobalServerErrorLogging,
   logServerRouteEvent,
 } from "~/lib/server/observability/app-event-log";
+import { methodNotAllowedResponse } from "~/lib/server/http";
 
 type ParseResult<T> = { ok: true; value: T } | { ok: false; error: string };
 
@@ -45,24 +46,19 @@ type ThreadTitleOptions = {
 };
 
 const threadTitleMaxPlaygroundContentLength = 12_000;
+const THREAD_TITLE_SUGGESTIONS_ALLOWED_METHODS = ["POST"] as const;
 
 export function loader({}: Route.LoaderArgs) {
   installGlobalServerErrorLogging();
 
-  return Response.json(
-    {
-      error:
-        "Use POST /api/thread-title with { playgroundContent, instruction, azureConfig, ... }.",
-    },
-    { status: 405 },
-  );
+  return methodNotAllowedResponse(THREAD_TITLE_SUGGESTIONS_ALLOWED_METHODS);
 }
 
 export async function action({ request }: Route.ActionArgs) {
   installGlobalServerErrorLogging();
 
   if (request.method !== "POST") {
-    return Response.json({ error: "Method not allowed." }, { status: 405 });
+    return methodNotAllowedResponse(THREAD_TITLE_SUGGESTIONS_ALLOWED_METHODS);
   }
 
   let payload: unknown;
@@ -71,7 +67,7 @@ export async function action({ request }: Route.ActionArgs) {
   } catch {
     await logServerRouteEvent({
       request,
-      route: "/api/thread-title",
+      route: "/api/threads/title-suggestions",
       eventName: "invalid_json_body",
       action: "parse_request_body",
       level: "warning",
@@ -86,7 +82,7 @@ export async function action({ request }: Route.ActionArgs) {
   if (!playgroundContentResult.ok) {
     await logServerRouteEvent({
       request,
-      route: "/api/thread-title",
+      route: "/api/threads/title-suggestions",
       eventName: "invalid_playground_content",
       action: "validate_payload",
       level: "warning",
@@ -103,7 +99,7 @@ export async function action({ request }: Route.ActionArgs) {
   if (!reasoningEffortResult.ok) {
     await logServerRouteEvent({
       request,
-      route: "/api/thread-title",
+      route: "/api/threads/title-suggestions",
       eventName: "invalid_reasoning_effort",
       action: "validate_payload",
       level: "warning",
@@ -119,7 +115,7 @@ export async function action({ request }: Route.ActionArgs) {
   if (!azureConfigResult.ok) {
     await logServerRouteEvent({
       request,
-      route: "/api/thread-title",
+      route: "/api/threads/title-suggestions",
       eventName: "invalid_azure_config",
       action: "validate_payload",
       level: "warning",
@@ -170,7 +166,7 @@ export async function action({ request }: Route.ActionArgs) {
     const upstreamError = buildUpstreamErrorPayload(error, azureConfig.deploymentName);
     await logServerRouteEvent({
       request,
-      route: "/api/thread-title",
+      route: "/api/threads/title-suggestions",
       eventName: "generate_thread_title_failed",
       action: "generate_thread_title",
       statusCode: upstreamError.status,

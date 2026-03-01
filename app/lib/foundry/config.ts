@@ -1,9 +1,9 @@
 /**
  * Foundry local configuration module.
  */
-import { homedir } from "node:os";
+import nodeOs from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import nodeUrl from "node:url";
 import {
   FOUNDRY_SQLITE_DATABASE_FILE_NAME,
   FOUNDRY_LEGACY_CONFIG_DIRECTORY_NAME,
@@ -32,7 +32,7 @@ export function resolveLegacyFoundryConfigDirectory(
   options: ResolveFoundryConfigDirectoryOptions = {},
 ): string {
   const platform = options.platform ?? process.platform;
-  const homeDirectory = options.homeDirectory ?? homedir();
+  const homeDirectory = options.homeDirectory ?? nodeOs.homedir();
   const pathModule = platform === "win32" ? path.win32 : path.posix;
   return pathModule.join(homeDirectory, FOUNDRY_LEGACY_CONFIG_DIRECTORY_NAME);
 }
@@ -41,7 +41,7 @@ export function resolveFoundryConfigDirectory(
   options: ResolveFoundryConfigDirectoryOptions = {},
 ): string {
   const platform = options.platform ?? process.platform;
-  const homeDirectory = options.homeDirectory ?? homedir();
+  const homeDirectory = options.homeDirectory ?? nodeOs.homedir();
 
   if (platform === "win32") {
     const appDataDirectory = (options.appDataDirectory ?? process.env.APPDATA ?? "").trim();
@@ -141,7 +141,7 @@ function resolveSqliteDatabaseFilePath(
 
   try {
     if (databaseUrl.startsWith("file://")) {
-      return fileURLToPath(databaseUrl);
+      return nodeUrl.fileURLToPath(databaseUrl);
     }
   } catch {
     return null;

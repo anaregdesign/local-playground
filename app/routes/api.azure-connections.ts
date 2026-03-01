@@ -1,5 +1,5 @@
 /**
- * API route module for /api/azure-connections.
+ * API route module for /api/azure-projects.
  */
 import {
   getAzureDependencies,
@@ -23,17 +23,20 @@ import {
   installGlobalServerErrorLogging,
   logServerRouteEvent,
 } from "~/lib/server/observability/app-event-log";
+import { methodNotAllowedResponse } from "~/lib/server/http";
 import type { AzureDependencies } from "~/lib/azure/dependencies";
 import type { Route } from "./+types/api.azure-connections";
 
-type AzureProject = {
+const AZURE_PROJECTS_ALLOWED_METHODS = ["GET"] as const;
+
+export type AzureProject = {
   id: string;
   projectName: string;
   baseUrl: string;
   apiVersion: string;
 };
 
-type AzureProjectRef = {
+export type AzureProjectRef = {
   subscriptionId: string;
   resourceGroup: string;
   accountName: string;
@@ -77,7 +80,7 @@ type ArmAccountModel = {
   model?: ArmModelInfo;
 };
 
-type AzurePrincipalProfile = {
+export type AzurePrincipalProfile = {
   tenantId: string;
   principalId: string;
   displayName: string;
@@ -96,7 +99,7 @@ export async function loader({ request }: Route.LoaderArgs) {
   installGlobalServerErrorLogging();
 
   if (request.method !== "GET") {
-    return Response.json({ error: "Method not allowed." }, { status: 405 });
+    return methodNotAllowedResponse(AZURE_PROJECTS_ALLOWED_METHODS);
   }
 
   const dependencies = getAzureDependencies();
@@ -111,43 +114,12 @@ export async function loader({ request }: Route.LoaderArgs) {
     );
   }
 
-  const url = new URL(request.url);
-  const projectId = url.searchParams.get("projectId")?.trim() ?? "";
   const principal = await resolveAzurePrincipalProfile(tokenResult, dependencies);
 
   try {
-    if (!projectId) {
-      const projects = await listAzureProjects(tokenResult.token);
-      return Response.json({
-        projects,
-        principal,
-        tenantId: tokenResult.tenantId,
-        principalId: tokenResult.principalId,
-        authRequired: false,
-      });
-    }
-
-    const projectRef = parseProjectId(projectId);
-    if (!projectRef) {
-      await logServerRouteEvent({
-        request,
-        route: "/api/azure-connections",
-        eventName: "invalid_project_id",
-        action: "parse_project_id",
-        level: "warning",
-        statusCode: 400,
-        message: "Invalid projectId.",
-        context: {
-          projectId,
-        },
-      });
-
-      return Response.json({ error: "Invalid projectId." }, { status: 400 });
-    }
-
-    const deployments = await listProjectDeployments(tokenResult.token, projectRef);
+    const projects = await listAzureProjects(tokenResult.token);
     return Response.json({
-      deployments,
+      projects,
       principal,
       tenantId: tokenResult.tenantId,
       principalId: tokenResult.principalId,
@@ -157,15 +129,12 @@ export async function loader({ request }: Route.LoaderArgs) {
     if (isLikelyAzureAuthError(error)) {
       await logServerRouteEvent({
         request,
-        route: "/api/azure-connections",
+        route: "/api/azure-projects",
         eventName: "azure_auth_required",
-        action: projectId ? "list_deployments" : "list_projects",
+        action: "list_projects",
         level: "warning",
         statusCode: 401,
         error,
-        context: {
-          projectId,
-        },
       });
 
       return Response.json(
@@ -179,14 +148,11 @@ export async function loader({ request }: Route.LoaderArgs) {
 
     await logServerRouteEvent({
       request,
-      route: "/api/azure-connections",
+      route: "/api/azure-projects",
       eventName: "load_azure_connections_failed",
-      action: projectId ? "list_deployments" : "list_projects",
+      action: "list_projects",
       statusCode: 502,
       error,
-      context: {
-        projectId,
-      },
     });
 
     return Response.json(
@@ -198,7 +164,7 @@ export async function loader({ request }: Route.LoaderArgs) {
   }
 }
 
-async function listAzureProjects(accessToken: string): Promise<AzureProject[]> {
+export async function listAzureProjects(accessToken: string): Promise<AzureProject[]> {
   const subscriptions = await fetchArmPaged<ArmSubscription>(
     `https://management.azure.com/subscriptions?api-version=${AZURE_SUBSCRIPTIONS_API_VERSION}`,
     accessToken,
@@ -226,7 +192,7 @@ async function listAzureProjects(accessToken: string): Promise<AzureProject[]> {
       );
     } catch (error) {
       await logServerRouteEvent({
-        route: "/api/azure-connections",
+        route: "/api/azure-projects",
         eventName: "list_accounts_failed",
         action: "list_subscription_accounts",
         level: "warning",
@@ -303,7 +269,7 @@ async function listAzureProjects(accessToken: string): Promise<AzureProject[]> {
   return projects;
 }
 
-async function listProjectDeployments(
+export async function listProjectDeployments(
   accessToken: string,
   projectRef: AzureProjectRef,
 ): Promise<string[]> {
@@ -359,7 +325,7 @@ async function listAccountModels(
     );
   } catch (error) {
     await logServerRouteEvent({
-      route: "/api/azure-connections",
+      route: "/api/azure-projects",
       eventName: "list_account_models_failed",
       action: "list_account_models",
       level: "warning",
@@ -531,7 +497,7 @@ function createProjectId(projectRef: AzureProjectRef): string {
   return Buffer.from(raw, "utf8").toString("base64url");
 }
 
-function parseProjectId(projectId: string): AzureProjectRef | null {
+export function parseProjectId(projectId: string): AzureProjectRef | null {
   try {
     const decoded = Buffer.from(projectId, "base64url").toString("utf8");
     const parsed = JSON.parse(decoded) as unknown;
@@ -572,7 +538,7 @@ function parseResourceGroupFromResourceId(resourceId: string): string {
   return match?.[1] ?? "";
 }
 
-type ArmAccessTokenResult =
+export type ArmAccessTokenResult =
   | {
       ok: true;
       token: string;
@@ -584,7 +550,7 @@ type ArmAccessTokenResult =
     }
   | { ok: false };
 
-async function getArmAccessToken(
+export async function getArmAccessToken(
   dependencies: AzureDependencies = getAzureDependencies(),
 ): Promise<ArmAccessTokenResult> {
   const userContext = await readAzureArmUserContext(dependencies);
@@ -603,7 +569,7 @@ async function getArmAccessToken(
   };
 }
 
-async function resolveAzurePrincipalProfile(
+export async function resolveAzurePrincipalProfile(
   accessContext: Extract<ArmAccessTokenResult, { ok: true }>,
   dependencies: AzureDependencies,
 ): Promise<AzurePrincipalProfile> {
@@ -734,7 +700,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object";
 }
 
-function readErrorMessage(error: unknown): string {
+export function readErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Unknown error.";
 }
 

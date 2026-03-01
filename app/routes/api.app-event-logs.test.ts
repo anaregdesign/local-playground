@@ -28,12 +28,11 @@ vi.mock("~/lib/server/observability/app-event-log", () => ({
 import { action, loader } from "./api.app-event-logs";
 
 describe("api.app-event-logs loader", () => {
-  it("returns 405 guidance response", async () => {
+  it("returns 405 response with Allow header", async () => {
     const response = loader();
     expect(response.status).toBe(405);
-    expect(await response.json()).toEqual({
-      error: "Use POST /api/app-event-logs for this endpoint.",
-    });
+    expect(response.headers.get("allow")).toBe("POST");
+    expect(await response.json()).toEqual({ error: "Method not allowed." });
     expect(installGlobalServerErrorLoggingMock).toHaveBeenCalledTimes(1);
   });
 });
@@ -58,6 +57,7 @@ describe("api.app-event-logs action", () => {
     });
 
     expect(response.status).toBe(405);
+    expect(response.headers.get("allow")).toBe("POST");
     expect(await response.json()).toEqual({ error: "Method not allowed." });
   });
 
@@ -135,7 +135,7 @@ describe("api.app-event-logs action", () => {
       }),
     });
 
-    expect(response.status).toBe(202);
+    expect(response.status).toBe(201);
     expect(await response.json()).toEqual({ ok: true });
     expect(logServerRouteEventMock).not.toHaveBeenCalled();
     expect(logAppEventMock).toHaveBeenCalledWith(

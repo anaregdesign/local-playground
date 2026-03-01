@@ -10,6 +10,7 @@ import {
 } from "~/lib/home/skills/registry";
 import type { SkillCatalogEntry, SkillRegistryCatalog } from "~/lib/home/skills/types";
 import { readAzureArmUserContext } from "~/lib/server/auth/azure-user";
+import { methodNotAllowedResponse } from "~/lib/server/http";
 import {
   installGlobalServerErrorLogging,
   logServerRouteEvent,
@@ -27,11 +28,13 @@ import {
 } from "~/lib/server/skills/registry";
 import type { Route } from "./+types/api.skills";
 
+const SKILLS_ALLOWED_METHODS = ["GET", "PUT", "DELETE"] as const;
+
 export async function loader({ request }: Route.LoaderArgs) {
   installGlobalServerErrorLogging();
 
   if (request.method !== "GET") {
-    return Response.json({ error: "Method not allowed." }, { status: 405 });
+    return methodNotAllowedResponse(SKILLS_ALLOWED_METHODS);
   }
 
   const user = await readAuthenticatedUser();
@@ -50,11 +53,6 @@ export async function loader({ request }: Route.LoaderArgs) {
       discoverSkillCatalog({ workspaceUserId: user.id }),
       discoverSkillRegistries({ workspaceUserId: user.id }),
     ]);
-    await syncWorkspaceSkillMasters({
-      userId: user.id,
-      skills: catalogDiscovery.skills,
-      registries: registryDiscovery.catalogs,
-    });
     return Response.json({
       skills: catalogDiscovery.skills,
       registries: registryDiscovery.catalogs,
@@ -85,8 +83,8 @@ export async function loader({ request }: Route.LoaderArgs) {
 export async function action({ request }: Route.ActionArgs) {
   installGlobalServerErrorLogging();
 
-  if (request.method !== "POST") {
-    return Response.json({ error: "Method not allowed." }, { status: 405 });
+  if (request.method !== "PUT" && request.method !== "DELETE") {
+    return methodNotAllowedResponse(SKILLS_ALLOWED_METHODS);
   }
 
   const user = await readAuthenticatedUser();
@@ -100,46 +98,28 @@ export async function action({ request }: Route.ActionArgs) {
     );
   }
 
-  let payload: unknown;
-  try {
-    payload = await request.json();
-  } catch {
+  const parsedMutation = parseSkillRegistryMutationRequest(request.url);
+  if (!parsedMutation.ok) {
     await logServerRouteEvent({
       request,
       route: "/api/skills",
-      eventName: "invalid_json_body",
-      action: "parse_request_body",
-      level: "warning",
-      statusCode: 400,
-      message: "Invalid JSON body.",
-      userId: user.id,
-    });
-
-    return Response.json({ error: "Invalid JSON body." }, { status: 400 });
-  }
-
-  const parsedAction = parseSkillRegistryActionPayload(payload);
-  if (!parsedAction.ok) {
-    await logServerRouteEvent({
-      request,
-      route: "/api/skills",
-      eventName: "invalid_skills_action_payload",
+      eventName: "invalid_skills_mutation_request",
       action: "validate_payload",
       level: "warning",
       statusCode: 400,
-      message: parsedAction.error,
+      message: parsedMutation.error,
       userId: user.id,
     });
 
-    return Response.json({ error: parsedAction.error }, { status: 400 });
+    return Response.json({ error: parsedMutation.error }, { status: 400 });
   }
 
   try {
     let message = "";
-    if (parsedAction.value.action === "install_registry_skill") {
+    if (request.method === "PUT") {
       const installResult = await installSkillFromRegistry({
-        registryId: parsedAction.value.registryId,
-        skillName: parsedAction.value.skillName,
+        registryId: parsedMutation.value.registryId,
+        skillName: parsedMutation.value.skillName,
         workspaceUserId: user.id,
       });
       message = installResult.skippedAsDuplicate
@@ -147,8 +127,8 @@ export async function action({ request }: Route.ActionArgs) {
         : `Installed Skill "${installResult.skillName}".`;
     } else {
       const deleteResult = await deleteInstalledSkillFromRegistry({
-        registryId: parsedAction.value.registryId,
-        skillName: parsedAction.value.skillName,
+        registryId: parsedMutation.value.registryId,
+        skillName: parsedMutation.value.skillName,
         workspaceUserId: user.id,
       });
       message = deleteResult.removed
@@ -178,13 +158,13 @@ export async function action({ request }: Route.ActionArgs) {
       request,
       route: "/api/skills",
       eventName: "skills_action_failed",
-      action: parsedAction.value.action,
+      action: request.method === "PUT" ? "install_registry_skill" : "delete_registry_skill",
       statusCode: 500,
       error,
       userId: user.id,
       context: {
-        registryId: parsedAction.value.registryId,
-        skillName: parsedAction.value.skillName,
+        registryId: parsedMutation.value.registryId,
+        skillName: parsedMutation.value.skillName,
       },
     });
 
@@ -201,34 +181,16 @@ function readErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Unknown error.";
 }
 
-type SkillRegistryActionPayload =
-  | {
-      action: "install_registry_skill";
-      registryId: SkillRegistryId;
-      skillName: string;
-    }
-  | {
-      action: "delete_registry_skill";
-      registryId: SkillRegistryId;
-      skillName: string;
-    };
+type SkillRegistryMutationPayload = {
+  registryId: SkillRegistryId;
+  skillName: string;
+};
 
 type ParseResult<T> = { ok: true; value: T } | { ok: false; error: string };
 
-function parseSkillRegistryActionPayload(payload: unknown): ParseResult<SkillRegistryActionPayload> {
-  if (!isRecord(payload)) {
-    return { ok: false, error: "Invalid request payload." };
-  }
-
-  const action = readTrimmedString(payload.action);
-  if (action !== "install_registry_skill" && action !== "delete_registry_skill") {
-    return {
-      ok: false,
-      error: "`action` must be \"install_registry_skill\" or \"delete_registry_skill\".",
-    };
-  }
-
-  const registryId = readTrimmedString(payload.registryId);
+function parseSkillRegistryMutationRequest(url: string): ParseResult<SkillRegistryMutationPayload> {
+  const parsedUrl = new URL(url);
+  const registryId = parsedUrl.searchParams.get("registryId")?.trim() ?? "";
   if (!isSkillRegistryId(registryId)) {
     return {
       ok: false,
@@ -236,7 +198,7 @@ function parseSkillRegistryActionPayload(payload: unknown): ParseResult<SkillReg
     };
   }
 
-  const skillName = readTrimmedString(payload.skillName);
+  const skillName = parsedUrl.searchParams.get("skillName")?.trim() ?? "";
   const parsedSkillName = parseSkillRegistrySkillName(registryId, skillName);
   if (!parsedSkillName) {
     return {
@@ -248,19 +210,10 @@ function parseSkillRegistryActionPayload(payload: unknown): ParseResult<SkillReg
   return {
     ok: true,
     value: {
-      action,
       registryId,
       skillName: parsedSkillName.normalizedSkillName,
     },
   };
-}
-
-function readTrimmedString(value: unknown): string {
-  return typeof value === "string" ? value.trim() : "";
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object";
 }
 
 async function readAuthenticatedUser(): Promise<{ id: number } | null> {
@@ -402,5 +355,5 @@ function isPositiveIntegerString(value: string): boolean {
 }
 
 export const skillsRouteTestUtils = {
-  parseSkillRegistryActionPayload,
+  parseSkillRegistryMutationRequest,
 };

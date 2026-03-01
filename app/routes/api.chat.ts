@@ -33,6 +33,7 @@ import {
   installGlobalServerErrorLogging,
   logServerRouteEvent,
 } from "~/lib/server/observability/app-event-log";
+import { methodNotAllowedResponse } from "~/lib/server/http";
 import {
   CHAT_ATTACHMENT_ALLOWED_EXTENSIONS,
   CHAT_CLEANUP_TIMEOUT_MS,
@@ -300,21 +301,18 @@ let codeInterpreterAttachmentAvailabilityCache: CodeInterpreterAttachmentAvailab
   null;
 const WEB_SEARCH_PREVIEW_TOOL_NAME = "web_search_preview";
 const WEB_SEARCH_PREVIEW_CONTEXT_SIZE = "medium";
+const CHAT_ALLOWED_METHODS = ["POST"] as const;
 
 export function loader({}: Route.LoaderArgs) {
   installGlobalServerErrorLogging();
-
-  return Response.json(
-    { error: "Use POST /api/chat for this endpoint." },
-    { status: 405 },
-  );
+  return methodNotAllowedResponse(CHAT_ALLOWED_METHODS);
 }
 
 export async function action({ request }: Route.ActionArgs) {
   installGlobalServerErrorLogging();
 
   if (request.method !== "POST") {
-    return Response.json({ error: "Method not allowed." }, { status: 405 });
+    return methodNotAllowedResponse(CHAT_ALLOWED_METHODS);
   }
 
   let payload: unknown;
@@ -470,10 +468,12 @@ export async function action({ request }: Route.ActionArgs) {
   }
 
   if (!azureConfig.baseUrl) {
-    return Response.json({
-      message: "Azure OpenAI base URL is missing.",
-      placeholder: true,
-    });
+    return Response.json(
+      {
+        error: "Azure OpenAI base URL is missing.",
+      },
+      { status: 400 },
+    );
   }
   if (!azureConfig.deploymentName) {
     return Response.json(

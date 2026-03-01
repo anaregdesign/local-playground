@@ -8,21 +8,20 @@ import {
   logAppEvent,
   logServerRouteEvent,
 } from "~/lib/server/observability/app-event-log";
+import { methodNotAllowedResponse } from "~/lib/server/http";
+
+const APP_EVENT_LOGS_ALLOWED_METHODS = ["POST"] as const;
 
 export function loader() {
   installGlobalServerErrorLogging();
-
-  return Response.json(
-    { error: "Use POST /api/app-event-logs for this endpoint." },
-    { status: 405 },
-  );
+  return methodNotAllowedResponse(APP_EVENT_LOGS_ALLOWED_METHODS);
 }
 
 export async function action({ request }: { request: Request }) {
   installGlobalServerErrorLogging();
 
   if (request.method !== "POST") {
-    return Response.json({ error: "Method not allowed." }, { status: 405 });
+    return methodNotAllowedResponse(APP_EVENT_LOGS_ALLOWED_METHODS);
   }
 
   let payload: unknown;
@@ -83,7 +82,7 @@ export async function action({ request }: { request: Request }) {
     },
   });
 
-  return Response.json({ ok: true }, { status: 202 });
+  return Response.json({ ok: true }, { status: 201 });
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

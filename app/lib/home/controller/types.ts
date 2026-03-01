@@ -24,7 +24,8 @@ export type AzureActionApiResponse = {
 };
 
 /**
- * Response shape returned by `/api/azure-connections`.
+ * Response shape returned by `/api/azure-projects` and
+ * `/api/azure-projects/:projectId/deployments`.
  * Unknown-typed payload fields are normalized by parser helpers in `~/lib/home/azure/parsers`.
  */
 export type AzureConnectionsApiResponse = {
@@ -81,7 +82,7 @@ export type SkillsApiResponse = {
 };
 
 /**
- * Response shape returned by `/api/thread-title`.
+ * Response shape returned by `/api/threads/title-suggestions`.
  */
 export type ThreadTitleApiResponse = {
   title?: string;

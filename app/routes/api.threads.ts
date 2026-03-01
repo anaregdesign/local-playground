@@ -14,6 +14,7 @@ import {
   prisma,
 } from "~/lib/server/persistence/prisma";
 import { getOrCreateUserByIdentity } from "~/lib/server/persistence/user";
+import { methodNotAllowedResponse } from "~/lib/server/http";
 import {
   installGlobalServerErrorLogging,
   logServerRouteEvent,
@@ -33,13 +34,13 @@ import { SKILL_REGISTRY_OPTIONS } from "~/lib/home/skills/registry";
 import type { ThreadSnapshot } from "~/lib/home/thread/types";
 import type { Route } from "./+types/api.threads";
 
-type ThreadAction = "save" | "delete" | "restore";
+const THREADS_ALLOWED_METHODS = ["GET", "PUT", "PATCH", "DELETE"] as const;
 
 export async function loader({ request }: Route.LoaderArgs) {
   installGlobalServerErrorLogging();
 
   if (request.method !== "GET") {
-    return Response.json({ error: "Method not allowed." }, { status: 405 });
+    return methodNotAllowedResponse(THREADS_ALLOWED_METHODS);
   }
 
   const user = await readAuthenticatedUser();
@@ -93,8 +94,12 @@ export async function loader({ request }: Route.LoaderArgs) {
 export async function action({ request }: Route.ActionArgs) {
   installGlobalServerErrorLogging();
 
-  if (request.method !== "POST") {
-    return Response.json({ error: "Method not allowed." }, { status: 405 });
+  if (
+    request.method !== "PUT" &&
+    request.method !== "DELETE" &&
+    request.method !== "PATCH"
+  ) {
+    return methodNotAllowedResponse(THREADS_ALLOWED_METHODS);
   }
 
   const user = await readAuthenticatedUser();
@@ -108,48 +113,27 @@ export async function action({ request }: Route.ActionArgs) {
     );
   }
 
-  let payload: unknown;
   try {
-    payload = await request.json();
-  } catch {
-    await logServerRouteEvent({
-      request,
-      route: "/api/threads",
-      eventName: "invalid_json_body",
-      action: "parse_request_body",
-      level: "warning",
-      statusCode: 400,
-      message: "Invalid JSON body.",
-      userId: user.id,
-    });
+    if (request.method === "PUT") {
+      const payload = await readJsonPayload(request);
+      if (!payload.ok) {
+        await logServerRouteEvent({
+          request,
+          route: "/api/threads",
+          eventName: "invalid_json_body",
+          action: "parse_request_body",
+          level: "warning",
+          statusCode: 400,
+          message: "Invalid JSON body.",
+          userId: user.id,
+        });
 
-    return Response.json({ error: "Invalid JSON body." }, { status: 400 });
-  }
+        return Response.json({ error: "Invalid JSON body." }, { status: 400 });
+      }
 
-  const actionType = readThreadAction(payload);
-  if (!actionType) {
-    await logServerRouteEvent({
-      request,
-      route: "/api/threads",
-      eventName: "invalid_action_payload",
-      action: "read_action",
-      level: "warning",
-      statusCode: 400,
-      message: '`action` must be one of "save", "delete", or "restore".',
-      userId: user.id,
-    });
-
-    return Response.json(
-      {
-        error: '`action` must be one of "save", "delete", or "restore".',
-      },
-      { status: 400 },
-    );
-  }
-
-  try {
-    if (actionType === "save") {
-      const thread = readThreadSnapshotFromSavePayload(payload);
+      const thread = readThreadSnapshotFromUnknown(payload.value, {
+        fallbackInstruction: DEFAULT_AGENT_INSTRUCTION,
+      });
       if (!thread) {
         await logServerRouteEvent({
           request,
@@ -165,8 +149,8 @@ export async function action({ request }: Route.ActionArgs) {
         return Response.json({ error: "Invalid thread payload." }, { status: 400 });
       }
 
-      const saved = await saveThreadSnapshot(user.id, thread);
-      if (!saved) {
+      const saveResult = await saveThreadSnapshot(user.id, thread);
+      if (!saveResult) {
         await logServerRouteEvent({
           request,
           route: "/api/threads",
@@ -182,27 +166,39 @@ export async function action({ request }: Route.ActionArgs) {
         return Response.json({ error: "Thread is not available." }, { status: 404 });
       }
 
+      const status = saveResult.created ? 201 : 200;
       await logServerRouteEvent({
         request,
         route: "/api/threads",
         eventName: "save_thread_succeeded",
         action: "save_thread",
         level: "info",
-        statusCode: 200,
+        statusCode: status,
         message: "Thread saved.",
         userId: user.id,
-        threadId: saved.id,
+        threadId: saveResult.thread.id,
         context: {
-          messageCount: saved.messages.length,
-          mcpServerCount: saved.mcpServers.length,
-          mcpRpcCount: saved.mcpRpcHistory.length,
-          skillSelectionCount: saved.skillSelections.length,
+          messageCount: saveResult.thread.messages.length,
+          mcpServerCount: saveResult.thread.mcpServers.length,
+          mcpRpcCount: saveResult.thread.mcpRpcHistory.length,
+          skillSelectionCount: saveResult.thread.skillSelections.length,
+          created: saveResult.created,
         },
       });
-      return Response.json({ thread: saved });
+      return Response.json(
+        { thread: saveResult.thread },
+        {
+          status,
+          headers: saveResult.created
+            ? {
+                Location: `/api/threads?threadId=${encodeURIComponent(saveResult.thread.id)}`,
+              }
+            : undefined,
+        },
+      );
     }
 
-    const threadId = readThreadIdFromActionPayload(payload);
+    const threadId = readThreadIdFromRequestUrl(request.url);
     if (!threadId) {
       await logServerRouteEvent({
         request,
@@ -218,7 +214,7 @@ export async function action({ request }: Route.ActionArgs) {
       return Response.json({ error: "Invalid thread id payload." }, { status: 400 });
     }
 
-    if (actionType === "delete") {
+    if (request.method === "DELETE") {
       const deleted = await logicalDeleteThread(user.id, threadId);
       if (deleted.status === "not_found") {
         await logServerRouteEvent({
@@ -242,7 +238,7 @@ export async function action({ request }: Route.ActionArgs) {
           eventName: "thread_delete_disallowed_empty",
           action: "delete_thread",
           level: "warning",
-          statusCode: 400,
+          statusCode: 409,
           message: "Threads without messages cannot be deleted.",
           userId: user.id,
           threadId,
@@ -250,7 +246,7 @@ export async function action({ request }: Route.ActionArgs) {
 
         return Response.json(
           { error: "Threads without messages cannot be deleted." },
-          { status: 400 },
+          { status: 409 },
         );
       }
 
@@ -266,6 +262,38 @@ export async function action({ request }: Route.ActionArgs) {
         threadId: deleted.thread.id,
       });
       return Response.json({ thread: deleted.thread });
+    }
+
+    const payload = await readJsonPayload(request);
+    if (!payload.ok) {
+      await logServerRouteEvent({
+        request,
+        route: "/api/threads",
+        eventName: "invalid_json_body",
+        action: "parse_request_body",
+        level: "warning",
+        statusCode: 400,
+        message: "Invalid JSON body.",
+        userId: user.id,
+      });
+
+      return Response.json({ error: "Invalid JSON body." }, { status: 400 });
+    }
+
+    if (!isThreadRestorePayload(payload.value)) {
+      await logServerRouteEvent({
+        request,
+        route: "/api/threads",
+        eventName: "invalid_restore_payload",
+        action: "validate_payload",
+        level: "warning",
+        statusCode: 400,
+        message: "`archived` must be false.",
+        userId: user.id,
+        threadId,
+      });
+
+      return Response.json({ error: "`archived` must be false." }, { status: 400 });
     }
 
     const restored = await logicalRestoreThread(user.id, threadId);
@@ -299,15 +327,15 @@ export async function action({ request }: Route.ActionArgs) {
     return Response.json({ thread: restored.thread });
   } catch (error) {
     const eventName =
-      actionType === "save"
+      request.method === "PUT"
         ? "save_thread_failed"
-        : actionType === "delete"
+        : request.method === "DELETE"
           ? "delete_thread_failed"
           : "restore_thread_failed";
     const action =
-      actionType === "save"
+      request.method === "PUT"
         ? "save_thread"
-        : actionType === "delete"
+        : request.method === "DELETE"
           ? "delete_thread"
           : "restore_thread";
 
@@ -460,8 +488,9 @@ async function readThreadById(userId: number, threadId: string): Promise<ThreadS
 async function saveThreadSnapshot(
   userId: number,
   snapshot: ThreadSnapshot,
-): Promise<ThreadSnapshot | null> {
+): Promise<{ thread: ThreadSnapshot; created: boolean } | null> {
   await ensurePersistenceDatabaseReady();
+  let created = false;
 
   let existing = await prisma.thread.findFirst({
     where: {
@@ -479,6 +508,7 @@ async function saveThreadSnapshot(
     if (!hasThreadPersistableState(snapshot)) {
       return null;
     }
+    created = true;
 
     const now = new Date().toISOString();
     const createdAt = snapshot.createdAt || now;
@@ -710,7 +740,15 @@ async function saveThreadSnapshot(
     }
   });
 
-  return await readThreadById(userId, existing.id);
+  const thread = await readThreadById(userId, existing.id);
+  if (!thread) {
+    return null;
+  }
+
+  return {
+    thread,
+    created,
+  };
 }
 
 type LogicalDeleteThreadResult =
@@ -1145,35 +1183,24 @@ function readJsonValue<T>(value: string | null, fallback: T): T {
   }
 }
 
-function readThreadAction(value: unknown): ThreadAction | null {
-  if (!isRecord(value)) {
-    return null;
+async function readJsonPayload(
+  request: Request,
+): Promise<{ ok: true; value: unknown } | { ok: false }> {
+  try {
+    const value = await request.json();
+    return { ok: true, value };
+  } catch {
+    return { ok: false };
   }
-
-  const action = value.action;
-  if (action === "save" || action === "delete" || action === "restore") {
-    return action;
-  }
-
-  return null;
 }
 
-function readThreadSnapshotFromSavePayload(value: unknown): ThreadSnapshot | null {
-  if (!isRecord(value)) {
-    return null;
-  }
-
-  return readThreadSnapshotFromUnknown(value.thread, {
-    fallbackInstruction: DEFAULT_AGENT_INSTRUCTION,
-  });
+function readThreadIdFromRequestUrl(url: string): string {
+  const parsedUrl = new URL(url);
+  return parsedUrl.searchParams.get("threadId")?.trim() ?? "";
 }
 
-function readThreadIdFromActionPayload(value: unknown): string {
-  if (!isRecord(value) || typeof value.threadId !== "string") {
-    return "";
-  }
-
-  return value.threadId.trim();
+function isThreadRestorePayload(value: unknown): boolean {
+  return isRecord(value) && value.archived === false;
 }
 
 function normalizeThreadName(value: string): string {
