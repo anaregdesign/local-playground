@@ -227,6 +227,7 @@ async function initializeSchema(databaseUrl) {
         "conversationOrder" INTEGER NOT NULL,
         "role" TEXT NOT NULL,
         "content" TEXT NOT NULL,
+        "createdAt" TEXT NOT NULL,
         "turnId" TEXT NOT NULL,
         "attachmentsJson" TEXT NOT NULL,
         FOREIGN KEY ("threadId") REFERENCES "Thread" ("id") ON DELETE CASCADE

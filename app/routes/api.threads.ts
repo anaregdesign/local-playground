@@ -525,6 +525,7 @@ async function saveThreadSnapshot(
           conversationOrder: index,
           role: message.role,
           content: message.content,
+          createdAt: message.createdAt,
           turnId: message.turnId,
           attachmentsJson: JSON.stringify(message.attachments),
           dialogueSkillSelectionsJson: JSON.stringify(message.dialogueSkillSelections),
@@ -737,6 +738,7 @@ function mapStoredThreadToSnapshot(value: {
     id: string;
     role: string;
     content: string;
+    createdAt: string;
     turnId: string;
     attachmentsJson: string;
     dialogueSkillSelectionsJson: string;
@@ -791,6 +793,7 @@ function mapStoredThreadToSnapshot(value: {
         id: message.id,
         role: message.role,
         content: message.content,
+        createdAt: message.createdAt,
         turnId: message.turnId,
         attachments: readJsonValue(message.attachmentsJson, []),
         dialogueSkillSelections: readJsonValue(message.dialogueSkillSelectionsJson, []),

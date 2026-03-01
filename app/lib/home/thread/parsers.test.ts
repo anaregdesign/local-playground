@@ -27,6 +27,7 @@ describe("readThreadSnapshotFromUnknown", () => {
           id: "assistant-1",
           role: "assistant",
           content: "Hi",
+          createdAt: "2026-02-20T00:00:00.000Z",
           turnId: "turn-1",
           attachments: [],
           dialogueSkillSelections: [
@@ -160,6 +161,7 @@ describe("buildThreadSummary", () => {
           id: "message-1",
           role: "assistant",
           content: "Hello",
+          createdAt: "2026-02-20T00:00:00.000Z",
           turnId: "turn-1",
           attachments: [],
           dialogueSkillSelections: [],

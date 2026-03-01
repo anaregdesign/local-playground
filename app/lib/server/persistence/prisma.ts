@@ -327,6 +327,7 @@ async function ensureThreadSchema(): Promise<void> {
       "conversationOrder" INTEGER NOT NULL,
       "role" TEXT NOT NULL,
       "content" TEXT NOT NULL,
+      "createdAt" TEXT NOT NULL,
       "turnId" TEXT NOT NULL,
       "attachmentsJson" TEXT NOT NULL,
       "dialogueSkillSelectionsJson" TEXT NOT NULL DEFAULT '[]',
@@ -348,6 +349,11 @@ async function ensureThreadSchema(): Promise<void> {
     "ThreadMessage",
     "conversationOrder",
     "INTEGER NOT NULL DEFAULT 0",
+  );
+  await ensureTableColumn(
+    "ThreadMessage",
+    "createdAt",
+    "TEXT NOT NULL DEFAULT ''",
   );
   await ensureTableColumn(
     "ThreadMessage",

@@ -36,6 +36,7 @@ describe("hasThreadInteraction", () => {
             id: "message-1",
             role: "user",
             content: "Hello",
+            createdAt: "2026-03-01T00:00:00.000Z",
             turnId: "turn-1",
             attachments: [],
             dialogueSkillSelections: [],

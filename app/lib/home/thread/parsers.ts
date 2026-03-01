@@ -135,8 +135,9 @@ function readThreadMessageFromUnknown(value: unknown): ChatMessage | null {
   const id = readTrimmedString(value.id);
   const role = value.role;
   const content = typeof value.content === "string" ? value.content : "";
+  const createdAt = readTrimmedString(value.createdAt);
   const turnId = readTrimmedString(value.turnId);
-  if (!id || (role !== "user" && role !== "assistant") || !turnId) {
+  if (!id || (role !== "user" && role !== "assistant") || !createdAt || !turnId) {
     return null;
   }
 
@@ -147,6 +148,7 @@ function readThreadMessageFromUnknown(value: unknown): ChatMessage | null {
     id,
     role,
     content,
+    createdAt,
     turnId,
     attachments,
     dialogueSkillSelections,

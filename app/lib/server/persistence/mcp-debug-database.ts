@@ -469,6 +469,12 @@ const tableDefinitions: DatabaseDebugTableDefinition[] = [
         description: "Message body text.",
       },
       {
+        name: "createdAt",
+        type: "TEXT",
+        nullable: false,
+        description: "Message creation timestamp (ISO string).",
+      },
+      {
         name: "turnId",
         type: "TEXT",
         nullable: false,
