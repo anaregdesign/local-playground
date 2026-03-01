@@ -97,6 +97,7 @@ model ThreadMessage {
   content         String
   turnId          String
   attachmentsJson String
+  dialogueSkillsJson String @default("[]")
   thread          Thread @relation(fields: [threadId], references: [id], onDelete: Cascade)
 
   @@index([threadId, sortOrder])

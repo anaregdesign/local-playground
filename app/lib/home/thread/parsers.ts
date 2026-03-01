@@ -141,6 +141,7 @@ function readThreadMessageFromUnknown(value: unknown): ChatMessage | null {
   }
 
   const attachments = readChatAttachmentList(value.attachments);
+  const dialogueSkillSelections = readThreadSkillSelectionList(value.dialogueSkillSelections);
 
   return {
     id,
@@ -148,6 +149,7 @@ function readThreadMessageFromUnknown(value: unknown): ChatMessage | null {
     content,
     turnId,
     attachments,
+    dialogueSkillSelections,
   };
 }
 

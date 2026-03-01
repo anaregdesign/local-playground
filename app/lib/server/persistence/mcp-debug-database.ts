@@ -435,7 +435,7 @@ const tableDefinitions: DatabaseDebugTableDefinition[] = [
     tableName: "ThreadMessage",
     toolName: "debug_read_thread_message_table",
     purpose:
-      "Stores ordered chat messages per thread, including role, content, turn ID, and serialized attachments.",
+      "Stores ordered chat messages per thread, including role, content, turn ID, serialized attachments, and serialized per-dialogue Dialogue Skill selections.",
     accumulatesErrors: false,
     fields: [
       {
@@ -479,6 +479,12 @@ const tableDefinitions: DatabaseDebugTableDefinition[] = [
         type: "TEXT",
         nullable: false,
         description: "Serialized attachment list JSON.",
+      },
+      {
+        name: "dialogueSkillsJson",
+        type: "TEXT",
+        nullable: false,
+        description: "Serialized Dialogue Skill selections JSON captured for that dialogue turn.",
       },
     ],
   },
@@ -878,7 +884,7 @@ export function buildDatabaseDebugLatestThreadToolDescription(): string {
     "- `found`: Whether a matching thread exists.",
     "- `snapshot.thread`: Thread core metadata. Includes parsed `threadEnvironment` alongside raw `threadEnvironmentJson`.",
     "- `snapshot.instruction`: Per-thread instruction row (or null when absent).",
-    "- `snapshot.messages[]`: Ordered thread messages. Includes parsed `attachments` alongside raw `attachmentsJson`.",
+    "- `snapshot.messages[]`: Ordered thread messages. Includes parsed `attachments`/`dialogueSkillSelections` alongside raw `attachmentsJson`/`dialogueSkillsJson`.",
     "- `snapshot.mcpServers[]`: Ordered MCP server snapshot rows. Includes parsed `headers`/`args`/`env` plus raw JSON fields.",
     "- `snapshot.mcpRpcLogs[]`: Ordered MCP RPC rows. Includes parsed `request`/`response` plus raw JSON fields.",
     "- `snapshot.skillSelections[]`: Ordered skill selections saved for the thread.",
@@ -1062,6 +1068,7 @@ export async function readDatabaseDebugLatestThreadSnapshot(
   const messages = thread.messages.map((message) => ({
     ...message,
     attachments: normalizeUnknownForJson(readJsonValue(message.attachmentsJson, [])),
+    dialogueSkillSelections: normalizeUnknownForJson(readJsonValue(message.dialogueSkillsJson, [])),
   }));
   const mcpServers = thread.mcpServers.map((server) => ({
     ...server,

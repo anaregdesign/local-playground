@@ -16,6 +16,7 @@ export function cloneMessages(value: ChatMessage[]): ChatMessage[] {
   return value.map((message) => ({
     ...message,
     attachments: message.attachments.map((attachment) => ({ ...attachment })),
+    dialogueSkillSelections: message.dialogueSkillSelections.map((selection) => ({ ...selection })),
   }));
 }
 

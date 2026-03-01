@@ -1687,6 +1687,7 @@ export function useWorkspaceController() {
     const clonedMessage: ChatMessage = {
       ...message,
       attachments: message.attachments.map((attachment) => ({ ...attachment })),
+      dialogueSkillSelections: message.dialogueSkillSelections.map((selection) => ({ ...selection })),
     };
 
     updateThreadSnapshotById(threadId, (thread) => ({
@@ -3230,9 +3231,10 @@ export function useWorkspaceController() {
       ({ id: _id, ...attachment }) => attachment,
     );
     const requestMcpServers = cloneMcpServers(mcpServers);
+    const requestDialogueSkillSelections = cloneThreadSkillSelections(selectedDialogueSkills);
     const requestSkillSelections = mergeSkillSelections(
       selectedThreadSkills,
-      selectedDialogueSkills,
+      requestDialogueSkillSelections,
     );
     const requestThreadEnvironment = baseThread
       ? cloneThreadEnvironment(baseThread.threadEnvironment)
@@ -3246,6 +3248,7 @@ export function useWorkspaceController() {
       content,
       turnId,
       requestAttachments,
+      requestDialogueSkillSelections,
     );
     const history = messages
       .map(({ role, content: previousContent, attachments }) => {

@@ -2,6 +2,7 @@
  * Home runtime support module.
  */
 import type { ChatAttachment } from "~/lib/home/chat/attachments";
+import type { ThreadSkillSelection } from "~/lib/home/skills/types";
 
 export type ChatRole = "user" | "assistant";
 
@@ -11,6 +12,7 @@ export type ChatMessage = {
   content: string;
   turnId: string;
   attachments: ChatAttachment[];
+  dialogueSkillSelections: ThreadSkillSelection[];
 };
 
 export function createMessage(
@@ -18,6 +20,7 @@ export function createMessage(
   content: string,
   turnId: string,
   attachments: ChatAttachment[] = [],
+  dialogueSkillSelections: ThreadSkillSelection[] = [],
 ): ChatMessage {
   const randomPart = Math.random().toString(36).slice(2);
   return {
@@ -26,5 +29,6 @@ export function createMessage(
     content,
     turnId,
     attachments,
+    dialogueSkillSelections: dialogueSkillSelections.map((selection) => ({ ...selection })),
   };
 }

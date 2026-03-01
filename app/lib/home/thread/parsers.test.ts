@@ -29,6 +29,12 @@ describe("readThreadSnapshotFromUnknown", () => {
           content: "Hi",
           turnId: "turn-1",
           attachments: [],
+          dialogueSkillSelections: [
+            {
+              name: "doc-retriever",
+              location: "/skills/doc-retriever/SKILL.md",
+            },
+          ],
         },
       ],
       mcpServers: [
@@ -73,6 +79,12 @@ describe("readThreadSnapshotFromUnknown", () => {
       VIRTUAL_ENV: "/tmp/thread-1/.venv",
     });
     expect(parsed?.messages).toHaveLength(1);
+    expect(parsed?.messages[0]?.dialogueSkillSelections).toEqual([
+      {
+        name: "doc-retriever",
+        location: "/skills/doc-retriever/SKILL.md",
+      },
+    ]);
     expect(parsed?.mcpServers).toHaveLength(1);
     expect(parsed?.mcpRpcHistory).toHaveLength(1);
   });
@@ -150,6 +162,7 @@ describe("buildThreadSummary", () => {
           content: "Hello",
           turnId: "turn-1",
           attachments: [],
+          dialogueSkillSelections: [],
         },
       ],
       mcpServers: [

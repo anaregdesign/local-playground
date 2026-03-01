@@ -303,9 +303,16 @@ async function ensureThreadSchema(): Promise<void> {
       "content" TEXT NOT NULL,
       "turnId" TEXT NOT NULL,
       "attachmentsJson" TEXT NOT NULL,
+      "dialogueSkillsJson" TEXT NOT NULL DEFAULT '[]',
       FOREIGN KEY ("threadId") REFERENCES "Thread" ("id") ON DELETE CASCADE
     )
   `);
+
+  await ensureTableColumn(
+    "ThreadMessage",
+    "dialogueSkillsJson",
+    "TEXT NOT NULL DEFAULT '[]'",
+  );
 
   await prisma.$executeRawUnsafe(`
     CREATE INDEX IF NOT EXISTS "ThreadMessage_threadId_sortOrder_idx"

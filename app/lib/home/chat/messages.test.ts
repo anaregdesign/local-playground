@@ -18,6 +18,7 @@ describe("createMessage", () => {
     expect(message.role).toBe("user");
     expect(message.content).toBe("hello");
     expect(message.turnId).toBe("turn-1");
+    expect(message.dialogueSkillSelections).toEqual([]);
     expect(message.id.startsWith("user-1700000000000-")).toBe(true);
   });
 });

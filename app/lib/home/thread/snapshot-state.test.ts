@@ -38,6 +38,7 @@ describe("hasThreadInteraction", () => {
             content: "Hello",
             turnId: "turn-1",
             attachments: [],
+            dialogueSkillSelections: [],
           },
         ],
       }),

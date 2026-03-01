@@ -2,7 +2,6 @@
  * Home UI component module.
  */
 import {
-  Fragment,
   type ChangeEvent,
   type FormEvent,
   type KeyboardEvent,
@@ -33,6 +32,7 @@ type ChatMessageLike = {
   role: ChatRole;
   content: string;
   turnId: string;
+  dialogueSkillSelections?: ThreadSkillLike[];
 };
 
 type ChatAttachmentLike = {
@@ -531,6 +531,32 @@ export function PlaygroundPanel<
     );
   }
 
+  function renderTurnDialogueSkillBubbles(message: TMessage) {
+    if (message.role !== "user") {
+      return null;
+    }
+
+    const dialogueSkillSelections = message.dialogueSkillSelections ?? [];
+    if (dialogueSkillSelections.length === 0) {
+      return null;
+    }
+
+    return (
+      <div className="message-dialogue-skill-row" aria-label="Dialogue Skills used in this turn">
+        {dialogueSkillSelections.map((skill) => (
+          <div key={`${message.id}:dialogue-skill:${skill.location}`} className="message-dialogue-skill-item">
+            <LabeledTooltip
+              title={skill.name}
+              lines={[`Source: ${skill.location}`]}
+            >
+              <span className="message-dialogue-skill-bubble">{skill.name}</span>
+            </LabeledTooltip>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
   return (
     <section className="chat-shell main-panel" aria-label="Playground">
       <header className="chat-header">
@@ -605,7 +631,7 @@ export function PlaygroundPanel<
           const shouldRenderTurnMcpLog = message.role === "assistant" && turnMcpHistory.length > 0;
 
           return (
-            <Fragment key={message.id}>
+            <div key={message.id} className={`turn-entry ${message.role}`}>
               <article className={`message-row ${message.role === "user" ? "user" : "assistant"}`}>
                 <div className="message-content">{renderMessageContent(message)}</div>
                 <CopyIconButton
@@ -617,6 +643,7 @@ export function PlaygroundPanel<
                   }}
                 />
               </article>
+              {renderTurnDialogueSkillBubbles(message)}
               {shouldRenderTurnMcpLog ? (
                 <article className="mcp-turn-log-row">
                   {renderTurnMcpLog(turnMcpHistory, false, (text) => {
@@ -624,7 +651,7 @@ export function PlaygroundPanel<
                   })}
                 </article>
               ) : null}
-            </Fragment>
+            </div>
           );
         })}
 

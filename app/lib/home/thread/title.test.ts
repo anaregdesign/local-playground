@@ -27,6 +27,7 @@ describe("buildThreadAutoTitlePlaygroundContent", () => {
         content: "Draft a rollout plan",
         turnId: "t-1",
         attachments: [],
+        dialogueSkillSelections: [],
       },
       {
         id: "m-2",
@@ -34,6 +35,7 @@ describe("buildThreadAutoTitlePlaygroundContent", () => {
         content: "I can help with milestones.",
         turnId: "t-1",
         attachments: [],
+        dialogueSkillSelections: [],
       },
     ]);
 

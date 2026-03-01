@@ -527,6 +527,7 @@ async function saveThreadSnapshot(
           content: message.content,
           turnId: message.turnId,
           attachmentsJson: JSON.stringify(message.attachments),
+          dialogueSkillsJson: JSON.stringify(message.dialogueSkillSelections),
         })),
       });
     }
@@ -737,6 +738,7 @@ function mapStoredThreadToSnapshot(value: {
     content: string;
     turnId: string;
     attachmentsJson: string;
+    dialogueSkillsJson: string;
   }>;
   mcpServers: Array<{
     id: string;
@@ -789,6 +791,7 @@ function mapStoredThreadToSnapshot(value: {
         content: message.content,
         turnId: message.turnId,
         attachments: readJsonValue(message.attachmentsJson, []),
+        dialogueSkillSelections: readJsonValue(message.dialogueSkillsJson, []),
       })),
       mcpServers: value.mcpServers.map((server) =>
         server.transport === "stdio"
