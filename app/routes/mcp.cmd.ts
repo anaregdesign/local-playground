@@ -29,7 +29,8 @@ const MCP_CMD_TOOL_DESCRIPTION = [
   "Returns stdout/stderr, exit status, timeout state, execution duration, and resolved shell metadata.",
   "Safety policy: if this is the first command execution in a thread, ask the user for explicit consent in chat first.",
   "Then call again with confirmedByUser=true and confirmationMessage set to the user-approved text.",
-  "When threadContext.threadId is missing, explicit consent is required for every call.",
+  "Default working directory is ~/.foundry_local_playground/users/<user-id>/threads/<thread-id>/tmp.",
+  "When threadContext.threadId is missing, explicit consent is required for every call and workingDirectory must be provided explicitly.",
 ].join("\n");
 
 const MCP_CMD_DEFAULT_TIMEOUT_SECONDS = 120;
@@ -40,6 +41,13 @@ const MCP_CMD_MAX_CONFIRMATION_MESSAGE_LENGTH = 4_000;
 const THREAD_COMMAND_CONSENT_CACHE_MAX = 512;
 
 const cmdExecuteInputSchema = {
+  threadId: z
+    .string()
+    .min(1)
+    .optional()
+    .describe(
+      "Optional thread identifier supplied by the client. When provided, this value is used for first-run consent scope and default working directory resolution.",
+    ),
   command: z
     .string()
     .min(1)
@@ -52,7 +60,7 @@ const cmdExecuteInputSchema = {
     .min(1)
     .optional()
     .describe(
-      "Optional working directory. Relative paths are resolved from the Local Playground process current directory. When omitted, uses ~/.foundry_local_playground/users/<user-id>/tmp.",
+      "Optional working directory. Relative paths are resolved from the Local Playground process current directory. When omitted, uses ~/.foundry_local_playground/users/<user-id>/threads/<thread-id>/tmp.",
     ),
   timeoutSeconds: z
     .number()
@@ -91,6 +99,7 @@ type McpCmdRequestContext = AuthenticatedMcpCmdContext & {
 };
 
 type ParsedCmdToolArguments = {
+  threadId: string | null;
   command: string;
   workingDirectory: string | null;
   timeoutSeconds: number;
@@ -258,8 +267,13 @@ function createCmdMcpServer(requestContext: McpCmdRequestContext): McpServer {
       }
 
       const commandArgs = parsedArguments.value;
+      const effectiveThreadId = commandArgs.threadId ?? requestContext.threadId;
+      const effectiveRequestContext: McpCmdRequestContext = {
+        ...requestContext,
+        threadId: effectiveThreadId,
+      };
       const commandConsent = evaluateCommandExecutionConsent(
-        requestContext,
+        effectiveRequestContext,
         commandArgs,
       );
       if (!commandConsent.ok) {
@@ -270,10 +284,11 @@ function createCmdMcpServer(requestContext: McpCmdRequestContext): McpServer {
           reason: commandConsent.reason,
           consentScope: commandConsent.scope,
           threadContext: {
-            threadId: requestContext.threadId,
+            threadId: effectiveThreadId,
             turnId: requestContext.turnId,
           },
           nextCallArguments: {
+            ...(effectiveThreadId ? { threadId: effectiveThreadId } : {}),
             command: commandArgs.command,
             workingDirectory: commandArgs.workingDirectory,
             timeoutSeconds: commandArgs.timeoutSeconds,
@@ -284,6 +299,7 @@ function createCmdMcpServer(requestContext: McpCmdRequestContext): McpServer {
 
       const workingDirectoryResult = resolveWorkingDirectory(
         requestContext.userId,
+        effectiveThreadId,
         commandArgs.workingDirectory,
       );
       if (!workingDirectoryResult.ok) {
@@ -292,7 +308,7 @@ function createCmdMcpServer(requestContext: McpCmdRequestContext): McpServer {
           approvalRequired: false,
           error: workingDirectoryResult.error,
           threadContext: {
-            threadId: requestContext.threadId,
+            threadId: effectiveThreadId,
             turnId: requestContext.turnId,
           },
         });
@@ -306,7 +322,7 @@ function createCmdMcpServer(requestContext: McpCmdRequestContext): McpServer {
           error:
             "No available shell environment was found for this operating system. Configure SHELL/ComSpec and retry.",
           threadContext: {
-            threadId: requestContext.threadId,
+            threadId: effectiveThreadId,
             turnId: requestContext.turnId,
           },
         });
@@ -327,7 +343,7 @@ function createCmdMcpServer(requestContext: McpCmdRequestContext): McpServer {
           workingDirectory: workingDirectoryResult.value,
           timeoutSeconds: commandArgs.timeoutSeconds,
           threadContext: {
-            threadId: requestContext.threadId,
+            threadId: effectiveThreadId,
             turnId: requestContext.turnId,
           },
           consentScope: commandConsent.scope,
@@ -356,7 +372,7 @@ function createCmdMcpServer(requestContext: McpCmdRequestContext): McpServer {
           workingDirectory: workingDirectoryResult.value,
           timeoutSeconds: commandArgs.timeoutSeconds,
           threadContext: {
-            threadId: requestContext.threadId,
+            threadId: effectiveThreadId,
             turnId: requestContext.turnId,
           },
           shell: {
@@ -418,9 +434,15 @@ function parseCmdExecuteArguments(value: unknown): ParseResult<ParsedCmdToolArgu
     return confirmationResult;
   }
 
+  const threadIdResult = parseThreadId(value.threadId);
+  if (!threadIdResult.ok) {
+    return threadIdResult;
+  }
+
   return {
     ok: true,
     value: {
+      threadId: threadIdResult.value,
       command,
       workingDirectory,
       timeoutSeconds: timeoutSecondsResult.value,
@@ -428,6 +450,23 @@ function parseCmdExecuteArguments(value: unknown): ParseResult<ParsedCmdToolArgu
       confirmationMessage: confirmationResult.value.confirmationMessage,
     },
   };
+}
+
+function parseThreadId(rawThreadId: unknown): ParseResult<string | null> {
+  if (rawThreadId === undefined || rawThreadId === null) {
+    return { ok: true, value: null };
+  }
+
+  if (typeof rawThreadId !== "string") {
+    return { ok: false, error: "`threadId` must be a string when provided." };
+  }
+
+  const threadId = rawThreadId.trim();
+  if (!threadId) {
+    return { ok: false, error: "`threadId` must not be empty when provided." };
+  }
+
+  return { ok: true, value: threadId };
 }
 
 function parseTimeoutSeconds(rawTimeoutSeconds: unknown): ParseResult<number> {
@@ -580,15 +619,11 @@ function rememberThreadConsent(key: string): void {
 
 function resolveWorkingDirectory(
   userId: number,
+  threadId: string | null,
   workingDirectory: string | null,
 ): ParseResult<string> {
-  const defaultWorkingDirectoryResult = ensureUserTmpWorkingDirectory(userId);
-  if (!defaultWorkingDirectoryResult.ok) {
-    return defaultWorkingDirectoryResult;
-  }
-
   if (!workingDirectory) {
-    return defaultWorkingDirectoryResult;
+    return ensureThreadTmpWorkingDirectory(userId, threadId);
   }
 
   const resolved = path.resolve(workingDirectory);
@@ -612,9 +647,27 @@ function resolveWorkingDirectory(
   return { ok: true, value: resolved };
 }
 
-function ensureUserTmpWorkingDirectory(userId: number): ParseResult<string> {
+function ensureThreadTmpWorkingDirectory(
+  userId: number,
+  threadId: string | null,
+): ParseResult<string> {
+  if (!threadId) {
+    return {
+      ok: false,
+      error:
+        "threadContext.threadId is required when workingDirectory is omitted. Provide `workingDirectory` explicitly for threadless requests.",
+    };
+  }
+
   const rootDirectory = resolveLegacyFoundryConfigDirectory();
-  const resolved = path.join(rootDirectory, "users", String(userId), "tmp");
+  const resolved = path.join(
+    rootDirectory,
+    "users",
+    String(userId),
+    "threads",
+    threadId,
+    "tmp",
+  );
   try {
     fs.mkdirSync(resolved, { recursive: true });
   } catch (error) {

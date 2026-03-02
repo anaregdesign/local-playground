@@ -140,6 +140,10 @@ describe("mcp cmd route", () => {
         type: "object",
         required: ["command"],
         properties: expect.objectContaining({
+          threadId: expect.objectContaining({
+            type: "string",
+            minLength: 1,
+          }),
           command: expect.objectContaining({
             type: "string",
             minLength: 1,
@@ -191,6 +195,7 @@ describe("mcp cmd route", () => {
         turnId: null,
       },
       nextCallArguments: {
+        threadId: "thread-1",
         command: "echo local-playground-cmd-output",
         workingDirectory: null,
         timeoutSeconds: 120,
@@ -201,7 +206,11 @@ describe("mcp cmd route", () => {
   });
 
   it("executes shell command and returns stdout/stderr details after confirmation", async () => {
-    const defaultWorkingDirectoryResult = mcpCmdRouteTestUtils.resolveWorkingDirectory(42, null);
+    const defaultWorkingDirectoryResult = mcpCmdRouteTestUtils.resolveWorkingDirectory(
+      42,
+      "thread-2",
+      null,
+    );
     expect(defaultWorkingDirectoryResult.ok).toBe(true);
     const expectedWorkingDirectory =
       defaultWorkingDirectoryResult.ok ? defaultWorkingDirectoryResult.value : "";
@@ -307,6 +316,90 @@ describe("mcp cmd route", () => {
         confirmationMessage: "User confirmed terminal command execution for this request.",
       },
     });
+  });
+
+  it("requires explicit workingDirectory when thread context is missing", async () => {
+    const response = await callShellExecuteTool({
+      argumentsValue: {
+        command: "echo no-thread",
+        confirmedByUser: true,
+        confirmationMessage: "User confirmed terminal command execution for this request.",
+      },
+    });
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.result?.structuredContent).toEqual({
+      executed: false,
+      approvalRequired: false,
+      error:
+        "threadContext.threadId is required when workingDirectory is omitted. Provide `workingDirectory` explicitly for threadless requests.",
+      threadContext: {
+        threadId: null,
+        turnId: null,
+      },
+    });
+  });
+
+  it("uses client-provided threadId from tool arguments", async () => {
+    const firstResponse = await callShellExecuteTool({
+      argumentsValue: {
+        threadId: "thread-from-client",
+        command: "echo from-client-thread",
+      },
+    });
+
+    expect(firstResponse.status).toBe(200);
+    const firstBody = await firstResponse.json();
+    expect(firstBody.result?.structuredContent).toEqual({
+      executed: false,
+      approvalRequired: true,
+      requiresUserConfirmation: true,
+      reason:
+        "First command execution in this thread requires explicit user confirmation before running terminal commands.",
+      consentScope: "thread",
+      threadContext: {
+        threadId: "thread-from-client",
+        turnId: null,
+      },
+      nextCallArguments: {
+        threadId: "thread-from-client",
+        command: "echo from-client-thread",
+        workingDirectory: null,
+        timeoutSeconds: 120,
+        confirmedByUser: true,
+        confirmationMessage: "User confirmed terminal command execution for this thread.",
+      },
+    });
+
+    const defaultWorkingDirectoryResult = mcpCmdRouteTestUtils.resolveWorkingDirectory(
+      42,
+      "thread-from-client",
+      null,
+    );
+    expect(defaultWorkingDirectoryResult.ok).toBe(true);
+    const expectedWorkingDirectory =
+      defaultWorkingDirectoryResult.ok ? defaultWorkingDirectoryResult.value : "";
+
+    const secondResponse = await callShellExecuteTool({
+      argumentsValue: {
+        threadId: "thread-from-client",
+        command: "echo from-client-thread",
+        confirmedByUser: true,
+        confirmationMessage: "User approved terminal command execution.",
+      },
+    });
+
+    expect(secondResponse.status).toBe(200);
+    const secondBody = await secondResponse.json();
+    const payload = secondBody.result?.structuredContent;
+    expect(payload.executed).toBe(true);
+    expect(payload.threadContext).toEqual({
+      threadId: "thread-from-client",
+      turnId: null,
+    });
+    expect(payload.workingDirectory).toBe(expectedWorkingDirectory);
+    expect(payload.stdout).toContain("from-client-thread");
   });
 });
 
