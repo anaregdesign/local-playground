@@ -1249,6 +1249,60 @@ export function useWorkspaceController() {
     isRestoringThread,
   ]);
 
+  useEffect(() => {
+    if (!isThreadsReadyRef.current || isApplyingThreadStateRef.current) {
+      return;
+    }
+    if (
+      isLoadingThreads ||
+      isSwitchingThread ||
+      isCreatingThread ||
+      isDeletingThread ||
+      isClearingThread ||
+      isRestoringThread
+    ) {
+      return;
+    }
+    if (isChatLocked || isLoadingUtilityAzureDeployments) {
+      return;
+    }
+
+    const deploymentName = selectedUtilityAzureDeploymentName.trim();
+    if (!deploymentName || !utilityAzureDeployments.includes(deploymentName)) {
+      return;
+    }
+
+    const currentThreadId = activeThreadIdRef.current.trim();
+    if (!currentThreadId || isArchivedThread(currentThreadId)) {
+      return;
+    }
+
+    const baseThread = threadsRef.current.find((thread) => thread.id === currentThreadId);
+    if (!baseThread || !hasThreadInteraction(baseThread)) {
+      return;
+    }
+    if (baseThread.name.trim() !== THREAD_DEFAULT_NAME) {
+      return;
+    }
+
+    void refreshThreadTitleInBackground({
+      threadId: currentThreadId,
+      reason: "utility_deployment_update",
+    });
+  }, [
+    isChatLocked,
+    isLoadingThreads,
+    isSwitchingThread,
+    isCreatingThread,
+    isDeletingThread,
+    isClearingThread,
+    isRestoringThread,
+    isLoadingUtilityAzureDeployments,
+    selectedUtilityAzureConnectionId,
+    selectedUtilityAzureDeploymentName,
+    utilityAzureDeployments,
+  ]);
+
   // Saved MCP / Skills loading flows.
   async function loadWorkspaceMcpServerProfiles() {
     const expectedUserKey = activeWorkspaceUserKeyRef.current.trim();
@@ -2074,7 +2128,7 @@ export function useWorkspaceController() {
 
   async function refreshThreadTitleInBackground(options: {
     threadId: string;
-    reason: "first_message" | "instruction_update";
+    reason: "first_message" | "instruction_update" | "utility_deployment_update";
     instructionOverride?: string;
   }): Promise<void> {
     const normalizedThreadId = options.threadId.trim();
