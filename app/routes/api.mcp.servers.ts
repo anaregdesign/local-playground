@@ -16,6 +16,7 @@ import {
   MCP_TIMEOUT_SECONDS_MAX,
   MCP_TIMEOUT_SECONDS_MIN,
 } from "~/lib/constants";
+import { buildMcpServerConfigKey } from "~/lib/mcp/config-key";
 import {
   resolveFoundryConfigDirectory,
   resolveFoundryWorkspaceUserDirectory,
@@ -1128,24 +1129,7 @@ function normalizeOptionalId(rawId: unknown): string | null {
 }
 
 function buildIncomingProfileKey(profile: IncomingMcpServerConfig): string {
-  if (profile.transport === "stdio") {
-    const argsKey = profile.args.join("\u0000");
-    const cwdKey = (profile.cwd ?? "").toLowerCase();
-    const envKey = Object.entries(profile.env)
-      .sort(([left], [right]) => left.localeCompare(right))
-      .map(([key, value]) => `${key}=${value}`)
-      .join("\u0000");
-    return `${profile.transport}:${profile.command.toLowerCase()}:${argsKey}:${cwdKey}:${envKey}`;
-  }
-
-  const headersKey = Object.entries(profile.headers)
-    .map(([key, value]) => [key.toLowerCase(), value] as const)
-    .sort(([left], [right]) => left.localeCompare(right))
-    .map(([key, value]) => `${key}=${value}`)
-    .join("\u0000");
-  const authKey = profile.useAzureAuth ? "azure-auth:on" : "azure-auth:off";
-  const scopeKey = profile.useAzureAuth ? profile.azureAuthScope.toLowerCase() : "";
-  return `${profile.transport}:${profile.url.toLowerCase()}:${headersKey}:${authKey}:${scopeKey}:${profile.timeoutSeconds}`;
+  return buildMcpServerConfigKey(profile);
 }
 
 export async function readAuthenticatedUser(): Promise<{ id: number } | null> {

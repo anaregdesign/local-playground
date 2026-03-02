@@ -11,6 +11,7 @@ import {
   MCP_TIMEOUT_SECONDS_MAX,
   MCP_TIMEOUT_SECONDS_MIN,
 } from "~/lib/constants";
+import { buildMcpServerConfigKey } from "~/lib/mcp/config-key";
 
 export type McpHttpServerConfig = {
   id: string;
@@ -43,20 +44,7 @@ type SaveMcpStdioServerRequest = Omit<McpStdioServerConfig, "id"> & { id?: strin
 export type SaveMcpServerRequest = SaveMcpHttpServerRequest | SaveMcpStdioServerRequest;
 
 export function buildMcpServerKey(server: McpServerConfig): string {
-  if (server.transport === "stdio") {
-    const argsKey = server.args.join("\u0000");
-    const cwdKey = (server.cwd ?? "").toLowerCase();
-    const envKey = Object.entries(server.env)
-      .sort(([left], [right]) => left.localeCompare(right))
-      .map(([key, value]) => `${key}=${value}`)
-      .join("\u0000");
-    return `stdio:${server.command.toLowerCase()}:${argsKey}:${cwdKey}:${envKey}`;
-  }
-
-  const headersKey = buildHttpHeadersKey(server.headers);
-  const authKey = server.useAzureAuth ? "azure-auth:on" : "azure-auth:off";
-  const scopeKey = server.useAzureAuth ? server.azureAuthScope.toLowerCase() : "";
-  return `${server.transport}:${server.url.toLowerCase()}:${headersKey}:${authKey}:${scopeKey}:${server.timeoutSeconds}`;
+  return buildMcpServerConfigKey(server);
 }
 
 export function readMcpServerList(value: unknown): McpServerConfig[] {
@@ -209,14 +197,6 @@ export function formatMcpServerOption(server: McpServerConfig): string {
     return `${server.name} (${server.transport}, +${headerCount} headers${azureAuthLabel}${timeoutLabel})`;
   }
   return `${server.name} (${server.transport}${azureAuthLabel}${timeoutLabel})`;
-}
-
-function buildHttpHeadersKey(headers: Record<string, string>): string {
-  return Object.entries(headers)
-    .map(([key, value]) => [key.toLowerCase(), value] as const)
-    .sort(([left], [right]) => left.localeCompare(right))
-    .map(([key, value]) => `${key}=${value}`)
-    .join("\u0000");
 }
 
 function readHttpHeadersFromUnknown(value: unknown): Record<string, string> | null {

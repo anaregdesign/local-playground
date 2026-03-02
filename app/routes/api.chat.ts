@@ -29,6 +29,12 @@ import {
   getAzureDependencies,
   normalizeAzureOpenAIBaseURL,
 } from "~/lib/azure/dependencies";
+import { buildMcpServerConfigKey } from "~/lib/mcp/config-key";
+import {
+  acquireThreadMcpServerSession,
+  type ThreadMcpServerSession,
+  type ThreadMcpServerSessionLease,
+} from "~/lib/server/mcp/thread-mcp-server-session-pool";
 import {
   installGlobalServerErrorLogging,
   logServerRouteEvent,
@@ -83,6 +89,7 @@ import {
   MCP_STDIO_ENV_VARS_MAX,
   MCP_TIMEOUT_SECONDS_MAX,
   MCP_TIMEOUT_SECONDS_MIN,
+  THREAD_MCP_SERVER_SESSION_IDLE_TTL_MS,
   TEMPERATURE_MAX,
   TEMPERATURE_MIN,
   THREAD_ENVIRONMENT_KEY_MAX_LENGTH,
@@ -181,10 +188,26 @@ type McpRequestContext = {
   clientUserAgent: string | null;
   clientPlatform: string | null;
 };
+type ChatMcpRuntimeMetrics = {
+  mcpConnectedCount: number;
+  mcpReusedCount: number;
+  mcpEphemeralConnectCount: number;
+  mcpConnectDurationMs: number;
+  mcpSetupDurationMs: number;
+};
+type McpServerSessionRefreshState = {
+  requestContext: McpRequestContext;
+  getAzureAuthorizationToken: (scope: string) => Promise<string>;
+  logHandlers: {
+    nextSequence: () => number;
+    onRecord: (record: ThreadOperationLogRecord) => void;
+  };
+};
 type ChatExecutionResult = {
   message: string;
   threadEnvironment: ThreadEnvironment;
   operationLogCount: number;
+  mcpRuntimeMetrics: ChatMcpRuntimeMetrics;
 };
 type JsonRpcRequestPayload = {
   jsonrpc: "2.0";
@@ -551,11 +574,7 @@ export async function action({ request }: Route.ActionArgs) {
       statusCode: 200,
       message: "Chat request completed.",
       threadId,
-      context: {
-        ...logContext,
-        responseLength: result.message.length,
-        operationLogCount: result.operationLogCount,
-      },
+      context: buildChatExecutionSuccessLogContext(executionOptions, result),
     });
     return Response.json({
       message: result.message,
@@ -591,11 +610,13 @@ async function executeChat(
   const azureDependencies = getAzureDependencies();
   const azureOpenAIClient = getAzureOpenAIClient(options.azureConfig.baseUrl, azureDependencies);
   const connectedMcpServers: MCPServer[] = [];
+  const connectedMcpServerLeases: ThreadMcpServerSessionLease[] = [];
   let codeInterpreterContainerId = "";
   const toolNameByCallId = new Map<string, string>();
   let operationLogSequence = 0;
   const hasMcpServers = options.mcpServers.length > 0;
   const azureMcpAuthorizationTokenPromiseByScope = new Map<string, Promise<string>>();
+  const mcpRuntimeMetrics = createInitialChatMcpRuntimeMetrics();
   const skillExecutionContext: SkillToolExecutionContext = {
     threadEnvironment: cloneThreadEnvironment(options.threadEnvironment),
   };
@@ -632,96 +653,143 @@ async function executeChat(
       });
     }
 
-    for (const serverConfig of options.mcpServers) {
-      emitProgress({
-        message: `Connecting MCP server: ${serverConfig.name}`,
-        isMcp: true,
-      });
-
-      const connectSequence = nextThreadOperationLogSequence();
-      const connectRequestId = buildThreadOperationLogRequestId(serverConfig.name, connectSequence);
-      const connectStartedAt = new Date().toISOString();
-      const connectRequest: JsonRpcRequestPayload = {
-        jsonrpc: "2.0",
-        id: connectRequestId,
-        method: "server/connect",
-        params: buildMcpConnectParams(serverConfig),
-      };
-
-      let instrumentedServer: MCPServer;
-      try {
-        const server = await createMcpServer(serverConfig, {
-          getAzureAuthorizationToken: (scope) => {
-            const normalizedScope = scope.trim();
-            const current = azureMcpAuthorizationTokenPromiseByScope.get(normalizedScope);
-            if (current) {
-              return current;
-            }
-
-            const created = getAzureMcpAuthorizationToken(
-              normalizedScope,
-              azureDependencies,
-            );
-            azureMcpAuthorizationTokenPromiseByScope.set(normalizedScope, created);
-            return created;
-          },
-        }, mcpRequestContext);
-        instrumentedServer = instrumentMcpServer(server, {
-          nextSequence: nextThreadOperationLogSequence,
-          onRecord: emitThreadOperationLogRecord,
+    const mcpSetupStartedAtMs = Date.now();
+    const connectResults = await Promise.allSettled(
+      options.mcpServers.map(async (serverConfig) => {
+        emitProgress({
+          message: `Connecting MCP server: ${serverConfig.name}`,
+          isMcp: true,
         });
 
-        await instrumentedServer.connect();
-      } catch (error) {
-        const connectResponse: JsonRpcResponsePayload = {
+        const connectSequence = nextThreadOperationLogSequence();
+        const connectRequestId = buildThreadOperationLogRequestId(serverConfig.name, connectSequence);
+        const connectStartedAtMs = Date.now();
+        const connectStartedAt = new Date(connectStartedAtMs).toISOString();
+        const connectRequest: JsonRpcRequestPayload = {
           jsonrpc: "2.0",
           id: connectRequestId,
-          error: {
-            message: readErrorMessage(error),
-          },
-        };
-        emitThreadOperationLogRecord({
-          id: connectRequestId,
-          sequence: connectSequence,
-          operationType: "mcp",
-          serverName: serverConfig.name,
           method: "server/connect",
-          startedAt: connectStartedAt,
-          completedAt: new Date().toISOString(),
-          request: connectRequest,
-          response: connectResponse,
-          isError: true,
-        });
-        throw new Error(
-          `Failed to connect MCP server "${serverConfig.name}" (${describeMcpServer(serverConfig)}): ${readErrorMessage(error)}`,
-        );
+          params: buildMcpConnectParams(serverConfig),
+        };
+
+        try {
+          const lease = await acquireThreadMcpServerSession({
+            threadId: options.threadId,
+            sessionKey: buildMcpServerSessionConfigKey(serverConfig),
+            refreshState: {
+              requestContext: mcpRequestContext,
+              getAzureAuthorizationToken: (scope) => {
+                const normalizedScope = scope.trim();
+                const current = azureMcpAuthorizationTokenPromiseByScope.get(normalizedScope);
+                if (current) {
+                  return current;
+                }
+
+                const created = getAzureMcpAuthorizationToken(
+                  normalizedScope,
+                  azureDependencies,
+                );
+                azureMcpAuthorizationTokenPromiseByScope.set(normalizedScope, created);
+                return created;
+              },
+              logHandlers: {
+                nextSequence: nextThreadOperationLogSequence,
+                onRecord: emitThreadOperationLogRecord,
+              },
+            },
+            idleTtlMs: THREAD_MCP_SERVER_SESSION_IDLE_TTL_MS,
+            createSession: async () => createMcpServerSession(serverConfig),
+          });
+
+          const connectDurationMs = Math.max(0, Date.now() - connectStartedAtMs);
+          mcpRuntimeMetrics.mcpConnectDurationMs += connectDurationMs;
+          if (lease.status === "reused") {
+            mcpRuntimeMetrics.mcpReusedCount += 1;
+          } else {
+            mcpRuntimeMetrics.mcpConnectedCount += 1;
+          }
+          if (lease.isEphemeral) {
+            mcpRuntimeMetrics.mcpEphemeralConnectCount += 1;
+          }
+
+          emitThreadOperationLogRecord({
+            id: connectRequestId,
+            sequence: connectSequence,
+            operationType: "mcp",
+            serverName: serverConfig.name,
+            method: "server/connect",
+            startedAt: connectStartedAt,
+            completedAt: new Date().toISOString(),
+            request: connectRequest,
+            response: buildMcpConnectSuccessResponse(connectRequestId, lease.status),
+            isError: false,
+          });
+          emitProgress({
+            message: lease.status === "reused"
+              ? `Reused MCP server: ${serverConfig.name}`
+              : `Connected MCP server: ${serverConfig.name}`,
+            isMcp: true,
+          });
+
+          return {
+            lease,
+            server: lease.server,
+          };
+        } catch (error) {
+          const connectResponse: JsonRpcResponsePayload = {
+            jsonrpc: "2.0",
+            id: connectRequestId,
+            error: {
+              message: readErrorMessage(error),
+            },
+          };
+          emitThreadOperationLogRecord({
+            id: connectRequestId,
+            sequence: connectSequence,
+            operationType: "mcp",
+            serverName: serverConfig.name,
+            method: "server/connect",
+            startedAt: connectStartedAt,
+            completedAt: new Date().toISOString(),
+            request: connectRequest,
+            response: connectResponse,
+            isError: true,
+          });
+          throw new Error(
+            `Failed to connect MCP server "${serverConfig.name}" (${describeMcpServer(serverConfig)}): ${readErrorMessage(error)}`,
+          );
+        }
+      }),
+    );
+
+    const successfulConnectResults: Array<{
+      lease: ThreadMcpServerSessionLease;
+      server: MCPServer;
+    }> = [];
+    let firstConnectError: Error | null = null;
+    for (const result of connectResults) {
+      if (result.status === "fulfilled") {
+        successfulConnectResults.push(result.value);
+        continue;
       }
 
-      connectedMcpServers.push(instrumentedServer);
-      const connectResponse: JsonRpcResponsePayload = {
-        jsonrpc: "2.0",
-        id: connectRequestId,
-        result: {
-          status: "connected",
-        },
-      };
-      emitThreadOperationLogRecord({
-        id: connectRequestId,
-        sequence: connectSequence,
-        operationType: "mcp",
-        serverName: serverConfig.name,
-        method: "server/connect",
-        startedAt: connectStartedAt,
-        completedAt: new Date().toISOString(),
-        request: connectRequest,
-        response: connectResponse,
-        isError: false,
-      });
-      emitProgress({
-        message: `Connected MCP server: ${serverConfig.name}`,
-        isMcp: true,
-      });
+      if (!firstConnectError) {
+        firstConnectError = result.reason instanceof Error
+          ? result.reason
+          : new Error(readErrorMessage(result.reason));
+      }
     }
+
+    if (firstConnectError) {
+      await Promise.allSettled(
+        successfulConnectResults.map((result) => result.lease.release()),
+      );
+      throw firstConnectError;
+    }
+
+    connectedMcpServerLeases.push(...successfulConnectResults.map((result) => result.lease));
+    connectedMcpServers.push(...successfulConnectResults.map((result) => result.server));
+    mcpRuntimeMetrics.mcpSetupDurationMs = Math.max(0, Date.now() - mcpSetupStartedAtMs);
 
     const skillRuntime = await buildSkillRuntimeContext(options.skills, {
       explicitSkillLocations: options.explicitSkillLocations,
@@ -882,6 +950,7 @@ async function executeChat(
         message: assistantMessage,
         threadEnvironment: cloneThreadEnvironment(skillExecutionContext.threadEnvironment),
         operationLogCount: operationLogSequence,
+        mcpRuntimeMetrics,
       };
     }
 
@@ -904,6 +973,7 @@ async function executeChat(
       message: assistantMessage,
       threadEnvironment: cloneThreadEnvironment(skillExecutionContext.threadEnvironment),
       operationLogCount: operationLogSequence,
+      mcpRuntimeMetrics,
     };
   } finally {
     await Promise.allSettled([
@@ -922,11 +992,11 @@ async function executeChat(
         "Timed out while cleaning up the Code Interpreter container.",
       ),
       awaitWithTimeout(
-        Promise.allSettled(connectedMcpServers.map((server) => server.close())).then(
+        Promise.allSettled(connectedMcpServerLeases.map((lease) => lease.release())).then(
           () => undefined,
         ),
         CHAT_CLEANUP_TIMEOUT_MS,
-        "Timed out while closing MCP server connections.",
+        "Timed out while releasing MCP server sessions.",
       ),
     ]);
   }
@@ -976,11 +1046,7 @@ function streamChatResponse(options: ChatExecutionOptions): Response {
           statusCode: 200,
           message: "Chat stream completed.",
           threadId: options.threadId,
-          context: {
-            ...buildChatExecutionLogContext(options),
-            responseLength: result.message.length,
-            operationLogCount: result.operationLogCount,
-          },
+          context: buildChatExecutionSuccessLogContext(options, result),
         });
       } catch (error) {
         const upstreamError = buildUpstreamErrorPayload(
@@ -1054,6 +1120,18 @@ function buildChatExecutionLogContext(options: ChatExecutionOptions): Record<str
     mcpServerCount: options.mcpServers.length,
     skillCount: options.skills.length,
     explicitSkillLocationCount: options.explicitSkillLocations.length,
+  };
+}
+
+function buildChatExecutionSuccessLogContext(
+  options: ChatExecutionOptions,
+  result: ChatExecutionResult,
+): Record<string, unknown> {
+  return {
+    ...buildChatExecutionLogContext(options),
+    responseLength: result.message.length,
+    operationLogCount: result.operationLogCount,
+    ...result.mcpRuntimeMetrics,
   };
 }
 
@@ -2018,24 +2096,21 @@ function readMcpServers(
         continue;
       }
 
-      const envKey = Object.entries(envResult.value)
-        .sort(([left], [right]) => left.localeCompare(right))
-        .map(([key, value]) => `${key}=${value}`)
-        .join("\u0000");
-      const dedupeKey = `${transport}:${command.toLowerCase()}:${argsResult.value.join("\u0000")}:${cwd.toLowerCase()}:${envKey}`;
-      if (dedupeKeys.has(dedupeKey)) {
-        continue;
-      }
-
-      dedupeKeys.add(dedupeKey);
-      result.push({
+      const config: ClientMcpStdioServerConfig = {
         name,
         transport,
         command,
         args: argsResult.value,
         cwd: cwd || undefined,
         env: envResult.value,
-      });
+      };
+      const dedupeKey = buildMcpServerSessionConfigKey(config);
+      if (dedupeKeys.has(dedupeKey)) {
+        continue;
+      }
+
+      dedupeKeys.add(dedupeKey);
+      result.push(config);
       continue;
     }
 
@@ -2068,25 +2143,22 @@ function readMcpServers(
       return timeoutResult;
     }
 
-    const url = parsedHttpUrlResult.value.url;
-    const headersKey = buildHttpHeadersDedupeKey(headersResult.value);
-    const authKey = useAzureAuth ? "azure-auth:on" : "azure-auth:off";
-    const scopeKey = useAzureAuth ? scopeResult.value.toLowerCase() : "";
-    const dedupeKey = `${transport}:${url.toLowerCase()}:${headersKey}:${authKey}:${scopeKey}:${timeoutResult.value}`;
+    const config: ClientMcpHttpServerConfig = {
+      name,
+      transport,
+      url: parsedHttpUrlResult.value.url,
+      headers: headersResult.value,
+      useAzureAuth,
+      azureAuthScope: scopeResult.value,
+      timeoutSeconds: timeoutResult.value,
+    };
+    const dedupeKey = buildMcpServerSessionConfigKey(config);
     if (dedupeKeys.has(dedupeKey)) {
       continue;
     }
 
     dedupeKeys.add(dedupeKey);
-    result.push({
-      name,
-      url,
-      transport,
-      headers: headersResult.value,
-      useAzureAuth,
-      azureAuthScope: scopeResult.value,
-      timeoutSeconds: timeoutResult.value,
-    });
+    result.push(config);
   }
 
   return { ok: true, value: result };
@@ -2193,58 +2265,99 @@ function isLegacyUnavailableDefaultStdioNpxServer(config: {
   );
 }
 
-async function createMcpServer(
+function createInitialChatMcpRuntimeMetrics(): ChatMcpRuntimeMetrics {
+  return {
+    mcpConnectedCount: 0,
+    mcpReusedCount: 0,
+    mcpEphemeralConnectCount: 0,
+    mcpConnectDurationMs: 0,
+    mcpSetupDurationMs: 0,
+  };
+}
+
+function buildMcpServerSessionConfigKey(config: ClientMcpServerConfig): string {
+  return buildMcpServerConfigKey(config);
+}
+
+function buildMcpConnectSuccessResponse(
+  requestId: string,
+  status: "connected" | "reused",
+): JsonRpcResponsePayload {
+  return {
+    jsonrpc: "2.0",
+    id: requestId,
+    result: {
+      status,
+    },
+  };
+}
+
+async function createMcpServerSession(
   config: ClientMcpServerConfig,
-  helpers: {
-    getAzureAuthorizationToken: (scope: string) => Promise<string>;
-  },
-  requestContext: McpRequestContext,
-): Promise<MCPServer> {
+): Promise<ThreadMcpServerSession<McpServerSessionRefreshState>> {
   if (config.transport === "stdio") {
     const env = buildStdioSpawnEnvironment(config.env);
     const command = resolveExecutableCommand(config.command, env);
-    return new MCPServerStdio({
+    const server = new MCPServerStdio({
       name: config.name,
       command,
       args: config.args,
       cwd: config.cwd,
       env,
     });
+    return {
+      server,
+      refreshBeforeUse: async (refreshState) => {
+        instrumentMcpServer(server, refreshState.logHandlers);
+      },
+    };
   }
 
+  const requestInit: RequestInit = {
+    headers: {},
+  };
+  const server = config.transport === "sse"
+    ? new MCPServerSSE({
+        name: config.name,
+        url: config.url,
+        clientSessionTimeoutSeconds: config.timeoutSeconds,
+        timeout: config.timeoutSeconds * 1000,
+        fetch: fetchWithMcpMetaNormalization,
+        requestInit,
+      })
+    : new MCPServerStreamableHttp({
+        name: config.name,
+        url: config.url,
+        clientSessionTimeoutSeconds: config.timeoutSeconds,
+        timeout: config.timeoutSeconds * 1000,
+        fetch: fetchWithMcpMetaNormalization,
+        requestInit,
+      });
+  return {
+    server,
+    refreshBeforeUse: async (refreshState) => {
+      instrumentMcpServer(server, refreshState.logHandlers);
+      const headers = await buildMcpHttpRuntimeHeaders(config, refreshState);
+      requestInit.headers = headers;
+    },
+  };
+}
+
+async function buildMcpHttpRuntimeHeaders(
+  config: ClientMcpHttpServerConfig,
+  refreshState: McpServerSessionRefreshState,
+): Promise<Record<string, string>> {
   const headers = buildMcpHttpRequestHeaders(config.headers);
-  const contextHeaders = buildMcpContextRequestHeaders(config, requestContext);
+  const contextHeaders = buildMcpContextRequestHeaders(config, refreshState.requestContext);
   for (const [key, value] of Object.entries(contextHeaders)) {
     headers[key] = value;
   }
   if (config.useAzureAuth) {
-    const token = await helpers.getAzureAuthorizationToken(config.azureAuthScope);
+    const token = await refreshState.getAzureAuthorizationToken(config.azureAuthScope);
     headers.Authorization = `Bearer ${token}`;
   }
 
-  if (config.transport === "sse") {
-    return new MCPServerSSE({
-      name: config.name,
-      url: config.url,
-      clientSessionTimeoutSeconds: config.timeoutSeconds,
-      timeout: config.timeoutSeconds * 1000,
-      fetch: fetchWithMcpMetaNormalization,
-      requestInit: {
-        headers,
-      },
-    });
-  }
-
-  return new MCPServerStreamableHttp({
-    name: config.name,
-    url: config.url,
-    clientSessionTimeoutSeconds: config.timeoutSeconds,
-    timeout: config.timeoutSeconds * 1000,
-    fetch: fetchWithMcpMetaNormalization,
-    requestInit: {
-      headers,
-    },
-  });
+  return headers;
 }
 
 async function fetchWithMcpMetaNormalization(
@@ -2467,13 +2580,32 @@ function stripNullFieldsRecursively(value: unknown): {
   return changed ? { value: normalizedObject, changed: true } : { value, changed: false };
 }
 
+type InstrumentMcpServerHandlers = {
+  nextSequence: () => number;
+  onRecord: (record: ThreadOperationLogRecord) => void;
+};
+
+type InstrumentedMcpServerState = {
+  handlers: InstrumentMcpServerHandlers;
+  resetListToolsCache: () => void;
+};
+
+const instrumentedMcpServerStateSymbol = Symbol("local-playground.instrumented-mcp-server-state");
+
 function instrumentMcpServer(
   server: MCPServer,
-  handlers: {
-    nextSequence: () => number;
-    onRecord: (record: ThreadOperationLogRecord) => void;
-  },
+  handlers: InstrumentMcpServerHandlers,
 ): MCPServer {
+  const instrumentedServer = server as MCPServer & {
+    [instrumentedMcpServerStateSymbol]?: InstrumentedMcpServerState;
+  };
+  const existingState = instrumentedServer[instrumentedMcpServerStateSymbol];
+  if (existingState) {
+    existingState.handlers = handlers;
+    existingState.resetListToolsCache();
+    return server;
+  }
+
   const originalListTools = server.listTools.bind(server);
   const originalCallTool = server.callTool.bind(server);
   const originalInvalidateToolsCache = server.invalidateToolsCache.bind(server);
@@ -2482,6 +2614,15 @@ function instrumentMcpServer(
   let pendingListToolsResult:
     | Promise<Awaited<ReturnType<typeof originalListTools>>>
     | null = null;
+  const state: InstrumentedMcpServerState = {
+    handlers,
+    resetListToolsCache: () => {
+      hasCachedListToolsResult = false;
+      cachedListToolsResult = null;
+      pendingListToolsResult = null;
+    },
+  };
+  instrumentedServer[instrumentedMcpServerStateSymbol] = state;
 
   server.listTools = async () => {
     if (hasCachedListToolsResult && cachedListToolsResult !== null) {
@@ -2491,7 +2632,7 @@ function instrumentMcpServer(
       return pendingListToolsResult;
     }
 
-    const sequence = handlers.nextSequence();
+    const sequence = state.handlers.nextSequence();
     const requestId = buildThreadOperationLogRequestId(server.name, sequence);
     const startedAt = new Date().toISOString();
     const requestPayload: JsonRpcRequestPayload = {
@@ -2512,7 +2653,7 @@ function instrumentMcpServer(
           },
         };
 
-        handlers.onRecord({
+        state.handlers.onRecord({
           id: requestId,
           sequence,
           operationType: "mcp",
@@ -2537,7 +2678,7 @@ function instrumentMcpServer(
           },
         };
 
-        handlers.onRecord({
+        state.handlers.onRecord({
           id: requestId,
           sequence,
           operationType: "mcp",
@@ -2561,14 +2702,12 @@ function instrumentMcpServer(
   };
 
   server.invalidateToolsCache = () => {
-    hasCachedListToolsResult = false;
-    cachedListToolsResult = null;
-    pendingListToolsResult = null;
+    state.resetListToolsCache();
     return originalInvalidateToolsCache();
   };
 
   server.callTool = async (toolName, args, meta) => {
-    const sequence = handlers.nextSequence();
+    const sequence = state.handlers.nextSequence();
     const requestId = buildThreadOperationLogRequestId(server.name, sequence);
     const startedAt = new Date().toISOString();
     const requestPayload: JsonRpcRequestPayload = {
@@ -2590,7 +2729,7 @@ function instrumentMcpServer(
         result: toSerializableValue(result),
       };
 
-      handlers.onRecord({
+      state.handlers.onRecord({
         id: requestId,
         sequence,
         operationType: "mcp",
@@ -2613,7 +2752,7 @@ function instrumentMcpServer(
         },
       };
 
-      handlers.onRecord({
+      state.handlers.onRecord({
         id: requestId,
         sequence,
         operationType: "mcp",
@@ -3117,14 +3256,6 @@ async function getAzureMcpAuthorizationToken(
       `Azure credential failed to acquire token for MCP Authorization header (scope: ${scope}). Run Azure Login and try again.`,
     );
   }
-}
-
-function buildHttpHeadersDedupeKey(headers: Record<string, string>): string {
-  return Object.entries(headers)
-    .map(([key, value]) => [key.toLowerCase(), value] as const)
-    .sort(([left], [right]) => left.localeCompare(right))
-    .map(([key, value]) => `${key}=${value}`)
-    .join("\u0000");
 }
 
 function describeMcpServer(config: ClientMcpServerConfig): string {
@@ -5300,7 +5431,12 @@ export const chatRouteTestUtils = {
   readMcpServers,
   buildMcpHttpRequestHeaders,
   buildMcpContextRequestHeaders,
+  buildMcpHttpRuntimeHeaders,
+  buildMcpServerSessionConfigKey,
+  buildMcpConnectSuccessResponse,
   isLocalPlaygroundMcpContextUrl,
+  buildChatExecutionSuccessLogContext,
+  createInitialChatMcpRuntimeMetrics,
   normalizeMcpMetaNulls,
   normalizeMcpInitializeNullOptionals,
   normalizeMcpListToolsNullOptionals,

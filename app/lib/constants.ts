@@ -171,6 +171,7 @@ export const MCP_AZURE_AUTH_SCOPE_MAX_LENGTH = 512;
 export const MCP_TIMEOUT_SECONDS_MIN = 1;
 export const MCP_TIMEOUT_SECONDS_MAX = 600;
 export const MCP_DEFAULT_TIMEOUT_SECONDS = 30;
+export const THREAD_MCP_SERVER_SESSION_IDLE_TTL_MS = 5 * 60_000;
 export const MCP_DEFAULT_AZURE_AUTH_SCOPE = AZURE_COGNITIVE_SERVICES_SCOPE;
 export const MCP_DEFAULT_HTTP_HEADERS: Record<string, string> = {
   "Content-Type": "application/json",

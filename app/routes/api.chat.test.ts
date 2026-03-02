@@ -30,6 +30,11 @@ const {
   readMcpServers,
   buildMcpHttpRequestHeaders,
   buildMcpContextRequestHeaders,
+  buildMcpHttpRuntimeHeaders,
+  buildMcpServerSessionConfigKey,
+  buildMcpConnectSuccessResponse,
+  buildChatExecutionSuccessLogContext,
+  createInitialChatMcpRuntimeMetrics,
   isLocalPlaygroundMcpContextUrl,
   normalizeMcpMetaNulls,
   normalizeMcpInitializeNullOptionals,
@@ -1226,6 +1231,179 @@ describe("buildMcpContextRequestHeaders", () => {
         },
       ),
     ).toEqual({});
+  });
+});
+
+describe("buildMcpHttpRuntimeHeaders", () => {
+  it("applies static headers, context headers, and refreshed Authorization", async () => {
+    const headers = await buildMcpHttpRuntimeHeaders(
+      {
+        name: "system",
+        transport: "streamable_http",
+        url: "/mcp/system",
+        headers: {
+          "X-Trace-Id": "trace-1",
+        },
+        useAzureAuth: true,
+        azureAuthScope: "https://scope/.default",
+        timeoutSeconds: 20,
+      },
+      {
+        requestContext: {
+          threadId: "thread-1",
+          turnId: "turn-2",
+          clientUserAgent: "Mozilla/5.0",
+          clientPlatform: "\"macOS\"",
+        },
+        getAzureAuthorizationToken: async () => "token-1",
+        logHandlers: {
+          nextSequence: () => 1,
+          onRecord: () => {},
+        },
+      },
+    );
+
+    expect(headers).toEqual({
+      "Content-Type": "application/json",
+      "X-Trace-Id": "trace-1",
+      [MCP_LOCAL_PLAYGROUND_THREAD_ID_HEADER]: "thread-1",
+      [MCP_LOCAL_PLAYGROUND_TURN_ID_HEADER]: "turn-2",
+      [MCP_LOCAL_PLAYGROUND_CLIENT_USER_AGENT_HEADER]: "Mozilla/5.0",
+      [MCP_LOCAL_PLAYGROUND_CLIENT_PLATFORM_HEADER]: "\"macOS\"",
+      Authorization: "Bearer token-1",
+    });
+  });
+});
+
+describe("buildMcpServerSessionConfigKey", () => {
+  it("builds stable keys for equivalent HTTP server configs", () => {
+    const first = buildMcpServerSessionConfigKey({
+      name: "A",
+      transport: "streamable_http",
+      url: "https://EXAMPLE.com/mcp",
+      headers: {
+        "X-Trace": "abc",
+      },
+      useAzureAuth: true,
+      azureAuthScope: "https://SCOPE/.default",
+      timeoutSeconds: 30,
+    });
+    const second = buildMcpServerSessionConfigKey({
+      name: "B",
+      transport: "streamable_http",
+      url: "https://example.com/mcp",
+      headers: {
+        "x-trace": "abc",
+      },
+      useAzureAuth: true,
+      azureAuthScope: "https://scope/.default",
+      timeoutSeconds: 30,
+    });
+
+    expect(first).toBe(second);
+  });
+
+  it("includes stdio command details in keys", () => {
+    const first = buildMcpServerSessionConfigKey({
+      name: "filesystem-a",
+      transport: "stdio",
+      command: "NPX",
+      args: ["-y", "@modelcontextprotocol/server-filesystem", "."],
+      cwd: "/tmp/project",
+      env: { A: "1" },
+    });
+    const second = buildMcpServerSessionConfigKey({
+      name: "filesystem-b",
+      transport: "stdio",
+      command: "npx",
+      args: ["-y", "@modelcontextprotocol/server-filesystem", "."],
+      cwd: "/tmp/project",
+      env: { A: "2" },
+    });
+
+    expect(first).not.toBe(second);
+  });
+});
+
+describe("buildMcpConnectSuccessResponse", () => {
+  it("supports connected and reused statuses", () => {
+    expect(buildMcpConnectSuccessResponse("req-1", "connected")).toEqual({
+      jsonrpc: "2.0",
+      id: "req-1",
+      result: {
+        status: "connected",
+      },
+    });
+    expect(buildMcpConnectSuccessResponse("req-2", "reused")).toEqual({
+      jsonrpc: "2.0",
+      id: "req-2",
+      result: {
+        status: "reused",
+      },
+    });
+  });
+});
+
+describe("chat execution success log context", () => {
+  it("adds MCP runtime metrics to success context", () => {
+    const options: Parameters<typeof buildChatExecutionSuccessLogContext>[0] = {
+      threadId: "thread-1",
+      turnId: "turn-1",
+      clientUserAgent: "local-playground-test",
+      clientPlatform: "darwin",
+      azureConfig: {
+        projectName: "project",
+        baseUrl: "https://example.openai.azure.com/openai/v1/",
+        apiVersion: "v1",
+        deploymentName: "gpt-5.2",
+      },
+      message: "hello",
+      history: [],
+      attachments: [],
+      threadEnvironment: {},
+      reasoningEffort: "none",
+      webSearchEnabled: false,
+      temperature: null,
+      agentInstruction: "",
+      mcpServers: [],
+      skills: [],
+      explicitSkillLocations: [],
+    };
+    const context = buildChatExecutionSuccessLogContext(
+      options,
+      {
+        message: "world",
+        threadEnvironment: {},
+        operationLogCount: 5,
+        mcpRuntimeMetrics: {
+          mcpConnectedCount: 1,
+          mcpReusedCount: 2,
+          mcpEphemeralConnectCount: 1,
+          mcpConnectDurationMs: 123,
+          mcpSetupDurationMs: 456,
+        },
+      },
+    );
+
+    expect(context).toMatchObject({
+      responseLength: 5,
+      operationLogCount: 5,
+      mcpConnectedCount: 1,
+      mcpReusedCount: 2,
+      mcpEphemeralConnectCount: 1,
+      mcpConnectDurationMs: 123,
+      mcpSetupDurationMs: 456,
+    });
+  });
+
+  it("initializes MCP runtime metrics with zeros", () => {
+    expect(createInitialChatMcpRuntimeMetrics()).toEqual({
+      mcpConnectedCount: 0,
+      mcpReusedCount: 0,
+      mcpEphemeralConnectCount: 0,
+      mcpConnectDurationMs: 0,
+      mcpSetupDurationMs: 0,
+    });
   });
 });
 
