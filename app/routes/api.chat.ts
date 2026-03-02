@@ -3040,7 +3040,7 @@ function buildMcpContextRequestHeaders(
   serverConfig: ClientMcpServerConfig,
   requestContext: McpRequestContext,
 ): Record<string, string> {
-  if (serverConfig.transport === "stdio" || !isLocalPlaygroundMcpSystemUrl(serverConfig.url)) {
+  if (serverConfig.transport === "stdio" || !isLocalPlaygroundMcpContextUrl(serverConfig.url)) {
     return {};
   }
 
@@ -3060,7 +3060,7 @@ function buildMcpContextRequestHeaders(
   return contextHeaders;
 }
 
-function isLocalPlaygroundMcpSystemUrl(rawUrl: string): boolean {
+function isLocalPlaygroundMcpContextUrl(rawUrl: string): boolean {
   const trimmedUrl = rawUrl.trim();
   if (!trimmedUrl) {
     return false;
@@ -3075,7 +3075,10 @@ function isLocalPlaygroundMcpSystemUrl(rawUrl: string): boolean {
     }
 
     const normalizedRelativePath = parsedRelativeUrl.pathname.replace(/\/+$/, "");
-    return normalizedRelativePath === "/mcp/system";
+    return (
+      normalizedRelativePath === "/mcp/system" ||
+      normalizedRelativePath === "/mcp/cmd"
+    );
   }
 
   let parsedUrl: URL;
@@ -3086,7 +3089,10 @@ function isLocalPlaygroundMcpSystemUrl(rawUrl: string): boolean {
   }
 
   const normalizedPathname = parsedUrl.pathname.replace(/\/+$/, "");
-  if (normalizedPathname !== "/mcp/system") {
+  if (
+    normalizedPathname !== "/mcp/system" &&
+    normalizedPathname !== "/mcp/cmd"
+  ) {
     return false;
   }
 
@@ -5294,7 +5300,7 @@ export const chatRouteTestUtils = {
   readMcpServers,
   buildMcpHttpRequestHeaders,
   buildMcpContextRequestHeaders,
-  isLocalPlaygroundMcpSystemUrl,
+  isLocalPlaygroundMcpContextUrl,
   normalizeMcpMetaNulls,
   normalizeMcpInitializeNullOptionals,
   normalizeMcpListToolsNullOptionals,

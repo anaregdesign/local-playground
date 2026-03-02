@@ -30,7 +30,7 @@ const {
   readMcpServers,
   buildMcpHttpRequestHeaders,
   buildMcpContextRequestHeaders,
-  isLocalPlaygroundMcpSystemUrl,
+  isLocalPlaygroundMcpContextUrl,
   normalizeMcpMetaNulls,
   normalizeMcpInitializeNullOptionals,
   normalizeMcpListToolsNullOptionals,
@@ -1158,7 +1158,35 @@ describe("buildMcpContextRequestHeaders", () => {
     });
   });
 
-  it("skips context headers for non-system endpoints", () => {
+  it("adds thread context headers for relative /mcp/cmd endpoints", () => {
+    expect(
+      buildMcpContextRequestHeaders(
+        {
+          name: "cmd",
+          transport: "streamable_http",
+          url: "/mcp/cmd",
+          headers: {},
+          useAzureAuth: false,
+          azureAuthScope: MCP_DEFAULT_AZURE_AUTH_SCOPE,
+          timeoutSeconds: 10,
+        },
+        {
+          threadId: "thread-1",
+          turnId: "turn-2",
+          clientUserAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+          clientPlatform: "\"Windows\"",
+        },
+      ),
+    ).toEqual({
+      [MCP_LOCAL_PLAYGROUND_THREAD_ID_HEADER]: "thread-1",
+      [MCP_LOCAL_PLAYGROUND_TURN_ID_HEADER]: "turn-2",
+      [MCP_LOCAL_PLAYGROUND_CLIENT_USER_AGENT_HEADER]:
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+      [MCP_LOCAL_PLAYGROUND_CLIENT_PLATFORM_HEADER]: "\"Windows\"",
+    });
+  });
+
+  it("skips context headers for non-context endpoints", () => {
     expect(
       buildMcpContextRequestHeaders(
         {
@@ -1201,17 +1229,20 @@ describe("buildMcpContextRequestHeaders", () => {
   });
 });
 
-describe("isLocalPlaygroundMcpSystemUrl", () => {
-  it("accepts localhost /mcp/system endpoints", () => {
-    expect(isLocalPlaygroundMcpSystemUrl("/mcp/system")).toBe(true);
-    expect(isLocalPlaygroundMcpSystemUrl("/mcp/system/")).toBe(true);
-    expect(isLocalPlaygroundMcpSystemUrl("http://localhost:3000/mcp/system")).toBe(true);
-    expect(isLocalPlaygroundMcpSystemUrl("http://127.0.0.1:3000/mcp/system/")).toBe(true);
-    expect(isLocalPlaygroundMcpSystemUrl("http://0.0.0.0:3000/mcp/system")).toBe(true);
+describe("isLocalPlaygroundMcpContextUrl", () => {
+  it("accepts localhost /mcp/system and /mcp/cmd endpoints", () => {
+    expect(isLocalPlaygroundMcpContextUrl("/mcp/system")).toBe(true);
+    expect(isLocalPlaygroundMcpContextUrl("/mcp/system/")).toBe(true);
+    expect(isLocalPlaygroundMcpContextUrl("http://localhost:3000/mcp/system")).toBe(true);
+    expect(isLocalPlaygroundMcpContextUrl("http://127.0.0.1:3000/mcp/system/")).toBe(true);
+    expect(isLocalPlaygroundMcpContextUrl("http://0.0.0.0:3000/mcp/system")).toBe(true);
+    expect(isLocalPlaygroundMcpContextUrl("/mcp/cmd")).toBe(true);
+    expect(isLocalPlaygroundMcpContextUrl("http://localhost:3000/mcp/cmd")).toBe(true);
   });
 
-  it("rejects non-local or non-system endpoints", () => {
-    expect(isLocalPlaygroundMcpSystemUrl("https://example.com/mcp/system")).toBe(false);
-    expect(isLocalPlaygroundMcpSystemUrl("http://localhost:3000/mcp/debug")).toBe(false);
+  it("rejects non-local or non-context endpoints", () => {
+    expect(isLocalPlaygroundMcpContextUrl("https://example.com/mcp/system")).toBe(false);
+    expect(isLocalPlaygroundMcpContextUrl("https://example.com/mcp/cmd")).toBe(false);
+    expect(isLocalPlaygroundMcpContextUrl("http://localhost:3000/mcp/debug")).toBe(false);
   });
 });
