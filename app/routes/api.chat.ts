@@ -71,6 +71,8 @@ import {
   MCP_AZURE_AUTH_SCOPE_MAX_LENGTH,
   MCP_DEFAULT_AZURE_AUTH_SCOPE,
   MCP_DEFAULT_HTTP_HEADERS,
+  MCP_LOCAL_PLAYGROUND_CLIENT_PLATFORM_HEADER,
+  MCP_LOCAL_PLAYGROUND_CLIENT_USER_AGENT_HEADER,
   MCP_LOCAL_PLAYGROUND_THREAD_ID_HEADER,
   MCP_LOCAL_PLAYGROUND_TURN_ID_HEADER,
   MCP_DEFAULT_TIMEOUT_SECONDS,
@@ -158,6 +160,8 @@ type UpstreamErrorPayload = {
 type ChatExecutionOptions = {
   threadId: string | null;
   turnId: string | null;
+  clientUserAgent: string | null;
+  clientPlatform: string | null;
   message: string;
   attachments: ClientAttachment[];
   history: ClientMessage[];
@@ -174,6 +178,8 @@ type ChatExecutionOptions = {
 type McpRequestContext = {
   threadId: string | null;
   turnId: string | null;
+  clientUserAgent: string | null;
+  clientPlatform: string | null;
 };
 type ChatExecutionResult = {
   message: string;
@@ -501,6 +507,8 @@ export async function action({ request }: Route.ActionArgs) {
   const executionOptions: ChatExecutionOptions = {
     threadId,
     turnId,
+    clientUserAgent: readOptionalRequestHeaderValue(request, "user-agent"),
+    clientPlatform: readOptionalRequestHeaderValue(request, "sec-ch-ua-platform"),
     message,
     attachments: attachmentsResult.value,
     history,
@@ -594,6 +602,8 @@ async function executeChat(
   const mcpRequestContext: McpRequestContext = {
     threadId: options.threadId,
     turnId: options.turnId,
+    clientUserAgent: options.clientUserAgent,
+    clientPlatform: options.clientPlatform,
   };
 
   const emitProgress = (event: ChatProgressEvent) => {
@@ -1019,6 +1029,16 @@ function wantsEventStream(request: Request): boolean {
     typeof acceptHeader === "string" &&
     acceptHeader.toLowerCase().includes("text/event-stream")
   );
+}
+
+function readOptionalRequestHeaderValue(request: Request, headerName: string): string | null {
+  const rawValue = request.headers.get(headerName);
+  if (typeof rawValue !== "string") {
+    return null;
+  }
+
+  const normalized = rawValue.trim();
+  return normalized.length > 0 ? normalized : null;
 }
 
 function buildChatExecutionLogContext(options: ChatExecutionOptions): Record<string, unknown> {
@@ -3030,6 +3050,12 @@ function buildMcpContextRequestHeaders(
   }
   if (requestContext.turnId) {
     contextHeaders[MCP_LOCAL_PLAYGROUND_TURN_ID_HEADER] = requestContext.turnId;
+  }
+  if (requestContext.clientUserAgent) {
+    contextHeaders[MCP_LOCAL_PLAYGROUND_CLIENT_USER_AGENT_HEADER] = requestContext.clientUserAgent;
+  }
+  if (requestContext.clientPlatform) {
+    contextHeaders[MCP_LOCAL_PLAYGROUND_CLIENT_PLATFORM_HEADER] = requestContext.clientPlatform;
   }
   return contextHeaders;
 }

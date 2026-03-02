@@ -11,6 +11,8 @@ import {
   CHAT_MAX_SKILL_OPERATION_CALLS_PER_SERVER_METHOD,
   CHAT_MAX_SKILL_RUN_SCRIPT_CALLS_PER_SERVER_METHOD,
   MCP_DEFAULT_AZURE_AUTH_SCOPE,
+  MCP_LOCAL_PLAYGROUND_CLIENT_PLATFORM_HEADER,
+  MCP_LOCAL_PLAYGROUND_CLIENT_USER_AGENT_HEADER,
   MCP_LOCAL_PLAYGROUND_THREAD_ID_HEADER,
   MCP_LOCAL_PLAYGROUND_TURN_ID_HEADER,
   THREAD_ENVIRONMENT_VARIABLES_MAX,
@@ -1115,11 +1117,16 @@ describe("buildMcpContextRequestHeaders", () => {
         {
           threadId: "thread-1",
           turnId: "turn-2",
+          clientUserAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_5_0)",
+          clientPlatform: "\"macOS\"",
         },
       ),
     ).toEqual({
       [MCP_LOCAL_PLAYGROUND_THREAD_ID_HEADER]: "thread-1",
       [MCP_LOCAL_PLAYGROUND_TURN_ID_HEADER]: "turn-2",
+      [MCP_LOCAL_PLAYGROUND_CLIENT_USER_AGENT_HEADER]:
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_5_0)",
+      [MCP_LOCAL_PLAYGROUND_CLIENT_PLATFORM_HEADER]: "\"macOS\"",
     });
   });
 
@@ -1138,11 +1145,16 @@ describe("buildMcpContextRequestHeaders", () => {
         {
           threadId: "thread-1",
           turnId: "turn-2",
+          clientUserAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+          clientPlatform: "\"Windows\"",
         },
       ),
     ).toEqual({
       [MCP_LOCAL_PLAYGROUND_THREAD_ID_HEADER]: "thread-1",
       [MCP_LOCAL_PLAYGROUND_TURN_ID_HEADER]: "turn-2",
+      [MCP_LOCAL_PLAYGROUND_CLIENT_USER_AGENT_HEADER]:
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+      [MCP_LOCAL_PLAYGROUND_CLIENT_PLATFORM_HEADER]: "\"Windows\"",
     });
   });
 
@@ -1161,6 +1173,8 @@ describe("buildMcpContextRequestHeaders", () => {
         {
           threadId: "thread-1",
           turnId: "turn-2",
+          clientUserAgent: "Mozilla/5.0",
+          clientPlatform: "\"macOS\"",
         },
       ),
     ).toEqual({});
@@ -1179,6 +1193,8 @@ describe("buildMcpContextRequestHeaders", () => {
         {
           threadId: "thread-1",
           turnId: "turn-2",
+          clientUserAgent: "Mozilla/5.0",
+          clientPlatform: "\"macOS\"",
         },
       ),
     ).toEqual({});
