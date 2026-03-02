@@ -29,6 +29,7 @@ type HomeDefaultWorkspaceMcpServerProfileHttpRow = Extract<
 const defaultOpenaiDocsMcpServerProfile = readDefaultHttpMcpServerProfile("openai-docs");
 const defaultMicrosoftLearnMcpServerProfile = readDefaultHttpMcpServerProfile("microsoft-learn");
 const defaultSystemMcpServerProfile = readDefaultHttpMcpServerProfile("system");
+const defaultCmdMcpServerProfile = readDefaultHttpMcpServerProfile("cmd");
 const defaultFilesystemMcpServerProfile = readDefaultStdioMcpServerProfile("filesystem");
 const defaultWorkiqMcpServerProfile = readDefaultStdioMcpServerProfile("workiq");
 const defaultMemoryMcpServerProfile = readDefaultStdioMcpServerProfile("server-memory");
@@ -375,7 +376,7 @@ describe("mergeDefaultWorkspaceMcpServerProfiles", () => {
     const expectedFilesystemWorkingDirectory = resolveDefaultFilesystemWorkingDirectory();
     const result = mergeDefaultWorkspaceMcpServerProfiles([]);
 
-    expect(result).toHaveLength(10);
+    expect(result).toHaveLength(11);
     expect(result).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -406,6 +407,16 @@ describe("mergeDefaultWorkspaceMcpServerProfiles", () => {
           azureAuthScope: MCP_DEFAULT_AZURE_AUTH_SCOPE,
           timeoutSeconds: MCP_DEFAULT_TIMEOUT_SECONDS,
           connectOnThreadCreate: true,
+        }),
+        expect.objectContaining({
+          name: defaultCmdMcpServerProfile.name,
+          transport: "streamable_http",
+          url: defaultCmdMcpServerProfile.url,
+          headers: {},
+          useAzureAuth: false,
+          azureAuthScope: MCP_DEFAULT_AZURE_AUTH_SCOPE,
+          timeoutSeconds: MCP_DEFAULT_TIMEOUT_SECONDS,
+          connectOnThreadCreate: defaultCmdMcpServerProfile.connectOnThreadCreate,
         }),
         expect.objectContaining({
           name: defaultFilesystemMcpServerProfile.name,
@@ -528,6 +539,17 @@ describe("mergeDefaultWorkspaceMcpServerProfiles", () => {
         timeoutSeconds: MCP_DEFAULT_TIMEOUT_SECONDS,
       },
       {
+        id: "profile-cmd",
+        name: "Cmd (Custom Name)",
+        connectOnThreadCreate: defaultCmdMcpServerProfile.connectOnThreadCreate,
+        transport: "streamable_http" as const,
+        url: defaultCmdMcpServerProfile.url,
+        headers: {},
+        useAzureAuth: false,
+        azureAuthScope: MCP_DEFAULT_AZURE_AUTH_SCOPE,
+        timeoutSeconds: MCP_DEFAULT_TIMEOUT_SECONDS,
+      },
+      {
         id: "profile-filesystem",
         name: "Filesystem (Custom Name)",
         connectOnThreadCreate: true,
@@ -588,7 +610,7 @@ describe("mergeDefaultWorkspaceMcpServerProfiles", () => {
 
     const result = mergeDefaultWorkspaceMcpServerProfiles(existing);
 
-    expect(result).toHaveLength(10);
+    expect(result).toHaveLength(11);
     expect(result).toEqual(
       expect.arrayContaining([
         existing[0],
@@ -604,6 +626,11 @@ describe("mergeDefaultWorkspaceMcpServerProfiles", () => {
           transport: "streamable_http",
           url: defaultSystemMcpServerProfile.url,
           connectOnThreadCreate: true,
+        }),
+        expect.objectContaining({
+          transport: "streamable_http",
+          url: defaultCmdMcpServerProfile.url,
+          connectOnThreadCreate: defaultCmdMcpServerProfile.connectOnThreadCreate,
         }),
         expect.objectContaining({
           transport: "stdio",
