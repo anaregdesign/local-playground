@@ -30,6 +30,7 @@ export function ThreadsTab(props: ThreadsTabProps) {
     onActiveThreadChange,
     onCreateThread,
     onThreadRename,
+    onThreadCancel,
     onThreadDelete,
     onThreadClear,
     onThreadRestore,
@@ -61,6 +62,7 @@ export function ThreadsTab(props: ThreadsTabProps) {
           onActiveThreadChange={onActiveThreadChange}
           onCreateThread={onCreateThread}
           onThreadRename={onThreadRename}
+          onThreadCancel={onThreadCancel}
           onThreadDelete={onThreadDelete}
           onThreadClear={onThreadClear}
           onThreadRestore={onThreadRestore}

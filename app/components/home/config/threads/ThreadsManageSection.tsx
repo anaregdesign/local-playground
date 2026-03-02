@@ -38,6 +38,7 @@ export type ThreadsManageSectionProps = {
   onActiveThreadChange: (threadId: string) => void;
   onCreateThread: () => void;
   onThreadRename: (threadId: string, nextName: string) => void;
+  onThreadCancel: (threadId: string) => void;
   onThreadDelete: (threadId: string) => void;
   onThreadClear: (threadId: string) => void;
   onThreadRestore: (threadId: string) => void;
@@ -58,6 +59,7 @@ export function ThreadsManageSection(props: ThreadsManageSectionProps) {
     onActiveThreadChange,
     onCreateThread,
     onThreadRename,
+    onThreadCancel,
     onThreadDelete,
     onThreadClear,
     onThreadRestore,
@@ -176,6 +178,7 @@ export function ThreadsManageSection(props: ThreadsManageSectionProps) {
               isThreadOperationBusy || thread.isAwaitingResponse || thread.messageCount === 0;
             const isClearDisabled =
               isThreadOperationBusy || thread.isAwaitingResponse || thread.messageCount === 0;
+            const isCancelDisabled = isThreadOperationBusy || !thread.isAwaitingResponse;
             const deleteButtonTitle =
               thread.messageCount === 0
                 ? `Cannot delete thread ${thread.name} because it has no messages`
@@ -184,6 +187,9 @@ export function ThreadsManageSection(props: ThreadsManageSectionProps) {
               thread.messageCount === 0
                 ? `Cannot clear thread ${thread.name} because it has no messages`
                 : `Clear messages and MCP logs in thread ${thread.name} while keeping instruction, Skills, and MCP Servers`;
+            const cancelButtonTitle = thread.isAwaitingResponse
+              ? `Cancel all in-progress processing in thread ${thread.name}`
+              : `No in-progress processing to cancel in thread ${thread.name}`;
             const isRenameDisabled = isThreadOperationBusy || thread.isAwaitingResponse;
             const activeThreadContextMenuItems: ContextActionMenuItem[] = [
               {
@@ -196,8 +202,17 @@ export function ThreadsManageSection(props: ThreadsManageSectionProps) {
                 },
               },
               {
+                id: "cancel",
+                label: "Cancel",
+                disabled: isCancelDisabled,
+                title: cancelButtonTitle,
+                onSelect: () => {
+                  onThreadCancel(thread.id);
+                },
+              },
+              {
                 id: "clear",
-                label: "Clear Thread",
+                label: "Clear",
                 disabled: isClearDisabled,
                 title: clearButtonTitle,
                 onSelect: () => {

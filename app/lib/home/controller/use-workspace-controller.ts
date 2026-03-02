@@ -341,6 +341,7 @@ export function useWorkspaceController() {
   const threadSaveRequestSeqRef = useRef(0);
   const threadSaveSignatureByIdRef = useRef(new Map<string, string>());
   const threadRequestStateByIdRef = useRef<Record<string, ThreadRequestState>>({});
+  const threadSendAbortControllerByIdRef = useRef(new Map<string, AbortController>());
   const workspaceMcpServerProfilesRef = useRef<McpServerConfig[]>([]);
   const threadsRef = useRef<ThreadSnapshot[]>([]);
 
@@ -1647,6 +1648,10 @@ export function useWorkspaceController() {
     clearThreadTitleRefreshTimeout();
     clearThreadNameSaveTimeout();
     clearThreadSaveTimeout();
+    for (const abortController of threadSendAbortControllerByIdRef.current.values()) {
+      abortController.abort();
+    }
+    threadSendAbortControllerByIdRef.current.clear();
     isThreadsReadyRef.current = false;
     activeThreadIdRef.current = "";
     isApplyingThreadStateRef.current = false;
@@ -1712,6 +1717,62 @@ export function useWorkspaceController() {
         [threadId]: next,
       };
     });
+  }
+
+  function assignThreadSendAbortController(threadId: string, abortController: AbortController): void {
+    const normalizedThreadId = threadId.trim();
+    if (!normalizedThreadId) {
+      return;
+    }
+
+    threadSendAbortControllerByIdRef.current.set(normalizedThreadId, abortController);
+  }
+
+  function clearThreadSendAbortController(
+    threadId: string,
+    abortController?: AbortController,
+  ): void {
+    const normalizedThreadId = threadId.trim();
+    if (!normalizedThreadId) {
+      return;
+    }
+
+    if (abortController) {
+      const current = threadSendAbortControllerByIdRef.current.get(normalizedThreadId);
+      if (current !== abortController) {
+        return;
+      }
+    }
+
+    threadSendAbortControllerByIdRef.current.delete(normalizedThreadId);
+  }
+
+  function cancelThreadInProgressProcessing(threadIdRaw: string): boolean {
+    const threadId = threadIdRaw.trim();
+    if (!threadId) {
+      return false;
+    }
+
+    const currentState = readThreadRequestState(threadId);
+    if (!currentState.isSending) {
+      return false;
+    }
+
+    const abortController = threadSendAbortControllerByIdRef.current.get(threadId);
+    if (abortController) {
+      abortController.abort();
+      threadSendAbortControllerByIdRef.current.delete(threadId);
+    }
+
+    updateThreadRequestState(threadId, (current) => ({
+      ...current,
+      isSending: false,
+      sendProgressMessages: [],
+      activeTurnId: null,
+      lastErrorTurnId: null,
+      error: null,
+    }));
+    return true;
   }
 
   function appendThreadProgressMessage(threadId: string, message: string): void {
@@ -2464,6 +2525,33 @@ export function useWorkspaceController() {
 
     const signature = buildThreadSaveSignature(renamedThread);
     await saveThreadSnapshotToDatabase(renamedThread, signature);
+  }
+
+  function handleThreadCancel(threadIdRaw: string): void {
+    const threadId = threadIdRaw.trim();
+    if (!threadId) {
+      return;
+    }
+
+    const targetThread = threadsRef.current.find((thread) => thread.id === threadId);
+    if (!targetThread || targetThread.deletedAt !== null) {
+      setThreadError("Selected thread is not available.");
+      return;
+    }
+
+    const canceled = cancelThreadInProgressProcessing(threadId);
+    if (!canceled) {
+      return;
+    }
+
+    setThreadError(null);
+    setSystemNotice(`Canceled in-progress processing for thread ${targetThread.name}.`);
+    logHomeInfo("cancel_thread_processing_succeeded", "Thread processing canceled.", {
+      action: "cancel_thread_processing",
+      context: {
+        threadId,
+      },
+    });
   }
 
   async function handleThreadClear(threadIdRaw: string): Promise<void> {
@@ -3590,6 +3678,9 @@ export function useWorkspaceController() {
       });
     }
 
+    const sendAbortController = new AbortController();
+    assignThreadSendAbortController(threadId, sendAbortController);
+
     let receivedOperationLogCount = 0;
     try {
       const response = await fetch("/api/chat", {
@@ -3598,6 +3689,7 @@ export function useWorkspaceController() {
           "Content-Type": "application/json",
           Accept: "text/event-stream, application/json",
         },
+        signal: sendAbortController.signal,
         body: JSON.stringify({
           threadId,
           turnId,
@@ -3696,6 +3788,27 @@ export function useWorkspaceController() {
         },
       });
     } catch (sendError) {
+      const wasCanceled = sendAbortController.signal.aborted;
+      if (wasCanceled) {
+        logHomeInfo("send_message_canceled", "Thread message request canceled.", {
+          action: "send_message_cancel",
+          context: {
+            threadId,
+            turnId,
+            operationLogCount: receivedOperationLogCount,
+          },
+        });
+        updateThreadRequestState(threadId, (current) => ({
+          ...current,
+          isSending: false,
+          sendProgressMessages: [],
+          activeTurnId: null,
+          lastErrorTurnId: null,
+          error: null,
+        }));
+        return;
+      }
+
       logHomeError("send_message_failed", sendError, {
         action: "send_message",
         context: {
@@ -3715,6 +3828,7 @@ export function useWorkspaceController() {
         error: sendError instanceof Error ? sendError.message : "Could not reach the server.",
       }));
     } finally {
+      clearThreadSendAbortController(threadId, sendAbortController);
       window.setTimeout(() => {
         void saveThreadSnapshotSilentlyIfNeeded(threadId);
       }, 0);
@@ -5265,6 +5379,9 @@ export function useWorkspaceController() {
     onThreadRename: (threadId: string, nextName: string) => {
       void handleThreadRename(threadId, nextName);
     },
+    onThreadCancel: (threadId: string) => {
+      handleThreadCancel(threadId);
+    },
     onThreadDelete: (threadId: string) => {
       void handleThreadLogicalDelete(threadId);
     },
@@ -5326,6 +5443,9 @@ export function useWorkspaceController() {
     isCreatingThread,
     onCreateThread: () => {
       void handleCreateThread();
+    },
+    onCancelThreadProcessing: () => {
+      handleThreadCancel(activeThreadIdRef.current);
     },
     onCopyMessage: handleCopyMessage,
     onCopyOperationLog: handleCopyMcpLog,

@@ -129,6 +129,7 @@ type PlaygroundPanelProps<
     onCopy: (text: string) => void,
   ) => ReactNode;
   onCreateThread: () => void;
+  onCancelThreadProcessing: () => void;
   onCopyMessage: (content: string) => void;
   onCopyOperationLog: (content: string) => void;
   sendProgressMessages: string[];
@@ -206,6 +207,7 @@ export function PlaygroundPanel<
     renderMessageContent,
     renderTurnOperationLog,
     onCreateThread,
+    onCancelThreadProcessing,
     onCopyMessage,
     onCopyOperationLog,
     sendProgressMessages,
@@ -921,20 +923,35 @@ export function PlaygroundPanel<
                 )}
               </div>
               {renderLabeledTooltip(
-                "Send",
-                isThreadReadOnly
-                  ? ["Archived thread is read-only. Restore it from Archives to send messages."]
-                  : ["Send current message."],
-                <Button
-                  type="submit"
-                  appearance="subtle"
-                  className="chat-send-btn"
-                  aria-label="Send message"
-                  title="Send current message."
-                  disabled={!canSendMessage}
-                >
-                  ↑
-                </Button>,
+                isSending ? "Cancel" : "Send",
+                isSending
+                  ? ["Cancel all in-progress processing for this thread."]
+                  : isThreadReadOnly
+                    ? ["Archived thread is read-only. Restore it from Archives to send messages."]
+                    : ["Send current message."],
+                isSending ? (
+                  <Button
+                    type="button"
+                    appearance="subtle"
+                    className="chat-send-btn"
+                    aria-label="Cancel in-progress processing"
+                    title="Cancel in-progress processing."
+                    onClick={onCancelThreadProcessing}
+                  >
+                    ■
+                  </Button>
+                ) : (
+                  <Button
+                    type="submit"
+                    appearance="subtle"
+                    className="chat-send-btn"
+                    aria-label="Send message"
+                    title="Send current message."
+                    disabled={!canSendMessage}
+                  >
+                    ↑
+                  </Button>
+                ),
                 "chat-tooltip-target chat-send-tooltip-target",
               )}
             </div>
