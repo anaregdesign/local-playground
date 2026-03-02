@@ -187,7 +187,7 @@ describe("mcp cmd route", () => {
     expect(body.result?.content).toEqual([
       {
         type: "text",
-        text: buildExpectedApprovalPromptMarkdown("echo local-playground-cmd-output"),
+        text: buildExpectedApprovalPromptMarkdown(),
       },
     ]);
     expect(body.result?.structuredContent).toEqual({
@@ -196,9 +196,7 @@ describe("mcp cmd route", () => {
       requiresUserConfirmation: true,
       reason:
         "First command execution in this thread requires explicit user confirmation before running terminal commands.",
-      confirmationPromptMarkdown: buildExpectedApprovalPromptMarkdown(
-        "echo local-playground-cmd-output",
-      ),
+      confirmationPromptMarkdown: buildExpectedApprovalPromptMarkdown(),
       confirmationChoices: ["yes", "no"],
       consentScope: "thread",
       threadContext: {
@@ -269,24 +267,6 @@ describe("mcp cmd route", () => {
     });
   });
 
-  it("renders confirmation prompt with safe markdown fence when command contains triple backticks", async () => {
-    const command = "printf '```'";
-    const response = await callShellExecuteTool({
-      threadId: "thread-fence",
-      argumentsValue: {
-        command,
-      },
-    });
-
-    expect(response.status).toBe(200);
-    const body = await response.json();
-    const prompt = body.result?.structuredContent?.confirmationPromptMarkdown;
-    expect(body.result?.isError).toBe(true);
-    expect(prompt).toBe(buildExpectedApprovalPromptMarkdown(command));
-    expect(prompt).toContain("````sh");
-    expect(prompt).toContain("\n````\n");
-  });
-
   it("skips reconfirmation after thread consent was already granted", async () => {
     const firstResponse = await callShellExecuteTool({
       threadId: "thread-3",
@@ -333,7 +313,7 @@ describe("mcp cmd route", () => {
       requiresUserConfirmation: true,
       reason:
         "threadContext.threadId is missing. Explicit user confirmation is required for this command execution.",
-      confirmationPromptMarkdown: buildExpectedApprovalPromptMarkdown("echo no-thread"),
+      confirmationPromptMarkdown: buildExpectedApprovalPromptMarkdown(),
       confirmationChoices: ["yes", "no"],
       consentScope: "request",
       threadContext: {
@@ -417,7 +397,7 @@ describe("mcp cmd route", () => {
       requiresUserConfirmation: true,
       reason:
         "First command execution in this thread requires explicit user confirmation before running terminal commands.",
-      confirmationPromptMarkdown: buildExpectedApprovalPromptMarkdown("echo from-client-thread"),
+      confirmationPromptMarkdown: buildExpectedApprovalPromptMarkdown(),
       confirmationChoices: ["yes", "no"],
       consentScope: "thread",
       threadContext: {
@@ -495,33 +475,12 @@ async function callShellExecuteTool(options: {
   });
 }
 
-function buildExpectedApprovalPromptMarkdown(command: string): string {
-  const codeFence = buildExpectedMarkdownCodeFence(command);
+function buildExpectedApprovalPromptMarkdown(): string {
   return [
-    "Terminal command execution requires your approval.",
+    "このスレッド内でのコマンド実行を許可しますか？",
     "",
-    `${codeFence}sh`,
-    command,
-    codeFence,
-    "",
-    "Approve this command?",
+    "以下から選択してください。",
     "- yes",
     "- no",
   ].join("\n");
-}
-
-function buildExpectedMarkdownCodeFence(content: string): string {
-  const backtickRuns = content.match(/`+/g);
-  if (!backtickRuns || backtickRuns.length === 0) {
-    return "```";
-  }
-
-  let maxBacktickRunLength = 0;
-  for (const run of backtickRuns) {
-    if (run.length > maxBacktickRunLength) {
-      maxBacktickRunLength = run.length;
-    }
-  }
-
-  return "`".repeat(Math.max(3, maxBacktickRunLength + 1));
 }

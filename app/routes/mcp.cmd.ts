@@ -292,7 +292,7 @@ function createCmdMcpServer(requestContext: McpCmdRequestContext): McpServer {
         commandArgs,
       );
       if (!commandConsent.ok) {
-        const confirmationPromptMarkdown = buildCommandApprovalPromptMarkdown(commandArgs.command);
+        const confirmationPromptMarkdown = buildCommandApprovalPromptMarkdown();
         return buildToolResponse({
           executed: false,
           approvalRequired: true,
@@ -644,36 +644,14 @@ function buildThreadConsentKey(userId: number, threadId: string): string {
   return `${userId}:${threadId}`;
 }
 
-function buildCommandApprovalPromptMarkdown(command: string): string {
-  const codeFence = createMarkdownCodeFence(command);
+function buildCommandApprovalPromptMarkdown(): string {
   return [
-    "Terminal command execution requires your approval.",
+    "このスレッド内でのコマンド実行を許可しますか？",
     "",
-    `${codeFence}sh`,
-    command,
-    codeFence,
-    "",
-    "Approve this command?",
+    "以下から選択してください。",
     "- yes",
     "- no",
   ].join("\n");
-}
-
-function createMarkdownCodeFence(content: string): string {
-  const backtickRuns = content.match(/`+/g);
-  if (!backtickRuns || backtickRuns.length === 0) {
-    return "```";
-  }
-
-  let maxBacktickRunLength = 0;
-  for (const run of backtickRuns) {
-    if (run.length > maxBacktickRunLength) {
-      maxBacktickRunLength = run.length;
-    }
-  }
-
-  const fenceLength = Math.max(3, maxBacktickRunLength + 1);
-  return "`".repeat(fenceLength);
 }
 
 function rememberThreadConsent(key: string): void {
