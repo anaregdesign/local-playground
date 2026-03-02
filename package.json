@@ -59,7 +59,6 @@
   },
   "devDependencies": {
     "@react-router/dev": "7.13.1",
-    "@tailwindcss/vite": "^4.2.1",
     "@types/node": "^25",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
@@ -69,7 +68,6 @@
     "electron-builder": "^26.8.1",
     "prisma": "^6.19.2",
     "react-native": "^0.84.0",
-    "tailwindcss": "^4.2.1",
     "typescript": "^5.9.3",
     "vite": "^7.3.1",
     "vite-tsconfig-paths": "^6.1.1",
