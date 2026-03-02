@@ -16,7 +16,7 @@ const {
 } = vi.hoisted(() => ({
   readAuthenticatedUser: vi.fn(async () => ({ id: 1 })),
   readJsonPayload: vi.fn(async () => ({ ok: true as const, value: {} })),
-  updateThreadSnapshot: vi.fn<any>(async () => null),
+  updateThreadSnapshot: vi.fn<any>(async () => ({ status: "not_found" })),
   logicalDeleteThread: vi.fn<any>(async () => ({ status: "not_found" as const })),
   logicalRestoreThread: vi.fn(async () => ({ status: "not_found" as const })),
   isThreadRestorePayload: vi.fn(() => false),
@@ -53,7 +53,7 @@ describe("/api/threads/:threadId", () => {
     readJsonPayload.mockReset();
     readJsonPayload.mockResolvedValue({ ok: true, value: {} });
     updateThreadSnapshot.mockReset();
-    updateThreadSnapshot.mockResolvedValue(null);
+    updateThreadSnapshot.mockResolvedValue({ status: "not_found" });
     logicalDeleteThread.mockReset();
     logicalDeleteThread.mockResolvedValue({ status: "not_found" });
     logicalRestoreThread.mockReset();
@@ -111,7 +111,7 @@ describe("/api/threads/:threadId", () => {
       mcpRpcLogs: [],
       skillSelections: [],
     });
-    updateThreadSnapshot.mockResolvedValueOnce(null);
+    updateThreadSnapshot.mockResolvedValueOnce({ status: "not_found" });
 
     const response = await action({
       request: new Request("http://localhost/api/threads/thread-a", { method: "PUT" }),
@@ -132,11 +132,14 @@ describe("/api/threads/:threadId", () => {
       skillSelections: [],
     });
     updateThreadSnapshot.mockResolvedValueOnce({
-      id: "thread-a",
-      messages: [],
-      mcpServers: [],
-      mcpRpcLogs: [],
-      skillSelections: [],
+      status: "ok",
+      thread: {
+        id: "thread-a",
+        messages: [],
+        mcpServers: [],
+        mcpRpcLogs: [],
+        skillSelections: [],
+      },
     });
 
     const response = await action({
@@ -146,6 +149,26 @@ describe("/api/threads/:threadId", () => {
 
     expect(response.status).toBe(200);
     expect(response.headers.get("location")).toBeNull();
+  });
+
+  it("returns 409 when PUT target thread is archived", async () => {
+    readThreadSnapshotFromUnknown.mockReturnValue({
+      id: "thread-a",
+      messages: [],
+      mcpServers: [],
+      mcpRpcLogs: [],
+      skillSelections: [],
+    });
+    updateThreadSnapshot.mockResolvedValueOnce({ status: "archived" });
+
+    const response = await action({
+      request: new Request("http://localhost/api/threads/thread-a", { method: "PUT" }),
+      params: { threadId: "thread-a" },
+    } as never);
+    const payload = (await response.json()) as { error?: string };
+
+    expect(response.status).toBe(409);
+    expect(payload.error).toBe("Archived thread is read-only. Restore it from Archives to update.");
   });
 
   it("returns 409 when deleting an empty thread", async () => {

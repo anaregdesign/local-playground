@@ -124,7 +124,7 @@ export async function action({ request, params }: Route.ActionArgs) {
       }
 
       const updatedThread = await updateThreadSnapshot(user.id, thread);
-      if (!updatedThread) {
+      if (updatedThread.status === "not_found") {
         await logServerRouteEvent({
           request,
           route: "/api/threads/:threadId",
@@ -139,6 +139,22 @@ export async function action({ request, params }: Route.ActionArgs) {
 
         return Response.json({ error: "Thread is not available." }, { status: 404 });
       }
+      if (updatedThread.status === "archived") {
+        const errorMessage = "Archived thread is read-only. Restore it from Archives to update.";
+        await logServerRouteEvent({
+          request,
+          route: "/api/threads/:threadId",
+          eventName: "thread_archived_conflict",
+          action: "update_thread",
+          level: "warning",
+          statusCode: 409,
+          message: errorMessage,
+          userId: user.id,
+          threadId,
+        });
+
+        return Response.json({ error: errorMessage }, { status: 409 });
+      }
 
       await logServerRouteEvent({
         request,
@@ -149,15 +165,15 @@ export async function action({ request, params }: Route.ActionArgs) {
         statusCode: 200,
         message: "Thread updated.",
         userId: user.id,
-        threadId: updatedThread.id,
+        threadId: updatedThread.thread.id,
         context: {
-          messageCount: updatedThread.messages.length,
-          mcpServerCount: updatedThread.mcpServers.length,
-          operationLogCount: updatedThread.mcpRpcLogs.length,
-          skillSelectionCount: updatedThread.skillSelections.length,
+          messageCount: updatedThread.thread.messages.length,
+          mcpServerCount: updatedThread.thread.mcpServers.length,
+          operationLogCount: updatedThread.thread.mcpRpcLogs.length,
+          skillSelectionCount: updatedThread.thread.skillSelections.length,
         },
       });
-      return Response.json({ thread: updatedThread }, { status: 200 });
+      return Response.json({ thread: updatedThread.thread }, { status: 200 });
     }
 
     if (request.method === "DELETE") {

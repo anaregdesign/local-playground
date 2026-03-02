@@ -1,6 +1,7 @@
 /**
  * Server runtime module.
  */
+import type { Prisma } from "@prisma/client";
 import {
   createRuntimeEventLogId,
   normalizeRuntimeEventLogLevel,
@@ -153,6 +154,92 @@ export async function logRuntimeEventWithId(input: RuntimeEventLogInput): Promis
   return await createRuntimeEventLog(input);
 }
 
+export type RuntimeEventLogReadRecord = {
+  id: string;
+  createdAt: string;
+  source: string;
+  level: string;
+  category: string;
+  eventName: string;
+  message: string;
+  errorName: string | null;
+  location: string | null;
+  action: string | null;
+  statusCode: number | null;
+  httpMethod: string | null;
+  httpPath: string | null;
+  threadId: string | null;
+  tenantId: string | null;
+  principalId: string | null;
+  userId: number | null;
+  stack: string | null;
+  context: Record<string, unknown>;
+};
+
+export async function readRuntimeEventLogByIdForUser(options: {
+  eventLogId: string;
+  tenantId: string;
+  principalId: string;
+  userId: number | null;
+}): Promise<RuntimeEventLogReadRecord | null> {
+  const eventLogId = options.eventLogId.trim();
+  if (!eventLogId) {
+    return null;
+  }
+
+  const ownerFilters: Prisma.RuntimeEventLogWhereInput[] = [];
+  const tenantId = options.tenantId.trim();
+  const principalId = options.principalId.trim();
+  if (tenantId && principalId) {
+    ownerFilters.push({
+      tenantId,
+      principalId,
+    });
+  }
+
+  if (typeof options.userId === "number" && Number.isInteger(options.userId) && options.userId > 0) {
+    ownerFilters.push({
+      userId: options.userId,
+    });
+  }
+  if (ownerFilters.length === 0) {
+    return null;
+  }
+
+  await ensurePersistenceDatabaseReady();
+  const record = await prisma.runtimeEventLog.findFirst({
+    where: {
+      id: eventLogId,
+      OR: ownerFilters,
+    },
+  });
+  if (!record) {
+    return null;
+  }
+
+  return {
+    id: record.id,
+    createdAt: record.createdAt,
+    source: record.source,
+    level: record.level,
+    category: record.category,
+    eventName: record.eventName,
+    message: record.message,
+    errorName: record.errorName,
+    location: record.location,
+    action: record.action,
+    statusCode: record.statusCode,
+    httpMethod: record.httpMethod,
+    httpPath: record.httpPath,
+    threadId: record.threadId,
+    tenantId: record.tenantId,
+    principalId: record.principalId,
+    userId: record.userId,
+    stack: record.stack,
+    context: readRuntimeEventContext(record.contextJson),
+  };
+}
+
 async function createRuntimeEventLog(input: RuntimeEventLogInput): Promise<string | null> {
   const runtimeEventLogId =
     typeof input.id === "string" && input.id.trim() ? input.id.trim() : createRuntimeEventLogId();
@@ -186,5 +273,17 @@ async function createRuntimeEventLog(input: RuntimeEventLogInput): Promise<strin
   } catch {
     // Logging must not throw into business logic.
     return null;
+  }
+}
+
+function readRuntimeEventContext(value: string): Record<string, unknown> {
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      return parsed as Record<string, unknown>;
+    }
+    return {};
+  } catch {
+    return {};
   }
 }

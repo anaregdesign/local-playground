@@ -3,9 +3,10 @@
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { ensurePersistenceDatabaseReadyMock, runtimeEventLogCreateMock } = vi.hoisted(() => ({
+const { ensurePersistenceDatabaseReadyMock, runtimeEventLogCreateMock, runtimeEventLogFindFirstMock } = vi.hoisted(() => ({
   ensurePersistenceDatabaseReadyMock: vi.fn(),
   runtimeEventLogCreateMock: vi.fn(),
+  runtimeEventLogFindFirstMock: vi.fn(),
 }));
 
 vi.mock("~/lib/server/persistence/prisma", () => ({
@@ -13,6 +14,7 @@ vi.mock("~/lib/server/persistence/prisma", () => ({
   prisma: {
     runtimeEventLog: {
       create: runtimeEventLogCreateMock,
+      findFirst: runtimeEventLogFindFirstMock,
     },
   },
 }));
@@ -28,6 +30,7 @@ describe("logRuntimeEvent", () => {
     vi.clearAllMocks();
     ensurePersistenceDatabaseReadyMock.mockResolvedValue(undefined);
     runtimeEventLogCreateMock.mockResolvedValue(undefined);
+    runtimeEventLogFindFirstMock.mockResolvedValue(null);
   });
 
   it("writes normalized app event logs to prisma", async () => {
@@ -79,6 +82,7 @@ describe("logRuntimeEventWithId", () => {
     vi.clearAllMocks();
     ensurePersistenceDatabaseReadyMock.mockResolvedValue(undefined);
     runtimeEventLogCreateMock.mockResolvedValue(undefined);
+    runtimeEventLogFindFirstMock.mockResolvedValue(null);
   });
 
   it("returns created event log id on success", async () => {
@@ -115,6 +119,7 @@ describe("logServerRouteEvent", () => {
     vi.clearAllMocks();
     ensurePersistenceDatabaseReadyMock.mockResolvedValue(undefined);
     runtimeEventLogCreateMock.mockResolvedValue(undefined);
+    runtimeEventLogFindFirstMock.mockResolvedValue(null);
   });
 
   it("captures route request metadata and error details", async () => {
@@ -153,5 +158,62 @@ describe("logServerRouteEvent", () => {
     expect(JSON.parse(call.data.contextJson)).toEqual({
       turnId: "turn-1",
     });
+  });
+});
+
+describe("readRuntimeEventLogByIdForUser", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    ensurePersistenceDatabaseReadyMock.mockResolvedValue(undefined);
+    runtimeEventLogCreateMock.mockResolvedValue(undefined);
+    runtimeEventLogFindFirstMock.mockResolvedValue(null);
+  });
+
+  it("returns normalized event log when owner matches", async () => {
+    runtimeEventLogFindFirstMock.mockResolvedValueOnce({
+      id: "event-1",
+      createdAt: "2026-03-01T00:00:00.000Z",
+      source: "client",
+      level: "info",
+      category: "frontend",
+      eventName: "event_name",
+      message: "message",
+      errorName: null,
+      location: null,
+      action: "click",
+      statusCode: 200,
+      httpMethod: "GET",
+      httpPath: "/api/runtime/event-logs/event-1",
+      threadId: "thread-1",
+      tenantId: "tenant-a",
+      principalId: "principal-a",
+      userId: 10,
+      stack: null,
+      contextJson: "{\"source\":\"ui\"}",
+    });
+
+    const { readRuntimeEventLogByIdForUser } = await import("./runtime-event-log");
+    const eventLog = await readRuntimeEventLogByIdForUser({
+      eventLogId: "event-1",
+      tenantId: "tenant-a",
+      principalId: "principal-a",
+      userId: 10,
+    });
+
+    expect(eventLog).not.toBeNull();
+    expect(eventLog?.id).toBe("event-1");
+    expect(eventLog?.context).toEqual({ source: "ui" });
+  });
+
+  it("returns null when event log is not found", async () => {
+    const { readRuntimeEventLogByIdForUser } = await import("./runtime-event-log");
+    const eventLog = await readRuntimeEventLogByIdForUser({
+      eventLogId: "missing",
+      tenantId: "tenant-a",
+      principalId: "principal-a",
+      userId: 10,
+    });
+
+    expect(eventLog).toBeNull();
   });
 });

@@ -15,7 +15,7 @@ import { HOME_REASONING_EFFORT_OPTIONS } from "~/lib/constants";
 import type { ReasoningEffort } from "~/lib/home/shared/view-types";
 import type { Route } from "./+types/api.azure.selection";
 
-const AZURE_SELECTION_ALLOWED_METHODS = ["GET", "PUT"] as const;
+const AZURE_SELECTION_ALLOWED_METHODS = ["GET", "PATCH", "DELETE"] as const;
 
 type AzureSelectionPreferencePayload = {
   target: AzureSelectionTarget;
@@ -87,7 +87,7 @@ export async function loader({ request }: Route.LoaderArgs) {
 export async function action({ request }: Route.ActionArgs) {
   installGlobalServerErrorLogging();
 
-  if (request.method !== "PUT") {
+  if (request.method !== "PATCH" && request.method !== "DELETE") {
     return methodNotAllowedResponse(AZURE_SELECTION_ALLOWED_METHODS);
   }
 
@@ -100,6 +100,35 @@ export async function action({ request }: Route.ActionArgs) {
       },
       { status: 401 },
     );
+  }
+
+  if (request.method === "DELETE") {
+    try {
+      const deleted = await deleteStoredSelection(identity);
+      if (!deleted) {
+        return Response.json({ error: "Azure selection is not available." }, { status: 404 });
+      }
+
+      return new Response(null, { status: 204 });
+    } catch (error) {
+      await logServerRouteEvent({
+        request,
+        route: "/api/azure/selection",
+        eventName: "delete_azure_selection_failed",
+        action: "delete_selection",
+        statusCode: 500,
+        error,
+        context: {
+          tenantId: identity.tenantId,
+          principalId: identity.principalId,
+        },
+      });
+
+      return Response.json(
+        { error: `Failed to delete Azure selection from database: ${readErrorMessage(error)}` },
+        { status: 500 },
+      );
+    }
   }
 
   let payload: unknown;
@@ -147,14 +176,19 @@ export async function action({ request }: Route.ActionArgs) {
       { selection: saved.selection },
       {
         status: saved.created ? 201 : 200,
+        headers: saved.created
+          ? {
+              Location: "/api/azure/selection",
+            }
+          : undefined,
       },
     );
   } catch (error) {
     await logServerRouteEvent({
       request,
       route: "/api/azure/selection",
-      eventName: "save_azure_selection_failed",
-      action: "save_selection",
+      eventName: "patch_azure_selection_failed",
+      action: "patch_selection",
       statusCode: 500,
       error,
       context: {
@@ -293,6 +327,34 @@ async function saveStoredSelection(
     selection: mapSelectionRecord(user, saved),
     created: !existing,
   };
+}
+
+async function deleteStoredSelection(identity: {
+  tenantId: string;
+  principalId: string;
+}): Promise<boolean> {
+  await ensurePersistenceDatabaseReady();
+  const user = await prisma.workspaceUser.findUnique({
+    where: {
+      tenantId_principalId: {
+        tenantId: identity.tenantId,
+        principalId: identity.principalId,
+      },
+    },
+    select: {
+      id: true,
+    },
+  });
+  if (!user) {
+    return false;
+  }
+
+  const deleteResult = await prisma.azureSelectionPreference.deleteMany({
+    where: {
+      userId: user.id,
+    },
+  });
+  return deleteResult.count > 0;
 }
 
 async function readAuthenticatedIdentity(): Promise<{ tenantId: string; principalId: string } | null> {

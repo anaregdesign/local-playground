@@ -2829,7 +2829,7 @@ export function useWorkspaceController() {
 
     try {
       const response = await fetch("/api/azure/selection", {
-        method: "PUT",
+        method: "PATCH",
         headers: {
           "Content-Type": "application/json",
         },

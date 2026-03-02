@@ -432,21 +432,39 @@ export async function createThreadSnapshot(
   }
 }
 
+export type UpdateThreadSnapshotResult =
+  | {
+      status: "ok";
+      thread: ThreadSnapshot;
+    }
+  | {
+      status: "not_found";
+    }
+  | {
+      status: "archived";
+    };
+
 export async function updateThreadSnapshot(
   userId: number,
   snapshot: ThreadSnapshot,
-): Promise<ThreadSnapshot | null> {
+): Promise<UpdateThreadSnapshotResult> {
   const existing = await readThreadRecordHead(userId, snapshot.id);
-  if (!existing || existing.deletedAt !== null) {
-    return null;
+  if (!existing) {
+    return { status: "not_found" };
+  }
+  if (existing.deletedAt !== null) {
+    return { status: "archived" };
   }
 
   const saved = await saveThreadSnapshot(userId, snapshot);
   if (!saved || saved.created) {
-    return null;
+    return { status: "not_found" };
   }
 
-  return saved.thread;
+  return {
+    status: "ok",
+    thread: saved.thread,
+  };
 }
 
 export async function saveThreadSnapshot(
