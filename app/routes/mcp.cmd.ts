@@ -28,7 +28,7 @@ const MCP_CMD_TOOL_DESCRIPTION = [
   "Executes an arbitrary shell command on the Local Playground host.",
   "Returns stdout/stderr, exit status, timeout state, execution duration, and resolved shell metadata.",
   "Safety policy: if this is the first command execution in a thread, ask the user for explicit consent in chat first.",
-  "Then call again with confirmedByUser=true and confirmationMessage set to the user-approved text.",
+  "Then call again with confirmedByUser=true and confirmationMessage set to yes or no.",
   "Default working directory is ~/.foundry_local_playground/users/<user-id>/threads/<thread-id>/tmp.",
   "When threadContext.threadId is missing, explicit consent is required for every call and workingDirectory must be provided explicitly.",
 ].join("\n");
@@ -39,6 +39,7 @@ const MCP_CMD_OUTPUT_MAX_BYTES = 1_000_000;
 const MCP_CMD_MAX_COMMAND_LENGTH = 32_000;
 const MCP_CMD_MAX_CONFIRMATION_MESSAGE_LENGTH = 4_000;
 const THREAD_COMMAND_CONSENT_CACHE_MAX = 512;
+const COMMAND_APPROVAL_CHOICES = ["yes", "no"] as const;
 
 const cmdExecuteInputSchema = {
   threadId: z
@@ -83,7 +84,7 @@ const cmdExecuteInputSchema = {
     .max(MCP_CMD_MAX_CONFIRMATION_MESSAGE_LENGTH)
     .optional()
     .describe(
-      "Text that captures the user's explicit consent confirmation. Required when confirmedByUser=true.",
+      'User choice for command execution approval. Required when confirmedByUser=true and must be either "yes" or "no".',
     ),
 };
 
@@ -105,6 +106,7 @@ type ParsedCmdToolArguments = {
   timeoutSeconds: number;
   confirmedByUser: boolean;
   confirmationMessage: string | null;
+  confirmationChoice: "yes" | "no" | null;
 };
 
 type ParseResult<T> = { ok: true; value: T } | { ok: false; error: string };
@@ -263,7 +265,7 @@ function createCmdMcpServer(requestContext: McpCmdRequestContext): McpServer {
             threadId: requestContext.threadId,
             turnId: requestContext.turnId,
           },
-        });
+        }, { isError: true });
       }
 
       const commandArgs = parsedArguments.value;
@@ -272,16 +274,32 @@ function createCmdMcpServer(requestContext: McpCmdRequestContext): McpServer {
         ...requestContext,
         threadId: effectiveThreadId,
       };
+      if (commandArgs.confirmedByUser && commandArgs.confirmationChoice === "no") {
+        return buildToolResponse({
+          executed: false,
+          approvalRequired: false,
+          approvalDenied: true,
+          reason: "User selected no. Command execution was canceled.",
+          command: commandArgs.command,
+          threadContext: {
+            threadId: effectiveThreadId,
+            turnId: requestContext.turnId,
+          },
+        });
+      }
       const commandConsent = evaluateCommandExecutionConsent(
         effectiveRequestContext,
         commandArgs,
       );
       if (!commandConsent.ok) {
+        const confirmationPromptMarkdown = buildCommandApprovalPromptMarkdown(commandArgs.command);
         return buildToolResponse({
           executed: false,
           approvalRequired: true,
           requiresUserConfirmation: true,
           reason: commandConsent.reason,
+          confirmationPromptMarkdown,
+          confirmationChoices: COMMAND_APPROVAL_CHOICES,
           consentScope: commandConsent.scope,
           threadContext: {
             threadId: effectiveThreadId,
@@ -294,6 +312,9 @@ function createCmdMcpServer(requestContext: McpCmdRequestContext): McpServer {
             timeoutSeconds: commandArgs.timeoutSeconds,
             ...commandConsent.nextCallArguments,
           },
+        }, {
+          isError: true,
+          text: confirmationPromptMarkdown,
         });
       }
 
@@ -311,7 +332,7 @@ function createCmdMcpServer(requestContext: McpCmdRequestContext): McpServer {
             threadId: effectiveThreadId,
             turnId: requestContext.turnId,
           },
-        });
+        }, { isError: true });
       }
 
       const shellExecutionContext = resolveShellExecutionContext();
@@ -325,7 +346,7 @@ function createCmdMcpServer(requestContext: McpCmdRequestContext): McpServer {
             threadId: effectiveThreadId,
             turnId: requestContext.turnId,
           },
-        });
+        }, { isError: true });
       }
 
       try {
@@ -383,7 +404,7 @@ function createCmdMcpServer(requestContext: McpCmdRequestContext): McpServer {
             platform: process.platform,
           },
           error: `Failed to execute command: ${readErrorMessage(error)}`,
-        });
+        }, { isError: true });
       }
     },
   );
@@ -448,6 +469,7 @@ function parseCmdExecuteArguments(value: unknown): ParseResult<ParsedCmdToolArgu
       timeoutSeconds: timeoutSecondsResult.value,
       confirmedByUser: confirmationResult.value.confirmedByUser,
       confirmationMessage: confirmationResult.value.confirmationMessage,
+      confirmationChoice: confirmationResult.value.confirmationChoice,
     },
   };
 }
@@ -490,7 +512,7 @@ function parseTimeoutSeconds(rawTimeoutSeconds: unknown): ParseResult<number> {
 
 function parseConfirmationInput(
   value: Record<string, unknown>,
-): ParseResult<Pick<ParsedCmdToolArguments, "confirmedByUser" | "confirmationMessage">> {
+): ParseResult<Pick<ParsedCmdToolArguments, "confirmedByUser" | "confirmationMessage" | "confirmationChoice">> {
   const rawConfirmedByUser = value.confirmedByUser;
   const confirmedByUser = rawConfirmedByUser === true;
   if (rawConfirmedByUser !== undefined && typeof rawConfirmedByUser !== "boolean") {
@@ -528,13 +550,36 @@ function parseConfirmationInput(
     };
   }
 
+  const confirmationChoice =
+    confirmedByUser && confirmationMessage
+      ? normalizeConfirmationChoice(confirmationMessage)
+      : null;
+  if (confirmedByUser && !confirmationChoice) {
+    return {
+      ok: false,
+      error: '`confirmationMessage` must be either "yes" or "no" when `confirmedByUser` is true.',
+    };
+  }
+
   return {
     ok: true,
     value: {
       confirmedByUser,
       confirmationMessage,
+      confirmationChoice,
     },
   };
+}
+
+function normalizeConfirmationChoice(value: string): "yes" | "no" | null {
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "yes") {
+    return "yes";
+  }
+  if (normalized === "no") {
+    return "no";
+  }
+  return null;
 }
 
 function evaluateCommandExecutionConsent(
@@ -550,7 +595,7 @@ function evaluateCommandExecutionConsent(
           "threadContext.threadId is missing. Explicit user confirmation is required for this command execution.",
         nextCallArguments: {
           confirmedByUser: true,
-          confirmationMessage: "User confirmed terminal command execution for this request.",
+          confirmationMessage: "yes",
         },
       };
     }
@@ -582,7 +627,7 @@ function evaluateCommandExecutionConsent(
         "First command execution in this thread requires explicit user confirmation before running terminal commands.",
       nextCallArguments: {
         confirmedByUser: true,
-        confirmationMessage: "User confirmed terminal command execution for this thread.",
+        confirmationMessage: "yes",
       },
     };
   }
@@ -597,6 +642,38 @@ function evaluateCommandExecutionConsent(
 
 function buildThreadConsentKey(userId: number, threadId: string): string {
   return `${userId}:${threadId}`;
+}
+
+function buildCommandApprovalPromptMarkdown(command: string): string {
+  const codeFence = createMarkdownCodeFence(command);
+  return [
+    "Terminal command execution requires your approval.",
+    "",
+    `${codeFence}sh`,
+    command,
+    codeFence,
+    "",
+    "Approve this command?",
+    "- yes",
+    "- no",
+  ].join("\n");
+}
+
+function createMarkdownCodeFence(content: string): string {
+  const backtickRuns = content.match(/`+/g);
+  if (!backtickRuns || backtickRuns.length === 0) {
+    return "```";
+  }
+
+  let maxBacktickRunLength = 0;
+  for (const run of backtickRuns) {
+    if (run.length > maxBacktickRunLength) {
+      maxBacktickRunLength = run.length;
+    }
+  }
+
+  const fenceLength = Math.max(3, maxBacktickRunLength + 1);
+  return "`".repeat(fenceLength);
 }
 
 function rememberThreadConsent(key: string): void {
@@ -984,8 +1061,16 @@ function readErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Unknown error.";
 }
 
-function buildToolResponse(payload: Record<string, unknown>) {
-  const text = JSON.stringify(payload, null, 2);
+function buildToolResponse(
+  payload: Record<string, unknown>,
+  options: {
+    isError?: boolean;
+    text?: string;
+  } = {},
+) {
+  const text = typeof options.text === "string"
+    ? options.text
+    : JSON.stringify(payload, null, 2);
   return {
     content: [
       {
@@ -994,6 +1079,7 @@ function buildToolResponse(payload: Record<string, unknown>) {
       },
     ],
     structuredContent: payload,
+    ...(options.isError ? { isError: true } : {}),
   };
 }
 
