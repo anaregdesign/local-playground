@@ -1,10 +1,13 @@
 /**
  * MCP route module for /mcp/system contextual metadata server.
  */
+import nodeOs from "node:os";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import {
   AZURE_OPENAI_DEFAULT_API_VERSION,
+  MCP_LOCAL_PLAYGROUND_CLIENT_PLATFORM_HEADER,
+  MCP_LOCAL_PLAYGROUND_CLIENT_USER_AGENT_HEADER,
   MCP_LOCAL_PLAYGROUND_THREAD_ID_HEADER,
   MCP_LOCAL_PLAYGROUND_TURN_ID_HEADER,
 } from "~/lib/constants";
@@ -67,6 +70,12 @@ const SYSTEM_READ_THREAD_CONTEXT_TOOL_DESCRIPTION = [
   "- azureContext.apiVersion: API version associated with the selected Playground project.",
   "  `null` when no Playground project is selected.",
   "  Synonyms often used in other systems: `OpenAI API version`, `service API version`, `runtime API version`.",
+  "- systemContext.clientOperatingSystem: Client OS details inferred from request headers (`Sec-CH-UA-Platform` then `User-Agent`).",
+  "  Includes `name`, `version`, `source`.",
+  "  Synonyms often used in other systems: `client platform`, `user device OS`, `caller OS`.",
+  "- systemContext.serverOperatingSystem: Local Playground server runtime OS details.",
+  "  Includes `name`, `platform`, `release`, `architecture`.",
+  "  Synonyms often used in other systems: `host OS`, `runtime OS`, `execution environment OS`.",
 ].join("\n");
 
 type AuthenticatedMcpSystemContext = {
@@ -79,9 +88,24 @@ type AuthenticatedMcpSystemContext = {
   armAccessToken: string;
 };
 
+type ClientOperatingSystemContext = {
+  name: string;
+  version: string | null;
+  source: "sec-ch-ua-platform" | "user-agent" | "unknown";
+};
+
+type ServerOperatingSystemContext = {
+  name: string;
+  platform: NodeJS.Platform;
+  release: string;
+  architecture: string;
+};
+
 type McpSystemRequestContext = AuthenticatedMcpSystemContext & {
   threadId: string | null;
   turnId: string | null;
+  clientOperatingSystem: ClientOperatingSystemContext;
+  serverOperatingSystem: ServerOperatingSystemContext;
 };
 
 type PlaygroundAzureRuntimeContext = {
@@ -203,6 +227,10 @@ function createSystemMcpServer(requestContext: McpSystemRequestContext): McpServ
           threadId: requestContext.threadId,
           turnId: requestContext.turnId,
         },
+        systemContext: {
+          clientOperatingSystem: requestContext.clientOperatingSystem,
+          serverOperatingSystem: requestContext.serverOperatingSystem,
+        },
         latestThreadName,
         azureContext: {
           principalDisplayName: requestContext.principalDisplayName,
@@ -299,6 +327,19 @@ function createSystemMcpServer(requestContext: McpSystemRequestContext): McpServ
             synonyms: ["OpenAI API version", "service API version", "runtime API version"],
             nullWhen: "No Playground project selection is stored for the authenticated user.",
           },
+          clientOperatingSystem: {
+            fieldPath: "systemContext.clientOperatingSystem",
+            identifies:
+              "Client OS details inferred from request headers (`Sec-CH-UA-Platform` then `User-Agent`).",
+            synonyms: ["client platform", "user device OS", "caller OS"],
+            nullWhen: "Never null; falls back to `{ name: \"Unknown\", version: null, source: \"unknown\" }` when unavailable.",
+          },
+          serverOperatingSystem: {
+            fieldPath: "systemContext.serverOperatingSystem",
+            identifies: "Server runtime OS details for the Local Playground process handling this request.",
+            synonyms: ["host OS", "runtime OS", "execution environment OS"],
+            nullWhen: "Never null for successful authenticated requests.",
+          },
         },
       };
 
@@ -317,6 +358,8 @@ function readMcpSystemRequestContext(
     ...authenticatedContext,
     threadId: readOptionalHeaderValue(request, MCP_LOCAL_PLAYGROUND_THREAD_ID_HEADER),
     turnId: readOptionalHeaderValue(request, MCP_LOCAL_PLAYGROUND_TURN_ID_HEADER),
+    clientOperatingSystem: readClientOperatingSystemContext(request),
+    serverOperatingSystem: readServerOperatingSystemContext(),
   };
 }
 
@@ -349,6 +392,135 @@ function readOptionalHeaderValue(request: Request, name: string): string | null 
 
   const normalized = rawValue.trim();
   return normalized.length > 0 ? normalized : null;
+}
+
+function readClientOperatingSystemContext(request: Request): ClientOperatingSystemContext {
+  const clientHintPlatform = normalizeOptionalLabel(
+    request.headers.get(MCP_LOCAL_PLAYGROUND_CLIENT_PLATFORM_HEADER)
+    ?? request.headers.get("sec-ch-ua-platform"),
+  );
+  if (clientHintPlatform) {
+    return {
+      name: normalizeClientHintPlatform(clientHintPlatform),
+      version: null,
+      source: "sec-ch-ua-platform",
+    };
+  }
+
+  const userAgent = normalizeOptionalLabel(
+    request.headers.get(MCP_LOCAL_PLAYGROUND_CLIENT_USER_AGENT_HEADER)
+    ?? request.headers.get("user-agent"),
+  );
+  if (!userAgent) {
+    return {
+      name: "Unknown",
+      version: null,
+      source: "unknown",
+    };
+  }
+
+  const parsedFromUserAgent = parseOperatingSystemFromUserAgent(userAgent);
+  if (!parsedFromUserAgent) {
+    return {
+      name: "Unknown",
+      version: null,
+      source: "unknown",
+    };
+  }
+
+  return {
+    ...parsedFromUserAgent,
+    source: "user-agent",
+  };
+}
+
+function parseOperatingSystemFromUserAgent(
+  userAgent: string,
+): Omit<ClientOperatingSystemContext, "source"> | null {
+  const lowerUserAgent = userAgent.toLowerCase();
+
+  if (lowerUserAgent.includes("windows nt")) {
+    return {
+      name: "Windows",
+      version: normalizeOperatingSystemVersion(extractUserAgentVersion(userAgent, /Windows NT ([0-9.]+)/i)),
+    };
+  }
+
+  if (/iphone|ipad|ipod/i.test(userAgent)) {
+    return {
+      name: "iOS",
+      version: normalizeOperatingSystemVersion(extractUserAgentVersion(userAgent, /OS ([0-9_]+)/i)),
+    };
+  }
+
+  if (lowerUserAgent.includes("android")) {
+    return {
+      name: "Android",
+      version: normalizeOperatingSystemVersion(extractUserAgentVersion(userAgent, /Android ([0-9.]+)/i)),
+    };
+  }
+
+  if (lowerUserAgent.includes("mac os x") || lowerUserAgent.includes("macintosh")) {
+    return {
+      name: "macOS",
+      version: normalizeOperatingSystemVersion(extractUserAgentVersion(userAgent, /Mac OS X ([0-9_]+)/i)),
+    };
+  }
+
+  if (lowerUserAgent.includes("linux")) {
+    return {
+      name: "Linux",
+      version: null,
+    };
+  }
+
+  return null;
+}
+
+function extractUserAgentVersion(userAgent: string, pattern: RegExp): string | null {
+  const matched = userAgent.match(pattern);
+  const version = matched?.[1];
+  if (typeof version !== "string") {
+    return null;
+  }
+
+  const normalized = version.trim();
+  return normalized.length > 0 ? normalized : null;
+}
+
+function normalizeOperatingSystemVersion(version: string | null): string | null {
+  if (!version) {
+    return null;
+  }
+  return version.replaceAll("_", ".");
+}
+
+function normalizeClientHintPlatform(value: string): string {
+  const unquoted = value.trim().replace(/^"(.*)"$/, "$1").trim();
+  return unquoted.length > 0 ? unquoted : "Unknown";
+}
+
+function readServerOperatingSystemContext(): ServerOperatingSystemContext {
+  const platform = process.platform;
+  return {
+    name: mapNodePlatformToOperatingSystemName(platform),
+    platform,
+    release: nodeOs.release(),
+    architecture: nodeOs.arch(),
+  };
+}
+
+function mapNodePlatformToOperatingSystemName(platform: NodeJS.Platform): string {
+  if (platform === "darwin") {
+    return "macOS";
+  }
+  if (platform === "win32") {
+    return "Windows";
+  }
+  if (platform === "linux") {
+    return "Linux";
+  }
+  return platform;
 }
 
 async function readLatestThreadName(userId: number): Promise<string | null> {

@@ -177,6 +177,8 @@ export const MCP_DEFAULT_HTTP_HEADERS: Record<string, string> = {
 };
 export const MCP_LOCAL_PLAYGROUND_THREAD_ID_HEADER = "X-Local-Playground-Thread-Id";
 export const MCP_LOCAL_PLAYGROUND_TURN_ID_HEADER = "X-Local-Playground-Turn-Id";
+export const MCP_LOCAL_PLAYGROUND_CLIENT_USER_AGENT_HEADER = "X-Local-Playground-Client-User-Agent";
+export const MCP_LOCAL_PLAYGROUND_CLIENT_PLATFORM_HEADER = "X-Local-Playground-Client-Platform";
 export const MCP_LEGACY_UNAVAILABLE_DEFAULT_STDIO_NPX_PACKAGE_NAMES = [
   "@modelcontextprotocol/server-git",
   "@modelcontextprotocol/server-http",

@@ -3,6 +3,7 @@
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  MCP_LOCAL_PLAYGROUND_CLIENT_PLATFORM_HEADER,
   MCP_LOCAL_PLAYGROUND_THREAD_ID_HEADER,
   MCP_LOCAL_PLAYGROUND_TURN_ID_HEADER,
 } from "~/lib/constants";
@@ -184,6 +185,8 @@ describe("mcp system route", () => {
     expect(contextTool.description).toContain("threadContext.threadId");
     expect(contextTool.description).toContain("threadContext.turnId");
     expect(contextTool.description).toContain("latestThreadName");
+    expect(contextTool.description).toContain("systemContext.clientOperatingSystem");
+    expect(contextTool.description).toContain("systemContext.serverOperatingSystem");
     expect(contextTool.inputSchema).toEqual({
       type: "object",
       properties: {},
@@ -197,6 +200,7 @@ describe("mcp system route", () => {
         headers: {
           "Content-Type": "application/json",
           Accept: "application/json, text/event-stream",
+          [MCP_LOCAL_PLAYGROUND_CLIENT_PLATFORM_HEADER]: "\"Windows\"",
           [MCP_LOCAL_PLAYGROUND_THREAD_ID_HEADER]: "thread-1",
           [MCP_LOCAL_PLAYGROUND_TURN_ID_HEADER]: "turn-1",
         },
@@ -223,6 +227,19 @@ describe("mcp system route", () => {
         threadId: "thread-1",
         turnId: "turn-1",
       },
+      systemContext: {
+        clientOperatingSystem: {
+          name: "Windows",
+          version: null,
+          source: "sec-ch-ua-platform",
+        },
+        serverOperatingSystem: {
+          name: expect.any(String),
+          platform: process.platform,
+          release: expect.any(String),
+          architecture: expect.any(String),
+        },
+      },
       latestThreadName: "Newest Thread",
       azureContext: {
         principalDisplayName: "Hiroki Mizukami",
@@ -237,6 +254,12 @@ describe("mcp system route", () => {
         apiVersion: "v1",
       },
       descriptions: {
+        clientOperatingSystem: {
+          fieldPath: "systemContext.clientOperatingSystem",
+        },
+        serverOperatingSystem: {
+          fieldPath: "systemContext.serverOperatingSystem",
+        },
         principalId: {
           fieldPath: "azureContext.principalId",
         },
