@@ -341,6 +341,7 @@ export function useWorkspaceController() {
   const threadSaveRequestSeqRef = useRef(0);
   const threadSaveSignatureByIdRef = useRef(new Map<string, string>());
   const threadRequestStateByIdRef = useRef<Record<string, ThreadRequestState>>({});
+  const workspaceMcpServerProfilesRef = useRef<McpServerConfig[]>([]);
   const threadsRef = useRef<ThreadSnapshot[]>([]);
 
   // Derived UI state and view models consumed by panel props.
@@ -1059,6 +1060,10 @@ export function useWorkspaceController() {
   }, [threadRequestStateById]);
 
   useEffect(() => {
+    workspaceMcpServerProfilesRef.current = workspaceMcpServerProfiles;
+  }, [workspaceMcpServerProfiles]);
+
+  useEffect(() => {
     threadsRef.current = threads;
   }, [threads]);
 
@@ -1285,6 +1290,7 @@ export function useWorkspaceController() {
       }
 
       const parsedServers = readMcpServerList(payload.profiles);
+      workspaceMcpServerProfilesRef.current = parsedServers;
       setWorkspaceMcpServerProfiles(parsedServers);
       setWorkspaceMcpServerProfileError(null);
     } catch (loadError) {
@@ -1481,6 +1487,7 @@ export function useWorkspaceController() {
     clearWorkspaceMcpServerProfileLoginRetryTimeout();
     setEditingMcpServerId("");
     setIsDeletingWorkspaceMcpServerProfile(false);
+    workspaceMcpServerProfilesRef.current = [];
     setWorkspaceMcpServerProfiles([]);
     setWorkspaceMcpServerProfileError(nextError);
     setIsLoadingWorkspaceMcpServerProfiles(false);
@@ -1710,7 +1717,7 @@ export function useWorkspaceController() {
     const now = new Date().toISOString();
     const normalizedName = (options.name ?? "").trim().slice(0, HOME_THREAD_NAME_MAX_LENGTH);
     const name = normalizedName || THREAD_DEFAULT_NAME;
-    const defaultThreadMcpServers = workspaceMcpServerProfiles.filter(
+    const defaultThreadMcpServers = workspaceMcpServerProfilesRef.current.filter(
       (server) => server.connectOnThreadCreate === true,
     );
 
@@ -3339,9 +3346,15 @@ export function useWorkspaceController() {
 
     const profiles = readMcpServerList(payload.profiles);
     if (profiles.length > 0) {
+      workspaceMcpServerProfilesRef.current = profiles;
       setWorkspaceMcpServerProfiles(profiles);
     } else {
-      setWorkspaceMcpServerProfiles((current) => upsertMcpServer(current, profile));
+      const nextWorkspaceMcpServerProfiles = upsertMcpServer(
+        workspaceMcpServerProfilesRef.current,
+        profile,
+      );
+      workspaceMcpServerProfilesRef.current = nextWorkspaceMcpServerProfiles;
+      setWorkspaceMcpServerProfiles(nextWorkspaceMcpServerProfiles);
     }
 
     return {
@@ -3794,6 +3807,7 @@ export function useWorkspaceController() {
 
     try {
       const nextWorkspaceMcpServerProfiles = await deleteWorkspaceMcpServerProfileFromConfig(serverId);
+      workspaceMcpServerProfilesRef.current = nextWorkspaceMcpServerProfiles;
       setWorkspaceMcpServerProfiles(nextWorkspaceMcpServerProfiles);
 
       const deletedKey = buildMcpServerKey(selected);
