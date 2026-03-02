@@ -101,20 +101,20 @@ Default saved MCP profiles (created if missing):
 
 - `openai-docs` (`https://developers.openai.com/mcp`)
 - `microsoft-learn` (`https://learn.microsoft.com/api/mcp`)
-- `filesystem` (`npx -y @modelcontextprotocol/server-filesystem .`; working directory: `~/.foundry_local_playground/` on macOS/Linux)
+- `filesystem` (`npx -y @modelcontextprotocol/server-filesystem .`; working directory: `~/.foundry_local_playground/users/<user-id>/` on macOS/Linux)
 - `server-memory` (`npx -y @modelcontextprotocol/server-memory`)
 - `server-everything` (`npx -y @modelcontextprotocol/server-everything`)
 - `workiq` (`npx -y @microsoft/workiq mcp`)
 - `azure-mcp` (`npx -y @azure/mcp@latest server start`)
 - `playwright` (`npx -y @playwright/mcp@latest`)
-- `mcp-mermaid` (`npx -y mcp-mermaid`; working directory: `~/.foundry_local_playground/` on macOS/Linux)
+- `mcp-mermaid` (`npx -y mcp-mermaid`; working directory: `~/.foundry_local_playground/users/<user-id>/` on macOS/Linux)
 
 ### Skills workflow
 
 - Thread-level skill selection from discovered `SKILL.md` files.
 - Discovery roots:
   - `$CODEX_HOME/skills/`
-  - `<foundry-config-dir>/skills/`
+  - `<foundry-config-dir>/users/<user-id>/skills/`
 - Registry install/remove flow supports:
   - OpenAI curated (`openai/skills`)
   - Anthropic public (`anthropics/skills`)

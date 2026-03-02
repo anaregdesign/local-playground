@@ -1,12 +1,8 @@
 /**
  * API route module for /api/mcp/servers.
  */
-import path from "node:path";
-import nodeOs from "node:os";
 import {
   ENV_KEY_PATTERN,
-  FOUNDRY_LEGACY_CONFIG_DIRECTORY_NAME,
-  FOUNDRY_WINDOWS_CONFIG_DIRECTORY_NAME,
   HOME_DEFAULT_WORKSPACE_MCP_SERVER_PROFILE_ROWS,
   HTTP_HEADER_NAME_PATTERN,
   MCP_AZURE_AUTH_SCOPE_MAX_LENGTH,
@@ -20,6 +16,10 @@ import {
   MCP_TIMEOUT_SECONDS_MAX,
   MCP_TIMEOUT_SECONDS_MIN,
 } from "~/lib/constants";
+import {
+  resolveFoundryConfigDirectory,
+  resolveFoundryWorkspaceUserDirectory,
+} from "~/lib/foundry/config";
 import {
   ensurePersistenceDatabaseReady,
   prisma,
@@ -80,6 +80,11 @@ const defaultMermaidWorkspaceMcpServerProfile =
   HOME_DEFAULT_WORKSPACE_MCP_SERVER_PROFILE_ROWS.find(
     (profile): profile is HomeDefaultWorkspaceMcpServerProfileStdioRow =>
       profile.transport === "stdio" && profile.name === "mcp-mermaid",
+  ) ?? null;
+const defaultFilesystemWorkspaceMcpServerProfile =
+  HOME_DEFAULT_WORKSPACE_MCP_SERVER_PROFILE_ROWS.find(
+    (profile): profile is HomeDefaultWorkspaceMcpServerProfileStdioRow =>
+      profile.transport === "stdio" && profile.name === "filesystem",
   ) ?? null;
 const MCP_SERVERS_COLLECTION_ALLOWED_METHODS = ["GET", "POST"] as const;
 
@@ -193,7 +198,7 @@ export async function action({ request }: Route.ActionArgs) {
 
   try {
     const currentProfiles = await readWorkspaceMcpServerProfiles(user.id);
-    const profilesWithDefaults = mergeDefaultWorkspaceMcpServerProfiles(currentProfiles);
+    const profilesWithDefaults = mergeDefaultWorkspaceMcpServerProfiles(currentProfiles, user.id);
     const existingIds = new Set(profilesWithDefaults.map((profile) => profile.id));
     const { profile, profiles, warning } = upsertWorkspaceMcpServerProfile(
       profilesWithDefaults,
@@ -304,10 +309,11 @@ export async function writeWorkspaceMcpServerProfiles(
 
 export function mergeDefaultWorkspaceMcpServerProfiles(
   currentProfiles: WorkspaceMcpServerProfileConfig[],
+  workspaceUserId: number,
 ): WorkspaceMcpServerProfileConfig[] {
-  const mergedProfiles = normalizeLegacyDefaultProfiles(currentProfiles);
+  const mergedProfiles = normalizeLegacyDefaultProfiles(currentProfiles, workspaceUserId);
   const profileKeys = new Set(mergedProfiles.map((profile) => buildProfileKey(profile)));
-  for (const profile of buildDefaultMcpServerProfiles()) {
+  for (const profile of buildDefaultMcpServerProfiles(workspaceUserId)) {
     const profileKey = buildProfileKey(profile);
     if (profileKeys.has(profileKey)) {
       continue;
@@ -322,7 +328,7 @@ export function mergeDefaultWorkspaceMcpServerProfiles(
 
 export async function ensureDefaultMcpServersForUser(userId: number): Promise<void> {
   const currentProfiles = await readWorkspaceMcpServerProfiles(userId);
-  const nextProfiles = mergeDefaultWorkspaceMcpServerProfiles(currentProfiles);
+  const nextProfiles = mergeDefaultWorkspaceMcpServerProfiles(currentProfiles, userId);
   if (nextProfiles.length === currentProfiles.length) {
     return;
   }
@@ -330,8 +336,10 @@ export async function ensureDefaultMcpServersForUser(userId: number): Promise<vo
   await writeWorkspaceMcpServerProfiles(userId, nextProfiles);
 }
 
-function buildDefaultMcpServerProfiles(): WorkspaceMcpServerProfileConfig[] {
-  const defaultStdioWorkingDirectory = resolveDefaultFilesystemWorkingDirectory();
+function buildDefaultMcpServerProfiles(
+  workspaceUserId: number,
+): WorkspaceMcpServerProfileConfig[] {
+  const defaultStdioWorkingDirectory = resolveDefaultFilesystemWorkingDirectory(workspaceUserId);
   return HOME_DEFAULT_WORKSPACE_MCP_SERVER_PROFILE_ROWS.map((defaultProfile) => {
     if (defaultProfile.transport === "stdio") {
       return {
@@ -363,8 +371,10 @@ function buildDefaultMcpServerProfiles(): WorkspaceMcpServerProfileConfig[] {
 
 function normalizeLegacyDefaultProfiles(
   currentProfiles: WorkspaceMcpServerProfileConfig[],
+  workspaceUserId: number,
 ): WorkspaceMcpServerProfileConfig[] {
-  const defaultWorkingDirectory = resolveDefaultFilesystemWorkingDirectory();
+  const defaultWorkingDirectory = resolveDefaultFilesystemWorkingDirectory(workspaceUserId);
+  const legacyDefaultWorkingDirectory = resolveLegacyFilesystemWorkingDirectory();
   const normalizedProfiles: WorkspaceMcpServerProfileConfig[] = [];
 
   for (const profile of currentProfiles) {
@@ -372,7 +382,10 @@ function normalizeLegacyDefaultProfiles(
       continue;
     }
 
-    if (!isLegacyDefaultMermaidProfile(profile)) {
+    if (
+      !isLegacyDefaultMermaidProfile(profile, legacyDefaultWorkingDirectory) &&
+      !isLegacyDefaultFilesystemProfile(profile, legacyDefaultWorkingDirectory)
+    ) {
       normalizedProfiles.push(profile);
       continue;
     }
@@ -386,7 +399,10 @@ function normalizeLegacyDefaultProfiles(
   return normalizedProfiles;
 }
 
-function isLegacyDefaultMermaidProfile(profile: WorkspaceMcpServerProfileConfig): profile is WorkspaceMcpServerProfileStdioConfig {
+function isLegacyDefaultMermaidProfile(
+  profile: WorkspaceMcpServerProfileConfig,
+  legacyDefaultWorkingDirectory: string,
+): profile is WorkspaceMcpServerProfileStdioConfig {
   if (profile.transport !== "stdio" || !defaultMermaidWorkspaceMcpServerProfile) {
     return false;
   }
@@ -396,7 +412,26 @@ function isLegacyDefaultMermaidProfile(profile: WorkspaceMcpServerProfileConfig)
     profile.args.length === defaultMermaidWorkspaceMcpServerProfile.args.length &&
     profile.args.every((arg, index) => arg === defaultMermaidWorkspaceMcpServerProfile.args[index]) &&
     Object.keys(profile.env).length === 0 &&
-    !profile.cwd
+    isLegacyDefaultWorkingDirectory(profile.cwd, legacyDefaultWorkingDirectory)
+  );
+}
+
+function isLegacyDefaultFilesystemProfile(
+  profile: WorkspaceMcpServerProfileConfig,
+  legacyDefaultWorkingDirectory: string,
+): profile is WorkspaceMcpServerProfileStdioConfig {
+  if (profile.transport !== "stdio" || !defaultFilesystemWorkspaceMcpServerProfile) {
+    return false;
+  }
+
+  return (
+    profile.command === defaultFilesystemWorkspaceMcpServerProfile.command &&
+    profile.args.length === defaultFilesystemWorkspaceMcpServerProfile.args.length &&
+    profile.args.every(
+      (arg, index) => arg === defaultFilesystemWorkspaceMcpServerProfile.args[index],
+    ) &&
+    Object.keys(profile.env).length === 0 &&
+    isLegacyDefaultWorkingDirectory(profile.cwd, legacyDefaultWorkingDirectory)
   );
 }
 
@@ -415,23 +450,29 @@ function isLegacyUnavailableDefaultStdioProfile(profile: WorkspaceMcpServerProfi
   );
 }
 
-function resolveDefaultFilesystemWorkingDirectory(): string {
-  const platform = process.platform;
-  const homeDirectory = nodeOs.homedir();
-  if (platform === "win32") {
-    const appDataDirectory = (process.env.APPDATA ?? "").trim();
-    if (!appDataDirectory) {
-      return path.win32.join(homeDirectory, FOUNDRY_LEGACY_CONFIG_DIRECTORY_NAME);
-    }
+function resolveDefaultFilesystemWorkingDirectory(workspaceUserId: number): string {
+  return resolveFoundryWorkspaceUserDirectory({
+    workspaceUserId,
+  });
+}
 
-    return path.win32.join(appDataDirectory, FOUNDRY_WINDOWS_CONFIG_DIRECTORY_NAME);
+function resolveLegacyFilesystemWorkingDirectory(): string {
+  return resolveFoundryConfigDirectory();
+}
+
+function isLegacyDefaultWorkingDirectory(
+  cwd: string | undefined,
+  legacyDefaultWorkingDirectory: string,
+): boolean {
+  if (!cwd) {
+    return true;
   }
 
-  if (platform === "darwin" || platform === "linux") {
-    return path.posix.join(homeDirectory, FOUNDRY_LEGACY_CONFIG_DIRECTORY_NAME);
-  }
+  return normalizePathForComparison(cwd) === normalizePathForComparison(legacyDefaultWorkingDirectory);
+}
 
-  return path.join(homeDirectory, FOUNDRY_LEGACY_CONFIG_DIRECTORY_NAME);
+function normalizePathForComparison(value: string): string {
+  return value.trim().replaceAll("\\", "/").toLowerCase();
 }
 
 export function parseIncomingMcpServer(payload: unknown): ParseResult<IncomingMcpServerConfig> {

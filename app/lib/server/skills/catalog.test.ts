@@ -43,7 +43,7 @@ describe("resolveSkillCatalogRoots", () => {
         createIfMissing: false,
       },
       {
-        path: "/Users/hiroki/.foundry_local_playground/skills/42",
+        path: "/Users/hiroki/.foundry_local_playground/users/42/skills",
         source: "app_data",
         createIfMissing: true,
       },
@@ -63,7 +63,7 @@ describe("resolveSkillCatalogRoots", () => {
       });
 
       expect(roots[1]).toEqual({
-        path: "/tmp/skills/7",
+        path: "/tmp/users/7/skills",
         source: "app_data",
         createIfMissing: true,
       });
@@ -151,7 +151,7 @@ describe("discoverSkillCatalog", () => {
       foundryConfigDirectory,
     });
 
-    const appDataSkillsDirectory = path.join(foundryConfigDirectory, "skills", "9");
+    const appDataSkillsDirectory = path.join(foundryConfigDirectory, "users", "9", "skills");
     const directoryStats = await stat(appDataSkillsDirectory);
     expect(directoryStats.isDirectory()).toBe(true);
   });
@@ -163,8 +163,9 @@ describe("discoverSkillCatalog", () => {
 
     const nestedSkillDirectory = path.join(
       foundryConfigDirectory,
-      "skills",
+      "users",
       "31",
+      "skills",
       "openai-curated",
       "gh-fix-ci",
     );
@@ -194,7 +195,7 @@ describe("discoverSkillCatalog", () => {
       source: "app_data",
     });
     expect(
-      result.skills[0]?.location.endsWith("/skills/31/openai-curated/gh-fix-ci/SKILL.md"),
+      result.skills[0]?.location.endsWith("/users/31/skills/openai-curated/gh-fix-ci/SKILL.md"),
     ).toBe(true);
     expect(result.warnings).toEqual([]);
   });

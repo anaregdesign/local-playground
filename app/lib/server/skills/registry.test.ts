@@ -126,7 +126,7 @@ describe("resolveAppDataSkillsRoot", () => {
       foundryConfigDirectory: "/Users/hiroki/.foundry_local_playground",
     });
 
-    expect(rootPath).toBe("/Users/hiroki/.foundry_local_playground/skills/42");
+    expect(rootPath).toBe("/Users/hiroki/.foundry_local_playground/users/42/skills");
   });
 
   it("resolves a user-scoped path from DATABASE_URL", () => {
@@ -140,7 +140,7 @@ describe("resolveAppDataSkillsRoot", () => {
         workspaceUserId: 9,
       });
 
-      expect(rootPath).toBe("/tmp/skills/9");
+      expect(rootPath).toBe("/tmp/users/9/skills");
     } finally {
       if (previousDatabaseUrl === undefined) {
         delete process.env.DATABASE_URL;

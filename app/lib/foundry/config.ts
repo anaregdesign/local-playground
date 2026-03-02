@@ -7,6 +7,7 @@ import nodeUrl from "node:url";
 import {
   FOUNDRY_SQLITE_DATABASE_FILE_NAME,
   FOUNDRY_LEGACY_CONFIG_DIRECTORY_NAME,
+  FOUNDRY_USERS_DIRECTORY_NAME,
   FOUNDRY_SKILLS_DIRECTORY_NAME,
   FOUNDRY_WINDOWS_CONFIG_DIRECTORY_NAME,
 } from "~/lib/constants";
@@ -21,6 +22,10 @@ type ResolveFoundryConfigDirectoryOptions = {
 type ResolveFoundryDatabaseUrlOptions = ResolveFoundryConfigDirectoryOptions & {
   envDatabaseUrl?: string | null;
   cwd?: string;
+};
+
+type ResolveFoundryWorkspaceUserDirectoryOptions = ResolveFoundryConfigDirectoryOptions & {
+  workspaceUserId: number;
 };
 
 type NormalizePrismaSqliteDatabaseUrlOptions = {
@@ -68,13 +73,26 @@ export function resolveFoundryDatabaseFilePath(
   return pathModule.join(primaryDirectoryPath, FOUNDRY_SQLITE_DATABASE_FILE_NAME);
 }
 
-export function resolveFoundrySkillsDirectory(
-  options: ResolveFoundryConfigDirectoryOptions = {},
+export function resolveFoundryWorkspaceUserDirectory(
+  options: ResolveFoundryWorkspaceUserDirectoryOptions,
 ): string {
   const primaryDirectoryPath = resolveFoundryConfigDirectory(options);
   const platform = options.platform ?? process.platform;
   const pathModule = platform === "win32" ? path.win32 : path.posix;
-  return pathModule.join(primaryDirectoryPath, FOUNDRY_SKILLS_DIRECTORY_NAME);
+  return pathModule.join(
+    primaryDirectoryPath,
+    FOUNDRY_USERS_DIRECTORY_NAME,
+    readWorkspaceUserDirectoryName(options.workspaceUserId),
+  );
+}
+
+export function resolveFoundryWorkspaceUserSkillsDirectory(
+  options: ResolveFoundryWorkspaceUserDirectoryOptions,
+): string {
+  const workspaceUserDirectoryPath = resolveFoundryWorkspaceUserDirectory(options);
+  const platform = options.platform ?? process.platform;
+  const pathModule = platform === "win32" ? path.win32 : path.posix;
+  return pathModule.join(workspaceUserDirectoryPath, FOUNDRY_SKILLS_DIRECTORY_NAME);
 }
 
 export function resolveFoundryDatabaseUrl(
@@ -123,6 +141,14 @@ function normalizePrismaSqliteDatabaseUrl(
   const queryIndex = trimmedUrl.indexOf("?");
   const query = queryIndex >= 0 ? trimmedUrl.slice(queryIndex) : "";
   return `${buildPrismaSqliteDatabaseUrl(absoluteDatabasePath, options.platform)}${query}`;
+}
+
+function readWorkspaceUserDirectoryName(workspaceUserId: number): string {
+  if (!Number.isInteger(workspaceUserId) || workspaceUserId <= 0) {
+    throw new Error("`workspaceUserId` must be a positive integer.");
+  }
+
+  return String(workspaceUserId);
 }
 
 function isInMemorySqliteDatabaseUrl(databaseUrl: string): boolean {
