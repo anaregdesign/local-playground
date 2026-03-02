@@ -236,6 +236,7 @@ async function ensureMcpServerProfileSchema(): Promise<void> {
       "id" TEXT NOT NULL PRIMARY KEY,
       "userId" INTEGER NOT NULL,
       "profileOrder" INTEGER NOT NULL,
+      "connectOnThreadCreate" BOOLEAN NOT NULL DEFAULT false,
       "configKey" TEXT NOT NULL,
       "name" TEXT NOT NULL,
       "transport" TEXT NOT NULL,
@@ -262,6 +263,33 @@ async function ensureMcpServerProfileSchema(): Promise<void> {
     "profileOrder",
     "INTEGER NOT NULL DEFAULT 0",
   );
+  const hadConnectOnThreadCreateColumn = (
+    await readTableColumns("WorkspaceMcpServerProfile")
+  ).has("connectOnThreadCreate");
+  await ensureTableColumn(
+    "WorkspaceMcpServerProfile",
+    "connectOnThreadCreate",
+    "BOOLEAN NOT NULL DEFAULT false",
+  );
+  if (!hadConnectOnThreadCreateColumn) {
+    await prisma.$executeRawUnsafe(`
+      UPDATE "WorkspaceMcpServerProfile"
+      SET "connectOnThreadCreate" = true
+      WHERE "transport" = 'stdio'
+        AND "command" = 'npx'
+        AND "argsJson" = '["-y","@modelcontextprotocol/server-filesystem","."]'
+    `);
+
+    await prisma.$executeRawUnsafe(`
+      UPDATE "WorkspaceMcpServerProfile"
+      SET "connectOnThreadCreate" = true
+      WHERE "transport" IN ('streamable_http', 'sse')
+        AND (
+          LOWER(COALESCE("url", '')) IN ('/mcp/system', '/mcp/system/')
+          OR LOWER(COALESCE("name", '')) = 'system'
+        )
+    `);
+  }
 
   await prisma.$executeRawUnsafe(`
     CREATE UNIQUE INDEX IF NOT EXISTS "WorkspaceMcpServerProfile_userId_configKey_key"

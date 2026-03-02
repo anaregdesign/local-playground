@@ -35,6 +35,7 @@ model WorkspaceMcpServerProfile {
   id             String  @id
   userId         Int
   profileOrder   Int
+  connectOnThreadCreate Boolean @default(false)
   configKey      String
   name           String
   transport      String

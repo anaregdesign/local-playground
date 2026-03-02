@@ -15,6 +15,7 @@ import {
 export type McpHttpServerConfig = {
   id: string;
   name: string;
+  connectOnThreadCreate?: boolean;
   transport: "streamable_http" | "sse";
   url: string;
   headers: Record<string, string>;
@@ -26,6 +27,7 @@ export type McpHttpServerConfig = {
 export type McpStdioServerConfig = {
   id: string;
   name: string;
+  connectOnThreadCreate?: boolean;
   transport: "stdio";
   command: string;
   args: string[];
@@ -88,6 +90,7 @@ export function readMcpServerFromUnknown(value: unknown): McpServerConfig | null
   if (!name) {
     return null;
   }
+  const connectOnThreadCreate = value.connectOnThreadCreate === true;
 
   const transport = value.transport;
   if (transport === "stdio") {
@@ -108,6 +111,7 @@ export function readMcpServerFromUnknown(value: unknown): McpServerConfig | null
     return {
       id,
       name,
+      connectOnThreadCreate,
       transport,
       command,
       args: value.args.map((arg) => arg.trim()).filter(Boolean),
@@ -137,6 +141,7 @@ export function readMcpServerFromUnknown(value: unknown): McpServerConfig | null
   return {
     id,
     name,
+    connectOnThreadCreate,
     transport,
     url,
     headers,
@@ -156,6 +161,9 @@ export function serializeMcpServerForSave(
   if (server.transport === "stdio") {
     const payload: SaveMcpStdioServerRequest = {
       name: server.name,
+      ...(typeof server.connectOnThreadCreate === "boolean"
+        ? { connectOnThreadCreate: server.connectOnThreadCreate }
+        : {}),
       transport: server.transport,
       command: server.command,
       args: server.args,
@@ -167,6 +175,9 @@ export function serializeMcpServerForSave(
 
   const payload: SaveMcpHttpServerRequest = {
     name: server.name,
+    ...(typeof server.connectOnThreadCreate === "boolean"
+      ? { connectOnThreadCreate: server.connectOnThreadCreate }
+      : {}),
     transport: server.transport,
     url: server.url,
     headers: server.headers,

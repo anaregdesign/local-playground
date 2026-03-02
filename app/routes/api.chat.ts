@@ -71,6 +71,8 @@ import {
   MCP_AZURE_AUTH_SCOPE_MAX_LENGTH,
   MCP_DEFAULT_AZURE_AUTH_SCOPE,
   MCP_DEFAULT_HTTP_HEADERS,
+  MCP_LOCAL_PLAYGROUND_THREAD_ID_HEADER,
+  MCP_LOCAL_PLAYGROUND_TURN_ID_HEADER,
   MCP_DEFAULT_TIMEOUT_SECONDS,
   MCP_HTTP_HEADERS_MAX,
   MCP_LEGACY_UNAVAILABLE_DEFAULT_STDIO_NPX_PACKAGE_NAMES,
@@ -168,6 +170,10 @@ type ChatExecutionOptions = {
   explicitSkillLocations: string[];
   azureConfig: ResolvedAzureConfig;
   mcpServers: ClientMcpServerConfig[];
+};
+type McpRequestContext = {
+  threadId: string | null;
+  turnId: string | null;
 };
 type ChatExecutionResult = {
   message: string;
@@ -452,7 +458,7 @@ export async function action({ request }: Route.ActionArgs) {
     return Response.json({ error: azureConfigResult.error }, { status: 400 });
   }
   const azureConfig = azureConfigResult.value;
-  const mcpServersResult = readMcpServers(payload);
+  const mcpServersResult = readMcpServers(payload, { requestUrl: request.url });
   if (!mcpServersResult.ok) {
     await logServerRouteEvent({
       request,
@@ -585,6 +591,10 @@ async function executeChat(
   const skillExecutionContext: SkillToolExecutionContext = {
     threadEnvironment: cloneThreadEnvironment(options.threadEnvironment),
   };
+  const mcpRequestContext: McpRequestContext = {
+    threadId: options.threadId,
+    turnId: options.turnId,
+  };
 
   const emitProgress = (event: ChatProgressEvent) => {
     onEvent?.({
@@ -645,7 +655,7 @@ async function executeChat(
             azureMcpAuthorizationTokenPromiseByScope.set(normalizedScope, created);
             return created;
           },
-        });
+        }, mcpRequestContext);
         instrumentedServer = instrumentMcpServer(server, {
           nextSequence: nextThreadOperationLogSequence,
           onRecord: emitThreadOperationLogRecord,
@@ -1903,7 +1913,12 @@ function readAzureConfig(payload: unknown): ParseResult<ResolvedAzureConfig> {
   };
 }
 
-function readMcpServers(payload: unknown): ParseResult<ClientMcpServerConfig[]> {
+function readMcpServers(
+  payload: unknown,
+  options: {
+    requestUrl?: string;
+  } = {},
+): ParseResult<ClientMcpServerConfig[]> {
   if (!isRecord(payload)) {
     return { ok: true, value: [] };
   }
@@ -2009,21 +2024,12 @@ function readMcpServers(payload: unknown): ParseResult<ClientMcpServerConfig[]> 
       return { ok: false, error: `mcpServers[${index}].url is required.` };
     }
 
-    let parsedUrl: URL;
-    try {
-      parsedUrl = new URL(rawUrl);
-    } catch {
-      return { ok: false, error: `mcpServers[${index}].url is invalid.` };
+    const parsedHttpUrlResult = parseMcpHttpUrlForChat(rawUrl, index, options.requestUrl);
+    if (!parsedHttpUrlResult.ok) {
+      return parsedHttpUrlResult;
     }
 
-    if (parsedUrl.protocol !== "http:" && parsedUrl.protocol !== "https:") {
-      return {
-        ok: false,
-        error: `mcpServers[${index}].url must start with http:// or https://.`,
-      };
-    }
-
-    const name = (rawName || parsedUrl.hostname).slice(0, MCP_SERVER_NAME_MAX_LENGTH);
+    const name = (rawName || parsedHttpUrlResult.value.nameFallback).slice(0, MCP_SERVER_NAME_MAX_LENGTH);
     if (!name) {
       return { ok: false, error: `mcpServers[${index}].name is required.` };
     }
@@ -2042,7 +2048,7 @@ function readMcpServers(payload: unknown): ParseResult<ClientMcpServerConfig[]> 
       return timeoutResult;
     }
 
-    const url = parsedUrl.toString();
+    const url = parsedHttpUrlResult.value.url;
     const headersKey = buildHttpHeadersDedupeKey(headersResult.value);
     const authKey = useAzureAuth ? "azure-auth:on" : "azure-auth:off";
     const scopeKey = useAzureAuth ? scopeResult.value.toLowerCase() : "";
@@ -2066,6 +2072,91 @@ function readMcpServers(payload: unknown): ParseResult<ClientMcpServerConfig[]> 
   return { ok: true, value: result };
 }
 
+function parseMcpHttpUrlForChat(
+  rawUrl: string,
+  index: number,
+  requestUrl?: string,
+): ParseResult<{
+  url: string;
+  nameFallback: string;
+}> {
+  const requestOrigin = readRequestOrigin(requestUrl);
+  if (rawUrl.startsWith("/") && !rawUrl.startsWith("//")) {
+    if (!requestOrigin) {
+      return {
+        ok: false,
+        error: `mcpServers[${index}].url is invalid.`,
+      };
+    }
+
+    let resolvedUrl: URL;
+    try {
+      resolvedUrl = new URL(rawUrl, requestOrigin);
+    } catch {
+      return { ok: false, error: `mcpServers[${index}].url is invalid.` };
+    }
+
+    if (resolvedUrl.protocol !== "http:" && resolvedUrl.protocol !== "https:") {
+      return {
+        ok: false,
+        error: `mcpServers[${index}].url must start with http://, https://, or /.`,
+      };
+    }
+
+    const pathSegments = resolvedUrl.pathname
+      .split("/")
+      .map((entry) => entry.trim())
+      .filter((entry) => entry.length > 0);
+    const nameFallback = pathSegments[pathSegments.length - 1] ?? resolvedUrl.hostname;
+    return {
+      ok: true,
+      value: {
+        url: resolvedUrl.toString(),
+        nameFallback,
+      },
+    };
+  }
+
+  let parsedAbsoluteUrl: URL;
+  try {
+    parsedAbsoluteUrl = new URL(rawUrl);
+  } catch {
+    return { ok: false, error: `mcpServers[${index}].url is invalid.` };
+  }
+
+  if (parsedAbsoluteUrl.protocol !== "http:" && parsedAbsoluteUrl.protocol !== "https:") {
+    return {
+      ok: false,
+      error: `mcpServers[${index}].url must start with http://, https://, or /.`,
+    };
+  }
+
+  return {
+    ok: true,
+    value: {
+      url: parsedAbsoluteUrl.toString(),
+      nameFallback: parsedAbsoluteUrl.hostname,
+    },
+  };
+}
+
+function readRequestOrigin(requestUrl?: string): string | null {
+  if (typeof requestUrl !== "string") {
+    return null;
+  }
+
+  const trimmed = requestUrl.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  try {
+    return new URL(trimmed).origin;
+  } catch {
+    return null;
+  }
+}
+
 function isLegacyUnavailableDefaultStdioNpxServer(config: {
   command: string;
   args: string[];
@@ -2087,6 +2178,7 @@ async function createMcpServer(
   helpers: {
     getAzureAuthorizationToken: (scope: string) => Promise<string>;
   },
+  requestContext: McpRequestContext,
 ): Promise<MCPServer> {
   if (config.transport === "stdio") {
     const env = buildStdioSpawnEnvironment(config.env);
@@ -2101,6 +2193,10 @@ async function createMcpServer(
   }
 
   const headers = buildMcpHttpRequestHeaders(config.headers);
+  const contextHeaders = buildMcpContextRequestHeaders(config, requestContext);
+  for (const [key, value] of Object.entries(contextHeaders)) {
+    headers[key] = value;
+  }
   if (config.useAzureAuth) {
     const token = await helpers.getAzureAuthorizationToken(config.azureAuthScope);
     headers.Authorization = `Bearer ${token}`;
@@ -2918,6 +3014,64 @@ function buildMcpHttpRequestHeaders(headers: Record<string, string>): Record<str
   }
 
   return mergedHeaders;
+}
+
+function buildMcpContextRequestHeaders(
+  serverConfig: ClientMcpServerConfig,
+  requestContext: McpRequestContext,
+): Record<string, string> {
+  if (serverConfig.transport === "stdio" || !isLocalPlaygroundMcpSystemUrl(serverConfig.url)) {
+    return {};
+  }
+
+  const contextHeaders: Record<string, string> = {};
+  if (requestContext.threadId) {
+    contextHeaders[MCP_LOCAL_PLAYGROUND_THREAD_ID_HEADER] = requestContext.threadId;
+  }
+  if (requestContext.turnId) {
+    contextHeaders[MCP_LOCAL_PLAYGROUND_TURN_ID_HEADER] = requestContext.turnId;
+  }
+  return contextHeaders;
+}
+
+function isLocalPlaygroundMcpSystemUrl(rawUrl: string): boolean {
+  const trimmedUrl = rawUrl.trim();
+  if (!trimmedUrl) {
+    return false;
+  }
+
+  if (trimmedUrl.startsWith("/") && !trimmedUrl.startsWith("//")) {
+    let parsedRelativeUrl: URL;
+    try {
+      parsedRelativeUrl = new URL(trimmedUrl, "http://localhost");
+    } catch {
+      return false;
+    }
+
+    const normalizedRelativePath = parsedRelativeUrl.pathname.replace(/\/+$/, "");
+    return normalizedRelativePath === "/mcp/system";
+  }
+
+  let parsedUrl: URL;
+  try {
+    parsedUrl = new URL(trimmedUrl);
+  } catch {
+    return false;
+  }
+
+  const normalizedPathname = parsedUrl.pathname.replace(/\/+$/, "");
+  if (normalizedPathname !== "/mcp/system") {
+    return false;
+  }
+
+  const hostname = parsedUrl.hostname.trim().toLowerCase();
+  return (
+    hostname === "localhost" ||
+    hostname === "::1" ||
+    hostname === "0.0.0.0" ||
+    hostname === "127.0.0.1" ||
+    hostname.startsWith("127.")
+  );
 }
 
 async function getAzureMcpAuthorizationToken(
@@ -5113,6 +5267,8 @@ export const chatRouteTestUtils = {
   readExplicitSkillLocations,
   readMcpServers,
   buildMcpHttpRequestHeaders,
+  buildMcpContextRequestHeaders,
+  isLocalPlaygroundMcpSystemUrl,
   normalizeMcpMetaNulls,
   normalizeMcpInitializeNullOptionals,
   normalizeMcpListToolsNullOptionals,

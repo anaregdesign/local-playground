@@ -1710,6 +1710,9 @@ export function useWorkspaceController() {
     const now = new Date().toISOString();
     const normalizedName = (options.name ?? "").trim().slice(0, HOME_THREAD_NAME_MAX_LENGTH);
     const name = normalizedName || THREAD_DEFAULT_NAME;
+    const defaultThreadMcpServers = workspaceMcpServerProfiles.filter(
+      (server) => server.connectOnThreadCreate === true,
+    );
 
     return {
       id: createId("thread"),
@@ -1722,7 +1725,7 @@ export function useWorkspaceController() {
       agentInstruction: DEFAULT_AGENT_INSTRUCTION,
       threadEnvironment: {},
       messages: [],
-      mcpServers: [],
+      mcpServers: cloneMcpServers(defaultThreadMcpServers),
       mcpRpcLogs: [],
       skillSelections: [],
     };
@@ -2930,8 +2933,10 @@ export function useWorkspaceController() {
         clearWorkspaceMcpServerProfilesState();
         clearThreadsState();
       } else if (previousWorkspaceUserKey !== nextWorkspaceUserKey) {
-        void loadWorkspaceMcpServerProfiles();
-        void loadThreads();
+        void (async () => {
+          await loadWorkspaceMcpServerProfiles();
+          await loadThreads();
+        })();
       } else if (!isThreadsReadyRef.current && !isLoadingThreads) {
         void loadThreads();
       }

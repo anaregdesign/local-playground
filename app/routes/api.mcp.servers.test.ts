@@ -28,6 +28,7 @@ type HomeDefaultWorkspaceMcpServerProfileHttpRow = Extract<
 >;
 const defaultOpenaiDocsMcpServerProfile = readDefaultHttpMcpServerProfile("openai-docs");
 const defaultMicrosoftLearnMcpServerProfile = readDefaultHttpMcpServerProfile("microsoft-learn");
+const defaultSystemMcpServerProfile = readDefaultHttpMcpServerProfile("system");
 const defaultFilesystemMcpServerProfile = readDefaultStdioMcpServerProfile("filesystem");
 const defaultWorkiqMcpServerProfile = readDefaultStdioMcpServerProfile("workiq");
 const defaultMemoryMcpServerProfile = readDefaultStdioMcpServerProfile("server-memory");
@@ -108,6 +109,29 @@ describe("parseIncomingMcpServer", () => {
     });
   });
 
+  it("parses relative HTTP endpoint payloads", () => {
+    const result = parseIncomingMcpServer({
+      transport: "streamable_http",
+      url: "/mcp/system",
+      name: "system",
+      connectOnThreadCreate: true,
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      value: {
+        name: "system",
+        connectOnThreadCreate: true,
+        transport: "streamable_http",
+        url: "/mcp/system",
+        headers: {},
+        useAzureAuth: false,
+        azureAuthScope: MCP_DEFAULT_AZURE_AUTH_SCOPE,
+        timeoutSeconds: MCP_DEFAULT_TIMEOUT_SECONDS,
+      },
+    });
+  });
+
   it("rejects invalid HTTP and stdio payloads", () => {
     expect(
       parseIncomingMcpServer({
@@ -116,7 +140,7 @@ describe("parseIncomingMcpServer", () => {
       }),
     ).toEqual({
       ok: false,
-      error: "`url` must start with http:// or https://.",
+      error: "`url` must start with http://, https://, or /.",
     });
 
     expect(
@@ -150,6 +174,7 @@ describe("upsertWorkspaceMcpServerProfile", () => {
       {
         id: "profile-1",
         name: "Original Name",
+        connectOnThreadCreate: false,
         transport: "streamable_http" as const,
         url: "https://example.com/mcp",
         headers: { Authorization: "Bearer token" },
@@ -162,6 +187,7 @@ describe("upsertWorkspaceMcpServerProfile", () => {
     const incoming = {
       id: "ignored-id",
       name: "Renamed Server",
+      connectOnThreadCreate: false,
       transport: "streamable_http" as const,
       url: "https://example.com/mcp",
       headers: { Authorization: "Bearer token" },
@@ -185,6 +211,7 @@ describe("upsertWorkspaceMcpServerProfile", () => {
       {
         id: "profile-1",
         name: "Server",
+        connectOnThreadCreate: false,
         transport: "streamable_http" as const,
         url: "https://example.com/mcp",
         headers: {},
@@ -197,6 +224,7 @@ describe("upsertWorkspaceMcpServerProfile", () => {
     const incoming = {
       id: "profile-1",
       name: "Server",
+      connectOnThreadCreate: false,
       transport: "streamable_http" as const,
       url: "https://other.example.com/mcp",
       headers: {},
@@ -211,6 +239,7 @@ describe("upsertWorkspaceMcpServerProfile", () => {
     expect(result.profile).toEqual({
       id: "profile-1",
       name: "Server",
+      connectOnThreadCreate: false,
       transport: "streamable_http",
       url: "https://other.example.com/mcp",
       headers: {},
@@ -221,11 +250,42 @@ describe("upsertWorkspaceMcpServerProfile", () => {
     expect(result.warning).toBeNull();
   });
 
+  it("preserves connectOnThreadCreate when incoming payload omits it", () => {
+    const currentProfiles = [
+      {
+        id: "profile-1",
+        name: "System",
+        connectOnThreadCreate: true,
+        transport: "streamable_http" as const,
+        url: "/mcp/system",
+        headers: {},
+        useAzureAuth: false,
+        azureAuthScope: MCP_DEFAULT_AZURE_AUTH_SCOPE,
+        timeoutSeconds: MCP_DEFAULT_TIMEOUT_SECONDS,
+      },
+    ];
+
+    const incoming = {
+      id: "profile-1",
+      name: "System Updated",
+      transport: "streamable_http" as const,
+      url: "/mcp/system",
+      headers: {},
+      useAzureAuth: false,
+      azureAuthScope: MCP_DEFAULT_AZURE_AUTH_SCOPE,
+      timeoutSeconds: MCP_DEFAULT_TIMEOUT_SECONDS,
+    };
+
+    const result = upsertWorkspaceMcpServerProfile(currentProfiles, incoming);
+    expect(result.profile.connectOnThreadCreate).toBe(true);
+  });
+
   it("appends a new profile for unique configuration", () => {
     const currentProfiles = [
       {
         id: "profile-1",
         name: "HTTP",
+        connectOnThreadCreate: false,
         transport: "streamable_http" as const,
         url: "https://example.com/mcp",
         headers: {},
@@ -238,6 +298,7 @@ describe("upsertWorkspaceMcpServerProfile", () => {
     const incoming = {
       id: "profile-2",
       name: "STDIO",
+      connectOnThreadCreate: false,
       transport: "stdio" as const,
       command: "node",
       args: ["server.js"],
@@ -261,6 +322,7 @@ describe("deleteWorkspaceMcpServerProfile", () => {
       {
         id: "profile-1",
         name: "A",
+        connectOnThreadCreate: false,
         transport: "streamable_http" as const,
         url: "https://example.com/a",
         headers: {},
@@ -271,6 +333,7 @@ describe("deleteWorkspaceMcpServerProfile", () => {
       {
         id: "profile-2",
         name: "B",
+        connectOnThreadCreate: false,
         transport: "stdio" as const,
         command: "node",
         args: ["server.js"],
@@ -290,6 +353,7 @@ describe("deleteWorkspaceMcpServerProfile", () => {
       {
         id: "profile-1",
         name: "A",
+        connectOnThreadCreate: false,
         transport: "streamable_http" as const,
         url: "https://example.com/a",
         headers: {},
@@ -311,7 +375,7 @@ describe("mergeDefaultWorkspaceMcpServerProfiles", () => {
     const expectedFilesystemWorkingDirectory = resolveDefaultFilesystemWorkingDirectory();
     const result = mergeDefaultWorkspaceMcpServerProfiles([]);
 
-    expect(result).toHaveLength(9);
+    expect(result).toHaveLength(10);
     expect(result).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -331,6 +395,17 @@ describe("mergeDefaultWorkspaceMcpServerProfiles", () => {
           useAzureAuth: false,
           azureAuthScope: MCP_DEFAULT_AZURE_AUTH_SCOPE,
           timeoutSeconds: MCP_DEFAULT_TIMEOUT_SECONDS,
+          connectOnThreadCreate: false,
+        }),
+        expect.objectContaining({
+          name: defaultSystemMcpServerProfile.name,
+          transport: "streamable_http",
+          url: defaultSystemMcpServerProfile.url,
+          headers: {},
+          useAzureAuth: false,
+          azureAuthScope: MCP_DEFAULT_AZURE_AUTH_SCOPE,
+          timeoutSeconds: MCP_DEFAULT_TIMEOUT_SECONDS,
+          connectOnThreadCreate: true,
         }),
         expect.objectContaining({
           name: defaultFilesystemMcpServerProfile.name,
@@ -339,6 +414,7 @@ describe("mergeDefaultWorkspaceMcpServerProfiles", () => {
           args: [...defaultFilesystemMcpServerProfile.args],
           cwd: expectedFilesystemWorkingDirectory,
           env: {},
+          connectOnThreadCreate: true,
         }),
         expect.objectContaining({
           name: defaultWorkiqMcpServerProfile.name,
@@ -394,6 +470,7 @@ describe("mergeDefaultWorkspaceMcpServerProfiles", () => {
       {
         id: "profile-openai-docs",
         name: "OpenAI Docs (Custom Name)",
+        connectOnThreadCreate: false,
         transport: "streamable_http" as const,
         url: defaultOpenaiDocsMcpServerProfile.url,
         headers: {},
@@ -404,6 +481,7 @@ describe("mergeDefaultWorkspaceMcpServerProfiles", () => {
       {
         id: "profile-workiq",
         name: "Custom WorkIQ",
+        connectOnThreadCreate: false,
         transport: "stdio" as const,
         command: defaultWorkiqMcpServerProfile.command,
         args: [...defaultWorkiqMcpServerProfile.args],
@@ -412,6 +490,7 @@ describe("mergeDefaultWorkspaceMcpServerProfiles", () => {
       {
         id: "profile-server-memory",
         name: "Server Memory (Custom Name)",
+        connectOnThreadCreate: false,
         transport: "stdio" as const,
         command: defaultMemoryMcpServerProfile.command,
         args: [...defaultMemoryMcpServerProfile.args],
@@ -420,6 +499,7 @@ describe("mergeDefaultWorkspaceMcpServerProfiles", () => {
       {
         id: "profile-server-everything",
         name: "Server Everything (Custom Name)",
+        connectOnThreadCreate: false,
         transport: "stdio" as const,
         command: defaultEverythingMcpServerProfile.command,
         args: [...defaultEverythingMcpServerProfile.args],
@@ -428,6 +508,7 @@ describe("mergeDefaultWorkspaceMcpServerProfiles", () => {
       {
         id: "profile-mslearn",
         name: "Microsoft Learn (Custom Name)",
+        connectOnThreadCreate: false,
         transport: "streamable_http" as const,
         url: defaultMicrosoftLearnMcpServerProfile.url,
         headers: {},
@@ -436,8 +517,20 @@ describe("mergeDefaultWorkspaceMcpServerProfiles", () => {
         timeoutSeconds: MCP_DEFAULT_TIMEOUT_SECONDS,
       },
       {
+        id: "profile-system",
+        name: "System (Custom Name)",
+        connectOnThreadCreate: true,
+        transport: "streamable_http" as const,
+        url: defaultSystemMcpServerProfile.url,
+        headers: {},
+        useAzureAuth: false,
+        azureAuthScope: MCP_DEFAULT_AZURE_AUTH_SCOPE,
+        timeoutSeconds: MCP_DEFAULT_TIMEOUT_SECONDS,
+      },
+      {
         id: "profile-filesystem",
         name: "Filesystem (Custom Name)",
+        connectOnThreadCreate: true,
         transport: "stdio" as const,
         command: defaultFilesystemMcpServerProfile.command,
         args: [...defaultFilesystemMcpServerProfile.args],
@@ -447,6 +540,7 @@ describe("mergeDefaultWorkspaceMcpServerProfiles", () => {
       {
         id: "profile-azure-mcp",
         name: "Azure MCP (Custom Name)",
+        connectOnThreadCreate: false,
         transport: "stdio" as const,
         command: defaultAzureMcpServerProfile.command,
         args: [...defaultAzureMcpServerProfile.args],
@@ -455,6 +549,7 @@ describe("mergeDefaultWorkspaceMcpServerProfiles", () => {
       {
         id: "profile-playwright",
         name: "Playwright (Custom Name)",
+        connectOnThreadCreate: false,
         transport: "stdio" as const,
         command: defaultPlaywrightMcpServerProfile.command,
         args: [...defaultPlaywrightMcpServerProfile.args],
@@ -463,6 +558,7 @@ describe("mergeDefaultWorkspaceMcpServerProfiles", () => {
       {
         id: "profile-mermaid",
         name: "Mermaid (Custom Name)",
+        connectOnThreadCreate: false,
         transport: "stdio" as const,
         command: defaultMermaidMcpServerProfile.command,
         args: [...defaultMermaidMcpServerProfile.args],
@@ -482,6 +578,7 @@ describe("mergeDefaultWorkspaceMcpServerProfiles", () => {
       {
         id: "profile-workiq",
         name: "Custom WorkIQ",
+        connectOnThreadCreate: false,
         transport: "stdio" as const,
         command: defaultWorkiqMcpServerProfile.command,
         args: [...defaultWorkiqMcpServerProfile.args],
@@ -491,7 +588,7 @@ describe("mergeDefaultWorkspaceMcpServerProfiles", () => {
 
     const result = mergeDefaultWorkspaceMcpServerProfiles(existing);
 
-    expect(result).toHaveLength(9);
+    expect(result).toHaveLength(10);
     expect(result).toEqual(
       expect.arrayContaining([
         existing[0],
@@ -502,6 +599,11 @@ describe("mergeDefaultWorkspaceMcpServerProfiles", () => {
         expect.objectContaining({
           transport: "streamable_http",
           url: defaultMicrosoftLearnMcpServerProfile.url,
+        }),
+        expect.objectContaining({
+          transport: "streamable_http",
+          url: defaultSystemMcpServerProfile.url,
+          connectOnThreadCreate: true,
         }),
         expect.objectContaining({
           transport: "stdio",
@@ -544,6 +646,7 @@ describe("mergeDefaultWorkspaceMcpServerProfiles", () => {
       {
         id: "legacy-server-http",
         name: "server-http",
+        connectOnThreadCreate: false,
         transport: "stdio" as const,
         command: "npx",
         args: ["-y", "@modelcontextprotocol/server-http"],
@@ -552,6 +655,7 @@ describe("mergeDefaultWorkspaceMcpServerProfiles", () => {
       {
         id: "legacy-server-shell",
         name: "server-shell",
+        connectOnThreadCreate: false,
         transport: "stdio" as const,
         command: "npx",
         args: ["-y", "@modelcontextprotocol/server-shell"],
@@ -560,6 +664,7 @@ describe("mergeDefaultWorkspaceMcpServerProfiles", () => {
       {
         id: "custom-stdio",
         name: "custom-local",
+        connectOnThreadCreate: false,
         transport: "stdio" as const,
         command: "node",
         args: ["server.js"],
@@ -580,6 +685,7 @@ describe("mergeDefaultWorkspaceMcpServerProfiles", () => {
       {
         id: "legacy-mermaid",
         name: "Legacy Mermaid",
+        connectOnThreadCreate: false,
         transport: "stdio" as const,
         command: defaultMermaidMcpServerProfile.command,
         args: [...defaultMermaidMcpServerProfile.args],
@@ -610,6 +716,7 @@ describe("mergeDefaultWorkspaceMcpServerProfiles", () => {
       {
         id: "legacy-mslearn",
         name: defaultMicrosoftLearnMcpServerProfile.name,
+        connectOnThreadCreate: false,
         transport: "streamable_http" as const,
         url: defaultMicrosoftLearnMcpServerProfile.url,
         headers: {},
@@ -620,6 +727,7 @@ describe("mergeDefaultWorkspaceMcpServerProfiles", () => {
       {
         id: "legacy-azure-mcp",
         name: defaultAzureMcpServerProfile.name,
+        connectOnThreadCreate: false,
         transport: "stdio" as const,
         command: defaultAzureMcpServerProfile.command,
         args: [...defaultAzureMcpServerProfile.args],
@@ -628,6 +736,7 @@ describe("mergeDefaultWorkspaceMcpServerProfiles", () => {
       {
         id: "custom-stdio",
         name: "custom-local",
+        connectOnThreadCreate: false,
         transport: "stdio" as const,
         command: "node",
         args: ["server.js"],

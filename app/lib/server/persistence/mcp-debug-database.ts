@@ -232,6 +232,12 @@ const tableDefinitions: DatabaseDebugTableDefinition[] = [
         description: "Display order in MCP Servers tab.",
       },
       {
+        name: "connectOnThreadCreate",
+        type: "BOOLEAN",
+        nullable: false,
+        description: "Whether this saved profile is auto-attached when creating a new thread.",
+      },
+      {
         name: "configKey",
         type: "TEXT",
         nullable: false,

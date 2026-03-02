@@ -11,6 +11,8 @@ import {
   CHAT_MAX_SKILL_OPERATION_CALLS_PER_SERVER_METHOD,
   CHAT_MAX_SKILL_RUN_SCRIPT_CALLS_PER_SERVER_METHOD,
   MCP_DEFAULT_AZURE_AUTH_SCOPE,
+  MCP_LOCAL_PLAYGROUND_THREAD_ID_HEADER,
+  MCP_LOCAL_PLAYGROUND_TURN_ID_HEADER,
   THREAD_ENVIRONMENT_VARIABLES_MAX,
 } from "~/lib/constants";
 import { chatRouteTestUtils } from "./api.chat";
@@ -25,6 +27,8 @@ const {
   readExplicitSkillLocations,
   readMcpServers,
   buildMcpHttpRequestHeaders,
+  buildMcpContextRequestHeaders,
+  isLocalPlaygroundMcpSystemUrl,
   normalizeMcpMetaNulls,
   normalizeMcpInitializeNullOptionals,
   normalizeMcpListToolsNullOptionals,
@@ -625,6 +629,37 @@ describe("readMcpServers", () => {
     });
   });
 
+  it("resolves root-relative HTTP MCP endpoints using request origin", () => {
+    const result = readMcpServers(
+      {
+        mcpServers: [
+          {
+            name: "system",
+            url: "/mcp/system",
+          },
+        ],
+      },
+      {
+        requestUrl: "http://localhost:3000/api/chat",
+      },
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+
+    expect(result.value[0]).toEqual({
+      name: "system",
+      transport: "streamable_http",
+      url: "http://localhost:3000/mcp/system",
+      headers: {},
+      useAzureAuth: false,
+      azureAuthScope: MCP_DEFAULT_AZURE_AUTH_SCOPE,
+      timeoutSeconds: 30,
+    });
+  });
+
   it("rejects reserved Content-Type header", () => {
     expect(
       readMcpServers({
@@ -1061,5 +1096,106 @@ describe("buildMcpHttpRequestHeaders", () => {
       "Content-Type": "application/json",
       Authorization: "Bearer token",
     });
+  });
+});
+
+describe("buildMcpContextRequestHeaders", () => {
+  it("adds thread context headers for localhost /mcp/system endpoints", () => {
+    expect(
+      buildMcpContextRequestHeaders(
+        {
+          name: "system",
+          transport: "streamable_http",
+          url: "http://localhost:3000/mcp/system/",
+          headers: {},
+          useAzureAuth: false,
+          azureAuthScope: MCP_DEFAULT_AZURE_AUTH_SCOPE,
+          timeoutSeconds: 10,
+        },
+        {
+          threadId: "thread-1",
+          turnId: "turn-2",
+        },
+      ),
+    ).toEqual({
+      [MCP_LOCAL_PLAYGROUND_THREAD_ID_HEADER]: "thread-1",
+      [MCP_LOCAL_PLAYGROUND_TURN_ID_HEADER]: "turn-2",
+    });
+  });
+
+  it("adds thread context headers for relative /mcp/system endpoints", () => {
+    expect(
+      buildMcpContextRequestHeaders(
+        {
+          name: "system",
+          transport: "streamable_http",
+          url: "/mcp/system",
+          headers: {},
+          useAzureAuth: false,
+          azureAuthScope: MCP_DEFAULT_AZURE_AUTH_SCOPE,
+          timeoutSeconds: 10,
+        },
+        {
+          threadId: "thread-1",
+          turnId: "turn-2",
+        },
+      ),
+    ).toEqual({
+      [MCP_LOCAL_PLAYGROUND_THREAD_ID_HEADER]: "thread-1",
+      [MCP_LOCAL_PLAYGROUND_TURN_ID_HEADER]: "turn-2",
+    });
+  });
+
+  it("skips context headers for non-system endpoints", () => {
+    expect(
+      buildMcpContextRequestHeaders(
+        {
+          name: "docs",
+          transport: "streamable_http",
+          url: "https://developers.openai.com/mcp",
+          headers: {},
+          useAzureAuth: false,
+          azureAuthScope: MCP_DEFAULT_AZURE_AUTH_SCOPE,
+          timeoutSeconds: 10,
+        },
+        {
+          threadId: "thread-1",
+          turnId: "turn-2",
+        },
+      ),
+    ).toEqual({});
+  });
+
+  it("skips context headers for stdio endpoints", () => {
+    expect(
+      buildMcpContextRequestHeaders(
+        {
+          name: "stdio",
+          transport: "stdio",
+          command: "npx",
+          args: ["-y", "@playwright/mcp@latest"],
+          env: {},
+        },
+        {
+          threadId: "thread-1",
+          turnId: "turn-2",
+        },
+      ),
+    ).toEqual({});
+  });
+});
+
+describe("isLocalPlaygroundMcpSystemUrl", () => {
+  it("accepts localhost /mcp/system endpoints", () => {
+    expect(isLocalPlaygroundMcpSystemUrl("/mcp/system")).toBe(true);
+    expect(isLocalPlaygroundMcpSystemUrl("/mcp/system/")).toBe(true);
+    expect(isLocalPlaygroundMcpSystemUrl("http://localhost:3000/mcp/system")).toBe(true);
+    expect(isLocalPlaygroundMcpSystemUrl("http://127.0.0.1:3000/mcp/system/")).toBe(true);
+    expect(isLocalPlaygroundMcpSystemUrl("http://0.0.0.0:3000/mcp/system")).toBe(true);
+  });
+
+  it("rejects non-local or non-system endpoints", () => {
+    expect(isLocalPlaygroundMcpSystemUrl("https://example.com/mcp/system")).toBe(false);
+    expect(isLocalPlaygroundMcpSystemUrl("http://localhost:3000/mcp/debug")).toBe(false);
   });
 });

@@ -89,6 +89,7 @@ describe("readMcpServerFromUnknown / readMcpServerList", () => {
     expect(server).toEqual({
       id: "stdio-1",
       name: "Local FS",
+      connectOnThreadCreate: false,
       transport: "stdio",
       command: "npx",
       args: ["--yes", "@mcp/server"],
@@ -117,6 +118,7 @@ describe("readMcpServerFromUnknown / readMcpServerList", () => {
     expect(server).toEqual({
       id: "http-1",
       name: "HTTP",
+      connectOnThreadCreate: false,
       transport: "streamable_http",
       url: "https://example.com/mcp",
       headers: {

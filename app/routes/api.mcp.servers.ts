@@ -38,6 +38,7 @@ type McpTransport = "streamable_http" | "sse" | "stdio";
 type WorkspaceMcpServerProfileHttpConfig = {
   id: string;
   name: string;
+  connectOnThreadCreate: boolean;
   transport: "streamable_http" | "sse";
   url: string;
   headers: Record<string, string>;
@@ -49,6 +50,7 @@ type WorkspaceMcpServerProfileHttpConfig = {
 type WorkspaceMcpServerProfileStdioConfig = {
   id: string;
   name: string;
+  connectOnThreadCreate: boolean;
   transport: "stdio";
   command: string;
   args: string[];
@@ -57,8 +59,12 @@ type WorkspaceMcpServerProfileStdioConfig = {
 };
 
 export type WorkspaceMcpServerProfileConfig = WorkspaceMcpServerProfileHttpConfig | WorkspaceMcpServerProfileStdioConfig;
-type IncomingMcpHttpServerConfig = Omit<WorkspaceMcpServerProfileHttpConfig, "id"> & { id?: string };
-type IncomingMcpStdioServerConfig = Omit<WorkspaceMcpServerProfileStdioConfig, "id"> & { id?: string };
+type IncomingMcpHttpServerConfig =
+  Omit<WorkspaceMcpServerProfileHttpConfig, "id" | "connectOnThreadCreate"> &
+  { id?: string; connectOnThreadCreate?: boolean };
+type IncomingMcpStdioServerConfig =
+  Omit<WorkspaceMcpServerProfileStdioConfig, "id" | "connectOnThreadCreate"> &
+  { id?: string; connectOnThreadCreate?: boolean };
 export type IncomingMcpServerConfig = IncomingMcpHttpServerConfig | IncomingMcpStdioServerConfig;
 type ParseResult<T> = { ok: true; value: T } | { ok: false; error: string };
 const legacyUnavailableDefaultStdioNpxPackageNameSet = new Set<string>(
@@ -331,6 +337,7 @@ function buildDefaultMcpServerProfiles(): WorkspaceMcpServerProfileConfig[] {
       return {
         id: createRandomId(),
         name: defaultProfile.name,
+        connectOnThreadCreate: defaultProfile.connectOnThreadCreate,
         transport: "stdio",
         command: defaultProfile.command,
         args: [...defaultProfile.args],
@@ -343,6 +350,7 @@ function buildDefaultMcpServerProfiles(): WorkspaceMcpServerProfileConfig[] {
     return {
       id: createRandomId(),
       name: defaultProfile.name,
+      connectOnThreadCreate: defaultProfile.connectOnThreadCreate,
       transport: defaultProfile.transport,
       url: defaultProfile.url,
       headers: { ...defaultProfile.headers },
@@ -455,20 +463,19 @@ function parseIncomingHttpMcpServer(
     return { ok: false, error: "`url` is required." };
   }
 
-  let parsedUrl: URL;
-  try {
-    parsedUrl = new URL(rawUrl);
-  } catch {
-    return { ok: false, error: "`url` is invalid." };
+  const parsedUrlResult = parseMcpHttpUrlForWorkspaceProfile(rawUrl);
+  if (!parsedUrlResult.ok) {
+    return parsedUrlResult;
   }
 
-  if (parsedUrl.protocol !== "http:" && parsedUrl.protocol !== "https:") {
-    return { ok: false, error: "`url` must start with http:// or https://." };
-  }
-
-  const name = normalizeName(payload.name, parsedUrl.hostname);
+  const name = normalizeName(payload.name, parsedUrlResult.value.nameFallback);
   if (!name) {
     return { ok: false, error: "`name` is required." };
+  }
+
+  const connectOnThreadCreateResult = parseConnectOnThreadCreate(payload.connectOnThreadCreate);
+  if (!connectOnThreadCreateResult.ok) {
+    return connectOnThreadCreateResult;
   }
 
   const headersResult = parseHttpHeaders(payload.headers);
@@ -490,9 +497,12 @@ function parseIncomingHttpMcpServer(
     ok: true,
     value: {
       ...(id ? { id } : {}),
+      ...(connectOnThreadCreateResult.value === undefined
+        ? {}
+        : { connectOnThreadCreate: connectOnThreadCreateResult.value }),
       name,
       transport,
-      url: parsedUrl.toString(),
+      url: parsedUrlResult.value.url,
       headers: headersResult.value,
       useAzureAuth,
       azureAuthScope: azureAuthScopeResult.value,
@@ -529,11 +539,19 @@ function parseIncomingStdioMcpServer(
     return { ok: false, error: "`name` is required." };
   }
 
+  const connectOnThreadCreateResult = parseConnectOnThreadCreate(payload.connectOnThreadCreate);
+  if (!connectOnThreadCreateResult.ok) {
+    return connectOnThreadCreateResult;
+  }
+
   const id = normalizeOptionalId(payload.id);
   return {
     ok: true,
     value: {
       ...(id ? { id } : {}),
+      ...(connectOnThreadCreateResult.value === undefined
+        ? {}
+        : { connectOnThreadCreate: connectOnThreadCreateResult.value }),
       name,
       transport: "stdio",
       command,
@@ -542,6 +560,68 @@ function parseIncomingStdioMcpServer(
       env: envResult.value,
     },
   };
+}
+
+function parseMcpHttpUrlForWorkspaceProfile(
+  rawUrl: string,
+): ParseResult<{
+  url: string;
+  nameFallback: string;
+}> {
+  if (rawUrl.startsWith("/") && !rawUrl.startsWith("//")) {
+    let parsedRelativeUrl: URL;
+    try {
+      parsedRelativeUrl = new URL(rawUrl, "http://localhost");
+    } catch {
+      return { ok: false, error: "`url` is invalid." };
+    }
+
+    const pathname = parsedRelativeUrl.pathname || "/";
+    const normalizedRelativeUrl = `${pathname}${parsedRelativeUrl.search}`;
+    const pathSegments = pathname
+      .split("/")
+      .map((entry) => entry.trim())
+      .filter((entry) => entry.length > 0);
+    const nameFallback = pathSegments[pathSegments.length - 1] ?? "local";
+    return {
+      ok: true,
+      value: {
+        url: normalizedRelativeUrl,
+        nameFallback,
+      },
+    };
+  }
+
+  let parsedAbsoluteUrl: URL;
+  try {
+    parsedAbsoluteUrl = new URL(rawUrl);
+  } catch {
+    return { ok: false, error: "`url` is invalid." };
+  }
+
+  if (parsedAbsoluteUrl.protocol !== "http:" && parsedAbsoluteUrl.protocol !== "https:") {
+    return { ok: false, error: "`url` must start with http://, https://, or /." };
+  }
+
+  return {
+    ok: true,
+    value: {
+      url: parsedAbsoluteUrl.toString(),
+      nameFallback: parsedAbsoluteUrl.hostname,
+    },
+  };
+}
+
+function parseConnectOnThreadCreate(value: unknown): ParseResult<boolean | undefined> {
+  if (value === undefined) {
+    return { ok: true, value: undefined };
+  }
+
+  if (typeof value !== "boolean") {
+    return { ok: false, error: "`connectOnThreadCreate` must be a boolean." };
+  }
+
+  return { ok: true, value };
 }
 
 export function upsertWorkspaceMcpServerProfile(
@@ -566,12 +646,17 @@ export function upsertWorkspaceMcpServerProfile(
       : incoming.id && !currentProfiles.some((profile) => profile.id === incoming.id)
         ? incoming.id
         : createRandomId();
+  const connectOnThreadCreate =
+    incoming.connectOnThreadCreate ??
+    previousProfile?.connectOnThreadCreate ??
+    false;
 
   const profile: WorkspaceMcpServerProfileConfig =
     incoming.transport === "stdio"
       ? {
           id: profileId,
           name: incoming.name,
+          connectOnThreadCreate,
           transport: incoming.transport,
           command: incoming.command,
           args: incoming.args,
@@ -581,6 +666,7 @@ export function upsertWorkspaceMcpServerProfile(
       : {
           id: profileId,
           name: incoming.name,
+          connectOnThreadCreate,
           transport: incoming.transport,
           url: incoming.url,
           headers: incoming.headers,
@@ -626,11 +712,16 @@ function normalizeStoredMcpServer(entry: unknown): WorkspaceMcpServerProfileConf
     isRecord(entry) && typeof entry.id === "string" && entry.id.trim()
       ? entry.id.trim()
       : createRandomId();
+  const connectOnThreadCreate =
+    isRecord(entry) && typeof entry.connectOnThreadCreate === "boolean"
+      ? entry.connectOnThreadCreate
+      : parsed.value.connectOnThreadCreate === true;
 
   return parsed.value.transport === "stdio"
     ? {
         id,
         name: parsed.value.name,
+        connectOnThreadCreate,
         transport: parsed.value.transport,
         command: parsed.value.command,
         args: parsed.value.args,
@@ -640,6 +731,7 @@ function normalizeStoredMcpServer(entry: unknown): WorkspaceMcpServerProfileConf
     : {
         id,
         name: parsed.value.name,
+        connectOnThreadCreate,
         transport: parsed.value.transport,
         url: parsed.value.url,
         headers: parsed.value.headers,
@@ -653,6 +745,7 @@ function normalizeStoredMcpServerRecord(entry: {
   id: string;
   name: string;
   transport: string;
+  connectOnThreadCreate: boolean;
   url: string | null;
   headersJson: string | null;
   useAzureAuth: boolean;
@@ -678,6 +771,7 @@ function normalizeStoredMcpServerRecord(entry: {
     return normalizeStoredMcpServer({
       id: entry.id,
       name: entry.name,
+      connectOnThreadCreate: entry.connectOnThreadCreate === true,
       transport: "stdio",
       command: entry.command,
       args,
@@ -694,6 +788,7 @@ function normalizeStoredMcpServerRecord(entry: {
   return normalizeStoredMcpServer({
     id: entry.id,
     name: entry.name,
+    connectOnThreadCreate: entry.connectOnThreadCreate === true,
     transport,
     url: entry.url,
     headers,
@@ -707,6 +802,7 @@ function mapProfileToDatabaseRecord(userId: number, profile: WorkspaceMcpServerP
   id: string;
   userId: number;
   profileOrder: number;
+  connectOnThreadCreate: boolean;
   configKey: string;
   name: string;
   transport: string;
@@ -725,6 +821,7 @@ function mapProfileToDatabaseRecord(userId: number, profile: WorkspaceMcpServerP
       id: profile.id,
       userId,
       profileOrder,
+      connectOnThreadCreate: profile.connectOnThreadCreate,
       configKey: buildProfileKey(profile),
       name: profile.name,
       transport: profile.transport,
@@ -744,6 +841,7 @@ function mapProfileToDatabaseRecord(userId: number, profile: WorkspaceMcpServerP
     id: profile.id,
     userId,
     profileOrder,
+    connectOnThreadCreate: profile.connectOnThreadCreate,
     configKey: buildProfileKey(profile),
     name: profile.name,
     transport: profile.transport,
