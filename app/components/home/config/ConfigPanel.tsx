@@ -33,6 +33,22 @@ export function ConfigPanel(props: ConfigPanelProps) {
     threadsTabProps,
   } = props;
 
+  function renderActiveMainTab() {
+    if (activeMainTab === "threads") {
+      return <ThreadsTab activeMainTab={activeMainTab} {...threadsTabProps} />;
+    }
+
+    if (activeMainTab === "mcp") {
+      return <McpServersTab activeMainTab={activeMainTab} {...mcpServersTabProps} />;
+    }
+
+    if (activeMainTab === "skills") {
+      return <SkillsTab activeMainTab={activeMainTab} {...skillsTabProps} />;
+    }
+
+    return <SettingsTab activeMainTab={activeMainTab} {...settingsTabProps} />;
+  }
+
   return (
     <aside className="side-shell main-panel" aria-label="Configuration panels">
       <div className="side-shell-header">
@@ -83,12 +99,7 @@ export function ConfigPanel(props: ConfigPanelProps) {
         ) : null}
       </div>
       <div className="side-shell-body">
-        <div className="side-top-panel">
-          <ThreadsTab activeMainTab={activeMainTab} {...threadsTabProps} />
-          <McpServersTab activeMainTab={activeMainTab} {...mcpServersTabProps} />
-          <SkillsTab activeMainTab={activeMainTab} {...skillsTabProps} />
-          <SettingsTab activeMainTab={activeMainTab} {...settingsTabProps} />
-        </div>
+        <div className="side-top-panel">{renderActiveMainTab()}</div>
       </div>
     </aside>
   );
