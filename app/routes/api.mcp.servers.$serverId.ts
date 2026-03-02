@@ -99,7 +99,7 @@ export async function action({ request, params }: Route.ActionArgs) {
 
   try {
     const currentProfiles = await readWorkspaceMcpServerProfiles(user.id);
-    const profilesWithDefaults = mergeDefaultWorkspaceMcpServerProfiles(currentProfiles);
+    const profilesWithDefaults = mergeDefaultWorkspaceMcpServerProfiles(currentProfiles, user.id);
     const hasTargetProfile = profilesWithDefaults.some((profile) => profile.id === serverId);
     if (!hasTargetProfile) {
       return Response.json({ error: "Selected MCP server is not available." }, { status: 404 });

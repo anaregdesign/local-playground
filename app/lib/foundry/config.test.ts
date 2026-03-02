@@ -11,7 +11,8 @@ import {
   resolveFoundryDatabaseFilePath,
   resolveFoundryDatabaseUrl,
   resolveFoundryConfigDirectory,
-  resolveFoundrySkillsDirectory,
+  resolveFoundryWorkspaceUserDirectory,
+  resolveFoundryWorkspaceUserSkillsDirectory,
 } from "./config";
 
 describe("resolveFoundryConfigDirectory", () => {
@@ -62,14 +63,27 @@ describe("resolveFoundryDatabaseFilePath", () => {
   });
 });
 
-describe("resolveFoundrySkillsDirectory", () => {
-  it("builds Skills path in the primary config directory", () => {
-    const resolved = resolveFoundrySkillsDirectory({
+describe("resolveFoundryWorkspaceUserDirectory", () => {
+  it("builds workspace user path in the primary config directory", () => {
+    const resolved = resolveFoundryWorkspaceUserDirectory({
+      workspaceUserId: 42,
       platform: "darwin",
       homeDirectory: "/Users/hiroki",
     });
 
-    expect(resolved).toBe("/Users/hiroki/.foundry_local_playground/skills");
+    expect(resolved).toBe("/Users/hiroki/.foundry_local_playground/users/42");
+  });
+});
+
+describe("resolveFoundryWorkspaceUserSkillsDirectory", () => {
+  it("builds workspace user Skills path in the primary config directory", () => {
+    const resolved = resolveFoundryWorkspaceUserSkillsDirectory({
+      workspaceUserId: 42,
+      platform: "darwin",
+      homeDirectory: "/Users/hiroki",
+    });
+
+    expect(resolved).toBe("/Users/hiroki/.foundry_local_playground/users/42/skills");
   });
 });
 

@@ -9,10 +9,11 @@ import { fileURLToPath } from "node:url";
 import {
   AGENT_SKILL_NAME_PATTERN,
   FOUNDRY_SKILLS_DIRECTORY_NAME,
+  FOUNDRY_USERS_DIRECTORY_NAME,
   SKILL_REGISTRY_LIST_CACHE_TTL_MS,
   SKILL_REGISTRY_TREE_CACHE_TTL_MS,
 } from "~/lib/constants";
-import { resolveFoundrySkillsDirectory } from "~/lib/foundry/config";
+import { resolveFoundryWorkspaceUserSkillsDirectory } from "~/lib/foundry/config";
 import { parseSkillFrontmatter, validateSkillFrontmatter } from "~/lib/home/skills/frontmatter";
 import {
   parseSkillRegistrySkillName,
@@ -453,8 +454,9 @@ function resolveAppDataSkillsRoot(options: ResolveSkillRegistryOptions): string 
   if (configuredFoundryDirectory) {
     return path.resolve(
       configuredFoundryDirectory,
-      FOUNDRY_SKILLS_DIRECTORY_NAME,
+      FOUNDRY_USERS_DIRECTORY_NAME,
       workspaceUserSkillsDirectoryName,
+      FOUNDRY_SKILLS_DIRECTORY_NAME,
     );
   }
 
@@ -464,20 +466,19 @@ function resolveAppDataSkillsRoot(options: ResolveSkillRegistryOptions): string 
     if (sqliteFilePath) {
       return path.resolve(
         path.dirname(sqliteFilePath),
-        FOUNDRY_SKILLS_DIRECTORY_NAME,
+        FOUNDRY_USERS_DIRECTORY_NAME,
         workspaceUserSkillsDirectoryName,
+        FOUNDRY_SKILLS_DIRECTORY_NAME,
       );
     }
   }
 
-  return path.resolve(
-    resolveFoundrySkillsDirectory({
-      platform: options.platform,
-      homeDirectory: options.homeDirectory,
-      appDataDirectory: options.appDataDirectory,
-    }),
-    workspaceUserSkillsDirectoryName,
-  );
+  return resolveFoundryWorkspaceUserSkillsDirectory({
+    workspaceUserId: options.workspaceUserId,
+    platform: options.platform,
+    homeDirectory: options.homeDirectory,
+    appDataDirectory: options.appDataDirectory,
+  });
 }
 
 function buildRepositoryUrl(repository: string): string {

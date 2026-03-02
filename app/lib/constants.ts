@@ -23,6 +23,7 @@ export const AZURE_MAX_MODELS_PER_ACCOUNT = 512;
 export const FOUNDRY_LEGACY_CONFIG_DIRECTORY_NAME = ".foundry_local_playground";
 export const FOUNDRY_WINDOWS_CONFIG_DIRECTORY_NAME = "FoundryLocalPlayground";
 export const FOUNDRY_SQLITE_DATABASE_FILE_NAME = "local-playground.sqlite";
+export const FOUNDRY_USERS_DIRECTORY_NAME = "users";
 export const FOUNDRY_SKILLS_DIRECTORY_NAME = "skills";
 
 /**

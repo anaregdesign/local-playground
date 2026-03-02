@@ -9,8 +9,9 @@ import { fileURLToPath } from "node:url";
 import {
   AGENT_SKILL_FILE_MAX_BYTES,
   AGENT_SKILLS_DIRECTORY_NAME,
+  FOUNDRY_USERS_DIRECTORY_NAME,
 } from "~/lib/constants";
-import { resolveFoundrySkillsDirectory } from "~/lib/foundry/config";
+import { resolveFoundryWorkspaceUserSkillsDirectory } from "~/lib/foundry/config";
 import {
   parseSkillFrontmatter,
   type SkillFrontmatter,
@@ -366,8 +367,9 @@ function resolveAppDataSkillsRoot(options: {
   if (options.configuredFoundryDirectory) {
     return path.resolve(
       options.configuredFoundryDirectory,
-      AGENT_SKILLS_DIRECTORY_NAME,
+      FOUNDRY_USERS_DIRECTORY_NAME,
       workspaceUserSkillsDirectoryName,
+      AGENT_SKILLS_DIRECTORY_NAME,
     );
   }
 
@@ -377,20 +379,19 @@ function resolveAppDataSkillsRoot(options: {
     if (sqliteFilePath) {
       return path.resolve(
         path.dirname(sqliteFilePath),
-        AGENT_SKILLS_DIRECTORY_NAME,
+        FOUNDRY_USERS_DIRECTORY_NAME,
         workspaceUserSkillsDirectoryName,
+        AGENT_SKILLS_DIRECTORY_NAME,
       );
     }
   }
 
-  return path.resolve(
-    resolveFoundrySkillsDirectory({
-      platform: options.platform,
-      homeDirectory: options.homeDirectory,
-      appDataDirectory: options.appDataDirectory,
-    }),
-    workspaceUserSkillsDirectoryName,
-  );
+  return resolveFoundryWorkspaceUserSkillsDirectory({
+    workspaceUserId: options.workspaceUserId,
+    platform: options.platform,
+    homeDirectory: options.homeDirectory,
+    appDataDirectory: options.appDataDirectory,
+  });
 }
 
 function readWorkspaceUserSkillsDirectoryName(workspaceUserId: number): string {
