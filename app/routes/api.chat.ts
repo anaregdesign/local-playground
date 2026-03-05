@@ -617,9 +617,6 @@ async function executeChat(
   const hasMcpServers = options.mcpServers.length > 0;
   const azureMcpAuthorizationTokenPromiseByScope = new Map<string, Promise<string>>();
   const mcpRuntimeMetrics = createInitialChatMcpRuntimeMetrics();
-  const skillExecutionContext: SkillToolExecutionContext = {
-    threadEnvironment: cloneThreadEnvironment(options.threadEnvironment),
-  };
   const mcpRequestContext: McpRequestContext = {
     threadId: options.threadId,
     turnId: options.turnId,
@@ -794,10 +791,18 @@ async function executeChat(
     const skillRuntime = await buildSkillRuntimeContext(options.skills, {
       explicitSkillLocations: options.explicitSkillLocations,
     });
-    emitSkillActivationOperationLogs(skillRuntime, {
-      nextSequence: nextThreadOperationLogSequence,
-      onRecord: emitThreadOperationLogRecord,
-    }, skillExecutionContext);
+    const skillExecutionContext: SkillToolExecutionContext | null =
+      skillRuntime.activeSkills.length > 0
+        ? {
+            threadEnvironment: cloneThreadEnvironment(options.threadEnvironment),
+          }
+        : null;
+    if (skillExecutionContext) {
+      emitSkillActivationOperationLogs(skillRuntime, {
+        nextSequence: nextThreadOperationLogSequence,
+        onRecord: emitThreadOperationLogRecord,
+      }, skillExecutionContext);
+    }
     const skillWarnings = collectSkillRuntimeWarnings(skillRuntime);
     if (skillWarnings.length > 0) {
       emitProgress({
@@ -853,10 +858,12 @@ async function executeChat(
 
     const enableCodeInterpreterTool =
       codeInterpreterEnabledForRun && codeInterpreterContainerId.length > 0;
-    const skillTools = buildSkillTools(skillRuntime.activeSkills, {
-      nextSequence: nextThreadOperationLogSequence,
-      onRecord: emitThreadOperationLogRecord,
-    }, skillExecutionContext);
+    const skillTools = skillExecutionContext
+      ? buildSkillTools(skillRuntime.activeSkills, {
+          nextSequence: nextThreadOperationLogSequence,
+          onRecord: emitThreadOperationLogRecord,
+        }, skillExecutionContext)
+      : [];
 
     const agent = new Agent({
       name: "LocalPlaygroundAgent",
@@ -946,9 +953,12 @@ async function executeChat(
       }
 
       emitProgress({ message: "Finalizing response..." });
+      const nextThreadEnvironment = skillExecutionContext
+        ? cloneThreadEnvironment(skillExecutionContext.threadEnvironment)
+        : cloneThreadEnvironment(options.threadEnvironment);
       return {
         message: assistantMessage,
-        threadEnvironment: cloneThreadEnvironment(skillExecutionContext.threadEnvironment),
+        threadEnvironment: nextThreadEnvironment,
         operationLogCount: operationLogSequence,
         mcpRuntimeMetrics,
       };
@@ -969,9 +979,12 @@ async function executeChat(
       throw new Error("Azure OpenAI returned an empty message.");
     }
 
+    const nextThreadEnvironment = skillExecutionContext
+      ? cloneThreadEnvironment(skillExecutionContext.threadEnvironment)
+      : cloneThreadEnvironment(options.threadEnvironment);
     return {
       message: assistantMessage,
-      threadEnvironment: cloneThreadEnvironment(skillExecutionContext.threadEnvironment),
+      threadEnvironment: nextThreadEnvironment,
       operationLogCount: operationLogSequence,
       mcpRuntimeMetrics,
     };
