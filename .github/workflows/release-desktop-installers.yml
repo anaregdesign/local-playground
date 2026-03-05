@@ -328,6 +328,7 @@ jobs:
       - name: Download installers
         uses: actions/download-artifact@v4
         with:
+          pattern: installers-*
           path: release-assets
 
       - name: Generate release integrity artifacts
