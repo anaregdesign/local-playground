@@ -84,7 +84,7 @@ describe("/api/threads/:threadId", () => {
     expect(response.headers.get("allow")).toBe("PUT, PATCH, DELETE");
   });
 
-  it("returns 400 when PUT payload thread id does not match path id", async () => {
+  it("returns 422 when PUT payload thread id does not match path id", async () => {
     readThreadSnapshotFromUnknown.mockReturnValue({
       id: "thread-b",
       messages: [],
@@ -99,7 +99,7 @@ describe("/api/threads/:threadId", () => {
     } as never);
     const payload = (await response.json()) as { error?: string };
 
-    expect(response.status).toBe(400);
+    expect(response.status).toBe(422);
     expect(payload.error).toBe("`thread.id` must match path `threadId`.");
   });
 

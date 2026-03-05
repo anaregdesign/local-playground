@@ -186,7 +186,7 @@ describe("/api/azure/selection", () => {
     expect(response.headers.get("location")).toBe("/api/azure/selection");
   });
 
-  it("returns 400 for invalid patch payload", async () => {
+  it("returns 422 for invalid patch payload", async () => {
     const response = await action({
       request: new Request("http://localhost/api/azure/selection", {
         method: "PATCH",
@@ -200,7 +200,7 @@ describe("/api/azure/selection", () => {
       }),
     } as never);
 
-    expect(response.status).toBe(400);
+    expect(response.status).toBe(422);
   });
 
   it("deletes selection and returns 204", async () => {

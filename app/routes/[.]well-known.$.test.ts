@@ -30,6 +30,7 @@ describe("well-known route", () => {
     expect(response.status).toBe(405);
     expect(response.headers.get("allow")).toBe("GET");
     expect(await response.json()).toEqual({
+      code: "method_not_allowed",
       error: "Method not allowed.",
     });
   });

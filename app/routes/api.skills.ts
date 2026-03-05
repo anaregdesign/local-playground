@@ -10,7 +10,11 @@ import {
 } from "~/lib/home/skills/registry";
 import type { SkillCatalogEntry, SkillRegistryCatalog } from "~/lib/home/skills/types";
 import { readAzureArmUserContext } from "~/lib/server/auth/azure-user";
-import { methodNotAllowedResponse } from "~/lib/server/http";
+import {
+  authRequiredResponse,
+  errorResponse,
+  methodNotAllowedResponse,
+} from "~/lib/server/http";
 import {
   installGlobalServerErrorLogging,
   logServerRouteEvent,
@@ -35,13 +39,7 @@ export async function loader({ request }: Route.LoaderArgs) {
 
   const user = await readAuthenticatedUser();
   if (!user) {
-    return Response.json(
-      {
-        authRequired: true,
-        error: "Azure login is required. Click Azure Login to continue.",
-      },
-      { status: 401 },
-    );
+    return authRequiredResponse();
   }
 
   try {
@@ -67,12 +65,11 @@ export async function loader({ request }: Route.LoaderArgs) {
       userId: user.id,
     });
 
-    return Response.json(
-      {
-        error: `Failed to discover skills: ${readErrorMessage(error)}`,
-      },
-      { status: 500 },
-    );
+    return errorResponse({
+      status: 500,
+      code: "discover_skills_failed",
+      error: `Failed to discover skills: ${readErrorMessage(error)}`,
+    });
   }
 }
 

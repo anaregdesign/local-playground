@@ -26,7 +26,11 @@ import {
   installGlobalServerErrorLogging,
   logServerRouteEvent,
 } from "~/lib/server/observability/runtime-event-log";
-import { methodNotAllowedResponse } from "~/lib/server/http";
+import {
+  authRequiredResponse,
+  errorResponse,
+  methodNotAllowedResponse,
+} from "~/lib/server/http";
 import type { AzureDependencies } from "~/lib/azure/dependencies";
 import type { Route } from "./+types/api.azure.projects";
 
@@ -124,13 +128,7 @@ export async function loader({ request }: Route.LoaderArgs) {
   const dependencies = getAzureDependencies();
   const tokenResult = await getArmAccessToken(dependencies, requestedTenantId);
   if (!tokenResult.ok) {
-    return Response.json(
-      {
-        authRequired: true,
-        error: "Azure login is required. Click Azure Login to continue.",
-      },
-      { status: 401 },
-    );
+    return authRequiredResponse();
   }
 
   const principal = await resolveAzurePrincipalProfile(tokenResult, dependencies);
@@ -160,13 +158,7 @@ export async function loader({ request }: Route.LoaderArgs) {
         error,
       });
 
-      return Response.json(
-        {
-          authRequired: true,
-          error: "Azure login is required. Click Azure Login to continue.",
-        },
-        { status: 401 },
-      );
+      return authRequiredResponse();
     }
 
     await logServerRouteEvent({
@@ -178,12 +170,11 @@ export async function loader({ request }: Route.LoaderArgs) {
       error,
     });
 
-    return Response.json(
-      {
-        error: `Failed to load Azure project data: ${readErrorMessage(error)}`,
-      },
-      { status: 502 },
-    );
+    return errorResponse({
+      status: 502,
+      code: "load_azure_projects_failed",
+      error: `Failed to load Azure project data: ${readErrorMessage(error)}`,
+    });
   }
 }
 

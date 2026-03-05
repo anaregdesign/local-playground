@@ -3,7 +3,13 @@
  */
 import { DEFAULT_AGENT_INSTRUCTION } from "~/lib/constants";
 import { readThreadSnapshotFromUnknown } from "~/lib/home/thread/parsers";
-import { methodNotAllowedResponse } from "~/lib/server/http";
+import {
+  authRequiredResponse,
+  errorResponse,
+  invalidJsonResponse,
+  methodNotAllowedResponse,
+  validationErrorResponse,
+} from "~/lib/server/http";
 import {
   installGlobalServerErrorLogging,
   logServerRouteEvent,
@@ -39,13 +45,7 @@ export async function action({ request, params }: Route.ActionArgs) {
 
   const user = await readAuthenticatedUser();
   if (!user) {
-    return Response.json(
-      {
-        authRequired: true,
-        error: "Azure login is required. Click Azure Login to continue.",
-      },
-      { status: 401 },
-    );
+    return authRequiredResponse();
   }
 
   const threadId = typeof params.threadId === "string" ? params.threadId.trim() : "";
@@ -56,12 +56,12 @@ export async function action({ request, params }: Route.ActionArgs) {
       eventName: "invalid_thread_id_payload",
       action: "read_thread_id",
       level: "warning",
-      statusCode: 400,
+      statusCode: 422,
       message: "Invalid thread id payload.",
       userId: user.id,
     });
 
-    return Response.json({ error: "Invalid thread id payload." }, { status: 400 });
+    return validationErrorResponse("invalid_thread_id", "Invalid thread id payload.");
   }
 
   try {
@@ -80,7 +80,7 @@ export async function action({ request, params }: Route.ActionArgs) {
           threadId,
         });
 
-        return Response.json({ error: "Invalid JSON body." }, { status: 400 });
+        return invalidJsonResponse();
       }
 
       const thread = readThreadSnapshotFromUnknown(payload.value, {
@@ -93,13 +93,13 @@ export async function action({ request, params }: Route.ActionArgs) {
           eventName: "invalid_thread_payload",
           action: "read_thread_snapshot",
           level: "warning",
-          statusCode: 400,
+          statusCode: 422,
           message: "Invalid thread payload.",
           userId: user.id,
           threadId,
         });
 
-        return Response.json({ error: "Invalid thread payload." }, { status: 400 });
+        return validationErrorResponse("invalid_thread_payload", "Invalid thread payload.");
       }
       if (thread.id !== threadId) {
         await logServerRouteEvent({
@@ -108,7 +108,7 @@ export async function action({ request, params }: Route.ActionArgs) {
           eventName: "thread_id_mismatch",
           action: "validate_payload",
           level: "warning",
-          statusCode: 400,
+          statusCode: 422,
           message: "`thread.id` must match path `threadId`.",
           userId: user.id,
           threadId,
@@ -117,9 +117,9 @@ export async function action({ request, params }: Route.ActionArgs) {
           },
         });
 
-        return Response.json(
-          { error: "`thread.id` must match path `threadId`." },
-          { status: 400 },
+        return validationErrorResponse(
+          "thread_id_mismatch",
+          "`thread.id` must match path `threadId`.",
         );
       }
 
@@ -137,7 +137,11 @@ export async function action({ request, params }: Route.ActionArgs) {
           threadId,
         });
 
-        return Response.json({ error: "Thread is not available." }, { status: 404 });
+        return errorResponse({
+          status: 404,
+          code: "thread_not_found",
+          error: "Thread is not available.",
+        });
       }
       if (updatedThread.status === "archived") {
         const errorMessage = "Archived thread is read-only. Restore it from Archives to update.";
@@ -153,7 +157,11 @@ export async function action({ request, params }: Route.ActionArgs) {
           threadId,
         });
 
-        return Response.json({ error: errorMessage }, { status: 409 });
+        return errorResponse({
+          status: 409,
+          code: "thread_archived_conflict",
+          error: errorMessage,
+        });
       }
 
       await logServerRouteEvent({
@@ -191,7 +199,11 @@ export async function action({ request, params }: Route.ActionArgs) {
           threadId,
         });
 
-        return Response.json({ error: "Thread is not available." }, { status: 404 });
+        return errorResponse({
+          status: 404,
+          code: "thread_not_found",
+          error: "Thread is not available.",
+        });
       }
       if (deleted.status === "empty") {
         await logServerRouteEvent({
@@ -206,10 +218,11 @@ export async function action({ request, params }: Route.ActionArgs) {
           threadId,
         });
 
-        return Response.json(
-          { error: "Threads without messages cannot be deleted." },
-          { status: 409 },
-        );
+        return errorResponse({
+          status: 409,
+          code: "thread_delete_disallowed_empty",
+          error: "Threads without messages cannot be deleted.",
+        });
       }
 
       await logServerRouteEvent({
@@ -240,7 +253,7 @@ export async function action({ request, params }: Route.ActionArgs) {
         threadId,
       });
 
-      return Response.json({ error: "Invalid JSON body." }, { status: 400 });
+      return invalidJsonResponse();
     }
 
     if (!isThreadRestorePayload(payload.value)) {
@@ -250,13 +263,13 @@ export async function action({ request, params }: Route.ActionArgs) {
         eventName: "invalid_restore_payload",
         action: "validate_payload",
         level: "warning",
-        statusCode: 400,
+        statusCode: 422,
         message: "`archived` must be false.",
         userId: user.id,
         threadId,
       });
 
-      return Response.json({ error: "`archived` must be false." }, { status: 400 });
+      return validationErrorResponse("invalid_restore_payload", "`archived` must be false.");
     }
 
     const restored = await logicalRestoreThread(user.id, threadId);
@@ -273,7 +286,11 @@ export async function action({ request, params }: Route.ActionArgs) {
         threadId,
       });
 
-      return Response.json({ error: "Thread is not available." }, { status: 404 });
+      return errorResponse({
+        status: 404,
+        code: "thread_not_found",
+        error: "Thread is not available.",
+      });
     }
 
     await logServerRouteEvent({
@@ -313,11 +330,16 @@ export async function action({ request, params }: Route.ActionArgs) {
       threadId,
     });
 
-    return Response.json(
-      {
-        error: `Failed to update thread in database: ${readErrorMessage(error)}`,
-      },
-      { status: 500 },
-    );
+    const errorCode =
+      request.method === "PUT"
+        ? "update_thread_failed"
+        : request.method === "DELETE"
+          ? "delete_thread_failed"
+          : "restore_thread_failed";
+    return errorResponse({
+      status: 500,
+      code: errorCode,
+      error: `Failed to update thread in database: ${readErrorMessage(error)}`,
+    });
   }
 }

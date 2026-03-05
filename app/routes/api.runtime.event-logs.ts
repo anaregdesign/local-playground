@@ -8,7 +8,12 @@ import {
   logRuntimeEventWithId,
   logServerRouteEvent,
 } from "~/lib/server/observability/runtime-event-log";
-import { methodNotAllowedResponse } from "~/lib/server/http";
+import {
+  errorResponse,
+  invalidJsonResponse,
+  methodNotAllowedResponse,
+  validationErrorResponse,
+} from "~/lib/server/http";
 
 const APP_EVENT_LOGS_ALLOWED_METHODS = ["POST"] as const;
 
@@ -37,7 +42,7 @@ export async function action({ request }: { request: Request }) {
       statusCode: 400,
       message: "Invalid JSON body.",
     });
-    return Response.json({ error: "Invalid JSON body." }, { status: 400 });
+    return invalidJsonResponse();
   }
 
   const parsed = readClientRuntimeEventLogPayload(payload);
@@ -48,14 +53,14 @@ export async function action({ request }: { request: Request }) {
       eventName: "invalid_client_event_payload",
       action: "validate_payload",
       level: "warning",
-      statusCode: 400,
+      statusCode: 422,
       message: "Client event payload is invalid.",
       context: {
         payloadType: typeof payload,
       },
     });
 
-    return Response.json({ error: "Invalid event log payload." }, { status: 400 });
+    return validationErrorResponse("invalid_event_log_payload", "Invalid event log payload.");
   }
 
   const identity = await readAzureArmUserContext();
@@ -91,7 +96,11 @@ export async function action({ request }: { request: Request }) {
       statusCode: 500,
       message: "Failed to persist runtime event log.",
     });
-    return Response.json({ error: "Failed to persist runtime event log." }, { status: 500 });
+    return errorResponse({
+      status: 500,
+      code: "create_client_event_log_failed",
+      error: "Failed to persist runtime event log.",
+    });
   }
 
   return Response.json(

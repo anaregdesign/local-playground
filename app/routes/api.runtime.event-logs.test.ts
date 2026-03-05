@@ -32,7 +32,10 @@ describe("api.runtime.event-logs loader", () => {
     const response = loader();
     expect(response.status).toBe(405);
     expect(response.headers.get("allow")).toBe("POST");
-    expect(await response.json()).toEqual({ error: "Method not allowed." });
+    expect(await response.json()).toEqual({
+      code: "method_not_allowed",
+      error: "Method not allowed.",
+    });
     expect(installGlobalServerErrorLoggingMock).toHaveBeenCalledTimes(1);
   });
 });
@@ -58,7 +61,10 @@ describe("api.runtime.event-logs action", () => {
 
     expect(response.status).toBe(405);
     expect(response.headers.get("allow")).toBe("POST");
-    expect(await response.json()).toEqual({ error: "Method not allowed." });
+    expect(await response.json()).toEqual({
+      code: "method_not_allowed",
+      error: "Method not allowed.",
+    });
   });
 
   it("returns 400 when JSON is invalid and logs warning", async () => {
@@ -73,7 +79,10 @@ describe("api.runtime.event-logs action", () => {
     });
 
     expect(response.status).toBe(400);
-    expect(await response.json()).toEqual({ error: "Invalid JSON body." });
+    expect(await response.json()).toEqual({
+      code: "invalid_json_body",
+      error: "Invalid JSON body.",
+    });
     expect(logServerRouteEventMock).toHaveBeenCalledWith(
       expect.objectContaining({
         route: "/api/runtime/event-logs",
@@ -84,7 +93,7 @@ describe("api.runtime.event-logs action", () => {
     expect(logRuntimeEventWithIdMock).not.toHaveBeenCalled();
   });
 
-  it("returns 400 for invalid payload shape and logs warning", async () => {
+  it("returns 422 for invalid payload shape and logs warning", async () => {
     const response = await action({
       request: new Request("http://localhost/api/runtime/event-logs", {
         method: "POST",
@@ -99,13 +108,16 @@ describe("api.runtime.event-logs action", () => {
       }),
     });
 
-    expect(response.status).toBe(400);
-    expect(await response.json()).toEqual({ error: "Invalid event log payload." });
+    expect(response.status).toBe(422);
+    expect(await response.json()).toEqual({
+      code: "invalid_event_log_payload",
+      error: "Invalid event log payload.",
+    });
     expect(logServerRouteEventMock).toHaveBeenCalledWith(
       expect.objectContaining({
         route: "/api/runtime/event-logs",
         eventName: "invalid_client_event_payload",
-        statusCode: 400,
+        statusCode: 422,
       }),
     );
     expect(logRuntimeEventWithIdMock).not.toHaveBeenCalled();
@@ -185,6 +197,7 @@ describe("api.runtime.event-logs action", () => {
 
     expect(response.status).toBe(500);
     expect(await response.json()).toEqual({
+      code: "create_client_event_log_failed",
       error: "Failed to persist runtime event log.",
     });
     expect(logServerRouteEventMock).toHaveBeenCalledWith(

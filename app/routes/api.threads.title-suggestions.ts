@@ -22,7 +22,12 @@ import {
   installGlobalServerErrorLogging,
   logServerRouteEvent,
 } from "~/lib/server/observability/runtime-event-log";
-import { methodNotAllowedResponse } from "~/lib/server/http";
+import {
+  errorResponse,
+  invalidJsonResponse,
+  methodNotAllowedResponse,
+  validationErrorResponse,
+} from "~/lib/server/http";
 
 type ParseResult<T> = { ok: true; value: T } | { ok: false; error: string };
 
@@ -34,6 +39,7 @@ type ResolvedAzureConfig = {
 };
 
 type UpstreamErrorPayload = {
+  code: string;
   error: string;
   errorCode?: "azure_login_required";
 };
@@ -75,7 +81,7 @@ export async function action({ request }: Route.ActionArgs) {
       message: "Invalid JSON body.",
     });
 
-    return Response.json({ error: "Invalid JSON body." }, { status: 400 });
+    return invalidJsonResponse();
   }
 
   const playgroundContentResult = readPlaygroundContent(payload);
@@ -86,11 +92,11 @@ export async function action({ request }: Route.ActionArgs) {
       eventName: "invalid_playground_content",
       action: "validate_payload",
       level: "warning",
-      statusCode: 400,
+      statusCode: 422,
       message: playgroundContentResult.error,
     });
 
-    return Response.json({ error: playgroundContentResult.error }, { status: 400 });
+    return validationErrorResponse("invalid_playground_content", playgroundContentResult.error);
   }
   const playgroundContent = playgroundContentResult.value;
 
@@ -103,11 +109,11 @@ export async function action({ request }: Route.ActionArgs) {
       eventName: "invalid_reasoning_effort",
       action: "validate_payload",
       level: "warning",
-      statusCode: 400,
+      statusCode: 422,
       message: reasoningEffortResult.error,
     });
 
-    return Response.json({ error: reasoningEffortResult.error }, { status: 400 });
+    return validationErrorResponse("invalid_reasoning_effort", reasoningEffortResult.error);
   }
   const reasoningEffort = reasoningEffortResult.value;
 
@@ -119,38 +125,29 @@ export async function action({ request }: Route.ActionArgs) {
       eventName: "invalid_azure_config",
       action: "validate_payload",
       level: "warning",
-      statusCode: 400,
+      statusCode: 422,
       message: azureConfigResult.error,
     });
 
-    return Response.json({ error: azureConfigResult.error }, { status: 400 });
+    return validationErrorResponse("invalid_azure_config", azureConfigResult.error);
   }
   const azureConfig = azureConfigResult.value;
 
   if (!azureConfig.baseUrl) {
-    return Response.json(
-      {
-        error: "Azure OpenAI base URL is missing.",
-      },
-      { status: 400 },
-    );
+    return validationErrorResponse("missing_azure_base_url", "Azure OpenAI base URL is missing.");
   }
 
   if (!azureConfig.deploymentName) {
-    return Response.json(
-      {
-        error: "Azure deployment name is missing.",
-      },
-      { status: 400 },
+    return validationErrorResponse(
+      "missing_azure_deployment_name",
+      "Azure deployment name is missing.",
     );
   }
 
   if (azureConfig.apiVersion && azureConfig.apiVersion !== "v1") {
-    return Response.json(
-      {
-        error: "Azure OpenAI v1 endpoint requires `apiVersion` to be `v1`.",
-      },
-      { status: 400 },
+    return validationErrorResponse(
+      "invalid_azure_api_version",
+      "Azure OpenAI v1 endpoint requires `apiVersion` to be `v1`.",
     );
   }
 
@@ -177,7 +174,16 @@ export async function action({ request }: Route.ActionArgs) {
       },
     });
 
-    return Response.json(upstreamError.payload, { status: upstreamError.status });
+    return errorResponse({
+      status: upstreamError.status,
+      code: upstreamError.payload.code,
+      error: upstreamError.payload.error,
+      extras: upstreamError.payload.errorCode
+        ? {
+            errorCode: upstreamError.payload.errorCode,
+          }
+        : undefined,
+    });
   }
 }
 
@@ -371,6 +377,7 @@ function buildUpstreamErrorPayload(error: unknown, deploymentName: string): {
   if (isAzureCredentialError(error)) {
     return {
       payload: {
+        code: "auth_required",
         error:
           'Azure authentication failed. Click "Azure Login", complete sign-in, and try again.',
         errorCode: "azure_login_required",
@@ -381,7 +388,7 @@ function buildUpstreamErrorPayload(error: unknown, deploymentName: string): {
 
   const message = buildUpstreamErrorMessage(error, deploymentName);
   return {
-    payload: { error: message },
+    payload: { code: "upstream_service_error", error: message },
     status: 502,
   };
 }

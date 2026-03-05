@@ -14,7 +14,13 @@ import {
   prisma,
 } from "~/lib/server/persistence/prisma";
 import { getOrCreateUserByIdentity } from "~/lib/server/persistence/user";
-import { methodNotAllowedResponse } from "~/lib/server/http";
+import {
+  authRequiredResponse,
+  errorResponse,
+  invalidJsonResponse,
+  methodNotAllowedResponse,
+  validationErrorResponse,
+} from "~/lib/server/http";
 import {
   installGlobalServerErrorLogging,
   logServerRouteEvent,
@@ -52,13 +58,7 @@ export async function loader({ request }: Route.LoaderArgs) {
 
   const user = await readAuthenticatedUser();
   if (!user) {
-    return Response.json(
-      {
-        authRequired: true,
-        error: "Azure login is required. Click Azure Login to continue.",
-      },
-      { status: 401 },
-    );
+    return authRequiredResponse();
   }
 
   try {
@@ -89,12 +89,11 @@ export async function loader({ request }: Route.LoaderArgs) {
       userId: user.id,
     });
 
-    return Response.json(
-      {
-        error: `Failed to load threads from database: ${readErrorMessage(error)}`,
-      },
-      { status: 500 },
-    );
+    return errorResponse({
+      status: 500,
+      code: "load_threads_failed",
+      error: `Failed to load threads from database: ${readErrorMessage(error)}`,
+    });
   }
 }
 
@@ -107,13 +106,7 @@ export async function action({ request }: Route.ActionArgs) {
 
   const user = await readAuthenticatedUser();
   if (!user) {
-    return Response.json(
-      {
-        authRequired: true,
-        error: "Azure login is required. Click Azure Login to continue.",
-      },
-      { status: 401 },
-    );
+    return authRequiredResponse();
   }
 
   const payload = await readJsonPayload(request);
@@ -129,7 +122,7 @@ export async function action({ request }: Route.ActionArgs) {
       userId: user.id,
     });
 
-    return Response.json({ error: "Invalid JSON body." }, { status: 400 });
+    return invalidJsonResponse();
   }
 
   const thread = readThreadSnapshotFromUnknown(payload.value, {
@@ -142,12 +135,12 @@ export async function action({ request }: Route.ActionArgs) {
       eventName: "invalid_thread_payload",
       action: "read_thread_snapshot",
       level: "warning",
-      statusCode: 400,
+      statusCode: 422,
       message: "Invalid thread payload.",
       userId: user.id,
     });
 
-    return Response.json({ error: "Invalid thread payload." }, { status: 400 });
+    return validationErrorResponse("invalid_thread_payload", "Invalid thread payload.");
   }
 
   try {
@@ -165,12 +158,11 @@ export async function action({ request }: Route.ActionArgs) {
         threadId: thread.id,
       });
 
-      return Response.json(
-        {
-          error: "Thread id already exists.",
-        },
-        { status: 409 },
-      );
+      return errorResponse({
+        status: 409,
+        code: "thread_conflict",
+        error: "Thread id already exists.",
+      });
     }
 
     if (created.status === "invalid") {
@@ -180,17 +172,15 @@ export async function action({ request }: Route.ActionArgs) {
         eventName: "invalid_thread_payload",
         action: "create_thread",
         level: "warning",
-        statusCode: 400,
+        statusCode: 422,
         message: "Thread payload is not persistable.",
         userId: user.id,
         threadId: thread.id,
       });
 
-      return Response.json(
-        {
-          error: "Thread payload is not persistable.",
-        },
-        { status: 400 },
+      return validationErrorResponse(
+        "invalid_thread_payload",
+        "Thread payload is not persistable.",
       );
     }
 
@@ -231,12 +221,11 @@ export async function action({ request }: Route.ActionArgs) {
       userId: user.id,
       threadId: thread.id,
     });
-    return Response.json(
-      {
-        error: `Failed to create thread in database: ${readErrorMessage(error)}`,
-      },
-      { status: 500 },
-    );
+    return errorResponse({
+      status: 500,
+      code: "create_thread_failed",
+      error: `Failed to create thread in database: ${readErrorMessage(error)}`,
+    });
   }
 }
 

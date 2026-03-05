@@ -86,7 +86,10 @@ describe("/api/azure/session", () => {
     const response = loader();
     expect(response.status).toBe(405);
     expect(response.headers.get("allow")).toBe("PUT, DELETE");
-    expect(await response.json()).toEqual({ error: "Method not allowed." });
+    expect(await response.json()).toEqual({
+      code: "method_not_allowed",
+      error: "Method not allowed.",
+    });
   });
 
   it("returns 405 for unsupported methods", async () => {

@@ -10,7 +10,13 @@ import {
   installGlobalServerErrorLogging,
   logServerRouteEvent,
 } from "~/lib/server/observability/runtime-event-log";
-import { methodNotAllowedResponse } from "~/lib/server/http";
+import {
+  authRequiredResponse,
+  errorResponse,
+  invalidJsonResponse,
+  methodNotAllowedResponse,
+  validationErrorResponse,
+} from "~/lib/server/http";
 import { HOME_REASONING_EFFORT_OPTIONS } from "~/lib/constants";
 import type { ReasoningEffort } from "~/lib/home/shared/view-types";
 import type { Route } from "./+types/api.azure.selection";
@@ -51,13 +57,7 @@ export async function loader({ request }: Route.LoaderArgs) {
 
   const identity = await readAuthenticatedIdentity();
   if (!identity) {
-    return Response.json(
-      {
-        authRequired: true,
-        error: "Azure login is required. Click Azure Login to continue.",
-      },
-      { status: 401 },
-    );
+    return authRequiredResponse();
   }
 
   try {
@@ -77,10 +77,11 @@ export async function loader({ request }: Route.LoaderArgs) {
       },
     });
 
-    return Response.json(
-      { error: `Failed to read Azure selection from database: ${readErrorMessage(error)}` },
-      { status: 500 },
-    );
+    return errorResponse({
+      status: 500,
+      code: "read_azure_selection_failed",
+      error: `Failed to read Azure selection from database: ${readErrorMessage(error)}`,
+    });
   }
 }
 
@@ -93,20 +94,18 @@ export async function action({ request }: Route.ActionArgs) {
 
   const identity = await readAuthenticatedIdentity();
   if (!identity) {
-    return Response.json(
-      {
-        authRequired: true,
-        error: "Azure login is required. Click Azure Login to continue.",
-      },
-      { status: 401 },
-    );
+    return authRequiredResponse();
   }
 
   if (request.method === "DELETE") {
     try {
       const deleted = await deleteStoredSelection(identity);
       if (!deleted) {
-        return Response.json({ error: "Azure selection is not available." }, { status: 404 });
+        return errorResponse({
+          status: 404,
+          code: "azure_selection_not_found",
+          error: "Azure selection is not available.",
+        });
       }
 
       return new Response(null, { status: 204 });
@@ -124,10 +123,11 @@ export async function action({ request }: Route.ActionArgs) {
         },
       });
 
-      return Response.json(
-        { error: `Failed to delete Azure selection from database: ${readErrorMessage(error)}` },
-        { status: 500 },
-      );
+      return errorResponse({
+        status: 500,
+        code: "delete_azure_selection_failed",
+        error: `Failed to delete Azure selection from database: ${readErrorMessage(error)}`,
+      });
     }
   }
 
@@ -145,7 +145,7 @@ export async function action({ request }: Route.ActionArgs) {
       message: "Invalid JSON body.",
     });
 
-    return Response.json({ error: "Invalid JSON body." }, { status: 400 });
+    return invalidJsonResponse();
   }
 
   const preference = parseAzureSelectionPreference(payload);
@@ -156,17 +156,14 @@ export async function action({ request }: Route.ActionArgs) {
       eventName: "invalid_selection_payload",
       action: "validate_payload",
       level: "warning",
-      statusCode: 400,
+      statusCode: 422,
       message:
         "`target`, `projectId`, and `deploymentName` are required. `reasoningEffort` is required for `utility` target.",
     });
 
-    return Response.json(
-      {
-        error:
-          "`target`, `projectId`, and `deploymentName` are required. `reasoningEffort` is required for `utility` target.",
-      },
-      { status: 400 },
+    return validationErrorResponse(
+      "invalid_selection_payload",
+      "`target`, `projectId`, and `deploymentName` are required. `reasoningEffort` is required for `utility` target.",
     );
   }
 
@@ -201,10 +198,11 @@ export async function action({ request }: Route.ActionArgs) {
       },
     });
 
-    return Response.json(
-      { error: `Failed to save Azure selection to database: ${readErrorMessage(error)}` },
-      { status: 500 },
-    );
+    return errorResponse({
+      status: 500,
+      code: "patch_azure_selection_failed",
+      error: `Failed to save Azure selection to database: ${readErrorMessage(error)}`,
+    });
   }
 }
 

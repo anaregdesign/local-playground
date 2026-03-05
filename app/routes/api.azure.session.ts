@@ -3,7 +3,7 @@
  */
 import { getAzureDependencies, resetAzureDependencies } from "~/lib/azure/dependencies";
 import { AZURE_ARM_SCOPE } from "~/lib/constants";
-import { methodNotAllowedResponse } from "~/lib/server/http";
+import { errorResponse, methodNotAllowedResponse } from "~/lib/server/http";
 import {
   installGlobalServerErrorLogging,
   logServerRouteEvent,
@@ -34,7 +34,11 @@ export async function action({ request }: Route.ActionArgs) {
   if (request.method === "PUT") {
     const tenantIdResult = await readAzureSessionPutTenantId(request);
     if (!tenantIdResult.ok) {
-      return Response.json({ error: tenantIdResult.error }, { status: 400 });
+      return errorResponse({
+        status: 400,
+        code: "invalid_request_body",
+        error: tenantIdResult.error,
+      });
     }
 
     const tenantId = tenantIdResult.tenantId;
@@ -86,12 +90,11 @@ export async function action({ request }: Route.ActionArgs) {
         },
       });
 
-      return Response.json(
-        {
-          error: `Failed to run Azure login: ${readErrorMessage(error)}. Retry and complete sign-in in the browser.`,
-        },
-        { status: 500 },
-      );
+      return errorResponse({
+        status: 500,
+        code: "azure_login_start_failed",
+        error: `Failed to run Azure login: ${readErrorMessage(error)}. Retry and complete sign-in in the browser.`,
+      });
     }
   }
 
@@ -111,12 +114,11 @@ export async function action({ request }: Route.ActionArgs) {
       error,
     });
 
-    return Response.json(
-      {
-        error: `Failed to reset Azure authentication state: ${readErrorMessage(error)}`,
-      },
-      { status: 500 },
-    );
+    return errorResponse({
+      status: 500,
+      code: "azure_logout_failed",
+      error: `Failed to reset Azure authentication state: ${readErrorMessage(error)}`,
+    });
   }
 }
 

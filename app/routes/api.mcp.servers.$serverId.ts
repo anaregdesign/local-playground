@@ -1,7 +1,13 @@
 /**
  * API route module for /api/mcp/servers/:serverId.
  */
-import { methodNotAllowedResponse } from "~/lib/server/http";
+import {
+  authRequiredResponse,
+  errorResponse,
+  invalidJsonResponse,
+  methodNotAllowedResponse,
+  validationErrorResponse,
+} from "~/lib/server/http";
 import {
   installGlobalServerErrorLogging,
   logServerRouteEvent,
@@ -34,18 +40,12 @@ export async function action({ request, params }: Route.ActionArgs) {
 
   const user = await readAuthenticatedUser();
   if (!user) {
-    return Response.json(
-      {
-        authRequired: true,
-        error: "Azure login is required. Click Azure Login to continue.",
-      },
-      { status: 401 },
-    );
+    return authRequiredResponse();
   }
 
   const serverId = typeof params.serverId === "string" ? params.serverId.trim() : "";
   if (!serverId) {
-    return Response.json({ error: "Invalid MCP server id." }, { status: 400 });
+    return validationErrorResponse("invalid_mcp_server_id", "Invalid MCP server id.");
   }
 
   if (request.method === "DELETE") {
@@ -53,7 +53,11 @@ export async function action({ request, params }: Route.ActionArgs) {
       const currentProfiles = await readWorkspaceMcpServerProfiles(user.id);
       const deleteResult = deleteWorkspaceMcpServerProfile(currentProfiles, serverId);
       if (!deleteResult.deleted) {
-        return Response.json({ error: "Selected MCP server is not available." }, { status: 404 });
+        return errorResponse({
+          status: 404,
+          code: "mcp_server_not_found",
+          error: "Selected MCP server is not available.",
+        });
       }
 
       await writeWorkspaceMcpServerProfiles(user.id, deleteResult.profiles);
@@ -72,12 +76,11 @@ export async function action({ request, params }: Route.ActionArgs) {
         },
       });
 
-      return Response.json(
-        {
-          error: `Failed to delete MCP server in database: ${readErrorMessage(error)}`,
-        },
-        { status: 500 },
-      );
+      return errorResponse({
+        status: 500,
+        code: "delete_mcp_server_failed",
+        error: `Failed to delete MCP server in database: ${readErrorMessage(error)}`,
+      });
     }
   }
 
@@ -85,16 +88,16 @@ export async function action({ request, params }: Route.ActionArgs) {
   try {
     payload = await request.json();
   } catch {
-    return Response.json({ error: "Invalid JSON body." }, { status: 400 });
+    return invalidJsonResponse();
   }
 
   const parsed = parseIncomingMcpServer(payload);
   if (!parsed.ok) {
-    return Response.json({ error: parsed.error }, { status: 400 });
+    return validationErrorResponse("invalid_mcp_server_payload", parsed.error);
   }
 
   if ("id" in parsed.value && parsed.value.id && parsed.value.id !== serverId) {
-    return Response.json({ error: "`id` must match path `serverId`." }, { status: 400 });
+    return validationErrorResponse("mcp_server_id_mismatch", "`id` must match path `serverId`.");
   }
 
   try {
@@ -102,7 +105,11 @@ export async function action({ request, params }: Route.ActionArgs) {
     const profilesWithDefaults = mergeDefaultWorkspaceMcpServerProfiles(currentProfiles, user.id);
     const hasTargetProfile = profilesWithDefaults.some((profile) => profile.id === serverId);
     if (!hasTargetProfile) {
-      return Response.json({ error: "Selected MCP server is not available." }, { status: 404 });
+      return errorResponse({
+        status: 404,
+        code: "mcp_server_not_found",
+        error: "Selected MCP server is not available.",
+      });
     }
 
     const profilesWithoutTarget = profilesWithDefaults.filter((profile) => profile.id !== serverId);
@@ -127,11 +134,10 @@ export async function action({ request, params }: Route.ActionArgs) {
       },
     });
 
-    return Response.json(
-      {
-        error: `Failed to update MCP server in database: ${readErrorMessage(error)}`,
-      },
-      { status: 500 },
-    );
+    return errorResponse({
+      status: 500,
+      code: "update_mcp_server_failed",
+      error: `Failed to update MCP server in database: ${readErrorMessage(error)}`,
+    });
   }
 }

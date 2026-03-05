@@ -27,7 +27,13 @@ import {
 } from "~/lib/server/persistence/prisma";
 import { getOrCreateUserByIdentity } from "~/lib/server/persistence/user";
 import { readAzureArmUserContext } from "~/lib/server/auth/azure-user";
-import { methodNotAllowedResponse } from "~/lib/server/http";
+import {
+  authRequiredResponse,
+  errorResponse,
+  invalidJsonResponse,
+  methodNotAllowedResponse,
+  validationErrorResponse,
+} from "~/lib/server/http";
 import {
   installGlobalServerErrorLogging,
   logServerRouteEvent,
@@ -98,13 +104,7 @@ export async function loader({ request }: Route.LoaderArgs) {
 
   const user = await readAuthenticatedUser();
   if (!user) {
-    return Response.json(
-      {
-        authRequired: true,
-        error: "Azure login is required. Click Azure Login to continue.",
-      },
-      { status: 401 },
-    );
+    return authRequiredResponse();
   }
 
   try {
@@ -121,12 +121,11 @@ export async function loader({ request }: Route.LoaderArgs) {
       userId: user.id,
     });
 
-    return Response.json(
-      {
-        error: `Failed to read MCP servers from database: ${readErrorMessage(error)}`,
-      },
-      { status: 500 },
-    );
+    return errorResponse({
+      status: 500,
+      code: "read_mcp_servers_failed",
+      error: `Failed to read MCP servers from database: ${readErrorMessage(error)}`,
+    });
   }
 }
 
@@ -139,13 +138,7 @@ export async function action({ request }: Route.ActionArgs) {
 
   const user = await readAuthenticatedUser();
   if (!user) {
-    return Response.json(
-      {
-        authRequired: true,
-        error: "Azure login is required. Click Azure Login to continue.",
-      },
-      { status: 401 },
-    );
+    return authRequiredResponse();
   }
 
   let payload: unknown;
@@ -163,7 +156,7 @@ export async function action({ request }: Route.ActionArgs) {
       userId: user.id,
     });
 
-    return Response.json({ error: "Invalid JSON body." }, { status: 400 });
+    return invalidJsonResponse();
   }
 
   if (isRecord(payload) && payload.id !== undefined) {
@@ -173,11 +166,14 @@ export async function action({ request }: Route.ActionArgs) {
       eventName: "invalid_mcp_server_payload",
       action: "validate_payload",
       level: "warning",
-      statusCode: 400,
+      statusCode: 422,
       message: "`id` must not be provided for POST.",
       userId: user.id,
     });
-    return Response.json({ error: "`id` must not be provided for POST." }, { status: 400 });
+    return validationErrorResponse(
+      "invalid_mcp_server_payload",
+      "`id` must not be provided for POST.",
+    );
   }
 
   const incomingResult = parseIncomingMcpServer(payload);
@@ -188,12 +184,12 @@ export async function action({ request }: Route.ActionArgs) {
       eventName: "invalid_mcp_server_payload",
       action: "validate_payload",
       level: "warning",
-      statusCode: 400,
+      statusCode: 422,
       message: incomingResult.error,
       userId: user.id,
     });
 
-    return Response.json({ error: incomingResult.error }, { status: 400 });
+    return validationErrorResponse("invalid_mcp_server_payload", incomingResult.error);
   }
   const incomingMcpServer = incomingResult.value;
 
@@ -248,12 +244,11 @@ export async function action({ request }: Route.ActionArgs) {
       userId: user.id,
     });
 
-    return Response.json(
-      {
-        error: `Failed to update MCP servers in database: ${readErrorMessage(error)}`,
-      },
-      { status: 500 },
-    );
+    return errorResponse({
+      status: 500,
+      code: "save_mcp_servers_failed",
+      error: `Failed to update MCP servers in database: ${readErrorMessage(error)}`,
+    });
   }
 }
 

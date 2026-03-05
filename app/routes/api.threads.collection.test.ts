@@ -112,7 +112,7 @@ describe("POST /api/threads", () => {
     expect(payload.error).toBe("Thread id already exists.");
   });
 
-  it("returns 400 when payload is invalid", async () => {
+  it("returns 422 when payload is invalid", async () => {
     readThreadSnapshotFromUnknownMock.mockReturnValueOnce(null);
 
     const response = await action({
@@ -126,7 +126,7 @@ describe("POST /api/threads", () => {
     } as never);
 
     const payload = (await response.json()) as { error?: string };
-    expect(response.status).toBe(400);
+    expect(response.status).toBe(422);
     expect(payload.error).toBe("Invalid thread payload.");
   });
 

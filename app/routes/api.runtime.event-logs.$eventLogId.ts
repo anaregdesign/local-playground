@@ -2,7 +2,12 @@
  * API route module for /api/runtime/event-logs/:eventLogId.
  */
 import { readAzureArmUserContext } from "~/lib/server/auth/azure-user";
-import { methodNotAllowedResponse } from "~/lib/server/http";
+import {
+  authRequiredResponse,
+  errorResponse,
+  methodNotAllowedResponse,
+  validationErrorResponse,
+} from "~/lib/server/http";
 import {
   installGlobalServerErrorLogging,
   logServerRouteEvent,
@@ -33,22 +38,16 @@ export async function loader({ request, params }: Route.LoaderArgs) {
       eventName: "invalid_event_log_id",
       action: "read_event_log_id",
       level: "warning",
-      statusCode: 400,
+      statusCode: 422,
       message: "Invalid event log id.",
     });
 
-    return Response.json({ error: "Invalid event log id." }, { status: 400 });
+    return validationErrorResponse("invalid_event_log_id", "Invalid event log id.");
   }
 
   const identity = await readAzureArmUserContext();
   if (!identity) {
-    return Response.json(
-      {
-        authRequired: true,
-        error: "Azure login is required. Click Azure Login to continue.",
-      },
-      { status: 401 },
-    );
+    return authRequiredResponse();
   }
 
   try {
@@ -64,7 +63,11 @@ export async function loader({ request, params }: Route.LoaderArgs) {
       userId: user.id,
     });
     if (!eventLog) {
-      return Response.json({ error: "Runtime event log is not available." }, { status: 404 });
+      return errorResponse({
+        status: 404,
+        code: "runtime_event_log_not_found",
+        error: "Runtime event log is not available.",
+      });
     }
 
     return Response.json({ eventLog });
@@ -83,14 +86,13 @@ export async function loader({ request, params }: Route.LoaderArgs) {
       },
     });
 
-    return Response.json(
-      {
-        error:
-          error instanceof Error
-            ? `Failed to read runtime event log: ${error.message}`
-            : "Failed to read runtime event log: Unknown error.",
-      },
-      { status: 500 },
-    );
+    return errorResponse({
+      status: 500,
+      code: "read_runtime_event_log_failed",
+      error:
+        error instanceof Error
+          ? `Failed to read runtime event log: ${error.message}`
+          : "Failed to read runtime event log: Unknown error.",
+    });
   }
 }

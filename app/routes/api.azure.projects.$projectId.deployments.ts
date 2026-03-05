@@ -2,7 +2,12 @@
  * API route module for /api/azure/projects/:projectId/deployments.
  */
 import { getAzureDependencies } from "~/lib/azure/dependencies";
-import { methodNotAllowedResponse } from "~/lib/server/http";
+import {
+  authRequiredResponse,
+  errorResponse,
+  methodNotAllowedResponse,
+  validationErrorResponse,
+} from "~/lib/server/http";
 import {
   installGlobalServerErrorLogging,
   logServerRouteEvent,
@@ -29,13 +34,7 @@ export async function loader({ request, params }: Route.LoaderArgs) {
   const dependencies = getAzureDependencies();
   const tokenResult = await getArmAccessToken(dependencies);
   if (!tokenResult.ok) {
-    return Response.json(
-      {
-        authRequired: true,
-        error: "Azure login is required. Click Azure Login to continue.",
-      },
-      { status: 401 },
-    );
+    return authRequiredResponse();
   }
 
   const projectId = typeof params.projectId === "string" ? params.projectId.trim() : "";
@@ -47,14 +46,14 @@ export async function loader({ request, params }: Route.LoaderArgs) {
       eventName: "invalid_project_id",
       action: "parse_project_id",
       level: "warning",
-      statusCode: 400,
+      statusCode: 422,
       message: "Invalid projectId.",
       context: {
         projectId,
       },
     });
 
-    return Response.json({ error: "Invalid projectId." }, { status: 400 });
+    return validationErrorResponse("invalid_project_id", "Invalid projectId.");
   }
 
   const principal = await resolveAzurePrincipalProfile(tokenResult, dependencies);
@@ -83,13 +82,7 @@ export async function loader({ request, params }: Route.LoaderArgs) {
         },
       });
 
-      return Response.json(
-        {
-          authRequired: true,
-          error: "Azure login is required. Click Azure Login to continue.",
-        },
-        { status: 401 },
-      );
+      return authRequiredResponse();
     }
 
     await logServerRouteEvent({
@@ -104,11 +97,10 @@ export async function loader({ request, params }: Route.LoaderArgs) {
       },
     });
 
-    return Response.json(
-      {
-        error: `Failed to load Azure deployment data: ${readErrorMessage(error)}`,
-      },
-      { status: 502 },
-    );
+    return errorResponse({
+      status: 502,
+      code: "load_azure_deployments_failed",
+      error: `Failed to load Azure deployment data: ${readErrorMessage(error)}`,
+    });
   }
 }

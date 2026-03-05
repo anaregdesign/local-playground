@@ -1,7 +1,12 @@
 /**
  * API route module for /api/skills/registries/:registryId/skills/*.
  */
-import { methodNotAllowedResponse } from "~/lib/server/http";
+import {
+  authRequiredResponse,
+  errorResponse,
+  methodNotAllowedResponse,
+  validationErrorResponse,
+} from "~/lib/server/http";
 import {
   installGlobalServerErrorLogging,
   logServerRouteEvent,
@@ -36,13 +41,7 @@ export async function action({ request, params }: Route.ActionArgs) {
 
   const user = await readAuthenticatedUser();
   if (!user) {
-    return Response.json(
-      {
-        authRequired: true,
-        error: "Azure login is required. Click Azure Login to continue.",
-      },
-      { status: 401 },
-    );
+    return authRequiredResponse();
   }
 
   const registryId = typeof params.registryId === "string" ? params.registryId : "";
@@ -55,7 +54,7 @@ export async function action({ request, params }: Route.ActionArgs) {
       eventName: "invalid_skills_mutation_request",
       action: "validate_payload",
       level: "warning",
-      statusCode: 400,
+      statusCode: 422,
       message: parsedMutation.error,
       userId: user.id,
       context: {
@@ -64,7 +63,7 @@ export async function action({ request, params }: Route.ActionArgs) {
       },
     });
 
-    return Response.json({ error: parsedMutation.error }, { status: 400 });
+    return validationErrorResponse("invalid_skills_mutation_request", parsedMutation.error);
   }
 
   try {
@@ -139,12 +138,11 @@ export async function action({ request, params }: Route.ActionArgs) {
       },
     });
 
-    return Response.json(
-      {
-        error: `Failed to update Skills: ${readErrorMessage(error)}`,
-      },
-      { status: 500 },
-    );
+    return errorResponse({
+      status: 500,
+      code: "skills_action_failed",
+      error: `Failed to update Skills: ${readErrorMessage(error)}`,
+    });
   }
 }
 

@@ -54,13 +54,13 @@ describe("/api/runtime/event-logs/:eventLogId", () => {
     expect(response.headers.get("allow")).toBe("GET");
   });
 
-  it("returns 400 for empty eventLogId", async () => {
+  it("returns 422 for empty eventLogId", async () => {
     const response = await loader({
       request: new Request("http://localhost/api/runtime/event-logs/", { method: "GET" }),
       params: { eventLogId: "" },
     } as never);
 
-    expect(response.status).toBe(400);
+    expect(response.status).toBe(422);
   });
 
   it("returns 401 when unauthenticated", async () => {

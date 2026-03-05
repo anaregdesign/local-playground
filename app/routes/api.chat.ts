@@ -39,7 +39,12 @@ import {
   installGlobalServerErrorLogging,
   logServerRouteEvent,
 } from "~/lib/server/observability/runtime-event-log";
-import { methodNotAllowedResponse } from "~/lib/server/http";
+import {
+  errorResponse,
+  invalidJsonResponse,
+  methodNotAllowedResponse,
+  validationErrorResponse,
+} from "~/lib/server/http";
 import {
   CHAT_ATTACHMENT_ALLOWED_EXTENSIONS,
   CHAT_CLEANUP_TIMEOUT_MS,
@@ -161,6 +166,7 @@ type ResolvedAzureConfig = {
   deploymentName: string;
 };
 type UpstreamErrorPayload = {
+  code: string;
   error: string;
   errorCode?: "azure_login_required";
 };
@@ -364,7 +370,7 @@ export async function action({ request }: Route.ActionArgs) {
       message: "Invalid JSON body.",
     });
 
-    return Response.json({ error: "Invalid JSON body." }, { status: 400 });
+    return invalidJsonResponse();
   }
 
   const message = readMessage(payload);
@@ -375,11 +381,11 @@ export async function action({ request }: Route.ActionArgs) {
       eventName: "missing_message",
       action: "validate_payload",
       level: "warning",
-      statusCode: 400,
+      statusCode: 422,
       message: "`message` is required.",
     });
 
-    return Response.json({ error: "`message` is required." }, { status: 400 });
+    return validationErrorResponse("missing_message", "`message` is required.");
   }
   const threadId = readThreadId(payload);
   const turnId = readTurnId(payload);
@@ -392,11 +398,11 @@ export async function action({ request }: Route.ActionArgs) {
       eventName: "invalid_history_payload",
       action: "validate_payload",
       level: "warning",
-      statusCode: 400,
+      statusCode: 422,
       message: historyResult.error,
     });
 
-    return Response.json({ error: historyResult.error }, { status: 400 });
+    return validationErrorResponse("invalid_history_payload", historyResult.error);
   }
   const history = historyResult.value;
   const attachmentsResult = readAttachments(payload);
@@ -407,11 +413,11 @@ export async function action({ request }: Route.ActionArgs) {
       eventName: "invalid_attachments_payload",
       action: "validate_payload",
       level: "warning",
-      statusCode: 400,
+      statusCode: 422,
       message: attachmentsResult.error,
     });
 
-    return Response.json({ error: attachmentsResult.error }, { status: 400 });
+    return validationErrorResponse("invalid_attachments_payload", attachmentsResult.error);
   }
   const reasoningEffort = readReasoningEffort(payload);
   const webSearchEnabled = readWebSearchEnabled(payload);
@@ -423,11 +429,11 @@ export async function action({ request }: Route.ActionArgs) {
       eventName: "invalid_temperature_payload",
       action: "validate_payload",
       level: "warning",
-      statusCode: 400,
+      statusCode: 422,
       message: temperatureResult.error,
     });
 
-    return Response.json({ error: temperatureResult.error }, { status: 400 });
+    return validationErrorResponse("invalid_temperature_payload", temperatureResult.error);
   }
   const agentInstruction = readAgentInstruction(payload);
   const threadEnvironmentResult = readThreadEnvironment(payload);
@@ -438,11 +444,11 @@ export async function action({ request }: Route.ActionArgs) {
       eventName: "invalid_thread_environment_payload",
       action: "validate_payload",
       level: "warning",
-      statusCode: 400,
+      statusCode: 422,
       message: threadEnvironmentResult.error,
     });
 
-    return Response.json({ error: threadEnvironmentResult.error }, { status: 400 });
+    return validationErrorResponse("invalid_thread_environment_payload", threadEnvironmentResult.error);
   }
   const skillsResult = readSkills(payload);
   if (!skillsResult.ok) {
@@ -452,11 +458,11 @@ export async function action({ request }: Route.ActionArgs) {
       eventName: "invalid_skills_payload",
       action: "validate_payload",
       level: "warning",
-      statusCode: 400,
+      statusCode: 422,
       message: skillsResult.error,
     });
 
-    return Response.json({ error: skillsResult.error }, { status: 400 });
+    return validationErrorResponse("invalid_skills_payload", skillsResult.error);
   }
   const explicitSkillLocationsResult = readExplicitSkillLocations(payload);
   if (!explicitSkillLocationsResult.ok) {
@@ -466,11 +472,14 @@ export async function action({ request }: Route.ActionArgs) {
       eventName: "invalid_explicit_skill_locations_payload",
       action: "validate_payload",
       level: "warning",
-      statusCode: 400,
+      statusCode: 422,
       message: explicitSkillLocationsResult.error,
     });
 
-    return Response.json({ error: explicitSkillLocationsResult.error }, { status: 400 });
+    return validationErrorResponse(
+      "invalid_explicit_skill_locations_payload",
+      explicitSkillLocationsResult.error,
+    );
   }
   const azureConfigResult = readAzureConfig(payload);
   if (!azureConfigResult.ok) {
@@ -480,11 +489,11 @@ export async function action({ request }: Route.ActionArgs) {
       eventName: "invalid_azure_config",
       action: "validate_payload",
       level: "warning",
-      statusCode: 400,
+      statusCode: 422,
       message: azureConfigResult.error,
     });
 
-    return Response.json({ error: azureConfigResult.error }, { status: 400 });
+    return validationErrorResponse("invalid_azure_config", azureConfigResult.error);
   }
   const azureConfig = azureConfigResult.value;
   const mcpServersResult = readMcpServers(payload, { requestUrl: request.url });
@@ -495,35 +504,26 @@ export async function action({ request }: Route.ActionArgs) {
       eventName: "invalid_mcp_servers_payload",
       action: "validate_payload",
       level: "warning",
-      statusCode: 400,
+      statusCode: 422,
       message: mcpServersResult.error,
     });
 
-    return Response.json({ error: mcpServersResult.error }, { status: 400 });
+    return validationErrorResponse("invalid_mcp_servers_payload", mcpServersResult.error);
   }
 
   if (!azureConfig.baseUrl) {
-    return Response.json(
-      {
-        error: "Azure OpenAI base URL is missing.",
-      },
-      { status: 400 },
-    );
+    return validationErrorResponse("missing_azure_base_url", "Azure OpenAI base URL is missing.");
   }
   if (!azureConfig.deploymentName) {
-    return Response.json(
-      {
-        error: "Azure deployment name is missing.",
-      },
-      { status: 400 },
+    return validationErrorResponse(
+      "missing_azure_deployment_name",
+      "Azure deployment name is missing.",
     );
   }
   if (azureConfig.apiVersion && azureConfig.apiVersion !== "v1") {
-    return Response.json(
-      {
-        error: "Azure OpenAI v1 endpoint requires `apiVersion` to be `v1`.",
-      },
-      { status: 400 },
+    return validationErrorResponse(
+      "invalid_azure_api_version",
+      "Azure OpenAI v1 endpoint requires `apiVersion` to be `v1`.",
     );
   }
 
@@ -596,10 +596,16 @@ export async function action({ request }: Route.ActionArgs) {
       },
     });
 
-    return Response.json(
-      upstreamError.payload,
-      { status: upstreamError.status },
-    );
+    return errorResponse({
+      status: upstreamError.status,
+      code: upstreamError.payload.code,
+      error: upstreamError.payload.error,
+      extras: upstreamError.payload.errorCode
+        ? {
+            errorCode: upstreamError.payload.errorCode,
+          }
+        : undefined,
+    });
   }
 }
 
@@ -5132,6 +5138,7 @@ function buildUpstreamErrorPayload(error: unknown, deploymentName: string): {
   if (isAzureCredentialError(error)) {
     return {
       payload: {
+        code: "auth_required",
         error:
           "Azure authentication failed. Click \"Azure Login\", complete sign-in, and try again.",
         errorCode: "azure_login_required",
@@ -5142,7 +5149,7 @@ function buildUpstreamErrorPayload(error: unknown, deploymentName: string): {
 
   const message = buildUpstreamErrorMessage(error, deploymentName);
   return {
-    payload: { error: message },
+    payload: { code: "upstream_service_error", error: message },
     status: 502,
   };
 }

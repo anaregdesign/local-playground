@@ -127,7 +127,7 @@ describe("/api/mcp/servers/:serverId", () => {
     expect(payload.error).toBe("Selected MCP server is not available.");
   });
 
-  it("returns 400 when PUT payload id conflicts with path id", async () => {
+  it("returns 422 when PUT payload id conflicts with path id", async () => {
     parseIncomingMcpServer.mockReturnValueOnce({
       ok: true,
       value: {
@@ -153,7 +153,7 @@ describe("/api/mcp/servers/:serverId", () => {
     } as never);
     const payload = (await response.json()) as { error?: string };
 
-    expect(response.status).toBe(400);
+    expect(response.status).toBe(422);
     expect(payload.error).toBe("`id` must match path `serverId`.");
   });
 });
