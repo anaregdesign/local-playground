@@ -3,12 +3,15 @@
  */
 import { spawn } from "node:child_process";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+const require = createRequire(import.meta.url);
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const workspaceRoot = path.resolve(scriptDirectory, "..");
 const schemaFilePath = path.join(workspaceRoot, "prisma", "schema.prisma");
+const prismaCliPath = require.resolve("prisma/build/index.js");
 
 const normalizedProvider = readDatabaseProvider(
   process.env.LOCAL_PLAYGROUND_DATABASE_PROVIDER || process.env.DATABASE_PROVIDER,
@@ -38,8 +41,8 @@ try {
     );
   }
 
-  const command = process.platform === "win32" ? "prisma.cmd" : "prisma";
-  const args = ["generate", "--schema", schemaPathForGeneration];
+  const command = process.execPath;
+  const args = [prismaCliPath, "generate", "--schema", schemaPathForGeneration];
   finalExitCode = await runCommand(command, args);
 } catch (error) {
   console.error(error instanceof Error ? error.message : String(error));
