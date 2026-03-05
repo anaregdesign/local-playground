@@ -217,7 +217,6 @@ async function ensureDatabaseSchema(): Promise<void> {
 
 async function ensureUserSchema(): Promise<void> {
   await createUserTable();
-  await ensureTableColumn("WorkspaceUser", "lastUsedAt", "TEXT NOT NULL DEFAULT ''");
 }
 
 async function createUserTable(): Promise<void> {
@@ -249,68 +248,6 @@ async function ensureAzureSelectionSchema(): Promise<void> {
       FOREIGN KEY ("userId") REFERENCES "WorkspaceUser" ("id") ON DELETE CASCADE
     )
   `);
-
-  await ensureTableColumn(
-    "AzureSelectionPreference",
-    "utilityProjectId",
-    "TEXT NOT NULL DEFAULT ''",
-  );
-  await ensureTableColumn(
-    "AzureSelectionPreference",
-    "utilityDeploymentName",
-    "TEXT NOT NULL DEFAULT ''",
-  );
-  await ensureTableColumn(
-    "AzureSelectionPreference",
-    "utilityReasoningEffort",
-    "TEXT NOT NULL DEFAULT 'high'",
-  );
-}
-
-async function ensureTableColumn(
-  tableName: string,
-  columnName: string,
-  columnDefinition: string,
-): Promise<void> {
-  const columns = await readTableColumns(tableName);
-  if (columns.has(columnName)) {
-    return;
-  }
-
-  await prisma.$executeRawUnsafe(
-    `ALTER TABLE "${tableName}" ADD COLUMN "${columnName}" ${columnDefinition}`,
-  );
-}
-
-async function readTableColumns(tableName: string): Promise<Set<string>> {
-  const rows = await prisma.$queryRawUnsafe<Array<{ name?: string | null }>>(
-    `PRAGMA table_info("${tableName}")`,
-  );
-
-  const columns = new Set<string>();
-  for (const row of rows) {
-    const name = typeof row.name === "string" ? row.name.trim() : "";
-    if (name) {
-      columns.add(name);
-    }
-  }
-
-  return columns;
-}
-
-async function renameTableColumnIfExists(
-  tableName: string,
-  fromColumnName: string,
-  toColumnName: string,
-): Promise<void> {
-  const columns = await readTableColumns(tableName);
-  if (columns.has(toColumnName) || !columns.has(fromColumnName)) {
-    return;
-  }
-
-  await prisma.$executeRawUnsafe(
-    `ALTER TABLE "${tableName}" RENAME COLUMN "${fromColumnName}" TO "${toColumnName}"`,
-  );
 }
 
 async function ensureMcpServerProfileSchema(): Promise<void> {
@@ -335,44 +272,6 @@ async function ensureMcpServerProfileSchema(): Promise<void> {
       FOREIGN KEY ("userId") REFERENCES "WorkspaceUser" ("id") ON DELETE CASCADE
     )
   `);
-
-  await renameTableColumnIfExists(
-    "WorkspaceMcpServerProfile",
-    "sortOrder",
-    "profileOrder",
-  );
-  await ensureTableColumn(
-    "WorkspaceMcpServerProfile",
-    "profileOrder",
-    "INTEGER NOT NULL DEFAULT 0",
-  );
-  const hadConnectOnThreadCreateColumn = (
-    await readTableColumns("WorkspaceMcpServerProfile")
-  ).has("connectOnThreadCreate");
-  await ensureTableColumn(
-    "WorkspaceMcpServerProfile",
-    "connectOnThreadCreate",
-    "BOOLEAN NOT NULL DEFAULT false",
-  );
-  if (!hadConnectOnThreadCreateColumn) {
-    await prisma.$executeRawUnsafe(`
-      UPDATE "WorkspaceMcpServerProfile"
-      SET "connectOnThreadCreate" = true
-      WHERE "transport" = 'stdio'
-        AND "command" = 'npx'
-        AND "argsJson" = '["-y","@modelcontextprotocol/server-filesystem","."]'
-    `);
-
-    await prisma.$executeRawUnsafe(`
-      UPDATE "WorkspaceMcpServerProfile"
-      SET "connectOnThreadCreate" = true
-      WHERE "transport" IN ('streamable_http', 'sse')
-        AND (
-          LOWER(COALESCE("url", '')) IN ('/mcp/system', '/mcp/system/')
-          OR LOWER(COALESCE("name", '')) = 'system'
-        )
-    `);
-  }
 
   await prisma.$executeRawUnsafe(`
     CREATE UNIQUE INDEX IF NOT EXISTS "WorkspaceMcpServerProfile_userId_configKey_key"
@@ -456,23 +355,6 @@ async function ensureThreadSchema(): Promise<void> {
     )
   `);
 
-  await ensureTableColumn("Thread", "deletedAt", "TEXT");
-  await ensureTableColumn(
-    "Thread",
-    "reasoningEffort",
-    "TEXT NOT NULL DEFAULT 'none'",
-  );
-  await ensureTableColumn(
-    "Thread",
-    "webSearchEnabled",
-    "BOOLEAN NOT NULL DEFAULT false",
-  );
-  await ensureTableColumn(
-    "Thread",
-    "threadEnvironmentJson",
-    "TEXT NOT NULL DEFAULT '{}'",
-  );
-
   await prisma.$executeRawUnsafe(`
     CREATE INDEX IF NOT EXISTS "Thread_userId_updatedAt_idx"
     ON "Thread" ("userId", "updatedAt")
@@ -501,27 +383,6 @@ async function ensureThreadSchema(): Promise<void> {
     )
   `);
 
-  await renameTableColumnIfExists(
-    "ThreadMessage",
-    "sortOrder",
-    "conversationOrder",
-  );
-  await renameTableColumnIfExists(
-    "ThreadMessage",
-    "threadOrder",
-    "conversationOrder",
-  );
-  await ensureTableColumn(
-    "ThreadMessage",
-    "conversationOrder",
-    "INTEGER NOT NULL DEFAULT 0",
-  );
-  await ensureTableColumn(
-    "ThreadMessage",
-    "createdAt",
-    "TEXT NOT NULL DEFAULT ''",
-  );
-
   await prisma.$executeRawUnsafe(`
     CREATE INDEX IF NOT EXISTS "ThreadMessage_threadId_conversationOrder_idx"
     ON "ThreadMessage" ("threadId", "conversationOrder")
@@ -537,17 +398,6 @@ async function ensureThreadSchema(): Promise<void> {
       FOREIGN KEY ("skillProfileId") REFERENCES "WorkspaceSkillProfile" ("id") ON DELETE CASCADE
     )
   `);
-
-  await renameTableColumnIfExists(
-    "ThreadMessageSkillActivation",
-    "sortOrder",
-    "selectionOrder",
-  );
-  await ensureTableColumn(
-    "ThreadMessageSkillActivation",
-    "selectionOrder",
-    "INTEGER NOT NULL DEFAULT 0",
-  );
 
   await prisma.$executeRawUnsafe(`
     CREATE INDEX IF NOT EXISTS "ThreadMessageSkillActivation_messageId_selectionOrder_idx"
@@ -578,22 +428,6 @@ async function ensureThreadSchema(): Promise<void> {
       FOREIGN KEY ("threadId") REFERENCES "Thread" ("id") ON DELETE CASCADE
     )
   `);
-
-  await renameTableColumnIfExists(
-    "ThreadMcpConnection",
-    "sortOrder",
-    "selectionOrder",
-  );
-  await renameTableColumnIfExists(
-    "ThreadMcpConnection",
-    "threadOrder",
-    "selectionOrder",
-  );
-  await ensureTableColumn(
-    "ThreadMcpConnection",
-    "selectionOrder",
-    "INTEGER NOT NULL DEFAULT 0",
-  );
   await prisma.$executeRawUnsafe(`
     CREATE INDEX IF NOT EXISTS "ThreadMcpConnection_threadId_selectionOrder_idx"
     ON "ThreadMcpConnection" ("threadId", "selectionOrder")
@@ -619,46 +453,10 @@ async function ensureThreadSchema(): Promise<void> {
     )
   `);
 
-  await ensureTableColumn(
-    "ThreadOperationLog",
-    "rowId",
-    "TEXT NOT NULL DEFAULT ''",
-  );
-
-  await ensureTableColumn(
-    "ThreadOperationLog",
-    "sourceRpcId",
-    "TEXT NOT NULL DEFAULT ''",
-  );
-
-  await renameTableColumnIfExists(
-    "ThreadOperationLog",
-    "persistedOrder",
-    "conversationOrder",
-  );
-  await renameTableColumnIfExists(
-    "ThreadOperationLog",
-    "threadOrder",
-    "conversationOrder",
-  );
-  await ensureTableColumn(
-    "ThreadOperationLog",
-    "conversationOrder",
-    "INTEGER NOT NULL DEFAULT 0",
-  );
-
-  await ensureTableColumn(
-    "ThreadOperationLog",
-    "operationType",
-    "TEXT NOT NULL DEFAULT 'mcp'",
-  );
-
   await prisma.$executeRawUnsafe(`
     CREATE INDEX IF NOT EXISTS "ThreadOperationLog_threadId_conversationOrder_idx"
     ON "ThreadOperationLog" ("threadId", "conversationOrder")
   `);
-
-  await recreateThreadSkillActivationTableIfLegacySchema();
 
   await prisma.$executeRawUnsafe(`
     CREATE TABLE IF NOT EXISTS "ThreadSkillActivation" (
@@ -671,22 +469,6 @@ async function ensureThreadSchema(): Promise<void> {
     )
   `);
 
-  await renameTableColumnIfExists(
-    "ThreadSkillActivation",
-    "sortOrder",
-    "selectionOrder",
-  );
-  await renameTableColumnIfExists(
-    "ThreadSkillActivation",
-    "threadOrder",
-    "selectionOrder",
-  );
-  await ensureTableColumn(
-    "ThreadSkillActivation",
-    "selectionOrder",
-    "INTEGER NOT NULL DEFAULT 0",
-  );
-
   await prisma.$executeRawUnsafe(`
     CREATE INDEX IF NOT EXISTS "ThreadSkillActivation_threadId_selectionOrder_idx"
     ON "ThreadSkillActivation" ("threadId", "selectionOrder")
@@ -696,21 +478,6 @@ async function ensureThreadSchema(): Promise<void> {
     CREATE INDEX IF NOT EXISTS "ThreadSkillActivation_skillProfileId_idx"
     ON "ThreadSkillActivation" ("skillProfileId")
   `);
-}
-
-async function recreateThreadSkillActivationTableIfLegacySchema(): Promise<void> {
-  const columns = await readTableColumns("ThreadSkillActivation");
-  if (columns.size === 0) {
-    return;
-  }
-
-  const usesLegacyColumns = columns.has("skillName") || columns.has("skillLocation");
-  const missingCurrentColumn = !columns.has("skillProfileId");
-  if (!usesLegacyColumns && !missingCurrentColumn) {
-    return;
-  }
-
-  await prisma.$executeRawUnsafe(`DROP TABLE IF EXISTS "ThreadSkillActivation"`);
 }
 
 async function ensureRuntimeEventLogSchema(): Promise<void> {
@@ -737,12 +504,6 @@ async function ensureRuntimeEventLogSchema(): Promise<void> {
       "contextJson" TEXT NOT NULL
     )
   `);
-
-  await ensureTableColumn(
-    "RuntimeEventLog",
-    "contextJson",
-    "TEXT NOT NULL DEFAULT '{}'",
-  );
 
   await prisma.$executeRawUnsafe(`
     CREATE INDEX IF NOT EXISTS "RuntimeEventLog_createdAt_idx"
