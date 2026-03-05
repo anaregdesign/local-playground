@@ -101,6 +101,19 @@ git diff --name-only
    - ordering/log identifiers reflect app behavior, not incidental implementation detail
 7. If a rename/refactor happened, run static drift search for deprecated terms and contract keys.
    - Build a focused `rg` pattern list from replaced terms in this task and verify zero matches in `app/`.
+8. Validate API contract integrity for changed `app/routes/api.*` handlers:
+   - resource-first collection/item route shape
+   - mutation resource IDs in path params (not query params)
+   - side-effect-free `GET` handlers
+   - `201` with `Location` for creates
+   - `409` for state conflicts
+9. Validate command-style API exceptions stay limited to:
+   - `/api/chat`
+   - `/api/instruction-patches`
+   - `/api/threads/title-suggestions`
+10. Run static API drift checks for route handlers:
+   - raw `405` implementation search in `api.*` files (should use `methodNotAllowedResponse`)
+   - mutation query-contract search (resource IDs passed by query for mutations)
 
 ### Pass Criteria
 
@@ -108,6 +121,7 @@ git diff --name-only
 - Names communicate structural role (`Panel`, `Tab`, `Section`).
 - Top-level panel placement matches DOM hierarchy.
 - No naming-drift findings remain for this change batch.
+- No REST/command API contract drift remains for changed handlers.
 
 ## 3) Route vs Controller Ownership
 
@@ -152,7 +166,7 @@ Keep interactive state responsive and persistence stable.
 2. Confirm DB writes use delayed persistence (debounce/autosave), not eager write-on-every-change.
 3. Confirm persistence orchestration lives in controller code (`app/lib/home/controller/`) or controller-adjacent runtime modules.
 4. Treat SQLite records as durable snapshots, not as the immediate interaction source.
-5. For debug tooling, `/mcp` endpoint usage (including DB table inspection) is treated as development-only workflow.
+5. For debug tooling, `/mcp/debug` endpoint usage (including DB table inspection) is treated as development-only workflow.
 
 ### Pass Criteria
 

@@ -44,6 +44,17 @@ Run this loop for every implementation task.
 - Treat Prisma schema entity/field terminology as the canonical domain vocabulary.
 - Keep a single term per domain concept across schema references, runtime types, API contracts, component props, tests, and docs.
 - When terminology changes, perform an end-to-end rename in one batch and remove legacy aliases (unless explicitly requested).
+- Enforce REST API contract standards for `app/routes/api.*`:
+  - resource-first collection/item routing
+  - mutation resource IDs in path params (not query params)
+  - side-effect-free `GET` handlers
+  - `methodNotAllowedResponse` for `405` responses with `Allow`
+  - `201` with `Location` for creates
+  - `409` for state conflicts
+- Keep command-style API exceptions scoped to Agents SDK runtime endpoints only:
+  - `/api/chat`
+  - `/api/instruction-patches`
+  - `/api/threads/title-suggestions`
 - Use semantic naming for ordering and log concepts:
   - same behavior -> same identifier family
   - different behavior -> different identifier family
@@ -70,7 +81,7 @@ Run this loop for every implementation task.
 - Persist that state to SQLite via delayed writes (debounced/autosave), not eager write-on-every-change.
 - Treat DB as durable snapshot storage; treat React state as the immediate source of truth during interaction.
 - Implement persistence from controller logic under `app/lib/home/controller/`.
-- Local development debugging may use the web server MCP endpoint at `/mcp`, including DB table inspection, but keep that workflow development-only.
+- Local development debugging may use the web server MCP endpoint at `/mcp/debug`, including DB table inspection, but keep that workflow development-only.
 
 ## 4) Enforce Shared-Component-First Policy
 

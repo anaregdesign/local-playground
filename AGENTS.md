@@ -260,8 +260,8 @@
 ## MCP Debugging UX
 
 - Keep MCP visibility high; this app is an MCP debugging workbench.
-- During local development, the web server `/mcp` endpoint hosts an MCP server and may be used for debugging, including inspecting all SQLite tables.
-- Treat `/mcp` database-table inspection as a development/debug workflow, not a production access pattern.
+- During local development, the web server `/mcp/debug` endpoint hosts an MCP server and may be used for debugging, including inspecting all SQLite tables.
+- Treat `/mcp/debug` database-table inspection as a development/debug workflow, not a production access pattern.
 - Show MCP Operation Log inline in Playground per dialog turn.
 - Do not render MCP log blocks when a turn has no MCP operations.
 - Default MCP log panels to collapsed.
