@@ -42,6 +42,17 @@
 - Keep per-user persisted resources user-scoped by default (DB ownership and storage directory partitioning).
 - For log-like entities, persist explicit timestamps and preserve insertion order semantics.
 
+## Prisma Schema and MCP Debug Metadata Sync
+
+- When `prisma/schema.prisma` changes for persisted models/fields, update `/mcp/debug` schema design descriptions in `app/lib/server/persistence/mcp-debug-database.ts` in the same implementation pass.
+- Keep `/mcp/debug` metadata aligned end-to-end:
+  - `tableDefinitions` role/field/type/nullability entries
+  - latest-thread description schema-source model list (`buildDatabaseDebugLatestThreadToolDescription`)
+  - any affected MCP debug tool descriptions generated from metadata
+- Verify sync with `app/lib/server/persistence/mcp-debug-database.test.ts`.
+- After Prisma schema updates that affect persisted models/fields, run:
+  - `npm run test:core -- app/lib/server/persistence/mcp-debug-database.test.ts`
+
 ## Ordering Field Semantics
 
 - Use order field names that encode their purpose, not generic sorting intent.
@@ -54,13 +65,35 @@
 
 - Design resource-first endpoints:
   - collection routes for list/create
-  - item routes for update/delete/restore on identified resources
+  - item routes for read/update/delete/restore on identified resources
+- Use noun-based resource paths; avoid verb-style mutation paths unless the endpoint is an explicit command-style exception.
 - Put resource identifiers in path params, not mutation query params.
+- Reserve query params for read concerns only (filtering, pagination, sorting, projection).
 - Keep `GET` handlers side-effect free (no persistent writes).
-- Return `405` via `methodNotAllowedResponse` so `Allow` is always present.
-- Return `201` with `Location` for resource creation.
-- Use conflict status (`409`) for state conflicts rather than generic `400`.
+- Keep HTTP method semantics and idempotency consistent:
+  - `POST`: create or non-idempotent operations
+  - `PUT`/`PATCH`: update semantics on identified resources
+  - `DELETE`: idempotent delete semantics
+- Use status codes consistently:
+  - `200` for successful reads/updates with response body
+  - `201` with `Location` for resource creation
+  - `204` for successful no-content operations
+  - `400` malformed request, `401` unauthenticated, `403` unauthorized, `404` not found
+  - `405` via `methodNotAllowedResponse` so `Allow` is always present
+  - `409` for state conflicts, `422` for validation failures
+- Return structured JSON errors with stable machine-readable codes and concise human-readable messages.
 - Remove superseded contracts instead of keeping dual API paths unless explicitly requested.
+
+## REST Compliance Gate for `api/*` Changes
+
+- Whenever any `app/routes/api.*` file is modified, explicitly verify REST best-practice compliance before finalizing.
+- Required static audit:
+  - raw `405` search in `api.*` implementations (must use `methodNotAllowedResponse`)
+  - mutation query-contract search (resource IDs passed by query for mutations)
+  - status-code audit for `200`/`201`/`204`/`409`/`422` usage consistency
+- Required dynamic audit:
+  - `npm run test:core -- app/routes/api.*.test.ts`
+  - `npm run typecheck:core`
 
 ## Agents SDK Command API Exceptions
 

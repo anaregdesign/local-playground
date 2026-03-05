@@ -46,15 +46,27 @@ Run this loop for every implementation task.
 - When terminology changes, perform an end-to-end rename in one batch and remove legacy aliases (unless explicitly requested).
 - Enforce REST API contract standards for `app/routes/api.*`:
   - resource-first collection/item routing
+  - noun-based resource paths (verb paths only for explicit command-style exceptions)
   - mutation resource IDs in path params (not query params)
+  - query params only for read concerns (filtering/pagination/sorting/projection)
   - side-effect-free `GET` handlers
+  - method semantics: `POST` create/non-idempotent, `PUT`/`PATCH` updates, `DELETE` idempotent delete
+  - status codes: `200`/`201`/`204` success semantics, `409` state conflicts, `422` validation failures
   - `methodNotAllowedResponse` for `405` responses with `Allow`
-  - `201` with `Location` for creates
-  - `409` for state conflicts
+  - structured JSON error payloads with stable machine-readable code and concise message
 - Keep command-style API exceptions scoped to Agents SDK runtime endpoints only:
   - `/api/chat`
   - `/api/instruction-patches`
   - `/api/threads/title-suggestions`
+- When any `app/routes/api.*` file changes, run REST compliance verification in the same batch:
+  - static checks for raw `405`, mutation query-contract drift, and status-code usage consistency
+  - `npm run test:core -- app/routes/api.*.test.ts`
+  - `npm run typecheck:core`
+- When `prisma/schema.prisma` changes for persisted models/fields, update `/mcp/debug` schema design descriptions in `app/lib/server/persistence/mcp-debug-database.ts` in the same change batch:
+  - `tableDefinitions` metadata entries
+  - latest-thread schema-source model list (`buildDatabaseDebugLatestThreadToolDescription`)
+  - affected MCP debug tool descriptions derived from metadata
+- Keep `app/lib/server/persistence/mcp-debug-database.test.ts` aligned with metadata changes.
 - Use semantic naming for ordering and log concepts:
   - same behavior -> same identifier family
   - different behavior -> different identifier family
@@ -119,6 +131,11 @@ After refactors:
 
 - Remove dead files, selectors, and stale tests.
 - Refresh `README.md` and `docs/images/` when user-facing UX/layout changes.
+- If `app/routes/api.*` changed, run:
+  - `npm run test:core -- app/routes/api.*.test.ts`
+  - REST static checks from `references/review-checklist.md` section 2 API contract items
+- If persisted Prisma models/fields changed, run:
+  - `npm run test:core -- app/lib/server/persistence/mcp-debug-database.test.ts`
 
 ## 7) Keep Commits Consistent
 

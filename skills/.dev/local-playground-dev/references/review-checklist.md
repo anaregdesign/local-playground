@@ -102,11 +102,13 @@ git diff --name-only
 7. If a rename/refactor happened, run static drift search for deprecated terms and contract keys.
    - Build a focused `rg` pattern list from replaced terms in this task and verify zero matches in `app/`.
 8. Validate API contract integrity for changed `app/routes/api.*` handlers:
-   - resource-first collection/item route shape
+   - resource-first noun-based collection/item route shape
    - mutation resource IDs in path params (not query params)
+   - query params limited to read concerns (filtering/pagination/sorting/projection)
    - side-effect-free `GET` handlers
-   - `201` with `Location` for creates
-   - `409` for state conflicts
+   - method semantics: `POST` create/non-idempotent, `PUT`/`PATCH` update, `DELETE` idempotent
+   - status codes: `200`/`201`/`204` success semantics, `409` state conflicts, `422` validation failures
+   - structured JSON errors with machine-readable code + concise message
 9. Validate command-style API exceptions stay limited to:
    - `/api/chat`
    - `/api/instruction-patches`
@@ -114,6 +116,15 @@ git diff --name-only
 10. Run static API drift checks for route handlers:
    - raw `405` implementation search in `api.*` files (should use `methodNotAllowedResponse`)
    - mutation query-contract search (resource IDs passed by query for mutations)
+11. If any `app/routes/api.*` file changed, run:
+   - `npm run test:core -- app/routes/api.*.test.ts`
+   - `npm run typecheck:core`
+12. If any `app/routes/api.*` file changed, explicitly confirm REST best-practice compliance in your implementation report.
+13. If `prisma/schema.prisma` changed for persisted models/fields, verify `/mcp/debug` schema design metadata was updated in `app/lib/server/persistence/mcp-debug-database.ts`:
+   - `tableDefinitions` field/type/nullability/description entries
+   - latest-thread schema-source model list in `buildDatabaseDebugLatestThreadToolDescription`
+14. If `prisma/schema.prisma` changed for persisted models/fields, verify `app/lib/server/persistence/mcp-debug-database.test.ts` was updated or remains valid for the new metadata and run:
+   - `npm run test:core -- app/lib/server/persistence/mcp-debug-database.test.ts`
 
 ### Pass Criteria
 
@@ -122,6 +133,8 @@ git diff --name-only
 - Top-level panel placement matches DOM hierarchy.
 - No naming-drift findings remain for this change batch.
 - No REST/command API contract drift remains for changed handlers.
+- REST best-practice compliance was re-validated whenever `app/routes/api.*` changed.
+- Prisma schema and `/mcp/debug` metadata/test sync is confirmed when Prisma persisted models/fields changed.
 
 ## 3) Route vs Controller Ownership
 
