@@ -20,6 +20,8 @@ export type DesktopUpdaterApi = {
   quitAndInstallUpdate: () => Promise<void>;
 };
 
+export type DesktopUpdaterActionState = "check" | "downloading" | "upgrade";
+
 const DEFAULT_DESKTOP_UPDATER_STATUS: DesktopUpdaterStatus = {
   supported: false,
   checking: false,
@@ -35,6 +37,20 @@ export function getDefaultDesktopUpdaterStatus(): DesktopUpdaterStatus {
   return {
     ...DEFAULT_DESKTOP_UPDATER_STATUS,
   };
+}
+
+export function resolveDesktopUpdaterActionState(
+  status: Pick<DesktopUpdaterStatus, "updateAvailable" | "updateDownloaded">,
+): DesktopUpdaterActionState {
+  if (status.updateDownloaded) {
+    return "upgrade";
+  }
+
+  if (status.updateAvailable) {
+    return "downloading";
+  }
+
+  return "check";
 }
 
 export function readDesktopApi(): DesktopUpdaterApi | null {

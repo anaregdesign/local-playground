@@ -16,6 +16,7 @@ import { AutoDismissStatusMessageList } from "~/components/home/shared/AutoDismi
 import { StatusMessageList } from "~/components/home/shared/StatusMessageList";
 import { QuickControlFrame } from "~/components/home/shared/QuickControlFrame";
 import type { ReasoningEffort } from "~/lib/home/shared/view-types";
+import { resolveDesktopUpdaterActionState } from "~/lib/home/controller/desktop-updater";
 import { formatChatAttachmentSize } from "~/lib/home/chat/attachments";
 import {
   HOME_NO_AVAILABLE_DEPLOYMENTS_OPTION_LABEL,
@@ -273,6 +274,7 @@ export function PlaygroundPanel<
     chatCommandMenu && chatCommandMenu.suggestions.length > 0
       ? `chat-command-option-${chatCommandMenu.highlightedIndex}`
       : undefined;
+  const desktopUpdaterActionState = resolveDesktopUpdaterActionState(desktopUpdaterStatus);
 
   function renderLabeledTooltip(
     title: string,
@@ -573,7 +575,7 @@ export function PlaygroundPanel<
                 <img className="chat-header-symbol" src="/foundry-symbol.svg" alt="" aria-hidden="true" />
                 <h1>Local Playground</h1>
               </div>
-              {desktopUpdaterStatus.supported ? (
+              {desktopUpdaterStatus.supported && desktopUpdaterActionState === "check" ? (
                 <Button
                   type="button"
                   appearance="subtle"
@@ -591,7 +593,24 @@ export function PlaygroundPanel<
                   {desktopUpdaterStatus.checking ? "Checking…" : "Check Updates"}
                 </Button>
               ) : null}
-              {desktopUpdaterStatus.updateDownloaded ? (
+              {desktopUpdaterStatus.supported && desktopUpdaterActionState === "downloading" ? (
+                <Button
+                  type="button"
+                  appearance="subtle"
+                  size="small"
+                  className="chat-header-upgrade-btn"
+                  aria-label="Update download in progress"
+                  title={
+                    desktopUpdaterStatus.availableVersion
+                      ? `Version ${desktopUpdaterStatus.availableVersion} is downloading in the background.`
+                      : "An update is downloading in the background."
+                  }
+                  disabled
+                >
+                  Downloading…
+                </Button>
+              ) : null}
+              {desktopUpdaterStatus.supported && desktopUpdaterActionState === "upgrade" ? (
                 <Button
                   type="button"
                   appearance="subtle"
