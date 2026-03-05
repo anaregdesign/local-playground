@@ -4293,7 +4293,9 @@ function buildInitialSkillOperationRecords(
       records.push(buildSkillGuideReadOperationRecord(skill, options));
     }
   }
-  records.push(buildSkillEnvironmentSnapshotOperationRecord(options));
+  if (runtime.activeSkills.length > 0) {
+    records.push(buildSkillEnvironmentSnapshotOperationRecord(options));
+  }
   return records;
 }
 

@@ -866,6 +866,25 @@ describe("readExplicitSkillLocations", () => {
 });
 
 describe("buildInitialSkillOperationRecords", () => {
+  it("skips environment snapshot records when no Skills are active", () => {
+    let sequence = 0;
+    const records = buildInitialSkillOperationRecords(
+      {
+        activeSkills: [],
+        warnings: [],
+      },
+      {
+        nextSequence: () => {
+          sequence += 1;
+          return sequence;
+        },
+        threadEnvironment: { PROJECT: "local-playground" },
+      },
+    );
+
+    expect(records).toEqual([]);
+  });
+
   it("records skill activation and guide load before environment snapshot", () => {
     let sequence = 0;
     const records = buildInitialSkillOperationRecords(
