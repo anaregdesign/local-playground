@@ -21,7 +21,7 @@ import {
   logServerRouteEvent,
 } from "~/lib/server/observability/runtime-event-log";
 import { getOrCreateUserByIdentity } from "~/lib/server/persistence/user";
-import { prisma } from "~/lib/server/persistence/prisma";
+import { ensurePersistenceDatabaseReady, prisma } from "~/lib/server/persistence/prisma";
 import {
   listAzureProjects,
   parseProjectId,
@@ -214,6 +214,7 @@ function createSystemMcpServer(requestContext: McpSystemRequestContext): McpServ
       description: SYSTEM_READ_THREAD_CONTEXT_TOOL_DESCRIPTION,
     },
     async () => {
+      await ensurePersistenceDatabaseReady();
       const latestThreadName = await readLatestThreadName(requestContext.userId);
       const playgroundAzureRuntime = await readPlaygroundAzureRuntimeContext(
         requestContext.userId,

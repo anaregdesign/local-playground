@@ -13,6 +13,7 @@ const {
   getOrCreateUserByIdentityMock,
   installGlobalServerErrorLoggingMock,
   logServerRouteEventMock,
+  ensurePersistenceDatabaseReadyMock,
   threadFindFirstMock,
   azureSelectionFindUniqueMock,
   listAzureProjectsMock,
@@ -22,6 +23,7 @@ const {
   getOrCreateUserByIdentityMock: vi.fn(),
   installGlobalServerErrorLoggingMock: vi.fn(),
   logServerRouteEventMock: vi.fn(),
+  ensurePersistenceDatabaseReadyMock: vi.fn(),
   threadFindFirstMock: vi.fn(),
   azureSelectionFindUniqueMock: vi.fn(),
   listAzureProjectsMock: vi.fn(),
@@ -37,6 +39,7 @@ vi.mock("~/lib/server/persistence/user", () => ({
 }));
 
 vi.mock("~/lib/server/persistence/prisma", () => ({
+  ensurePersistenceDatabaseReady: ensurePersistenceDatabaseReadyMock,
   prisma: {
     thread: {
       findFirst: threadFindFirstMock,
@@ -75,6 +78,7 @@ describe("mcp system route", () => {
       tenantId: "eecca864-7a91-4b48-9327-e19aa5cc3f35",
       principalId: "25f7c3da-6559-4543-9eb0-fd01d3116fad",
     });
+    ensurePersistenceDatabaseReadyMock.mockResolvedValue(undefined);
     logServerRouteEventMock.mockResolvedValue(undefined);
     threadFindFirstMock.mockResolvedValue({ name: "Newest Thread" });
     azureSelectionFindUniqueMock.mockResolvedValue({

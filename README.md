@@ -190,6 +190,54 @@ SQLite database:
 
 - `<config-dir>/local-playground.sqlite`
 
+## Database Configuration
+
+Local Playground defaults to SQLite. To switch to PostgreSQL, set environment variables before starting the app.
+`LOCAL_PLAYGROUND_DATABASE_PROVIDER` can be used instead of `DATABASE_PROVIDER`.
+
+### SQLite (default)
+
+```bash
+export DATABASE_PROVIDER=sqlite
+# optional override
+export LOCAL_PLAYGROUND_DATABASE_URL="file:/absolute/path/local-playground.sqlite"
+```
+
+### PostgreSQL (connection URL)
+
+```bash
+export DATABASE_PROVIDER=postgresql
+export LOCAL_PLAYGROUND_DATABASE_URL="postgresql://USER:PASSWORD@HOST:5432/DBNAME?sslmode=require"
+```
+
+### PostgreSQL (split connection variables)
+
+```bash
+export DATABASE_PROVIDER=postgresql
+export LOCAL_PLAYGROUND_POSTGRES_HOST="HOST"
+export LOCAL_PLAYGROUND_POSTGRES_DATABASE="DBNAME"
+export LOCAL_PLAYGROUND_POSTGRES_USER="USER"
+export LOCAL_PLAYGROUND_POSTGRES_PASSWORD="PASSWORD"
+# optional
+export LOCAL_PLAYGROUND_POSTGRES_PORT="5432"
+export LOCAL_PLAYGROUND_POSTGRES_SSLMODE="require"
+export LOCAL_PLAYGROUND_POSTGRES_SCHEMA="public"
+```
+
+### PostgreSQL With Azure Managed Identity
+
+```bash
+export DATABASE_PROVIDER=postgresql
+export LOCAL_PLAYGROUND_POSTGRES_HOST="HOST"
+export LOCAL_PLAYGROUND_POSTGRES_DATABASE="DBNAME"
+export LOCAL_PLAYGROUND_POSTGRES_USER="USER"
+export LOCAL_PLAYGROUND_POSTGRES_USE_MANAGED_IDENTITY="true"
+# optional for user-assigned managed identity
+export LOCAL_PLAYGROUND_POSTGRES_MANAGED_IDENTITY_CLIENT_ID="<managed-identity-client-id>"
+# optional override (default is Azure PostgreSQL AAD scope)
+export LOCAL_PLAYGROUND_POSTGRES_MANAGED_IDENTITY_SCOPE="https://ossrdbms-aad.database.windows.net/.default"
+```
+
 ## Common Scripts
 
 - `npm run dev`

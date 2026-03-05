@@ -8,7 +8,7 @@
     "build": "npm run prisma:generate && npm run build:core",
     "build:core": "react-router build",
     "dev": "react-router dev",
-    "prisma:generate": "prisma generate",
+    "prisma:generate": "node scripts/prisma-generate.mjs",
     "quality:gate": "npm audit --omit=dev && npm run prisma:generate && npm run typecheck:core && npm run test:core && npm run build:core",
     "start": "react-router-serve ./build/server/index.js",
     "desktop:renderer:dev": "vite --force --config desktop/renderer/vite.config.ts",
