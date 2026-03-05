@@ -429,6 +429,54 @@ describe("instrumentMcpServer", () => {
     expect(records.filter((record) => record.method === "tools/list")).toHaveLength(1);
   });
 
+  it("keeps cached tools/list results across re-instrumentation", async () => {
+    let listToolsCallCount = 0;
+    let sequence = 0;
+    const methods: string[] = [];
+    const baseServer = {
+      name: "example-mcp",
+      listTools: async () => {
+        listToolsCallCount += 1;
+        return [{ name: "ping", description: "Ping tool" }];
+      },
+      callTool: async () => ({ ok: true }),
+      invalidateToolsCache: () => undefined,
+    };
+
+    const server = instrumentMcpServer(
+      baseServer as unknown as Parameters<typeof instrumentMcpServer>[0],
+      {
+        nextSequence: () => {
+          sequence += 1;
+          return sequence;
+        },
+        onRecord: (record) => {
+          methods.push(record.method);
+        },
+      },
+    );
+
+    await server.listTools();
+
+    instrumentMcpServer(
+      baseServer as unknown as Parameters<typeof instrumentMcpServer>[0],
+      {
+        nextSequence: () => {
+          sequence += 1;
+          return sequence;
+        },
+        onRecord: (record) => {
+          methods.push(record.method);
+        },
+      },
+    );
+
+    await server.listTools();
+
+    expect(listToolsCallCount).toBe(1);
+    expect(methods.filter((method) => method === "tools/list")).toHaveLength(1);
+  });
+
   it("does not cache failed tools/list calls and allows retry", async () => {
     let listToolsCallCount = 0;
     let sequence = 0;

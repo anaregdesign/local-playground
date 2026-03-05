@@ -2602,7 +2602,6 @@ function instrumentMcpServer(
   const existingState = instrumentedServer[instrumentedMcpServerStateSymbol];
   if (existingState) {
     existingState.handlers = handlers;
-    existingState.resetListToolsCache();
     return server;
   }
 
