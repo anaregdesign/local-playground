@@ -107,6 +107,7 @@ Default saved MCP profiles (created if missing):
 - `workiq` (`npx -y @microsoft/workiq mcp`)
 - `azure-mcp` (`npx -y @azure/mcp@latest server start`)
 - `playwright` (`npx -y @playwright/mcp@latest`)
+- `drawio` (`npx -y @drawio/mcp@latest`; working directory: `~/.foundry_local_playground/users/<user-id>/` on macOS/Linux)
 - `mcp-mermaid` (`npx -y mcp-mermaid`; working directory: `~/.foundry_local_playground/users/<user-id>/` on macOS/Linux)
 
 ### Skills workflow

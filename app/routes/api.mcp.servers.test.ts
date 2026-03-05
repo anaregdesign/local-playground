@@ -38,6 +38,7 @@ const defaultMemoryMcpServerProfile = readDefaultStdioMcpServerProfile("server-m
 const defaultEverythingMcpServerProfile = readDefaultStdioMcpServerProfile("server-everything");
 const defaultAzureMcpServerProfile = readDefaultStdioMcpServerProfile("azure-mcp");
 const defaultPlaywrightMcpServerProfile = readDefaultStdioMcpServerProfile("playwright");
+const defaultDrawioMcpServerProfile = readDefaultStdioMcpServerProfile("drawio");
 const defaultMermaidMcpServerProfile = readDefaultStdioMcpServerProfile("mcp-mermaid");
 const defaultWorkspaceUserId = 42;
 
@@ -387,7 +388,7 @@ describe("mergeDefaultWorkspaceMcpServerProfiles", () => {
     );
     const result = mergeDefaultWorkspaceMcpServerProfiles([], defaultWorkspaceUserId);
 
-    expect(result).toHaveLength(11);
+    expect(result).toHaveLength(HOME_DEFAULT_WORKSPACE_MCP_SERVER_PROFILE_ROWS.length);
     expect(result).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -472,6 +473,15 @@ describe("mergeDefaultWorkspaceMcpServerProfiles", () => {
           command: defaultPlaywrightMcpServerProfile.command,
           args: [...defaultPlaywrightMcpServerProfile.args],
           env: {},
+        }),
+        expect.objectContaining({
+          name: defaultDrawioMcpServerProfile.name,
+          transport: "stdio",
+          command: defaultDrawioMcpServerProfile.command,
+          args: [...defaultDrawioMcpServerProfile.args],
+          cwd: expectedFilesystemWorkingDirectory,
+          env: {},
+          connectOnThreadCreate: false,
         }),
         expect.objectContaining({
           name: defaultMermaidMcpServerProfile.name,
@@ -591,6 +601,16 @@ describe("mergeDefaultWorkspaceMcpServerProfiles", () => {
         env: {},
       },
       {
+        id: "profile-drawio",
+        name: "drawio (Custom Name)",
+        connectOnThreadCreate: false,
+        transport: "stdio" as const,
+        command: defaultDrawioMcpServerProfile.command,
+        args: [...defaultDrawioMcpServerProfile.args],
+        cwd: expectedFilesystemWorkingDirectory,
+        env: {},
+      },
+      {
         id: "profile-mermaid",
         name: "Mermaid (Custom Name)",
         connectOnThreadCreate: false,
@@ -625,7 +645,7 @@ describe("mergeDefaultWorkspaceMcpServerProfiles", () => {
 
     const result = mergeDefaultWorkspaceMcpServerProfiles(existing, defaultWorkspaceUserId);
 
-    expect(result).toHaveLength(11);
+    expect(result).toHaveLength(HOME_DEFAULT_WORKSPACE_MCP_SERVER_PROFILE_ROWS.length);
     expect(result).toEqual(
       expect.arrayContaining([
         existing[0],
@@ -672,6 +692,12 @@ describe("mergeDefaultWorkspaceMcpServerProfiles", () => {
           transport: "stdio",
           command: defaultPlaywrightMcpServerProfile.command,
           args: [...defaultPlaywrightMcpServerProfile.args],
+        }),
+        expect.objectContaining({
+          transport: "stdio",
+          command: defaultDrawioMcpServerProfile.command,
+          args: [...defaultDrawioMcpServerProfile.args],
+          cwd: expectedFilesystemWorkingDirectory,
         }),
         expect.objectContaining({
           transport: "stdio",
