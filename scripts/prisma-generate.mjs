@@ -9,12 +9,9 @@ import { fileURLToPath } from "node:url";
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const workspaceRoot = path.resolve(scriptDirectory, "..");
 const schemaFilePath = path.join(workspaceRoot, "prisma", "schema.prisma");
-const env = {
-  ...process.env,
-};
 
 const normalizedProvider = readDatabaseProvider(
-  env.LOCAL_PLAYGROUND_DATABASE_PROVIDER || env.DATABASE_PROVIDER,
+  process.env.LOCAL_PLAYGROUND_DATABASE_PROVIDER || process.env.DATABASE_PROVIDER,
 );
 let temporarySchemaDirectory = "";
 let schemaPathForGeneration = schemaFilePath;
@@ -43,7 +40,7 @@ try {
 
   const command = process.platform === "win32" ? "prisma.cmd" : "prisma";
   const args = ["generate", "--schema", schemaPathForGeneration];
-  finalExitCode = await runCommand(command, args, env);
+  finalExitCode = await runCommand(command, args);
 } catch (error) {
   console.error(error instanceof Error ? error.message : String(error));
   finalExitCode = 1;
@@ -78,11 +75,10 @@ function readDatabaseProvider(rawValue) {
   );
 }
 
-function runCommand(command, args, commandEnvironment) {
+function runCommand(command, args) {
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, {
       stdio: "inherit",
-      env: commandEnvironment,
     });
 
     child.on("exit", (code, signal) => {
