@@ -192,7 +192,7 @@ SQLite database:
 
 ## Database Configuration
 
-Local Playground defaults to SQLite. To switch to PostgreSQL, set environment variables before starting the app.
+Local Playground defaults to SQLite. `DATABASE_PROVIDER` is optional, and when unset the app continues to use SQLite.
 `LOCAL_PLAYGROUND_DATABASE_PROVIDER` can be used instead of `DATABASE_PROVIDER`.
 
 ### SQLite (default)
@@ -203,11 +203,28 @@ export DATABASE_PROVIDER=sqlite
 export LOCAL_PLAYGROUND_DATABASE_URL="file:/absolute/path/local-playground.sqlite"
 ```
 
+### Shared SQL Authentication Methods (`postgresql` / `mysql` / `cockroachdb`)
+
+```bash
+# default
+export LOCAL_PLAYGROUND_DATABASE_AUTH_METHOD="password"
+
+# Azure Identity (managed identity / service principal / Azure CLI login)
+export LOCAL_PLAYGROUND_DATABASE_AUTH_METHOD="azure_identity"
+export LOCAL_PLAYGROUND_DATABASE_AZURE_IDENTITY_CLIENT_ID="<managed-identity-client-id>" # optional
+export LOCAL_PLAYGROUND_DATABASE_AZURE_IDENTITY_SCOPE="https://ossrdbms-aad.database.windows.net/.default" # optional
+
+# Direct token
+export LOCAL_PLAYGROUND_DATABASE_AUTH_METHOD="access_token"
+export LOCAL_PLAYGROUND_DATABASE_ACCESS_TOKEN="<database-access-token>"
+```
+
 ### PostgreSQL (connection URL)
 
 ```bash
 export DATABASE_PROVIDER=postgresql
 export LOCAL_PLAYGROUND_DATABASE_URL="postgresql://USER:PASSWORD@HOST:5432/DBNAME?sslmode=require"
+export LOCAL_PLAYGROUND_DATABASE_AUTH_METHOD="password"
 ```
 
 ### PostgreSQL (split connection variables)
@@ -222,35 +239,34 @@ export LOCAL_PLAYGROUND_POSTGRES_PASSWORD="PASSWORD"
 export LOCAL_PLAYGROUND_POSTGRES_PORT="5432"
 export LOCAL_PLAYGROUND_POSTGRES_SSLMODE="require"
 export LOCAL_PLAYGROUND_POSTGRES_SCHEMA="public"
-export LOCAL_PLAYGROUND_POSTGRES_AUTH_METHOD="password"
+export LOCAL_PLAYGROUND_DATABASE_AUTH_METHOD="password"
 ```
 
-### PostgreSQL With Azure Identity Token Authentication
+### MySQL (connection URL)
 
 ```bash
-export DATABASE_PROVIDER=postgresql
-export LOCAL_PLAYGROUND_POSTGRES_HOST="HOST"
-export LOCAL_PLAYGROUND_POSTGRES_DATABASE="DBNAME"
-export LOCAL_PLAYGROUND_POSTGRES_USER="USER"
-export LOCAL_PLAYGROUND_POSTGRES_AUTH_METHOD="azure_identity"
-# optional for user-assigned managed identity
-export LOCAL_PLAYGROUND_POSTGRES_AZURE_IDENTITY_CLIENT_ID="<managed-identity-client-id>"
-# optional override (default is Azure PostgreSQL AAD scope)
-export LOCAL_PLAYGROUND_POSTGRES_AZURE_IDENTITY_SCOPE="https://ossrdbms-aad.database.windows.net/.default"
+export DATABASE_PROVIDER=mysql
+export LOCAL_PLAYGROUND_DATABASE_URL="mysql://USER:PASSWORD@HOST:3306/DBNAME"
+export LOCAL_PLAYGROUND_DATABASE_AUTH_METHOD="password"
 ```
 
-`azure_identity` uses `DefaultAzureCredential`, so managed identity, service principal, Azure CLI login, and other Azure Identity flows are available.
-
-### PostgreSQL With Direct Access Token
+### CockroachDB (connection URL)
 
 ```bash
-export DATABASE_PROVIDER=postgresql
-export LOCAL_PLAYGROUND_POSTGRES_HOST="HOST"
-export LOCAL_PLAYGROUND_POSTGRES_DATABASE="DBNAME"
-export LOCAL_PLAYGROUND_POSTGRES_USER="USER"
-export LOCAL_PLAYGROUND_POSTGRES_AUTH_METHOD="access_token"
-export LOCAL_PLAYGROUND_POSTGRES_ACCESS_TOKEN="<postgres-access-token>"
+export DATABASE_PROVIDER=cockroachdb
+export LOCAL_PLAYGROUND_DATABASE_URL="cockroachdb://USER:PASSWORD@HOST:26257/DBNAME?sslmode=require"
+export LOCAL_PLAYGROUND_DATABASE_AUTH_METHOD="password"
 ```
+
+### SQL Server (connection URL)
+
+```bash
+export DATABASE_PROVIDER=sqlserver
+export LOCAL_PLAYGROUND_DATABASE_URL="sqlserver://HOST:1433;database=DBNAME;user=USER;password=PASSWORD;encrypt=true"
+export LOCAL_PLAYGROUND_DATABASE_AUTH_METHOD="password"
+```
+
+SQL Server currently supports `password` mode in Local Playground.
 
 ## Common Scripts
 

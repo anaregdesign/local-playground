@@ -3,14 +3,18 @@
  */
 import { resolveFoundryDatabaseUrl } from "~/lib/foundry/config";
 
-export type PersistenceDatabaseProvider = "sqlite" | "postgresql";
+export type PersistenceDatabaseProvider =
+  | "sqlite"
+  | "postgresql"
+  | "mysql"
+  | "cockroachdb"
+  | "sqlserver";
 
-export type PersistencePostgresAuthenticationMethod =
-  | "password"
-  | "azure_identity"
-  | "access_token";
+type PersistenceRelationalDatabaseProvider = Exclude<PersistenceDatabaseProvider, "sqlite">;
 
-export type PersistencePostgresAuthenticationConfig =
+export type PersistenceSqlAuthenticationMethod = "password" | "azure_identity" | "access_token";
+
+export type PersistenceSqlAuthenticationConfig =
   | {
       method: "password";
     }
@@ -27,7 +31,7 @@ export type PersistencePostgresAuthenticationConfig =
 export type PersistenceDatabaseConfig = {
   provider: PersistenceDatabaseProvider;
   databaseUrl: string;
-  postgresAuthentication: PersistencePostgresAuthenticationConfig | null;
+  sqlAuthentication: PersistenceSqlAuthenticationConfig | null;
 };
 
 type ResolvePersistenceDatabaseConfigOptions = {
@@ -40,8 +44,9 @@ type ResolvePersistenceDatabaseConfigOptions = {
 
 const DEFAULT_POSTGRES_PORT = "5432";
 const DEFAULT_POSTGRES_SSLMODE = "require";
-const DEFAULT_POSTGRES_AZURE_IDENTITY_SCOPE =
+const DEFAULT_OSS_RDBMS_AZURE_IDENTITY_SCOPE =
   "https://ossrdbms-aad.database.windows.net/.default";
+const DEFAULT_SQLSERVER_AZURE_IDENTITY_SCOPE = "https://database.windows.net/.default";
 
 export function resolvePersistenceDatabaseConfig(
   options: ResolvePersistenceDatabaseConfigOptions = {},
@@ -76,35 +81,62 @@ export function resolvePersistenceDatabaseConfig(
         appDataDirectory: options.appDataDirectory,
         cwd: options.cwd,
       }),
-      postgresAuthentication: null,
+      sqlAuthentication: null,
     };
   }
 
-  const databaseUrl = resolvePostgresDatabaseUrl({
+  const databaseUrl = resolveRelationalDatabaseUrl({
+    provider,
     configuredDatabaseUrl,
     postgresComponents,
   });
-  const postgresAuthentication = resolvePostgresAuthenticationConfig(env);
+  const sqlAuthentication = resolveSqlAuthenticationConfig(provider, env);
 
   return {
     provider,
     databaseUrl,
-    postgresAuthentication,
+    sqlAuthentication,
   };
 }
 
-export function buildPostgresDatabaseUrlWithPassword(
-  databaseUrl: string,
-  password: string,
-): string {
-  const normalizedUrl = databaseUrl.trim();
-  if (!isPostgresDatabaseUrl(normalizedUrl)) {
-    throw new Error("PostgreSQL database URL is required to inject a password.");
+export function buildSqlDatabaseUrlWithPassword(options: {
+  provider: PersistenceRelationalDatabaseProvider;
+  databaseUrl: string;
+  password: string;
+}): string {
+  const normalizedUrl = options.databaseUrl.trim();
+  if (!normalizedUrl) {
+    throw new Error("Database URL is required to inject a password.");
+  }
+
+  if (options.provider === "sqlserver") {
+    return buildSqlServerDatabaseUrlWithPassword(normalizedUrl, options.password);
+  }
+
+  if (!isDatabaseUrlForProvider(normalizedUrl, options.provider)) {
+    throw new Error(
+      `Database URL must use the ${options.provider} scheme to inject a password.`,
+    );
   }
 
   const parsed = new URL(normalizedUrl);
-  parsed.password = password;
+  parsed.password = options.password;
   return parsed.toString();
+}
+
+function resolveRelationalDatabaseUrl(options: {
+  provider: PersistenceRelationalDatabaseProvider;
+  configuredDatabaseUrl: string;
+  postgresComponents: PostgresComponents;
+}): string {
+  if (options.provider === "postgresql") {
+    return resolvePostgresDatabaseUrl({
+      configuredDatabaseUrl: options.configuredDatabaseUrl,
+      postgresComponents: options.postgresComponents,
+    });
+  }
+
+  return resolveNonPostgresDatabaseUrl(options.provider, options.configuredDatabaseUrl);
 }
 
 function resolvePostgresDatabaseUrl(options: {
@@ -112,7 +144,7 @@ function resolvePostgresDatabaseUrl(options: {
   postgresComponents: PostgresComponents;
 }): string {
   if (options.configuredDatabaseUrl) {
-    if (!isPostgresDatabaseUrl(options.configuredDatabaseUrl)) {
+    if (!isDatabaseUrlForProvider(options.configuredDatabaseUrl, "postgresql")) {
       throw new Error(
         "PostgreSQL provider requires `LOCAL_PLAYGROUND_DATABASE_URL`/`DATABASE_URL` to use a postgres:// or postgresql:// URL.",
       );
@@ -156,6 +188,23 @@ function resolvePostgresDatabaseUrl(options: {
   }).toString();
 }
 
+function resolveNonPostgresDatabaseUrl(
+  provider: Exclude<PersistenceRelationalDatabaseProvider, "postgresql">,
+  configuredDatabaseUrl: string,
+): string {
+  if (!configuredDatabaseUrl) {
+    throw new Error(
+      `${formatProviderLabel(provider)} provider requires \`LOCAL_PLAYGROUND_DATABASE_URL\`/\`DATABASE_URL\` to be set.`,
+    );
+  }
+  if (!isDatabaseUrlForProvider(configuredDatabaseUrl, provider)) {
+    throw new Error(
+      `${formatProviderLabel(provider)} provider requires \`LOCAL_PLAYGROUND_DATABASE_URL\`/\`DATABASE_URL\` to use the ${provider}:// URL scheme.`,
+    );
+  }
+  return configuredDatabaseUrl;
+}
+
 function applyPostgresQueryDefaults(
   parsedUrl: URL,
   options: {
@@ -194,34 +243,63 @@ function readConfiguredProvider(env: NodeJS.ProcessEnv): PersistenceDatabaseProv
   if (configuredProvider === "postgresql" || configuredProvider === "postgres") {
     return "postgresql";
   }
+  if (configuredProvider === "mysql") {
+    return "mysql";
+  }
+  if (configuredProvider === "cockroachdb" || configuredProvider === "cockroach") {
+    return "cockroachdb";
+  }
+  if (configuredProvider === "sqlserver" || configuredProvider === "mssql") {
+    return "sqlserver";
+  }
 
   throw new Error(
-    "`LOCAL_PLAYGROUND_DATABASE_PROVIDER` (or `DATABASE_PROVIDER`) must be `sqlite` or `postgresql`.",
+    "`LOCAL_PLAYGROUND_DATABASE_PROVIDER` (or `DATABASE_PROVIDER`) must be one of `sqlite`, `postgresql`, `mysql`, `cockroachdb`, or `sqlserver`.",
   );
 }
 
 function readConfiguredDatabaseUrl(env: NodeJS.ProcessEnv): string {
-  return readTrimmedEnvironmentValue(
-    env.LOCAL_PLAYGROUND_DATABASE_URL || env.DATABASE_URL,
-  );
+  return readTrimmedEnvironmentValue(env.LOCAL_PLAYGROUND_DATABASE_URL || env.DATABASE_URL);
 }
 
 function detectProviderFromDatabaseUrl(databaseUrl: string): PersistenceDatabaseProvider | null {
-  if (!databaseUrl) {
+  const normalized = databaseUrl.trim().toLowerCase();
+  if (!normalized) {
     return null;
   }
-  if (databaseUrl.startsWith("file:")) {
+  if (normalized.startsWith("file:")) {
     return "sqlite";
   }
-  if (isPostgresDatabaseUrl(databaseUrl)) {
+  if (normalized.startsWith("postgresql://") || normalized.startsWith("postgres://")) {
     return "postgresql";
+  }
+  if (normalized.startsWith("mysql://")) {
+    return "mysql";
+  }
+  if (normalized.startsWith("cockroachdb://")) {
+    return "cockroachdb";
+  }
+  if (normalized.startsWith("sqlserver://")) {
+    return "sqlserver";
   }
   return null;
 }
 
-function isPostgresDatabaseUrl(databaseUrl: string): boolean {
-  const normalized = databaseUrl.toLowerCase();
-  return normalized.startsWith("postgresql://") || normalized.startsWith("postgres://");
+function isDatabaseUrlForProvider(databaseUrl: string, provider: PersistenceDatabaseProvider): boolean {
+  const normalized = databaseUrl.trim().toLowerCase();
+  if (provider === "sqlite") {
+    return normalized.startsWith("file:");
+  }
+  if (provider === "postgresql") {
+    return normalized.startsWith("postgresql://") || normalized.startsWith("postgres://");
+  }
+  if (provider === "mysql") {
+    return normalized.startsWith("mysql://");
+  }
+  if (provider === "cockroachdb") {
+    return normalized.startsWith("cockroachdb://");
+  }
+  return normalized.startsWith("sqlserver://");
 }
 
 type PostgresComponents = {
@@ -264,10 +342,17 @@ function readPostgresComponents(env: NodeJS.ProcessEnv): PostgresComponents {
   };
 }
 
-function resolvePostgresAuthenticationConfig(
+function resolveSqlAuthenticationConfig(
+  provider: PersistenceRelationalDatabaseProvider,
   env: NodeJS.ProcessEnv,
-): PersistencePostgresAuthenticationConfig {
-  const method = readPostgresAuthenticationMethod(env);
+): PersistenceSqlAuthenticationConfig {
+  const method = readSqlAuthenticationMethod(env);
+  if (provider === "sqlserver" && method !== "password") {
+    throw new Error(
+      "SQL Server currently supports only `password` authentication in Local Playground. Use `LOCAL_PLAYGROUND_DATABASE_AUTH_METHOD=password`.",
+    );
+  }
+
   if (method === "password") {
     return {
       method,
@@ -277,17 +362,17 @@ function resolvePostgresAuthenticationConfig(
   if (method === "azure_identity") {
     return {
       method,
-      clientId: readTrimmedEnvironmentValue(env.LOCAL_PLAYGROUND_POSTGRES_AZURE_IDENTITY_CLIENT_ID),
+      clientId: readTrimmedEnvironmentValue(env.LOCAL_PLAYGROUND_DATABASE_AZURE_IDENTITY_CLIENT_ID),
       scope:
-        readTrimmedEnvironmentValue(env.LOCAL_PLAYGROUND_POSTGRES_AZURE_IDENTITY_SCOPE) ||
-        DEFAULT_POSTGRES_AZURE_IDENTITY_SCOPE,
+        readTrimmedEnvironmentValue(env.LOCAL_PLAYGROUND_DATABASE_AZURE_IDENTITY_SCOPE) ||
+        resolveDefaultAzureIdentityScope(provider),
     };
   }
 
-  const accessToken = readTrimmedEnvironmentValue(env.LOCAL_PLAYGROUND_POSTGRES_ACCESS_TOKEN);
+  const accessToken = readTrimmedEnvironmentValue(env.LOCAL_PLAYGROUND_DATABASE_ACCESS_TOKEN);
   if (!accessToken) {
     throw new Error(
-      "PostgreSQL access token authentication requires `LOCAL_PLAYGROUND_POSTGRES_ACCESS_TOKEN`.",
+      "SQL access token authentication requires `LOCAL_PLAYGROUND_DATABASE_ACCESS_TOKEN`.",
     );
   }
 
@@ -297,12 +382,8 @@ function resolvePostgresAuthenticationConfig(
   };
 }
 
-function readPostgresAuthenticationMethod(
-  env: NodeJS.ProcessEnv,
-): PersistencePostgresAuthenticationMethod {
-  const configuredMethod = readTrimmedEnvironmentValue(
-    env.LOCAL_PLAYGROUND_POSTGRES_AUTH_METHOD,
-  )
+function readSqlAuthenticationMethod(env: NodeJS.ProcessEnv): PersistenceSqlAuthenticationMethod {
+  const configuredMethod = readTrimmedEnvironmentValue(env.LOCAL_PLAYGROUND_DATABASE_AUTH_METHOD)
     .toLowerCase()
     .replaceAll("-", "_");
   if (!configuredMethod || configuredMethod === "password") {
@@ -316,8 +397,61 @@ function readPostgresAuthenticationMethod(
   }
 
   throw new Error(
-    "`LOCAL_PLAYGROUND_POSTGRES_AUTH_METHOD` must be `password`, `azure_identity`, or `access_token`.",
+    "`LOCAL_PLAYGROUND_DATABASE_AUTH_METHOD` must be `password`, `azure_identity`, or `access_token`.",
   );
+}
+
+function resolveDefaultAzureIdentityScope(provider: PersistenceRelationalDatabaseProvider): string {
+  if (provider === "sqlserver") {
+    return DEFAULT_SQLSERVER_AZURE_IDENTITY_SCOPE;
+  }
+  return DEFAULT_OSS_RDBMS_AZURE_IDENTITY_SCOPE;
+}
+
+function formatProviderLabel(provider: PersistenceRelationalDatabaseProvider): string {
+  if (provider === "postgresql") {
+    return "PostgreSQL";
+  }
+  if (provider === "mysql") {
+    return "MySQL";
+  }
+  if (provider === "cockroachdb") {
+    return "CockroachDB";
+  }
+  return "SQL Server";
+}
+
+function buildSqlServerDatabaseUrlWithPassword(databaseUrl: string, password: string): string {
+  if (!isDatabaseUrlForProvider(databaseUrl, "sqlserver")) {
+    throw new Error("Database URL must use the sqlserver:// scheme to inject a password.");
+  }
+
+  const segments = databaseUrl.split(";");
+  let hasPasswordSegment = false;
+  const nextSegments = segments.map((segment, index) => {
+    if (index === 0) {
+      return segment;
+    }
+
+    const equalsIndex = segment.indexOf("=");
+    if (equalsIndex <= 0) {
+      return segment;
+    }
+
+    const key = segment.slice(0, equalsIndex).trim().toLowerCase();
+    if (key !== "password") {
+      return segment;
+    }
+
+    hasPasswordSegment = true;
+    return `${segment.slice(0, equalsIndex)}=${password}`;
+  });
+
+  if (!hasPasswordSegment) {
+    nextSegments.push(`password=${password}`);
+  }
+
+  return nextSegments.join(";");
 }
 
 function readTrimmedEnvironmentValue(value: string | null | undefined): string {

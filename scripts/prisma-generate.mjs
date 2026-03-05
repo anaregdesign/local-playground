@@ -21,18 +21,22 @@ let schemaPathForGeneration = schemaFilePath;
 let finalExitCode = 0;
 
 try {
-  if (normalizedProvider === "postgresql") {
+  if (normalizedProvider !== "sqlite") {
     temporarySchemaDirectory = await mkdtemp(
       path.join(workspaceRoot, ".tmp-prisma-schema-"),
     );
     schemaPathForGeneration = path.join(temporarySchemaDirectory, "schema.prisma");
     const originalSchema = await readFile(schemaFilePath, "utf8");
+    const nextSchema = originalSchema.replace(
+      /datasource db \{\s*provider = "(sqlite|postgresql|mysql|cockroachdb|sqlserver)"/,
+      `datasource db {\n  provider = "${normalizedProvider}"`,
+    );
+    if (nextSchema === originalSchema) {
+      throw new Error("Failed to rewrite datasource provider in prisma/schema.prisma.");
+    }
     await writeFile(
       schemaPathForGeneration,
-      originalSchema.replace(
-        /datasource db \{\s*provider = "sqlite"/,
-        'datasource db {\n  provider = "postgresql"',
-      ),
+      nextSchema,
       "utf8",
     );
   }
@@ -59,8 +63,19 @@ function readDatabaseProvider(rawValue) {
   if (normalized === "postgresql" || normalized === "postgres") {
     return "postgresql";
   }
+  if (normalized === "mysql") {
+    return "mysql";
+  }
+  if (normalized === "cockroachdb" || normalized === "cockroach") {
+    return "cockroachdb";
+  }
+  if (normalized === "sqlserver" || normalized === "mssql") {
+    return "sqlserver";
+  }
 
-  throw new Error("DATABASE_PROVIDER must be `sqlite` or `postgresql`.");
+  throw new Error(
+    "DATABASE_PROVIDER must be one of `sqlite`, `postgresql`, `mysql`, `cockroachdb`, or `sqlserver`.",
+  );
 }
 
 function runCommand(command, args, commandEnvironment) {

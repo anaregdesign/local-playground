@@ -3,13 +3,13 @@
  */
 import { PrismaClient } from "@prisma/client";
 import {
-  buildPostgresDatabaseUrlWithPassword,
+  buildSqlDatabaseUrlWithPassword,
   resolvePersistenceDatabaseConfig,
 } from "~/lib/server/persistence/database-config";
 import {
-  resolvePostgresAzureIdentityDatabaseUrl,
-  type PostgresAzureIdentityTokenState,
-} from "~/lib/server/persistence/postgres-azure-identity";
+  resolveSqlAzureIdentityDatabaseUrl,
+  type SqlAzureIdentityTokenState,
+} from "~/lib/server/persistence/sql-azure-identity";
 import {
   ensureSqliteDatabaseParentDirectoryExists,
   ensureSqliteDatabaseSchema,
@@ -24,7 +24,7 @@ process.env.DATABASE_URL = initialDatabaseUrl;
 
 const globalForPrisma = globalThis as typeof globalThis & {
   __localPlaygroundPrisma?: PrismaClient;
-  __localPlaygroundPostgresAzureIdentityToken?: PostgresAzureIdentityTokenState;
+  __localPlaygroundSqlAzureIdentityToken?: SqlAzureIdentityTokenState;
 };
 
 export let prisma = createPrismaClient(initialDatabaseUrl);
@@ -32,8 +32,8 @@ export let prisma = createPrismaClient(initialDatabaseUrl);
 const shouldCachePrismaOnGlobal =
   process.env.NODE_ENV !== "production" &&
   !(
-    resolvedDatabaseProvider === "postgresql" &&
-    resolvedDatabaseConfig.postgresAuthentication?.method === "azure_identity"
+    resolvedDatabaseProvider !== "sqlite" &&
+    resolvedDatabaseConfig.sqlAuthentication?.method === "azure_identity"
   );
 
 if (shouldCachePrismaOnGlobal) {
@@ -42,29 +42,29 @@ if (shouldCachePrismaOnGlobal) {
 }
 
 let ensureSqliteDatabaseReadyPromise: Promise<void> | null = null;
-let ensurePostgresSchemaReadyPromise: Promise<void> | null = null;
-let refreshPostgresAzureIdentityTokenPromise: Promise<void> | null = null;
-let postgresAzureIdentityToken =
+let ensureRelationalDatabaseReadyPromise: Promise<void> | null = null;
+let refreshSqlAzureIdentityTokenPromise: Promise<void> | null = null;
+let sqlAzureIdentityToken =
   process.env.NODE_ENV !== "production" &&
-  resolvedDatabaseProvider === "postgresql" &&
-  resolvedDatabaseConfig.postgresAuthentication?.method === "azure_identity"
-    ? (globalForPrisma.__localPlaygroundPostgresAzureIdentityToken ?? null)
+  resolvedDatabaseProvider !== "sqlite" &&
+  resolvedDatabaseConfig.sqlAuthentication?.method === "azure_identity"
+    ? (globalForPrisma.__localPlaygroundSqlAzureIdentityToken ?? null)
     : null;
 
 export async function ensurePersistenceDatabaseReady(): Promise<void> {
-  if (resolvedDatabaseProvider === "postgresql") {
-    if (resolvedDatabaseConfig.postgresAuthentication?.method === "azure_identity") {
-      await ensurePostgresAzureIdentityToken();
+  if (resolvedDatabaseProvider !== "sqlite") {
+    if (resolvedDatabaseConfig.sqlAuthentication?.method === "azure_identity") {
+      await ensureSqlAzureIdentityToken();
     }
-    if (!ensurePostgresSchemaReadyPromise) {
-      ensurePostgresSchemaReadyPromise = (async () => {
+    if (!ensureRelationalDatabaseReadyPromise) {
+      ensureRelationalDatabaseReadyPromise = (async () => {
         await prisma.$queryRawUnsafe("SELECT 1");
       })().catch((error) => {
-        ensurePostgresSchemaReadyPromise = null;
+        ensureRelationalDatabaseReadyPromise = null;
         throw error;
       });
     }
-    await ensurePostgresSchemaReadyPromise;
+    await ensureRelationalDatabaseReadyPromise;
     return;
   }
 
@@ -92,42 +92,46 @@ function createPrismaClient(databaseUrl: string): PrismaClient {
 }
 
 function resolveInitialDatabaseUrl(): string {
-  if (resolvedDatabaseProvider !== "postgresql") {
+  if (resolvedDatabaseProvider === "sqlite") {
     return resolvedDatabaseUrl;
   }
-  if (resolvedDatabaseConfig.postgresAuthentication?.method !== "access_token") {
+
+  if (resolvedDatabaseConfig.sqlAuthentication?.method !== "access_token") {
     return resolvedDatabaseUrl;
   }
-  return buildPostgresDatabaseUrlWithPassword(
-    resolvedDatabaseUrl,
-    resolvedDatabaseConfig.postgresAuthentication.accessToken,
-  );
+
+  return buildSqlDatabaseUrlWithPassword({
+    provider: resolvedDatabaseProvider,
+    databaseUrl: resolvedDatabaseUrl,
+    password: resolvedDatabaseConfig.sqlAuthentication.accessToken,
+  });
 }
 
-async function ensurePostgresAzureIdentityToken(): Promise<void> {
-  if (resolvedDatabaseProvider !== "postgresql") {
+async function ensureSqlAzureIdentityToken(): Promise<void> {
+  if (resolvedDatabaseProvider === "sqlite") {
     return;
   }
 
-  const postgresAuthentication = resolvedDatabaseConfig.postgresAuthentication;
-  if (!postgresAuthentication || postgresAuthentication.method !== "azure_identity") {
+  const sqlAuthentication = resolvedDatabaseConfig.sqlAuthentication;
+  if (!sqlAuthentication || sqlAuthentication.method !== "azure_identity") {
     return;
   }
 
   const tokenRefreshThresholdMs = 2 * 60 * 1000;
-  if (postgresAzureIdentityToken) {
-    const remainingMs = postgresAzureIdentityToken.expiresOnTimestamp - Date.now();
+  if (sqlAzureIdentityToken) {
+    const remainingMs = sqlAzureIdentityToken.expiresOnTimestamp - Date.now();
     if (remainingMs > tokenRefreshThresholdMs) {
       return;
     }
   }
 
-  if (!refreshPostgresAzureIdentityTokenPromise) {
-    refreshPostgresAzureIdentityTokenPromise = (async () => {
-      const nextCredential = await resolvePostgresAzureIdentityDatabaseUrl({
+  if (!refreshSqlAzureIdentityTokenPromise) {
+    refreshSqlAzureIdentityTokenPromise = (async () => {
+      const nextCredential = await resolveSqlAzureIdentityDatabaseUrl({
+        provider: resolvedDatabaseProvider,
         databaseUrl: resolvedDatabaseUrl,
-        azureIdentityClientId: postgresAuthentication.clientId,
-        scope: postgresAuthentication.scope,
+        azureIdentityClientId: sqlAuthentication.clientId,
+        scope: sqlAuthentication.scope,
       });
       process.env.DATABASE_URL = nextCredential.databaseUrl;
 
@@ -140,19 +144,18 @@ async function ensurePostgresAzureIdentityToken(): Promise<void> {
         globalForPrisma.__localPlaygroundPrisma = prisma;
       }
 
-      postgresAzureIdentityToken = nextCredential.tokenState;
+      sqlAzureIdentityToken = nextCredential.tokenState;
       if (process.env.NODE_ENV !== "production") {
-        globalForPrisma.__localPlaygroundPostgresAzureIdentityToken =
-          postgresAzureIdentityToken;
+        globalForPrisma.__localPlaygroundSqlAzureIdentityToken = sqlAzureIdentityToken;
       }
 
       if (previousPrisma !== nextPrisma) {
         void previousPrisma.$disconnect().catch(() => undefined);
       }
     })().finally(() => {
-      refreshPostgresAzureIdentityTokenPromise = null;
+      refreshSqlAzureIdentityTokenPromise = null;
     });
   }
 
-  await refreshPostgresAzureIdentityTokenPromise;
+  await refreshSqlAzureIdentityTokenPromise;
 }
