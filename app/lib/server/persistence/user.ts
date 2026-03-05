@@ -17,6 +17,8 @@ type PersistedUser = {
 export async function getOrCreateUserByIdentity(
   identity: UserIdentity,
 ): Promise<PersistedUser> {
+  const now = new Date().toISOString();
+
   await ensurePersistenceDatabaseReady();
   return prisma.workspaceUser.upsert({
     where: {
@@ -28,12 +30,36 @@ export async function getOrCreateUserByIdentity(
     create: {
       tenantId: identity.tenantId,
       principalId: identity.principalId,
+      lastUsedAt: now,
     },
-    update: {},
+    update: {
+      lastUsedAt: now,
+    },
     select: {
       id: true,
       tenantId: true,
       principalId: true,
     },
   });
+}
+
+export async function readMostRecentWorkspaceUserTenantId(): Promise<string> {
+  await ensurePersistenceDatabaseReady();
+
+  const mostRecentUser = await prisma.workspaceUser.findFirst({
+    where: {
+      lastUsedAt: {
+        not: "",
+      },
+    },
+    orderBy: [
+      { lastUsedAt: "desc" },
+      { id: "desc" },
+    ],
+    select: {
+      tenantId: true,
+    },
+  });
+
+  return mostRecentUser?.tenantId.trim() ?? "";
 }

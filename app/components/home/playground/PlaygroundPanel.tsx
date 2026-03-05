@@ -17,6 +17,10 @@ import { StatusMessageList } from "~/components/home/shared/StatusMessageList";
 import { QuickControlFrame } from "~/components/home/shared/QuickControlFrame";
 import type { ReasoningEffort } from "~/lib/home/shared/view-types";
 import { formatChatAttachmentSize } from "~/lib/home/chat/attachments";
+import {
+  HOME_NO_AVAILABLE_DEPLOYMENTS_OPTION_LABEL,
+  HOME_NO_AVAILABLE_PROJECTS_OPTION_LABEL,
+} from "~/lib/constants";
 
 const {
   Button,
@@ -790,7 +794,7 @@ export function PlaygroundPanel<
                       : isAzureAuthRequired
                         ? "Click the selector to start Azure login."
                         : azureConnections.length === 0
-                          ? "No projects loaded. Click the selector to reload."
+                          ? "Selected tenant has no available projects."
                           : "Used for this chat request.",
                   ],
                   <div className="chat-quick-control">
@@ -799,14 +803,19 @@ export function PlaygroundPanel<
                         <Spinner size="tiny" />
                         Loading projects...
                       </span>
-                    ) : isAzureAuthRequired || azureConnections.length === 0 ? (
+                    ) : isAzureAuthRequired ? (
                       renderChatAzureActionSelect(
                         "project",
                         "Project",
-                        isAzureAuthRequired ? "Project" : "Reload projects",
-                        isAzureAuthRequired
-                          ? "Click to sign in with Azure and load projects."
-                          : "Click to reload Azure projects.",
+                        "Project",
+                        "Click to sign in with Azure and load projects.",
+                      )
+                    ) : azureConnections.length === 0 ? (
+                      renderChatAzureActionSelect(
+                        "project",
+                        "Project",
+                        HOME_NO_AVAILABLE_PROJECTS_OPTION_LABEL,
+                        "No available projects in the selected tenant. Click to reload Azure projects.",
                       )
                     ) : (
                       <Select
@@ -837,8 +846,12 @@ export function PlaygroundPanel<
                       ? "Loading deployment names for the selected project..."
                       : isAzureAuthRequired
                         ? "Click the selector to start Azure login."
-                        : !activeAzureConnectionId || azureDeployments.length === 0
-                          ? "No deployments loaded. Click the selector to reload."
+                        : !activeAzureConnectionId
+                          ? azureConnections.length === 0
+                            ? "Selected tenant has no available deployments."
+                            : "Select a project first."
+                          : azureDeployments.length === 0
+                            ? "Selected tenant has no available deployments."
                           : "Used to run the model.",
                   ],
                   <div className="chat-quick-control">
@@ -847,14 +860,27 @@ export function PlaygroundPanel<
                         <Spinner size="tiny" />
                         Loading deployments...
                       </span>
-                    ) : isAzureAuthRequired || !activeAzureConnectionId || azureDeployments.length === 0 ? (
+                    ) : isAzureAuthRequired || !activeAzureConnectionId ? (
                       renderChatAzureActionSelect(
                         "deployment",
                         "Deployment",
-                        isAzureAuthRequired ? "Deployment" : "Reload deployments",
+                        isAzureAuthRequired
+                          ? "Deployment"
+                          : azureConnections.length === 0
+                            ? HOME_NO_AVAILABLE_DEPLOYMENTS_OPTION_LABEL
+                            : "Reload deployments",
                         isAzureAuthRequired
                           ? "Click to sign in with Azure and load deployments."
-                          : "Click to reload deployments for the selected project.",
+                          : azureConnections.length === 0
+                            ? "No available deployments in the selected tenant. Click to reload Azure projects."
+                            : "Click to reload deployments for the selected project.",
+                      )
+                    ) : azureDeployments.length === 0 ? (
+                      renderChatAzureActionSelect(
+                        "deployment",
+                        "Deployment",
+                        HOME_NO_AVAILABLE_DEPLOYMENTS_OPTION_LABEL,
+                        "No available deployments in the selected tenant. Click to reload deployments for the selected project.",
                       )
                     ) : (
                       <Select

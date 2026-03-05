@@ -11,6 +11,7 @@ model WorkspaceUser {
   id                Int                      @id @default(autoincrement())
   tenantId          String
   principalId       String
+  lastUsedAt        String                   @default("")
   azureSelection    AzureSelectionPreference?
   mcpServerProfiles WorkspaceMcpServerProfile[]
   skillRegistryProfiles WorkspaceSkillRegistryProfile[]

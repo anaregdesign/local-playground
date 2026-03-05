@@ -8,6 +8,11 @@ import {
   normalizeAzureOpenAIBaseURL,
 } from "./dependencies";
 
+function createAzureAccessToken(payload: Record<string, unknown>): string {
+  const encodedPayload = Buffer.from(JSON.stringify(payload)).toString("base64url");
+  return `header.${encodedPayload}.signature`;
+}
+
 describe("normalizeAzureOpenAIBaseURL", () => {
   it("appends /openai/v1/ when endpoint does not include it", () => {
     expect(normalizeAzureOpenAIBaseURL(" https://sample.openai.azure.com/ ")).toBe(
@@ -225,5 +230,66 @@ describe("createAzureDependencies", () => {
     expect(authenticate).toHaveBeenCalledTimes(1);
     expect(authenticate).toHaveBeenCalledWith("scope-a");
     expect(getToken).toHaveBeenCalledTimes(2);
+  });
+
+  it("reuses selected tenantId for subsequent token requests", async () => {
+    const scopeATenantToken = createAzureAccessToken({
+      tid: "tenant-b",
+      oid: "principal-b",
+      tokenUse: "scope-a",
+    });
+    const scopeBTenantToken = createAzureAccessToken({
+      tid: "tenant-b",
+      oid: "principal-b",
+      tokenUse: "scope-b",
+    });
+    const getToken = vi
+      .fn()
+      .mockResolvedValueOnce({
+        token: scopeATenantToken,
+        expiresOnTimestamp: Date.now() + 120_000,
+      })
+      .mockResolvedValueOnce({
+        token: scopeBTenantToken,
+        expiresOnTimestamp: Date.now() + 120_000,
+      });
+    const authenticate = vi.fn(async () => undefined);
+
+    const dependencies = createAzureDependencies({
+      createCredential: vi.fn(() => ({ getToken, authenticate })) as never,
+      createOpenAIClient: vi.fn(() => ({}) as never),
+    });
+
+    await dependencies.authenticateAzure("scope-a", " tenant-b ");
+    const scopeAToken = await dependencies.getAzureBearerToken("scope-a");
+    const scopeBToken = await dependencies.getAzureBearerToken("scope-b");
+
+    expect(scopeAToken).toBe(scopeATenantToken);
+    expect(scopeBToken).toBe(scopeBTenantToken);
+    expect(authenticate).toHaveBeenCalledTimes(1);
+    expect(authenticate).toHaveBeenCalledWith("scope-a", { tenantId: "tenant-b" });
+    expect(getToken).toHaveBeenCalledTimes(2);
+    expect(getToken.mock.calls[0]).toEqual(["scope-a", { tenantId: "tenant-b" }]);
+    expect(getToken.mock.calls[1]).toEqual(["scope-b", { tenantId: "tenant-b" }]);
+  });
+
+  it("rejects token when requested tenant and tid do not match", async () => {
+    const getToken = vi.fn(async () => ({
+      token: createAzureAccessToken({
+        tid: "tenant-a",
+        oid: "principal-a",
+      }),
+      expiresOnTimestamp: Date.now() + 120_000,
+    }));
+    const authenticate = vi.fn(async () => undefined);
+
+    const dependencies = createAzureDependencies({
+      createCredential: vi.fn(() => ({ getToken, authenticate })) as never,
+      createOpenAIClient: vi.fn(() => ({}) as never),
+    });
+
+    await expect(dependencies.getAzureBearerToken("scope-a", "tenant-b")).rejects.toThrow(
+      "Azure credential returned tenant tenant-a while tenant tenant-b was requested",
+    );
   });
 });

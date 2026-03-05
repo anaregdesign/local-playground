@@ -7,6 +7,7 @@ import {
   readAzurePrincipalProfileFromUnknown,
   readAzureProjectList,
   readAzureSelectionFromUnknown,
+  readAzureTenantList,
   readPrincipalIdFromUnknown,
   readTenantIdFromUnknown,
 } from "./parsers";
@@ -238,6 +239,54 @@ describe("readAzureProjectList", () => {
       ]),
     ).toEqual([
       { id: "id-1", projectName: "proj", baseUrl: "https://example", apiVersion: "2025-01-01" },
+    ]);
+  });
+});
+
+describe("readAzureTenantList", () => {
+  it("reads only valid tenants and deduplicates tenantId", () => {
+    expect(
+      readAzureTenantList([
+        {
+          tenantId: "tenant-a",
+          displayName: "Contoso",
+          defaultDomain: "contoso.onmicrosoft.com",
+        },
+        {
+          tenantId: " tenant-a ",
+          displayName: "Duplicate",
+          defaultDomain: "duplicate.onmicrosoft.com",
+        },
+        {
+          tenantId: "tenant-b",
+          displayName: "",
+          defaultDomain: "fabrikam.onmicrosoft.com",
+        },
+        {
+          tenantId: "tenant-c",
+          displayName: "",
+          defaultDomain: "",
+        },
+        {
+          displayName: "missing tenant",
+        },
+      ]),
+    ).toEqual([
+      {
+        tenantId: "tenant-a",
+        displayName: "Contoso",
+        defaultDomain: "contoso.onmicrosoft.com",
+      },
+      {
+        tenantId: "tenant-b",
+        displayName: "fabrikam.onmicrosoft.com",
+        defaultDomain: "fabrikam.onmicrosoft.com",
+      },
+      {
+        tenantId: "tenant-c",
+        displayName: "tenant-c",
+        defaultDomain: "",
+      },
     ]);
   });
 });

@@ -5,6 +5,10 @@ import { FluentUI } from "~/components/home/shared/fluent";
 import { ConfigSection } from "~/components/home/shared/ConfigSection";
 import { StatusMessageList } from "~/components/home/shared/StatusMessageList";
 import type { ReasoningEffort } from "~/lib/home/shared/view-types";
+import {
+  HOME_NO_AVAILABLE_DEPLOYMENTS_OPTION_LABEL,
+  HOME_NO_AVAILABLE_PROJECTS_OPTION_LABEL,
+} from "~/lib/constants";
 
 const { Select, Spinner } = FluentUI;
 
@@ -79,7 +83,7 @@ export function UtilityModelSection(props: UtilityModelSectionProps) {
             title="Select the Azure project used by Utility Model."
           >
             {azureConnections.length > 0 ? null : (
-              <option value="">No Azure projects available</option>
+              <option value="">{HOME_NO_AVAILABLE_PROJECTS_OPTION_LABEL}</option>
             )}
             {azureConnections.map((connection) => (
               <option key={connection.id} value={connection.id}>
@@ -105,7 +109,7 @@ export function UtilityModelSection(props: UtilityModelSectionProps) {
             title="Select the Azure deployment used by Utility Model."
           >
             {utilityAzureDeployments.length > 0 ? null : (
-              <option value="">No deployments available</option>
+              <option value="">{HOME_NO_AVAILABLE_DEPLOYMENTS_OPTION_LABEL}</option>
             )}
             {utilityAzureDeployments.map((deploymentName) => (
               <option key={deploymentName} value={deploymentName}>

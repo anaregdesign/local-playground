@@ -11,6 +11,12 @@ export type AzureProjectOption = {
   apiVersion: string;
 };
 
+export type AzureTenantOption = {
+  tenantId: string;
+  displayName: string;
+  defaultDomain: string;
+};
+
 export type AzurePrincipalProfile = {
   tenantId: string;
   principalId: string;
@@ -129,6 +135,30 @@ export function readAzureProjectList(value: unknown): AzureProjectOption[] {
   return projects;
 }
 
+export function readAzureTenantList(value: unknown): AzureTenantOption[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const tenants: AzureTenantOption[] = [];
+  const dedupeTenantId = new Set<string>();
+  for (const entry of value) {
+    const tenant = readAzureTenantFromUnknown(entry);
+    if (!tenant) {
+      continue;
+    }
+
+    const tenantKey = tenant.tenantId.toLowerCase();
+    if (dedupeTenantId.has(tenantKey)) {
+      continue;
+    }
+    dedupeTenantId.add(tenantKey);
+    tenants.push(tenant);
+  }
+
+  return tenants;
+}
+
 export function readAzureDeploymentList(value: unknown): string[] {
   if (!Array.isArray(value)) {
     return [];
@@ -161,6 +191,29 @@ function readAzureProjectFromUnknown(value: unknown): AzureProjectOption | null 
     projectName,
     baseUrl,
     apiVersion,
+  };
+}
+
+function readAzureTenantFromUnknown(value: unknown): AzureTenantOption | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const tenantId = typeof value.tenantId === "string" ? value.tenantId.trim() : "";
+  if (!tenantId) {
+    return null;
+  }
+
+  const defaultDomain =
+    typeof value.defaultDomain === "string" ? value.defaultDomain.trim() : "";
+  const displayNameRaw =
+    typeof value.displayName === "string" ? value.displayName.trim() : "";
+  const displayName = displayNameRaw || defaultDomain || tenantId;
+
+  return {
+    tenantId,
+    displayName,
+    defaultDomain,
   };
 }
 

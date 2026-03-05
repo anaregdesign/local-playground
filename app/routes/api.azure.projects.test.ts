@@ -2,6 +2,8 @@
  * Test module verifying api.azure.projects behavior.
  */
 import { describe, expect, it } from "vitest";
+import type { AzureDependencies } from "~/lib/azure/dependencies";
+import { AZURE_ARM_SCOPE } from "~/lib/constants";
 import {
   readPrincipalDisplayNameFromAccessToken,
   readPrincipalIdFromAccessToken,
@@ -9,7 +11,7 @@ import {
   readPrincipalTypeFromAccessToken,
   readTenantIdFromAccessToken,
 } from "~/lib/server/auth/azure-user";
-import { isLikelyAzureAuthError } from "./api.azure.projects";
+import { getArmAccessToken, isLikelyAzureAuthError } from "./api.azure.projects";
 
 function createAccessToken(payload: unknown): string {
   const encodedPayload = Buffer.from(JSON.stringify(payload)).toString("base64url");
@@ -126,5 +128,74 @@ describe("isLikelyAzureAuthError", () => {
     ).toBe(false);
     expect(isLikelyAzureAuthError(new Error("Network timeout"))).toBe(false);
     expect(isLikelyAzureAuthError("invalid")).toBe(false);
+  });
+});
+
+describe("getArmAccessToken", () => {
+  it("reauthenticates and retries when preferred tenant does not match", async () => {
+    const wrongTenantToken = createAccessToken({
+      tid: "tenant-a",
+      oid: "principal-a",
+      preferred_username: "user@contoso.com",
+    });
+    const preferredTenantToken = createAccessToken({
+      tid: "tenant-b",
+      oid: "principal-a",
+      preferred_username: "user@contoso.com",
+    });
+    let tokenCallCount = 0;
+    const authenticateCalls: Array<{ scope: string; tenantId?: string }> = [];
+    const dependencies: AzureDependencies = {
+      getCredential: () => {
+        throw new Error("not used in this test");
+      },
+      authenticateAzure: async (scope, tenantId) => {
+        authenticateCalls.push({ scope, tenantId });
+      },
+      getAzureBearerToken: async () => {
+        tokenCallCount += 1;
+        return tokenCallCount === 1 ? wrongTenantToken : preferredTenantToken;
+      },
+      getAzureOpenAIClient: () => {
+        throw new Error("not used in this test");
+      },
+    };
+
+    const result = await getArmAccessToken(dependencies, "tenant-b");
+
+    expect(result).toMatchObject({
+      ok: true,
+      tenantId: "tenant-b",
+      principalId: "principal-a",
+    });
+    expect(authenticateCalls).toEqual([{ scope: AZURE_ARM_SCOPE, tenantId: "tenant-b" }]);
+    expect(tokenCallCount).toBe(2);
+  });
+
+  it("returns auth failure when preferred tenant still mismatches after retry", async () => {
+    const wrongTenantToken = createAccessToken({
+      tid: "tenant-a",
+      oid: "principal-a",
+      preferred_username: "user@contoso.com",
+    });
+    let tokenCallCount = 0;
+    const dependencies: AzureDependencies = {
+      getCredential: () => {
+        throw new Error("not used in this test");
+      },
+      authenticateAzure: async () => {},
+      getAzureBearerToken: async () => {
+        tokenCallCount += 1;
+        return wrongTenantToken;
+      },
+      getAzureOpenAIClient: () => {
+        throw new Error("not used in this test");
+      },
+    };
+
+    const result = await getArmAccessToken(dependencies, "tenant-b");
+
+    expect(result).toEqual({ ok: false });
+    expect(tokenCallCount).toBe(2);
   });
 });

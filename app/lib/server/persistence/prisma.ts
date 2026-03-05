@@ -136,6 +136,7 @@ async function ensureDatabaseSchema(): Promise<void> {
 
 async function ensureUserSchema(): Promise<void> {
   await createUserTable();
+  await ensureTableColumn("WorkspaceUser", "lastUsedAt", "TEXT NOT NULL DEFAULT ''");
 }
 
 async function createUserTable(): Promise<void> {
@@ -143,7 +144,8 @@ async function createUserTable(): Promise<void> {
     CREATE TABLE IF NOT EXISTS "WorkspaceUser" (
       "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
       "tenantId" TEXT NOT NULL,
-      "principalId" TEXT NOT NULL
+      "principalId" TEXT NOT NULL,
+      "lastUsedAt" TEXT NOT NULL DEFAULT ''
     )
   `);
 

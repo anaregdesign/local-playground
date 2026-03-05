@@ -153,6 +153,12 @@ const tableDefinitions: DatabaseDebugTableDefinition[] = [
         nullable: false,
         description: "Azure principal/object ID for the signed-in account.",
       },
+      {
+        name: "lastUsedAt",
+        type: "TEXT",
+        nullable: false,
+        description: "Last timestamp when this user was used for Azure session login.",
+      },
     ],
   },
   {

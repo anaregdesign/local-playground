@@ -22,8 +22,8 @@ type CachedAzureAccessToken = {
 
 export type AzureDependencies = {
   getCredential: () => AzureCredential;
-  authenticateAzure: (scope: string) => Promise<void>;
-  getAzureBearerToken: (scope: string) => Promise<string>;
+  authenticateAzure: (scope: string, tenantId?: string) => Promise<void>;
+  getAzureBearerToken: (scope: string, tenantId?: string) => Promise<string>;
   getAzureOpenAIClient: (baseUrl: string) => OpenAI;
 };
 
@@ -42,6 +42,7 @@ export function createAzureDependencies(
     (() =>
       new InteractiveBrowserCredential({
         disableAutomaticAuthentication: true,
+        additionallyAllowedTenants: ["*"],
       }));
   const createOpenAIClient =
     options.createOpenAIClient ?? ((openAIOptions) => new OpenAI(openAIOptions));
@@ -49,6 +50,7 @@ export function createAzureDependencies(
   const clientsByBaseURL = new Map<string, OpenAI>();
   const accessTokenByScope = new Map<string, CachedAzureAccessToken>();
   const accessTokenRequestByScope = new Map<string, Promise<string>>();
+  let activeTenantId = "";
 
   const getCredential = (): AzureCredential => {
     if (!credential) {
@@ -62,56 +64,80 @@ export function createAzureDependencies(
     accessTokenRequestByScope.clear();
   };
 
-  const authenticateAzure = async (scope: string): Promise<void> => {
+  const authenticateAzure = async (scope: string, tenantId?: string): Promise<void> => {
     const normalizedScope = normalizeAzureScope(scope);
+    const normalizedTenantId = normalizeTenantId(tenantId);
     if (!normalizedScope) {
       throw new Error("Azure token scope is missing.");
     }
 
-    await getCredential().authenticate(normalizedScope);
+    const credentialRef = getCredential();
+    await authenticateAzureCredential(credentialRef, normalizedScope, normalizedTenantId);
     clearAzureAccessTokenCache();
+    activeTenantId = normalizedTenantId;
 
-    const accessToken = await getCredential().getToken(normalizedScope);
+    const accessToken = await requestAzureAccessToken(
+      credentialRef,
+      normalizedScope,
+      normalizedTenantId,
+    );
     if (!accessToken?.token) {
       throw new Error(
         `Azure credential failed to acquire Azure token (scope: ${normalizedScope}).`,
       );
     }
-    accessTokenByScope.set(normalizedScope, mapCachedAzureAccessToken(accessToken));
+    assertAzureAccessTokenTenant(accessToken.token, normalizedTenantId, normalizedScope);
+    accessTokenByScope.set(
+      createAccessTokenCacheKey(normalizedScope, normalizedTenantId),
+      mapCachedAzureAccessToken(accessToken),
+    );
   };
 
-  const getAzureBearerToken = async (scope: string): Promise<string> => {
+  const getAzureBearerToken = async (scope: string, tenantId?: string): Promise<string> => {
     const normalizedScope = normalizeAzureScope(scope);
+    const resolvedTenantId = normalizeTenantId(tenantId) || activeTenantId;
     if (!normalizedScope) {
       throw new Error("Azure token scope is missing.");
     }
+    const cacheKey = createAccessTokenCacheKey(normalizedScope, resolvedTenantId);
 
-    const cachedToken = accessTokenByScope.get(normalizedScope);
+    const cachedToken = accessTokenByScope.get(cacheKey);
     if (cachedToken && isAzureAccessTokenReusable(cachedToken)) {
-      return cachedToken.token;
+      if (!resolvedTenantId) {
+        return cachedToken.token;
+      }
+      const cachedTenantId = readAzureAccessTokenTenantId(cachedToken.token);
+      if (cachedTenantId && cachedTenantId.toLowerCase() === resolvedTenantId.toLowerCase()) {
+        return cachedToken.token;
+      }
+      accessTokenByScope.delete(cacheKey);
     }
 
-    const existingRequest = accessTokenRequestByScope.get(normalizedScope);
+    const existingRequest = accessTokenRequestByScope.get(cacheKey);
     if (existingRequest) {
       return existingRequest;
     }
 
-    const createdRequest = getCredential()
-      .getToken(normalizedScope)
+    const createdRequest = requestAzureAccessToken(
+      getCredential(),
+      normalizedScope,
+      resolvedTenantId,
+    )
       .then((token) => {
         if (!token?.token) {
           throw new Error(
             `Azure credential failed to acquire Azure token (scope: ${normalizedScope}).`,
           );
         }
-        accessTokenByScope.set(normalizedScope, mapCachedAzureAccessToken(token));
+        assertAzureAccessTokenTenant(token.token, resolvedTenantId, normalizedScope);
+        accessTokenByScope.set(cacheKey, mapCachedAzureAccessToken(token));
         return token.token;
       })
       .finally(() => {
-        accessTokenRequestByScope.delete(normalizedScope);
+        accessTokenRequestByScope.delete(cacheKey);
       });
 
-    accessTokenRequestByScope.set(normalizedScope, createdRequest);
+    accessTokenRequestByScope.set(cacheKey, createdRequest);
     return createdRequest;
   };
 
@@ -172,6 +198,39 @@ function normalizeAzureScope(rawValue: string): string {
   return rawValue.trim();
 }
 
+function normalizeTenantId(rawValue: string | undefined): string {
+  return typeof rawValue === "string" ? rawValue.trim() : "";
+}
+
+function createAccessTokenCacheKey(scope: string, tenantId: string): string {
+  return `${tenantId || "default"}::${scope}`;
+}
+
+function requestAzureAccessToken(
+  credential: AzureCredential,
+  scope: string,
+  tenantId: string,
+): ReturnType<AzureCredential["getToken"]> {
+  if (tenantId) {
+    return credential.getToken(scope, { tenantId });
+  }
+
+  return credential.getToken(scope);
+}
+
+async function authenticateAzureCredential(
+  credential: AzureCredential,
+  scope: string,
+  tenantId: string,
+): Promise<void> {
+  if (tenantId) {
+    await credential.authenticate(scope, { tenantId });
+    return;
+  }
+
+  await credential.authenticate(scope);
+}
+
 function mapCachedAzureAccessToken(token: AzureAccessToken): CachedAzureAccessToken {
   const refreshAfterTimestamp =
     typeof token.refreshAfterTimestamp === "number" ? token.refreshAfterTimestamp : undefined;
@@ -189,4 +248,46 @@ function isAzureAccessTokenReusable(token: CachedAzureAccessToken): boolean {
     return false;
   }
   return token.expiresOnTimestamp - AZURE_ACCESS_TOKEN_REFRESH_BUFFER_MS > now;
+}
+
+function assertAzureAccessTokenTenant(
+  accessToken: string,
+  requestedTenantId: string,
+  scope: string,
+): void {
+  const normalizedRequestedTenantId = requestedTenantId.trim();
+  if (!normalizedRequestedTenantId) {
+    return;
+  }
+
+  const tokenTenantId = readAzureAccessTokenTenantId(accessToken);
+  if (!tokenTenantId) {
+    throw new Error(
+      `Azure credential returned a token without tid claim for requested tenant ${normalizedRequestedTenantId} (scope: ${scope}).`,
+    );
+  }
+
+  if (tokenTenantId.toLowerCase() !== normalizedRequestedTenantId.toLowerCase()) {
+    throw new Error(
+      `Azure credential returned tenant ${tokenTenantId} while tenant ${normalizedRequestedTenantId} was requested (scope: ${scope}).`,
+    );
+  }
+}
+
+function readAzureAccessTokenTenantId(accessToken: string): string {
+  const parts = accessToken.split(".");
+  if (parts.length < 2) {
+    return "";
+  }
+
+  try {
+    const payload = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8")) as unknown;
+    if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+      return "";
+    }
+    const tenantId = (payload as Record<string, unknown>).tid;
+    return typeof tenantId === "string" ? tenantId.trim() : "";
+  } catch {
+    return "";
+  }
 }

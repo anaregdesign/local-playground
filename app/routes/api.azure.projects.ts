@@ -6,14 +6,17 @@ import {
   normalizeAzureOpenAIBaseURL,
 } from "~/lib/azure/dependencies";
 import {
+  AZURE_ARM_SCOPE,
   AZURE_COGNITIVE_API_VERSION,
   AZURE_GRAPH_SCOPE,
   AZURE_MAX_ACCOUNTS_PER_SUBSCRIPTION,
   AZURE_MAX_DEPLOYMENTS_PER_ACCOUNT,
   AZURE_MAX_MODELS_PER_ACCOUNT,
   AZURE_MAX_SUBSCRIPTIONS,
+  AZURE_MAX_TENANTS,
   AZURE_OPENAI_DEFAULT_API_VERSION,
   AZURE_SUBSCRIPTIONS_API_VERSION,
+  AZURE_TENANTS_API_VERSION,
 } from "~/lib/constants";
 import {
   readAzureArmUserContext,
@@ -28,12 +31,20 @@ import type { AzureDependencies } from "~/lib/azure/dependencies";
 import type { Route } from "./+types/api.azure.projects";
 
 const AZURE_PROJECTS_ALLOWED_METHODS = ["GET"] as const;
+const AZURE_SUBSCRIPTION_ACCOUNT_FETCH_CONCURRENCY = 6;
+const AZURE_PROJECTS_ROUTE = "/api/azure/projects";
 
 export type AzureProject = {
   id: string;
   projectName: string;
   baseUrl: string;
   apiVersion: string;
+};
+
+export type AzureTenant = {
+  tenantId: string;
+  displayName: string;
+  defaultDomain: string;
 };
 
 export type AzureProjectRef = {
@@ -50,6 +61,13 @@ type ArmPagedResponse<T> = {
 type ArmSubscription = {
   subscriptionId?: string;
   state?: string;
+};
+
+type ArmTenant = {
+  id?: string;
+  tenantId?: string;
+  displayName?: string;
+  defaultDomain?: string;
 };
 
 type ArmCognitiveAccount = {
@@ -102,8 +120,9 @@ export async function loader({ request }: Route.LoaderArgs) {
     return methodNotAllowedResponse(AZURE_PROJECTS_ALLOWED_METHODS);
   }
 
+  const requestedTenantId = new URL(request.url).searchParams.get("tenantId")?.trim() ?? "";
   const dependencies = getAzureDependencies();
-  const tokenResult = await getArmAccessToken(dependencies);
+  const tokenResult = await getArmAccessToken(dependencies, requestedTenantId);
   if (!tokenResult.ok) {
     return Response.json(
       {
@@ -117,9 +136,13 @@ export async function loader({ request }: Route.LoaderArgs) {
   const principal = await resolveAzurePrincipalProfile(tokenResult, dependencies);
 
   try {
-    const projects = await listAzureProjects(tokenResult.token);
+    const [projects, tenants] = await Promise.all([
+      loadAzureProjectsWithFallback(request, tokenResult.token),
+      loadAzureTenantsWithFallback(request, tokenResult.token, tokenResult.tenantId),
+    ]);
     return Response.json({
       projects,
+      tenants,
       principal,
       tenantId: tokenResult.tenantId,
       principalId: tokenResult.principalId,
@@ -129,7 +152,7 @@ export async function loader({ request }: Route.LoaderArgs) {
     if (isLikelyAzureAuthError(error)) {
       await logServerRouteEvent({
         request,
-        route: "/api/azure/projects",
+        route: AZURE_PROJECTS_ROUTE,
         eventName: "azure_auth_required",
         action: "list_projects",
         level: "warning",
@@ -148,7 +171,7 @@ export async function loader({ request }: Route.LoaderArgs) {
 
     await logServerRouteEvent({
       request,
-      route: "/api/azure/projects",
+      route: AZURE_PROJECTS_ROUTE,
       eventName: "load_azure_projects_failed",
       action: "list_projects",
       statusCode: 502,
@@ -164,6 +187,60 @@ export async function loader({ request }: Route.LoaderArgs) {
   }
 }
 
+async function loadAzureProjectsWithFallback(
+  request: Request,
+  accessToken: string,
+): Promise<AzureProject[]> {
+  try {
+    return await listAzureProjects(accessToken);
+  } catch (error) {
+    await logServerRouteEvent({
+      request,
+      route: AZURE_PROJECTS_ROUTE,
+      eventName: "load_azure_projects_partial_failed",
+      action: "list_projects",
+      level: "warning",
+      error,
+      context: {
+        fallbackProjects: true,
+      },
+    });
+    return [];
+  }
+}
+
+async function loadAzureTenantsWithFallback(
+  request: Request,
+  accessToken: string,
+  activeTenantId: string,
+): Promise<AzureTenant[]> {
+  try {
+    return await listAzureTenants(accessToken, activeTenantId);
+  } catch (error) {
+    await logServerRouteEvent({
+      request,
+      route: AZURE_PROJECTS_ROUTE,
+      eventName: "load_azure_tenants_failed",
+      action: "list_tenants",
+      level: "warning",
+      error,
+      context: {
+        tenantId: activeTenantId || null,
+      },
+    });
+
+    return activeTenantId
+      ? [
+          {
+            tenantId: activeTenantId,
+            displayName: activeTenantId,
+            defaultDomain: "",
+          },
+        ]
+      : [];
+  }
+}
+
 export async function listAzureProjects(accessToken: string): Promise<AzureProject[]> {
   const subscriptions = await fetchArmPaged<ArmSubscription>(
     `https://management.azure.com/subscriptions?api-version=${AZURE_SUBSCRIPTIONS_API_VERSION}`,
@@ -171,92 +248,108 @@ export async function listAzureProjects(accessToken: string): Promise<AzureProje
     AZURE_MAX_SUBSCRIPTIONS,
   );
 
-  const discovered: Array<AzureProject & { resourceGroup: string }> = [];
+  const enabledSubscriptionIds = subscriptions
+    .map((subscription) => {
+      const subscriptionId =
+        typeof subscription.subscriptionId === "string" ? subscription.subscriptionId.trim() : "";
+      const subscriptionState =
+        typeof subscription.state === "string" ? subscription.state.toLowerCase() : "";
+      if (!subscriptionId || (subscriptionState && subscriptionState !== "enabled")) {
+        return "";
+      }
+
+      return subscriptionId;
+    })
+    .filter(Boolean);
+
+  const discovered = (
+    await mapWithConcurrency(
+      enabledSubscriptionIds,
+      AZURE_SUBSCRIPTION_ACCOUNT_FETCH_CONCURRENCY,
+      async (subscriptionId): Promise<Array<AzureProject & { resourceGroup: string }>> => {
+        let accounts: ArmCognitiveAccount[];
+        try {
+          accounts = await fetchArmPaged<ArmCognitiveAccount>(
+            `https://management.azure.com/subscriptions/${encodeURIComponent(subscriptionId)}/providers/Microsoft.CognitiveServices/accounts?api-version=${AZURE_COGNITIVE_API_VERSION}`,
+            accessToken,
+            AZURE_MAX_ACCOUNTS_PER_SUBSCRIPTION,
+          );
+        } catch (error) {
+          await logServerRouteEvent({
+            route: AZURE_PROJECTS_ROUTE,
+            eventName: "list_accounts_failed",
+            action: "list_subscription_accounts",
+            level: "warning",
+            error,
+            context: {
+              subscriptionId,
+            },
+          });
+          return [];
+        }
+
+        const projects: Array<AzureProject & { resourceGroup: string }> = [];
+        for (const account of accounts) {
+          if (!isAzureOpenAIProject(account)) {
+            continue;
+          }
+
+          const accountName = typeof account.name === "string" ? account.name.trim() : "";
+          const accountId = typeof account.id === "string" ? account.id.trim() : "";
+          if (!accountName || !accountId) {
+            continue;
+          }
+
+          const resourceGroup = parseResourceGroupFromResourceId(accountId);
+          if (!resourceGroup) {
+            continue;
+          }
+
+          const endpoint =
+            typeof account.properties?.endpoint === "string" && account.properties.endpoint.trim()
+              ? account.properties.endpoint
+              : `https://${accountName}.openai.azure.com/`;
+          const baseUrl = normalizeAzureOpenAIBaseURL(endpoint);
+          if (!baseUrl) {
+            continue;
+          }
+
+          projects.push({
+            id: createProjectId({
+              subscriptionId,
+              resourceGroup,
+              accountName,
+            }),
+            projectName: accountName,
+            baseUrl,
+            apiVersion: AZURE_OPENAI_DEFAULT_API_VERSION,
+            resourceGroup,
+          });
+        }
+
+        return projects;
+      },
+    )
+  ).flat();
+
   const dedupeById = new Set<string>();
-
-  for (const subscription of subscriptions) {
-    const subscriptionId =
-      typeof subscription.subscriptionId === "string" ? subscription.subscriptionId.trim() : "";
-    const subscriptionState =
-      typeof subscription.state === "string" ? subscription.state.toLowerCase() : "";
-    if (!subscriptionId || (subscriptionState && subscriptionState !== "enabled")) {
+  const dedupedDiscovered: Array<AzureProject & { resourceGroup: string }> = [];
+  for (const project of discovered) {
+    if (dedupeById.has(project.id)) {
       continue;
     }
 
-    let accounts: ArmCognitiveAccount[];
-    try {
-      accounts = await fetchArmPaged<ArmCognitiveAccount>(
-        `https://management.azure.com/subscriptions/${encodeURIComponent(subscriptionId)}/providers/Microsoft.CognitiveServices/accounts?api-version=${AZURE_COGNITIVE_API_VERSION}`,
-        accessToken,
-        AZURE_MAX_ACCOUNTS_PER_SUBSCRIPTION,
-      );
-    } catch (error) {
-      await logServerRouteEvent({
-        route: "/api/azure/projects",
-        eventName: "list_accounts_failed",
-        action: "list_subscription_accounts",
-        level: "warning",
-        error,
-        context: {
-          subscriptionId,
-        },
-      });
-      continue;
-    }
-
-    for (const account of accounts) {
-      if (!isAzureOpenAIProject(account)) {
-        continue;
-      }
-
-      const accountName = typeof account.name === "string" ? account.name.trim() : "";
-      const accountId = typeof account.id === "string" ? account.id.trim() : "";
-      if (!accountName || !accountId) {
-        continue;
-      }
-
-      const resourceGroup = parseResourceGroupFromResourceId(accountId);
-      if (!resourceGroup) {
-        continue;
-      }
-
-      const endpoint =
-        typeof account.properties?.endpoint === "string" && account.properties.endpoint.trim()
-          ? account.properties.endpoint
-          : `https://${accountName}.openai.azure.com/`;
-      const baseUrl = normalizeAzureOpenAIBaseURL(endpoint);
-      if (!baseUrl) {
-        continue;
-      }
-
-      const id = createProjectId({
-        subscriptionId,
-        resourceGroup,
-        accountName,
-      });
-
-      if (dedupeById.has(id)) {
-        continue;
-      }
-      dedupeById.add(id);
-
-      discovered.push({
-        id,
-        projectName: accountName,
-        baseUrl,
-        apiVersion: AZURE_OPENAI_DEFAULT_API_VERSION,
-        resourceGroup,
-      });
-    }
+    dedupeById.add(project.id);
+    dedupedDiscovered.push(project);
   }
 
   const nameCounts = new Map<string, number>();
-  for (const project of discovered) {
+  for (const project of dedupedDiscovered) {
     const key = project.projectName.toLowerCase();
     nameCounts.set(key, (nameCounts.get(key) ?? 0) + 1);
   }
 
-  const projects = discovered
+  const projects = dedupedDiscovered
     .map(({ resourceGroup, ...project }) => {
       const nameKey = project.projectName.toLowerCase();
       const duplicateCount = nameCounts.get(nameKey) ?? 0;
@@ -267,6 +360,70 @@ export async function listAzureProjects(accessToken: string): Promise<AzureProje
     .sort((left, right) => left.projectName.localeCompare(right.projectName));
 
   return projects;
+}
+
+export async function listAzureTenants(
+  accessToken: string,
+  activeTenantId: string,
+  abortSignal?: AbortSignal,
+): Promise<AzureTenant[]> {
+  const discovered = await fetchArmPaged<ArmTenant>(
+    `https://management.azure.com/tenants?api-version=${AZURE_TENANTS_API_VERSION}`,
+    accessToken,
+    AZURE_MAX_TENANTS,
+    abortSignal,
+  );
+
+  const tenantsById = new Map<string, AzureTenant>();
+  for (const tenant of discovered) {
+    const tenantId = readArmTenantId(tenant);
+    if (!tenantId) {
+      continue;
+    }
+    const tenantKey = tenantId.toLowerCase();
+
+    const defaultDomain =
+      typeof tenant.defaultDomain === "string" ? tenant.defaultDomain.trim() : "";
+    const displayNameRaw =
+      typeof tenant.displayName === "string" ? tenant.displayName.trim() : "";
+    const displayName = displayNameRaw || defaultDomain || tenantId;
+    const existing = tenantsById.get(tenantKey);
+    if (existing && existing.defaultDomain && existing.displayName) {
+      continue;
+    }
+
+    tenantsById.set(tenantKey, {
+      tenantId,
+      displayName,
+      defaultDomain,
+    });
+  }
+
+  const normalizedActiveTenantId = activeTenantId.trim();
+  const normalizedActiveTenantKey = normalizedActiveTenantId.toLowerCase();
+  if (normalizedActiveTenantId && !tenantsById.has(normalizedActiveTenantKey)) {
+    tenantsById.set(normalizedActiveTenantKey, {
+      tenantId: normalizedActiveTenantId,
+      displayName: normalizedActiveTenantId,
+      defaultDomain: "",
+    });
+  }
+
+  return Array.from(tenantsById.values()).sort((left, right) => {
+    if (
+      normalizedActiveTenantKey &&
+      left.tenantId.toLowerCase() === normalizedActiveTenantKey
+    ) {
+      return -1;
+    }
+    if (
+      normalizedActiveTenantKey &&
+      right.tenantId.toLowerCase() === normalizedActiveTenantKey
+    ) {
+      return 1;
+    }
+    return left.displayName.localeCompare(right.displayName);
+  });
 }
 
 export async function listProjectDeployments(
@@ -325,7 +482,7 @@ async function listAccountModels(
     );
   } catch (error) {
     await logServerRouteEvent({
-      route: "/api/azure/projects",
+      route: AZURE_PROJECTS_ROUTE,
       eventName: "list_account_models_failed",
       action: "list_account_models",
       level: "warning",
@@ -538,6 +695,18 @@ function parseResourceGroupFromResourceId(resourceId: string): string {
   return match?.[1] ?? "";
 }
 
+function readArmTenantId(tenant: ArmTenant): string {
+  const tenantId =
+    typeof tenant.tenantId === "string" ? tenant.tenantId.trim() : "";
+  if (tenantId) {
+    return tenantId;
+  }
+
+  const resourceId = typeof tenant.id === "string" ? tenant.id.trim() : "";
+  const match = resourceId.match(/\/tenants\/([^/]+)/i);
+  return match?.[1]?.trim() ?? "";
+}
+
 export type ArmAccessTokenResult =
   | {
       ok: true;
@@ -552,10 +721,31 @@ export type ArmAccessTokenResult =
 
 export async function getArmAccessToken(
   dependencies: AzureDependencies = getAzureDependencies(),
+  preferredTenantId = "",
 ): Promise<ArmAccessTokenResult> {
-  const userContext = await readAzureArmUserContext(dependencies);
+  const normalizedPreferredTenantId = preferredTenantId.trim();
+  let userContext = await readAzureArmUserContext(dependencies, normalizedPreferredTenantId);
   if (!userContext) {
     return { ok: false };
+  }
+
+  if (
+    normalizedPreferredTenantId &&
+    userContext.tenantId.toLowerCase() !== normalizedPreferredTenantId.toLowerCase()
+  ) {
+    try {
+      await dependencies.authenticateAzure(AZURE_ARM_SCOPE, normalizedPreferredTenantId);
+    } catch {
+      return { ok: false };
+    }
+
+    userContext = await readAzureArmUserContext(dependencies, normalizedPreferredTenantId);
+    if (
+      !userContext ||
+      userContext.tenantId.toLowerCase() !== normalizedPreferredTenantId.toLowerCase()
+    ) {
+      return { ok: false };
+    }
   }
 
   return {
@@ -600,6 +790,7 @@ export async function resolveAzurePrincipalProfile(
   }
 
   try {
+    const graphRequestStartedAtMs = Date.now();
     const response = await fetch(
       "https://graph.microsoft.com/v1.0/me?$select=id,displayName,userPrincipalName,mail",
       {
@@ -609,10 +800,41 @@ export async function resolveAzurePrincipalProfile(
         },
       },
     );
+    const graphRequestDurationMs = Date.now() - graphRequestStartedAtMs;
     const payload = (await response.json().catch(() => null)) as GraphMeResponse | null;
     if (!response.ok) {
+      await logServerRouteEvent({
+        route: AZURE_PROJECTS_ROUTE,
+        eventName: "azure_graph_api_call_failed",
+        action: "load_graph_profile",
+        level: "warning",
+        statusCode: response.status,
+        message: "Microsoft Graph API call failed.",
+        context: {
+          requestUrl: summarizeUrlForLog(
+            "https://graph.microsoft.com/v1.0/me?$select=id,displayName,userPrincipalName,mail",
+          ),
+          durationMs: graphRequestDurationMs,
+          statusText: response.statusText || null,
+        },
+      });
       return normalizeAzurePrincipalProfile(fallbackProfile);
     }
+
+    await logServerRouteEvent({
+      route: AZURE_PROJECTS_ROUTE,
+      eventName: "azure_graph_api_call_succeeded",
+      action: "load_graph_profile",
+      level: "info",
+      statusCode: response.status,
+      message: "Microsoft Graph API call succeeded.",
+      context: {
+        requestUrl: summarizeUrlForLog(
+          "https://graph.microsoft.com/v1.0/me?$select=id,displayName,userPrincipalName,mail",
+        ),
+        durationMs: graphRequestDurationMs,
+      },
+    });
 
     const graphPrincipalId = typeof payload?.id === "string" ? payload.id.trim() : "";
     const graphDisplayName = typeof payload?.displayName === "string" ? payload.displayName.trim() : "";
@@ -631,7 +853,20 @@ export async function resolveAzurePrincipalProfile(
       principalType:
         fallbackProfile.principalType === "unknown" ? "user" : fallbackProfile.principalType,
     });
-  } catch {
+  } catch (error) {
+    await logServerRouteEvent({
+      route: AZURE_PROJECTS_ROUTE,
+      eventName: "azure_graph_api_call_failed",
+      action: "load_graph_profile",
+      level: "warning",
+      message: "Microsoft Graph API call failed.",
+      error,
+      context: {
+        requestUrl: summarizeUrlForLog(
+          "https://graph.microsoft.com/v1.0/me?$select=id,displayName,userPrincipalName,mail",
+        ),
+      },
+    });
     return normalizeAzurePrincipalProfile(fallbackProfile);
   }
 }
@@ -655,24 +890,82 @@ async function fetchArmPaged<T>(
   url: string,
   accessToken: string,
   maxItems: number,
+  abortSignal?: AbortSignal,
 ): Promise<T[]> {
   const items: T[] = [];
   let nextUrl = url;
+  let pageNumber = 0;
 
   while (nextUrl && items.length < maxItems) {
-    const response = await fetch(nextUrl, {
-      method: "GET",
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-      },
-    });
+    pageNumber += 1;
+    const requestStartedAtMs = Date.now();
+
+    let response: Response;
+    try {
+      response = await fetch(nextUrl, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+        signal: abortSignal,
+      });
+    } catch (error) {
+      await logServerRouteEvent({
+        route: AZURE_PROJECTS_ROUTE,
+        eventName: "azure_arm_api_call_failed",
+        action: "fetch_arm_page",
+        level: "warning",
+        message: "Azure ARM API call failed before response.",
+        error,
+        context: {
+          requestUrl: summarizeUrlForLog(nextUrl),
+          durationMs: Date.now() - requestStartedAtMs,
+          pageNumber,
+        },
+      });
+      throw error;
+    }
 
     const payload = (await response.json().catch(() => null)) as ArmPagedResponse<T> | null;
+    const requestDurationMs = Date.now() - requestStartedAtMs;
     if (!response.ok) {
+      await logServerRouteEvent({
+        route: AZURE_PROJECTS_ROUTE,
+        eventName: "azure_arm_api_call_failed",
+        action: "fetch_arm_page",
+        level: "warning",
+        statusCode: response.status,
+        message: "Azure ARM API call failed.",
+        context: {
+          requestUrl: summarizeUrlForLog(nextUrl),
+          durationMs: requestDurationMs,
+          pageNumber,
+          statusText: response.statusText || null,
+          armErrorMessage: readArmErrorMessage(payload) || null,
+        },
+      });
       throw new Error(readArmErrorMessage(payload) || response.statusText || "Azure ARM request failed.");
     }
 
     const pageItems = Array.isArray(payload?.value) ? payload.value : [];
+    const hasNextLink = typeof payload?.nextLink === "string" && payload.nextLink.length > 0;
+
+    await logServerRouteEvent({
+      route: AZURE_PROJECTS_ROUTE,
+      eventName: "azure_arm_api_call_succeeded",
+      action: "fetch_arm_page",
+      level: "info",
+      statusCode: response.status,
+      message: "Azure ARM API call succeeded.",
+      context: {
+        requestUrl: summarizeUrlForLog(nextUrl),
+        durationMs: requestDurationMs,
+        pageNumber,
+        pageItemCount: pageItems.length,
+        hasNextLink,
+      },
+    });
+
     const remaining = maxItems - items.length;
     items.push(...pageItems.slice(0, remaining));
 
@@ -680,6 +973,32 @@ async function fetchArmPaged<T>(
   }
 
   return items;
+}
+
+async function mapWithConcurrency<TItem, TResult>(
+  items: TItem[],
+  concurrency: number,
+  mapper: (item: TItem, index: number) => Promise<TResult>,
+): Promise<TResult[]> {
+  if (items.length === 0) {
+    return [];
+  }
+
+  const normalizedConcurrency = Math.max(1, Math.min(items.length, concurrency));
+  const results = new Array<TResult>(items.length);
+  let currentIndex = 0;
+
+  await Promise.all(
+    Array.from({ length: normalizedConcurrency }, async () => {
+      while (currentIndex < items.length) {
+        const targetIndex = currentIndex;
+        currentIndex += 1;
+        results[targetIndex] = await mapper(items[targetIndex], targetIndex);
+      }
+    }),
+  );
+
+  return results;
 }
 
 function readArmErrorMessage(payload: unknown): string {
@@ -694,6 +1013,18 @@ function readArmErrorMessage(payload: unknown): string {
 
   const message = errorValue.message;
   return typeof message === "string" ? message : "";
+}
+
+function summarizeUrlForLog(rawUrl: string): string {
+  try {
+    const parsed = new URL(rawUrl);
+    const apiVersion = parsed.searchParams.get("api-version");
+    return apiVersion
+      ? `${parsed.origin}${parsed.pathname}?api-version=${apiVersion}`
+      : `${parsed.origin}${parsed.pathname}`;
+  } catch {
+    return rawUrl.slice(0, 512);
+  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

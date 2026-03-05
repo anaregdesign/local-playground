@@ -5,7 +5,7 @@ import { FluentUI } from "~/components/home/shared/fluent";
 import { ConfigSection } from "~/components/home/shared/ConfigSection";
 import { StatusMessageList } from "~/components/home/shared/StatusMessageList";
 
-const { Button, Spinner } = FluentUI;
+const { Button, Select, Spinner } = FluentUI;
 
 type AzureConnectionLike = {
   projectName: string;
@@ -21,18 +21,31 @@ type AzurePrincipalLike = {
   principalType: "user" | "servicePrincipal" | "managedIdentity" | "unknown";
 };
 
+type AzureTenantLike = {
+  tenantId: string;
+  displayName: string;
+  defaultDomain: string;
+};
+
 type AzureConnectionSectionProps = {
   isAzureAuthRequired: boolean;
   isSending: boolean;
   isStartingAzureLogin: boolean;
   onAzureLogin: () => void | Promise<void>;
+  azureTenants: AzureTenantLike[];
+  activeAzureTenantId: string;
+  isSwitchingAzureTenant: boolean;
+  onAzureTenantChange: (tenantId: string) => void;
   isLoadingAzureConnections: boolean;
   isLoadingAzureDeployments: boolean;
+  isReloadingAzureCatalog: boolean;
+  onAzureCatalogReload: () => void | Promise<void>;
   activeAzureConnection: AzureConnectionLike | null;
   activeAzurePrincipal: AzurePrincipalLike | null;
   selectedPlaygroundAzureDeploymentName: string;
   isStartingAzureLogout: boolean;
   onAzureLogout: () => void | Promise<void>;
+  azureTenantSwitchError: string | null;
   azureLogoutError: string | null;
   azureConnectionError: string | null;
 };
@@ -43,13 +56,20 @@ export function AzureConnectionSection(props: AzureConnectionSectionProps) {
     isSending,
     isStartingAzureLogin,
     onAzureLogin,
+    azureTenants,
+    activeAzureTenantId,
+    isSwitchingAzureTenant,
+    onAzureTenantChange,
     isLoadingAzureConnections,
     isLoadingAzureDeployments,
+    isReloadingAzureCatalog,
+    onAzureCatalogReload,
     activeAzureConnection,
     activeAzurePrincipal,
     selectedPlaygroundAzureDeploymentName,
     isStartingAzureLogout,
     onAzureLogout,
+    azureTenantSwitchError,
     azureLogoutError,
     azureConnectionError,
   } = props;
@@ -58,7 +78,7 @@ export function AzureConnectionSection(props: AzureConnectionSectionProps) {
     <ConfigSection
       className="setting-group-azure-connection"
       title="Azure Connection 🔐"
-      description="Sign in/out and review the active Playground model."
+      description="Sign in/out, switch Azure tenant, and review the active Playground model."
     >
       {isAzureAuthRequired ? (
         <Button
@@ -75,6 +95,30 @@ export function AzureConnectionSection(props: AzureConnectionSectionProps) {
         </Button>
       ) : (
         <>
+          {activeAzureConnection || activeAzurePrincipal ? (
+            <div className="selectable-card-header-row selectable-card-header-row-right">
+              <Button
+                type="button"
+                appearance="subtle"
+                size="small"
+                className="selectable-card-reload-btn"
+                title="Reload tenant, project, and deployment lists from Azure."
+                onClick={() => {
+                  void onAzureCatalogReload();
+                }}
+                disabled={
+                  isSending ||
+                  isLoadingAzureConnections ||
+                  isLoadingAzureDeployments ||
+                  isSwitchingAzureTenant ||
+                  isStartingAzureLogout ||
+                  isReloadingAzureCatalog
+                }
+              >
+                ↻ Reload
+              </Button>
+            </div>
+          ) : null}
           {isLoadingAzureConnections || isLoadingAzureDeployments ? (
             <div className="azure-loading-notice" role="status" aria-live="polite">
               <Spinner size="tiny" />
@@ -82,6 +126,40 @@ export function AzureConnectionSection(props: AzureConnectionSectionProps) {
                 ? "Loading projects from Azure..."
                 : "Loading deployments for the selected project..."}
             </div>
+          ) : null}
+          {activeAzurePrincipal && azureTenants.length > 0 ? (
+            <>
+              <label className="input-label" htmlFor="azure-connection-tenant">
+                Azure Tenant
+              </label>
+              <Select
+                id="azure-connection-tenant"
+                value={activeAzureTenantId}
+                onChange={(_, data) => {
+                  onAzureTenantChange(data.value);
+                }}
+                disabled={
+                  isSending ||
+                  isStartingAzureLogin ||
+                  isSwitchingAzureTenant ||
+                  isStartingAzureLogout ||
+                  isLoadingAzureConnections
+                }
+                title="Switch tenant after login. Projects and deployments will reload."
+              >
+                {azureTenants.map((tenant) => (
+                  <option key={tenant.tenantId} value={tenant.tenantId}>
+                    {formatAzureTenantLabel(tenant)}
+                  </option>
+                ))}
+              </Select>
+              {isSwitchingAzureTenant ? (
+                <div className="azure-loading-notice" role="status" aria-live="polite">
+                  <Spinner size="tiny" />
+                  Switching tenant and reloading projects...
+                </div>
+              ) : null}
+            </>
           ) : null}
           {activeAzureConnection || activeAzurePrincipal ? (
             <dl className="azure-connection-summary" aria-label="Active Azure connection details">
@@ -141,7 +219,12 @@ export function AzureConnectionSection(props: AzureConnectionSectionProps) {
                 onClick={() => {
                   void onAzureLogout();
                 }}
-                disabled={isSending || isLoadingAzureConnections || isStartingAzureLogout}
+                disabled={
+                  isSending ||
+                  isLoadingAzureConnections ||
+                  isSwitchingAzureTenant ||
+                  isStartingAzureLogout
+                }
               >
                 {isStartingAzureLogout ? "🚪 Logging Out..." : "🚪 Logout"}
               </Button>
@@ -149,6 +232,7 @@ export function AzureConnectionSection(props: AzureConnectionSectionProps) {
           ) : null}
           <StatusMessageList
             messages={[
+              { intent: "error", text: azureTenantSwitchError },
               { intent: "error", text: azureLogoutError },
               { intent: "error", text: azureConnectionError },
             ]}
@@ -172,4 +256,18 @@ function formatPrincipalTypeLabel(
     return "User";
   }
   return "Unknown";
+}
+
+function formatAzureTenantLabel(tenant: AzureTenantLike): string {
+  const displayName = tenant.displayName.trim() || tenant.tenantId;
+  const defaultDomain = tenant.defaultDomain.trim();
+  if (defaultDomain && displayName !== defaultDomain) {
+    return `${displayName} (${defaultDomain}) — ${tenant.tenantId}`;
+  }
+
+  if (displayName !== tenant.tenantId) {
+    return `${displayName} — ${tenant.tenantId}`;
+  }
+
+  return tenant.tenantId;
 }

@@ -31,6 +31,7 @@ export type AzureActionApiResponse = {
 export type AzureProjectsApiResponse = {
   projects?: unknown;
   deployments?: unknown;
+  tenants?: unknown;
   principal?: unknown;
   tenantId?: unknown;
   principalId?: unknown;

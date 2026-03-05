@@ -21,9 +21,13 @@ export type AzureArmUserContext = AzureUserIdentity & {
 
 export async function readAzureArmUserContext(
   dependencies: AzureDependencies = getAzureDependencies(),
+  tenantIdRaw = "",
 ): Promise<AzureArmUserContext | null> {
   try {
-    const token = await dependencies.getAzureBearerToken(AZURE_ARM_SCOPE);
+    const normalizedTenantId = tenantIdRaw.trim();
+    const token = normalizedTenantId
+      ? await dependencies.getAzureBearerToken(AZURE_ARM_SCOPE, normalizedTenantId)
+      : await dependencies.getAzureBearerToken(AZURE_ARM_SCOPE);
     const tenantId = readTenantIdFromAccessToken(token);
     const principalId = readPrincipalIdFromAccessToken(token);
     if (!tenantId || !principalId) {
