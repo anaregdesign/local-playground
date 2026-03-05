@@ -5,16 +5,29 @@ import { resolveFoundryDatabaseUrl } from "~/lib/foundry/config";
 
 export type PersistenceDatabaseProvider = "sqlite" | "postgresql";
 
-export type PersistenceManagedIdentityConfig = {
-  enabled: boolean;
-  clientId: string;
-  scope: string;
-};
+export type PersistencePostgresAuthenticationMethod =
+  | "password"
+  | "azure_identity"
+  | "access_token";
+
+export type PersistencePostgresAuthenticationConfig =
+  | {
+      method: "password";
+    }
+  | {
+      method: "azure_identity";
+      clientId: string;
+      scope: string;
+    }
+  | {
+      method: "access_token";
+      accessToken: string;
+    };
 
 export type PersistenceDatabaseConfig = {
   provider: PersistenceDatabaseProvider;
   databaseUrl: string;
-  managedIdentity: PersistenceManagedIdentityConfig;
+  postgresAuthentication: PersistencePostgresAuthenticationConfig | null;
 };
 
 type ResolvePersistenceDatabaseConfigOptions = {
@@ -27,7 +40,7 @@ type ResolvePersistenceDatabaseConfigOptions = {
 
 const DEFAULT_POSTGRES_PORT = "5432";
 const DEFAULT_POSTGRES_SSLMODE = "require";
-const DEFAULT_POSTGRES_MANAGED_IDENTITY_SCOPE =
+const DEFAULT_POSTGRES_AZURE_IDENTITY_SCOPE =
   "https://ossrdbms-aad.database.windows.net/.default";
 
 export function resolvePersistenceDatabaseConfig(
@@ -63,11 +76,7 @@ export function resolvePersistenceDatabaseConfig(
         appDataDirectory: options.appDataDirectory,
         cwd: options.cwd,
       }),
-      managedIdentity: {
-        enabled: false,
-        clientId: "",
-        scope: "",
-      },
+      postgresAuthentication: null,
     };
   }
 
@@ -75,22 +84,12 @@ export function resolvePersistenceDatabaseConfig(
     configuredDatabaseUrl,
     postgresComponents,
   });
-  const managedIdentityEnabled = readBooleanFromEnvironment(
-    env.LOCAL_PLAYGROUND_POSTGRES_USE_MANAGED_IDENTITY,
-  );
+  const postgresAuthentication = resolvePostgresAuthenticationConfig(env);
 
   return {
     provider,
     databaseUrl,
-    managedIdentity: {
-      enabled: managedIdentityEnabled,
-      clientId: readTrimmedEnvironmentValue(
-        env.LOCAL_PLAYGROUND_POSTGRES_MANAGED_IDENTITY_CLIENT_ID,
-      ),
-      scope:
-        readTrimmedEnvironmentValue(env.LOCAL_PLAYGROUND_POSTGRES_MANAGED_IDENTITY_SCOPE) ||
-        DEFAULT_POSTGRES_MANAGED_IDENTITY_SCOPE,
-    },
+    postgresAuthentication,
   };
 }
 
@@ -265,9 +264,60 @@ function readPostgresComponents(env: NodeJS.ProcessEnv): PostgresComponents {
   };
 }
 
-function readBooleanFromEnvironment(value: string | undefined): boolean {
-  const normalized = readTrimmedEnvironmentValue(value).toLowerCase();
-  return normalized === "1" || normalized === "true" || normalized === "yes" || normalized === "on";
+function resolvePostgresAuthenticationConfig(
+  env: NodeJS.ProcessEnv,
+): PersistencePostgresAuthenticationConfig {
+  const method = readPostgresAuthenticationMethod(env);
+  if (method === "password") {
+    return {
+      method,
+    };
+  }
+
+  if (method === "azure_identity") {
+    return {
+      method,
+      clientId: readTrimmedEnvironmentValue(env.LOCAL_PLAYGROUND_POSTGRES_AZURE_IDENTITY_CLIENT_ID),
+      scope:
+        readTrimmedEnvironmentValue(env.LOCAL_PLAYGROUND_POSTGRES_AZURE_IDENTITY_SCOPE) ||
+        DEFAULT_POSTGRES_AZURE_IDENTITY_SCOPE,
+    };
+  }
+
+  const accessToken = readTrimmedEnvironmentValue(env.LOCAL_PLAYGROUND_POSTGRES_ACCESS_TOKEN);
+  if (!accessToken) {
+    throw new Error(
+      "PostgreSQL access token authentication requires `LOCAL_PLAYGROUND_POSTGRES_ACCESS_TOKEN`.",
+    );
+  }
+
+  return {
+    method,
+    accessToken,
+  };
+}
+
+function readPostgresAuthenticationMethod(
+  env: NodeJS.ProcessEnv,
+): PersistencePostgresAuthenticationMethod {
+  const configuredMethod = readTrimmedEnvironmentValue(
+    env.LOCAL_PLAYGROUND_POSTGRES_AUTH_METHOD,
+  )
+    .toLowerCase()
+    .replaceAll("-", "_");
+  if (!configuredMethod || configuredMethod === "password") {
+    return "password";
+  }
+  if (configuredMethod === "azure_identity") {
+    return "azure_identity";
+  }
+  if (configuredMethod === "access_token") {
+    return "access_token";
+  }
+
+  throw new Error(
+    "`LOCAL_PLAYGROUND_POSTGRES_AUTH_METHOD` must be `password`, `azure_identity`, or `access_token`.",
+  );
 }
 
 function readTrimmedEnvironmentValue(value: string | null | undefined): string {

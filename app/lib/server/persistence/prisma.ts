@@ -2,11 +2,14 @@
  * Server runtime module.
  */
 import { PrismaClient } from "@prisma/client";
-import { resolvePersistenceDatabaseConfig } from "~/lib/server/persistence/database-config";
 import {
-  resolvePostgresManagedIdentityDatabaseUrl,
-  type ManagedIdentityTokenState,
-} from "~/lib/server/persistence/postgres-managed-identity";
+  buildPostgresDatabaseUrlWithPassword,
+  resolvePersistenceDatabaseConfig,
+} from "~/lib/server/persistence/database-config";
+import {
+  resolvePostgresAzureIdentityDatabaseUrl,
+  type PostgresAzureIdentityTokenState,
+} from "~/lib/server/persistence/postgres-azure-identity";
 import {
   ensureSqliteDatabaseParentDirectoryExists,
   ensureSqliteDatabaseSchema,
@@ -15,19 +18,23 @@ import {
 const resolvedDatabaseConfig = resolvePersistenceDatabaseConfig();
 const resolvedDatabaseProvider = resolvedDatabaseConfig.provider;
 const resolvedDatabaseUrl = resolvedDatabaseConfig.databaseUrl;
+const initialDatabaseUrl = resolveInitialDatabaseUrl();
 process.env.DATABASE_PROVIDER = resolvedDatabaseProvider;
-process.env.DATABASE_URL = resolvedDatabaseUrl;
+process.env.DATABASE_URL = initialDatabaseUrl;
 
 const globalForPrisma = globalThis as typeof globalThis & {
   __localPlaygroundPrisma?: PrismaClient;
-  __localPlaygroundManagedIdentityToken?: ManagedIdentityTokenState;
+  __localPlaygroundPostgresAzureIdentityToken?: PostgresAzureIdentityTokenState;
 };
 
-export let prisma = createPrismaClient(resolvedDatabaseUrl);
+export let prisma = createPrismaClient(initialDatabaseUrl);
 
 const shouldCachePrismaOnGlobal =
   process.env.NODE_ENV !== "production" &&
-  !(resolvedDatabaseProvider === "postgresql" && resolvedDatabaseConfig.managedIdentity.enabled);
+  !(
+    resolvedDatabaseProvider === "postgresql" &&
+    resolvedDatabaseConfig.postgresAuthentication?.method === "azure_identity"
+  );
 
 if (shouldCachePrismaOnGlobal) {
   prisma = globalForPrisma.__localPlaygroundPrisma ?? prisma;
@@ -36,16 +43,18 @@ if (shouldCachePrismaOnGlobal) {
 
 let ensureSqliteDatabaseReadyPromise: Promise<void> | null = null;
 let ensurePostgresSchemaReadyPromise: Promise<void> | null = null;
-let refreshPostgresManagedIdentityTokenPromise: Promise<void> | null = null;
-let managedIdentityToken =
-  process.env.NODE_ENV !== "production" && resolvedDatabaseConfig.managedIdentity.enabled
-    ? (globalForPrisma.__localPlaygroundManagedIdentityToken ?? null)
+let refreshPostgresAzureIdentityTokenPromise: Promise<void> | null = null;
+let postgresAzureIdentityToken =
+  process.env.NODE_ENV !== "production" &&
+  resolvedDatabaseProvider === "postgresql" &&
+  resolvedDatabaseConfig.postgresAuthentication?.method === "azure_identity"
+    ? (globalForPrisma.__localPlaygroundPostgresAzureIdentityToken ?? null)
     : null;
 
 export async function ensurePersistenceDatabaseReady(): Promise<void> {
   if (resolvedDatabaseProvider === "postgresql") {
-    if (resolvedDatabaseConfig.managedIdentity.enabled) {
-      await ensurePostgresManagedIdentityToken();
+    if (resolvedDatabaseConfig.postgresAuthentication?.method === "azure_identity") {
+      await ensurePostgresAzureIdentityToken();
     }
     if (!ensurePostgresSchemaReadyPromise) {
       ensurePostgresSchemaReadyPromise = (async () => {
@@ -82,25 +91,43 @@ function createPrismaClient(databaseUrl: string): PrismaClient {
   });
 }
 
-async function ensurePostgresManagedIdentityToken(): Promise<void> {
-  if (!resolvedDatabaseConfig.managedIdentity.enabled) {
+function resolveInitialDatabaseUrl(): string {
+  if (resolvedDatabaseProvider !== "postgresql") {
+    return resolvedDatabaseUrl;
+  }
+  if (resolvedDatabaseConfig.postgresAuthentication?.method !== "access_token") {
+    return resolvedDatabaseUrl;
+  }
+  return buildPostgresDatabaseUrlWithPassword(
+    resolvedDatabaseUrl,
+    resolvedDatabaseConfig.postgresAuthentication.accessToken,
+  );
+}
+
+async function ensurePostgresAzureIdentityToken(): Promise<void> {
+  if (resolvedDatabaseProvider !== "postgresql") {
+    return;
+  }
+
+  const postgresAuthentication = resolvedDatabaseConfig.postgresAuthentication;
+  if (!postgresAuthentication || postgresAuthentication.method !== "azure_identity") {
     return;
   }
 
   const tokenRefreshThresholdMs = 2 * 60 * 1000;
-  if (managedIdentityToken) {
-    const remainingMs = managedIdentityToken.expiresOnTimestamp - Date.now();
+  if (postgresAzureIdentityToken) {
+    const remainingMs = postgresAzureIdentityToken.expiresOnTimestamp - Date.now();
     if (remainingMs > tokenRefreshThresholdMs) {
       return;
     }
   }
 
-  if (!refreshPostgresManagedIdentityTokenPromise) {
-    refreshPostgresManagedIdentityTokenPromise = (async () => {
-      const nextCredential = await resolvePostgresManagedIdentityDatabaseUrl({
+  if (!refreshPostgresAzureIdentityTokenPromise) {
+    refreshPostgresAzureIdentityTokenPromise = (async () => {
+      const nextCredential = await resolvePostgresAzureIdentityDatabaseUrl({
         databaseUrl: resolvedDatabaseUrl,
-        managedIdentityClientId: resolvedDatabaseConfig.managedIdentity.clientId,
-        scope: resolvedDatabaseConfig.managedIdentity.scope,
+        azureIdentityClientId: postgresAuthentication.clientId,
+        scope: postgresAuthentication.scope,
       });
       process.env.DATABASE_URL = nextCredential.databaseUrl;
 
@@ -113,18 +140,19 @@ async function ensurePostgresManagedIdentityToken(): Promise<void> {
         globalForPrisma.__localPlaygroundPrisma = prisma;
       }
 
-      managedIdentityToken = nextCredential.tokenState;
+      postgresAzureIdentityToken = nextCredential.tokenState;
       if (process.env.NODE_ENV !== "production") {
-        globalForPrisma.__localPlaygroundManagedIdentityToken = managedIdentityToken;
+        globalForPrisma.__localPlaygroundPostgresAzureIdentityToken =
+          postgresAzureIdentityToken;
       }
 
       if (previousPrisma !== nextPrisma) {
         void previousPrisma.$disconnect().catch(() => undefined);
       }
     })().finally(() => {
-      refreshPostgresManagedIdentityTokenPromise = null;
+      refreshPostgresAzureIdentityTokenPromise = null;
     });
   }
 
-  await refreshPostgresManagedIdentityTokenPromise;
+  await refreshPostgresAzureIdentityTokenPromise;
 }

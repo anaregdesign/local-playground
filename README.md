@@ -222,20 +222,34 @@ export LOCAL_PLAYGROUND_POSTGRES_PASSWORD="PASSWORD"
 export LOCAL_PLAYGROUND_POSTGRES_PORT="5432"
 export LOCAL_PLAYGROUND_POSTGRES_SSLMODE="require"
 export LOCAL_PLAYGROUND_POSTGRES_SCHEMA="public"
+export LOCAL_PLAYGROUND_POSTGRES_AUTH_METHOD="password"
 ```
 
-### PostgreSQL With Azure Managed Identity
+### PostgreSQL With Azure Identity Token Authentication
 
 ```bash
 export DATABASE_PROVIDER=postgresql
 export LOCAL_PLAYGROUND_POSTGRES_HOST="HOST"
 export LOCAL_PLAYGROUND_POSTGRES_DATABASE="DBNAME"
 export LOCAL_PLAYGROUND_POSTGRES_USER="USER"
-export LOCAL_PLAYGROUND_POSTGRES_USE_MANAGED_IDENTITY="true"
+export LOCAL_PLAYGROUND_POSTGRES_AUTH_METHOD="azure_identity"
 # optional for user-assigned managed identity
-export LOCAL_PLAYGROUND_POSTGRES_MANAGED_IDENTITY_CLIENT_ID="<managed-identity-client-id>"
+export LOCAL_PLAYGROUND_POSTGRES_AZURE_IDENTITY_CLIENT_ID="<managed-identity-client-id>"
 # optional override (default is Azure PostgreSQL AAD scope)
-export LOCAL_PLAYGROUND_POSTGRES_MANAGED_IDENTITY_SCOPE="https://ossrdbms-aad.database.windows.net/.default"
+export LOCAL_PLAYGROUND_POSTGRES_AZURE_IDENTITY_SCOPE="https://ossrdbms-aad.database.windows.net/.default"
+```
+
+`azure_identity` uses `DefaultAzureCredential`, so managed identity, service principal, Azure CLI login, and other Azure Identity flows are available.
+
+### PostgreSQL With Direct Access Token
+
+```bash
+export DATABASE_PROVIDER=postgresql
+export LOCAL_PLAYGROUND_POSTGRES_HOST="HOST"
+export LOCAL_PLAYGROUND_POSTGRES_DATABASE="DBNAME"
+export LOCAL_PLAYGROUND_POSTGRES_USER="USER"
+export LOCAL_PLAYGROUND_POSTGRES_AUTH_METHOD="access_token"
+export LOCAL_PLAYGROUND_POSTGRES_ACCESS_TOKEN="<postgres-access-token>"
 ```
 
 ## Common Scripts

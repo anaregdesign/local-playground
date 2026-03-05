@@ -1,33 +1,33 @@
 /**
- * PostgreSQL Managed Identity authentication helpers.
+ * PostgreSQL Azure Identity authentication helpers.
  */
 import { DefaultAzureCredential } from "@azure/identity";
 import { buildPostgresDatabaseUrlWithPassword } from "~/lib/server/persistence/database-config";
 
-export type ManagedIdentityTokenState = {
+export type PostgresAzureIdentityTokenState = {
   token: string;
   expiresOnTimestamp: number;
 };
 
-type ResolvePostgresManagedIdentityDatabaseUrlOptions = {
+type ResolvePostgresAzureIdentityDatabaseUrlOptions = {
   databaseUrl: string;
-  managedIdentityClientId: string;
+  azureIdentityClientId: string;
   scope: string;
 };
 
-export async function resolvePostgresManagedIdentityDatabaseUrl(
-  options: ResolvePostgresManagedIdentityDatabaseUrlOptions,
+export async function resolvePostgresAzureIdentityDatabaseUrl(
+  options: ResolvePostgresAzureIdentityDatabaseUrlOptions,
 ): Promise<{
   databaseUrl: string;
-  tokenState: ManagedIdentityTokenState;
+  tokenState: PostgresAzureIdentityTokenState;
 }> {
   const credential = new DefaultAzureCredential({
-    managedIdentityClientId: options.managedIdentityClientId || undefined,
+    managedIdentityClientId: options.azureIdentityClientId || undefined,
   });
   const accessToken = await credential.getToken(options.scope);
   if (!accessToken?.token) {
     throw new Error(
-      "DefaultAzureCredential did not return a PostgreSQL access token for Managed Identity authentication.",
+      "DefaultAzureCredential did not return a PostgreSQL access token for Azure Identity authentication.",
     );
   }
 

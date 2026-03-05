@@ -18,11 +18,7 @@ describe("resolvePersistenceDatabaseConfig", () => {
     expect(config).toEqual({
       provider: "sqlite",
       databaseUrl: "file:/home/hiroki/.foundry_local_playground/local-playground.sqlite",
-      managedIdentity: {
-        enabled: false,
-        clientId: "",
-        scope: "",
-      },
+      postgresAuthentication: null,
     });
   });
 
@@ -37,6 +33,9 @@ describe("resolvePersistenceDatabaseConfig", () => {
     expect(config.databaseUrl).toBe(
       "postgresql://db-user:db-pass@db.example.com:5432/local_playground?sslmode=require",
     );
+    expect(config.postgresAuthentication).toEqual({
+      method: "password",
+    });
   });
 
   it("builds postgres URL from component environment values", () => {
@@ -54,26 +53,48 @@ describe("resolvePersistenceDatabaseConfig", () => {
     expect(config.databaseUrl).toBe(
       "postgresql://db-user:db-pass@db.example.com:5432/local_playground?sslmode=require&schema=public",
     );
+    expect(config.postgresAuthentication).toEqual({
+      method: "password",
+    });
   });
 
-  it("enables managed identity for postgres when configured", () => {
+  it("uses azure identity authentication for postgres when configured", () => {
     const config = resolvePersistenceDatabaseConfig({
       env: {
         LOCAL_PLAYGROUND_DATABASE_PROVIDER: "postgresql",
         LOCAL_PLAYGROUND_POSTGRES_HOST: "db.example.com",
         LOCAL_PLAYGROUND_POSTGRES_DATABASE: "local_playground",
         LOCAL_PLAYGROUND_POSTGRES_USER: "db-user",
-        LOCAL_PLAYGROUND_POSTGRES_USE_MANAGED_IDENTITY: "true",
-        LOCAL_PLAYGROUND_POSTGRES_MANAGED_IDENTITY_CLIENT_ID: "00000000-0000-0000-0000-000000000000",
-        LOCAL_PLAYGROUND_POSTGRES_MANAGED_IDENTITY_SCOPE:
+        LOCAL_PLAYGROUND_POSTGRES_AUTH_METHOD: "azure_identity",
+        LOCAL_PLAYGROUND_POSTGRES_AZURE_IDENTITY_CLIENT_ID:
+          "00000000-0000-0000-0000-000000000000",
+        LOCAL_PLAYGROUND_POSTGRES_AZURE_IDENTITY_SCOPE:
           "https://ossrdbms-aad.database.windows.net/.default",
       },
     });
 
-    expect(config.managedIdentity).toEqual({
-      enabled: true,
+    expect(config.postgresAuthentication).toEqual({
+      method: "azure_identity",
       clientId: "00000000-0000-0000-0000-000000000000",
       scope: "https://ossrdbms-aad.database.windows.net/.default",
+    });
+  });
+
+  it("uses access token authentication for postgres when configured", () => {
+    const config = resolvePersistenceDatabaseConfig({
+      env: {
+        LOCAL_PLAYGROUND_DATABASE_PROVIDER: "postgresql",
+        LOCAL_PLAYGROUND_POSTGRES_HOST: "db.example.com",
+        LOCAL_PLAYGROUND_POSTGRES_DATABASE: "local_playground",
+        LOCAL_PLAYGROUND_POSTGRES_USER: "db-user",
+        LOCAL_PLAYGROUND_POSTGRES_AUTH_METHOD: "access_token",
+        LOCAL_PLAYGROUND_POSTGRES_ACCESS_TOKEN: "postgres-token",
+      },
+    });
+
+    expect(config.postgresAuthentication).toEqual({
+      method: "access_token",
+      accessToken: "postgres-token",
     });
   });
 
@@ -97,6 +118,34 @@ describe("resolvePersistenceDatabaseConfig", () => {
         },
       });
     }).toThrow("requires connection settings");
+  });
+
+  it("throws when postgres auth method is invalid", () => {
+    expect(() => {
+      resolvePersistenceDatabaseConfig({
+        env: {
+          LOCAL_PLAYGROUND_DATABASE_PROVIDER: "postgresql",
+          LOCAL_PLAYGROUND_POSTGRES_HOST: "db.example.com",
+          LOCAL_PLAYGROUND_POSTGRES_DATABASE: "local_playground",
+          LOCAL_PLAYGROUND_POSTGRES_USER: "db-user",
+          LOCAL_PLAYGROUND_POSTGRES_AUTH_METHOD: "invalid",
+        },
+      });
+    }).toThrow("LOCAL_PLAYGROUND_POSTGRES_AUTH_METHOD");
+  });
+
+  it("throws when access token auth is selected without token", () => {
+    expect(() => {
+      resolvePersistenceDatabaseConfig({
+        env: {
+          LOCAL_PLAYGROUND_DATABASE_PROVIDER: "postgresql",
+          LOCAL_PLAYGROUND_POSTGRES_HOST: "db.example.com",
+          LOCAL_PLAYGROUND_POSTGRES_DATABASE: "local_playground",
+          LOCAL_PLAYGROUND_POSTGRES_USER: "db-user",
+          LOCAL_PLAYGROUND_POSTGRES_AUTH_METHOD: "access_token",
+        },
+      });
+    }).toThrow("LOCAL_PLAYGROUND_POSTGRES_ACCESS_TOKEN");
   });
 });
 
