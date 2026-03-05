@@ -46,7 +46,6 @@
     "@react-router/serve": "7.13.1",
     "electron-updater": "^6.8.3",
     "isbot": "^5.1.35",
-    "mcp-mermaid": "^0.4.1",
     "openai": "^6.25.0",
     "react": "^19.2.4",
     "react-diff-view": "^3.3.2",

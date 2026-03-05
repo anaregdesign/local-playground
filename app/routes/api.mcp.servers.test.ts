@@ -444,6 +444,7 @@ describe("mergeDefaultWorkspaceMcpServerProfiles", () => {
           transport: "stdio",
           command: defaultWorkiqMcpServerProfile.command,
           args: [...defaultWorkiqMcpServerProfile.args],
+          cwd: expectedFilesystemWorkingDirectory,
           env: {},
         }),
         expect.objectContaining({
@@ -519,6 +520,7 @@ describe("mergeDefaultWorkspaceMcpServerProfiles", () => {
         transport: "stdio" as const,
         command: defaultWorkiqMcpServerProfile.command,
         args: [...defaultWorkiqMcpServerProfile.args],
+        cwd: expectedFilesystemWorkingDirectory,
         env: {},
       },
       {
@@ -639,6 +641,7 @@ describe("mergeDefaultWorkspaceMcpServerProfiles", () => {
         transport: "stdio" as const,
         command: defaultWorkiqMcpServerProfile.command,
         args: [...defaultWorkiqMcpServerProfile.args],
+        cwd: expectedFilesystemWorkingDirectory,
         env: {},
       },
     ];
