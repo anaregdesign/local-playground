@@ -159,6 +159,8 @@ type ParseResult<T> = { ok: true; value: T } | { ok: false; error: string };
 const legacyUnavailableDefaultStdioNpxPackageNameSet = new Set<string>(
   MCP_LEGACY_UNAVAILABLE_DEFAULT_STDIO_NPX_PACKAGE_NAMES,
 );
+const chatTransientTerminationRetryMaxAttempts = 2;
+const chatTransientTerminationRetryDelayMs = 250;
 type ResolvedAzureConfig = {
   projectName: string;
   baseUrl: string;
@@ -564,7 +566,7 @@ export async function action({ request }: Route.ActionArgs) {
   }
 
   try {
-    const result = await executeChat(executionOptions);
+    const result = await executeChatWithTransientRetry(executionOptions);
     await logServerRouteEvent({
       request,
       route: "/api/chat",
@@ -1021,6 +1023,37 @@ async function executeChat(
   }
 }
 
+async function executeChatWithTransientRetry(
+  options: ChatExecutionOptions,
+  onEvent?: (event: ChatExecutionEvent) => void,
+): Promise<ChatExecutionResult> {
+  for (let attempt = 1; attempt <= chatTransientTerminationRetryMaxAttempts; attempt += 1) {
+    try {
+      return await executeChat(options, onEvent);
+    } catch (error) {
+      if (
+        !shouldRetryChatExecution(
+          error,
+          attempt,
+          chatTransientTerminationRetryMaxAttempts,
+        )
+      ) {
+        throw error;
+      }
+
+      onEvent?.({
+        type: "progress",
+        message:
+          `Azure OpenAI connection was interrupted. ` +
+          `Retrying (${attempt + 1}/${chatTransientTerminationRetryMaxAttempts})...`,
+      });
+      await sleep(chatTransientTerminationRetryDelayMs);
+    }
+  }
+
+  throw new Error("Azure OpenAI request failed after retry.");
+}
+
 function streamChatResponse(options: ChatExecutionOptions): Response {
   const encoder = new TextEncoder();
 
@@ -1036,7 +1069,7 @@ function streamChatResponse(options: ChatExecutionOptions): Response {
           message: "Preparing request...",
         });
 
-        const result = await executeChat(options, (event) => {
+        const result = await executeChatWithTransientRetry(options, (event) => {
           if (event.type === "progress") {
             send({
               type: "progress",
@@ -5159,6 +5192,9 @@ function buildUpstreamErrorMessage(error: unknown, deploymentName: string): stri
     return "Could not connect to Azure OpenAI.";
   }
 
+  if (isTransientNetworkTerminationError(error)) {
+    return "Connection to Azure OpenAI was interrupted before completion. Please retry.";
+  }
   if (error.message.includes("Resource not found")) {
     return `${error.message} Check Azure base URL and deployment name (${deploymentName}).`;
   }
@@ -5182,6 +5218,46 @@ function buildUpstreamErrorMessage(error: unknown, deploymentName: string): stri
   }
 
   return error.message;
+}
+
+function isTransientNetworkTerminationError(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  const normalizedMessage = error.message.trim().toLowerCase();
+  if (normalizedMessage === "terminated" || normalizedMessage.includes("socket closed")) {
+    return true;
+  }
+
+  const causeCode =
+    typeof (error as { cause?: unknown }).cause === "object" &&
+    (error as { cause?: { code?: unknown } }).cause !== null
+      ? (error as { cause: { code?: unknown } }).cause.code
+      : null;
+  if (typeof causeCode !== "string") {
+    return false;
+  }
+
+  const normalizedCauseCode = causeCode.toUpperCase();
+  return (
+    normalizedCauseCode === "UND_ERR_SOCKET" ||
+    normalizedCauseCode === "UND_ERR_ABORTED" ||
+    normalizedCauseCode === "ECONNRESET" ||
+    normalizedCauseCode === "EPIPE"
+  );
+}
+
+function shouldRetryChatExecution(
+  error: unknown,
+  attempt: number,
+  maxAttempts: number,
+): boolean {
+  if (attempt >= maxAttempts) {
+    return false;
+  }
+
+  return isTransientNetworkTerminationError(error);
 }
 
 function isAzureCredentialError(error: unknown): boolean {
@@ -5441,6 +5517,12 @@ function readErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Unknown error.";
 }
 
+function sleep(durationMs: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, durationMs);
+  });
+}
+
 export const chatRouteTestUtils = {
   readTemperature,
   readWebSearchEnabled,
@@ -5480,4 +5562,7 @@ export const chatRouteTestUtils = {
   applySkillScriptEnvironmentChanges,
   buildInitialSkillOperationRecords,
   instrumentMcpServer,
+  buildUpstreamErrorMessage,
+  isTransientNetworkTerminationError,
+  shouldRetryChatExecution,
 };

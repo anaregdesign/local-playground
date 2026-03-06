@@ -58,6 +58,9 @@ const {
   applySkillScriptEnvironmentChanges,
   buildInitialSkillOperationRecords,
   instrumentMcpServer,
+  buildUpstreamErrorMessage,
+  isTransientNetworkTerminationError,
+  shouldRetryChatExecution,
 } = chatRouteTestUtils;
 
 describe("readWebSearchEnabled", () => {
@@ -226,6 +229,42 @@ describe("readTemperature", () => {
       ok: false,
       error: "`temperature` must be between 0 and 2, or omitted (None).",
     });
+  });
+});
+
+describe("isTransientNetworkTerminationError", () => {
+  it("detects undici termination messages and cause codes", () => {
+    const terminatedError = new TypeError("terminated");
+    const socketError = new Error("request failed") as Error & {
+      cause?: {
+        code?: string;
+      };
+    };
+    socketError.cause = { code: "UND_ERR_SOCKET" };
+
+    expect(isTransientNetworkTerminationError(terminatedError)).toBe(true);
+    expect(isTransientNetworkTerminationError(socketError)).toBe(true);
+  });
+
+  it("returns false for non-transient errors", () => {
+    expect(isTransientNetworkTerminationError(new Error("Resource not found"))).toBe(false);
+    expect(isTransientNetworkTerminationError("terminated")).toBe(false);
+  });
+});
+
+describe("shouldRetryChatExecution", () => {
+  it("retries only transient errors before the final attempt", () => {
+    expect(shouldRetryChatExecution(new TypeError("terminated"), 1, 2)).toBe(true);
+    expect(shouldRetryChatExecution(new TypeError("terminated"), 2, 2)).toBe(false);
+    expect(shouldRetryChatExecution(new Error("timeout"), 1, 2)).toBe(false);
+  });
+});
+
+describe("buildUpstreamErrorMessage", () => {
+  it("returns retry guidance for transient termination errors", () => {
+    expect(buildUpstreamErrorMessage(new TypeError("terminated"), "gpt-5.2")).toBe(
+      "Connection to Azure OpenAI was interrupted before completion. Please retry.",
+    );
   });
 });
 
