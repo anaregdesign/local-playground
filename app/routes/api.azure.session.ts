@@ -70,10 +70,7 @@ export async function action({ request }: Route.ActionArgs) {
           `Azure tenant switch did not complete. Requested tenant: ${resolvedTenantId}, resolved tenant: ${identity.tenantId}.`,
         );
       }
-      await dependencies.getAzureBearerToken(
-        AZURE_COGNITIVE_SERVICES_SCOPE,
-        identity.tenantId,
-      );
+      await ensureAzureCognitiveTokenForTenant(dependencies, identity.tenantId);
       const user = await getOrCreateUserByIdentity({
         tenantId: identity.tenantId,
         principalId: identity.principalId,
@@ -132,6 +129,28 @@ export async function action({ request }: Route.ActionArgs) {
 
 function readErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Unknown error.";
+}
+
+async function ensureAzureCognitiveTokenForTenant(
+  dependencies: ReturnType<typeof getAzureDependencies>,
+  tenantId: string,
+): Promise<void> {
+  try {
+    await dependencies.getAzureBearerToken(AZURE_COGNITIVE_SERVICES_SCOPE, tenantId);
+  } catch (error) {
+    if (!isTenantMismatchError(error)) {
+      throw error;
+    }
+    await dependencies.authenticateAzure(AZURE_COGNITIVE_SERVICES_SCOPE, tenantId);
+  }
+}
+
+function isTenantMismatchError(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  const message = error.message.toLowerCase();
+  return message.includes("azure credential returned tenant") && message.includes("requested");
 }
 
 async function readAzureSessionPutTenantId(

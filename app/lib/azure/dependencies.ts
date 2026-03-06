@@ -29,7 +29,7 @@ export type AzureDependencies = {
 };
 
 type CreateAzureDependenciesOptions = {
-  createCredential?: () => AzureCredential;
+  createCredential?: (tenantId?: string) => AzureCredential;
   createOpenAIClient?: (options: ConstructorParameters<typeof OpenAI>[0]) => OpenAI;
 };
 
@@ -40,24 +40,35 @@ export function createAzureDependencies(
 ): AzureDependencies {
   const createCredential =
     options.createCredential ??
-    (() =>
+    ((tenantId?: string) =>
       new InteractiveBrowserCredential({
         disableAutomaticAuthentication: true,
         additionallyAllowedTenants: ["*"],
+        ...(tenantId ? { tenantId } : {}),
       }));
   const createOpenAIClient =
     options.createOpenAIClient ?? ((openAIOptions) => new OpenAI(openAIOptions));
-  let credential: AzureCredential | null = null;
+  const credentialsByTenant = new Map<string, AzureCredential>();
   const clientsByBaseURL = new Map<string, OpenAI>();
   const accessTokenByScope = new Map<string, CachedAzureAccessToken>();
   const accessTokenRequestByScope = new Map<string, Promise<string>>();
   let activeTenantId = "";
 
   const getCredential = (): AzureCredential => {
-    if (!credential) {
-      credential = createCredential();
+    return getCredentialForTenant(activeTenantId);
+  };
+
+  const getCredentialForTenant = (tenantId: string): AzureCredential => {
+    const normalizedTenantId = normalizeTenantId(tenantId);
+    const cacheKey = normalizedTenantId || "default";
+    const existingCredential = credentialsByTenant.get(cacheKey);
+    if (existingCredential) {
+      return existingCredential;
     }
-    return credential;
+
+    const createdCredential = createCredential(normalizedTenantId || undefined);
+    credentialsByTenant.set(cacheKey, createdCredential);
+    return createdCredential;
   };
 
   const clearAzureAccessTokenCache = (): void => {
@@ -72,7 +83,7 @@ export function createAzureDependencies(
       throw new Error("Azure token scope is missing.");
     }
 
-    const credentialRef = getCredential();
+    const credentialRef = getCredentialForTenant(normalizedTenantId);
     await authenticateAzureCredential(credentialRef, normalizedScope, normalizedTenantId);
     clearAzureAccessTokenCache();
     activeTenantId = normalizedTenantId;
@@ -122,7 +133,7 @@ export function createAzureDependencies(
     }
 
     const createdRequest = requestAzureAccessToken(
-      getCredential(),
+      getCredentialForTenant(resolvedTenantId),
       normalizedScope,
       resolvedTenantId,
     )

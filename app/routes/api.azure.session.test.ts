@@ -267,7 +267,16 @@ describe("/api/azure/session", () => {
     expect(logServerRouteEvent).toHaveBeenCalledTimes(1);
   });
 
-  it("returns 500 when cognitive services token acquisition fails", async () => {
+  it("retries interactive auth for cognitive scope on tenant mismatch", async () => {
+    readAzureArmUserContext.mockResolvedValueOnce({
+      tenantId: "tenant-b",
+      principalId: "principal-b",
+    });
+    getOrCreateUserByIdentity.mockResolvedValueOnce({
+      id: 11,
+      tenantId: "tenant-b",
+      principalId: "principal-b",
+    });
     getAzureBearerToken.mockRejectedValueOnce(
       new Error("Azure credential returned tenant tenant-a while tenant tenant-b was requested"),
     );
@@ -281,6 +290,26 @@ describe("/api/azure/session", () => {
         body: JSON.stringify({
           tenantId: "tenant-b",
         }),
+      }),
+    } as never);
+
+    expect(response.status).toBe(200);
+    expect(authenticateAzure).toHaveBeenCalledTimes(2);
+    expect(authenticateAzure).toHaveBeenNthCalledWith(1, AZURE_ARM_SCOPE, "tenant-b");
+    expect(authenticateAzure).toHaveBeenNthCalledWith(
+      2,
+      "https://cognitiveservices.azure.com/.default",
+      "tenant-b",
+    );
+    expect(logServerRouteEvent).not.toHaveBeenCalled();
+  });
+
+  it("returns 500 when cognitive services token acquisition fails", async () => {
+    getAzureBearerToken.mockRejectedValueOnce(new Error("cognitive scope unavailable"));
+
+    const response = await action({
+      request: new Request("http://localhost/api/azure/session", {
+        method: "PUT",
       }),
     } as never);
     const payload = (await response.json()) as { error?: string };

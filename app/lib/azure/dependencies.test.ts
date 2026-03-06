@@ -97,7 +97,7 @@ describe("createAzureDependencies", () => {
 
     expect(firstToken).toBe(secondToken);
     expect(firstToken).not.toBe(thirdToken);
-    expect(createCredential).toHaveBeenCalledTimes(1);
+    expect(createCredential).toHaveBeenCalledTimes(2);
     expect(getToken).toHaveBeenCalledTimes(2);
     expect(getToken.mock.calls[0]).toEqual([
       AZURE_COGNITIVE_SERVICES_SCOPE,
@@ -153,8 +153,9 @@ describe("createAzureDependencies", () => {
       };
     });
     const authenticate = vi.fn(async () => undefined);
+    const createCredential = vi.fn(() => ({ getToken, authenticate }));
     const dependencies = createAzureDependencies({
-      createCredential: vi.fn(() => ({ getToken, authenticate })) as never,
+      createCredential: createCredential as never,
       createOpenAIClient: vi.fn(() => ({}) as never),
     });
 
@@ -181,8 +182,9 @@ describe("createAzureDependencies", () => {
     );
     const authenticate = vi.fn(async () => undefined);
 
+    const createCredential = vi.fn(() => ({ getToken, authenticate }));
     const dependencies = createAzureDependencies({
-      createCredential: vi.fn(() => ({ getToken, authenticate })) as never,
+      createCredential: createCredential as never,
       createOpenAIClient: vi.fn(() => ({}) as never),
     });
 
@@ -210,9 +212,10 @@ describe("createAzureDependencies", () => {
       };
     });
     const authenticate = vi.fn(async () => undefined);
+    const createCredential = vi.fn(() => ({ getToken, authenticate }));
 
     const dependencies = createAzureDependencies({
-      createCredential: vi.fn(() => ({ getToken, authenticate })) as never,
+      createCredential: createCredential as never,
       createOpenAIClient: vi.fn(() => ({}) as never),
     });
 
@@ -256,9 +259,10 @@ describe("createAzureDependencies", () => {
         expiresOnTimestamp: Date.now() + 120_000,
       });
     const authenticate = vi.fn(async () => undefined);
+    const createCredential = vi.fn(() => ({ getToken, authenticate }));
 
     const dependencies = createAzureDependencies({
-      createCredential: vi.fn(() => ({ getToken, authenticate })) as never,
+      createCredential: createCredential as never,
       createOpenAIClient: vi.fn(() => ({}) as never),
     });
 
@@ -294,9 +298,10 @@ describe("createAzureDependencies", () => {
         expiresOnTimestamp: Date.now() + 120_000,
       });
     const authenticate = vi.fn(async () => undefined);
+    const createCredential = vi.fn(() => ({ getToken, authenticate }));
 
     const dependencies = createAzureDependencies({
-      createCredential: vi.fn(() => ({ getToken, authenticate })) as never,
+      createCredential: createCredential as never,
       createOpenAIClient: vi.fn(() => ({}) as never),
     });
 
@@ -308,6 +313,7 @@ describe("createAzureDependencies", () => {
     expect(scopeBToken).toBe(scopeBTenantToken);
     expect(authenticate).toHaveBeenCalledTimes(1);
     expect(authenticate).toHaveBeenCalledWith("scope-a", { tenantId: "tenant-b" });
+    expect(createCredential).toHaveBeenCalledWith("tenant-b");
     expect(getToken).toHaveBeenCalledTimes(2);
     expect(getToken.mock.calls[0]).toEqual(["scope-a", { tenantId: "tenant-b" }]);
     expect(getToken.mock.calls[1]).toEqual(["scope-b", { tenantId: "tenant-b" }]);
