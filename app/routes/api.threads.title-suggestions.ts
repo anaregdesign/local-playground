@@ -451,6 +451,9 @@ function isAzureCredentialError(error: unknown): boolean {
     "credentialunavailableerror",
     "managedidentitycredential",
     "azure credential failed",
+    "azure credential returned tenant",
+    "requested tenant",
+    "token without tid claim",
   ].some((pattern) => message.includes(pattern));
 }
 

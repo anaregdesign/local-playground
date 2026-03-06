@@ -333,7 +333,7 @@ describe("createAzureDependencies", () => {
     );
   });
 
-  it("accepts tenant mismatch for non-ARM scope tokens", async () => {
+  it("rejects non-ARM token when requested tenant and tid do not match", async () => {
     const token = createAzureAccessToken({
       tid: "tenant-a",
       oid: "principal-a",
@@ -351,9 +351,7 @@ describe("createAzureDependencies", () => {
 
     await expect(
       dependencies.getAzureBearerToken(AZURE_COGNITIVE_SERVICES_SCOPE, "tenant-b"),
-    ).resolves.toBe(token);
-    expect(getToken).toHaveBeenCalledWith(AZURE_COGNITIVE_SERVICES_SCOPE, {
-      tenantId: "tenant-b",
-    });
+    ).rejects.toThrow("Azure credential returned tenant tenant-a while tenant tenant-b was requested");
+    expect(getToken).toHaveBeenCalledWith(AZURE_COGNITIVE_SERVICES_SCOPE, { tenantId: "tenant-b" });
   });
 });

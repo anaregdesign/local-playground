@@ -2346,7 +2346,12 @@ export function useWorkspaceController() {
       const payload = (await response.json()) as ThreadTitleApiResponse;
       if (!response.ok || payload.error) {
         if (payload.errorCode === "azure_login_required") {
-          setIsAzureAuthRequired(true);
+          if (options.reason === "utility_deployment_update") {
+            setAzureTenantSwitchError(
+              "Azure tenant switch is still applying. Retry Azure Login if this persists.",
+            );
+          }
+          return;
         }
         throw new Error(payload.error || "Failed to generate thread title.");
       }

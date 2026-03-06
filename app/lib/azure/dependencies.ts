@@ -87,7 +87,7 @@ export function createAzureDependencies(
         `Azure credential failed to acquire Azure token (scope: ${normalizedScope}).`,
       );
     }
-    if (shouldValidateAzureAccessTokenTenant(normalizedScope)) {
+    if (shouldValidateAzureAccessTokenTenant(normalizedTenantId)) {
       assertAzureAccessTokenTenant(accessToken.token, normalizedTenantId, normalizedScope);
     }
     accessTokenByScope.set(
@@ -132,7 +132,7 @@ export function createAzureDependencies(
             `Azure credential failed to acquire Azure token (scope: ${normalizedScope}).`,
           );
         }
-        if (shouldValidateAzureAccessTokenTenant(normalizedScope)) {
+        if (shouldValidateAzureAccessTokenTenant(resolvedTenantId)) {
           assertAzureAccessTokenTenant(token.token, resolvedTenantId, normalizedScope);
         }
         accessTokenByScope.set(cacheKey, mapCachedAzureAccessToken(token));
@@ -265,8 +265,8 @@ function isAzureAccessTokenReusable(token: CachedAzureAccessToken): boolean {
   return token.expiresOnTimestamp - AZURE_ACCESS_TOKEN_REFRESH_BUFFER_MS > now;
 }
 
-function shouldValidateAzureAccessTokenTenant(scope: string): boolean {
-  return scope.trim().toLowerCase() === AZURE_ARM_SCOPE.toLowerCase();
+function shouldValidateAzureAccessTokenTenant(tenantId: string): boolean {
+  return tenantId.trim().length > 0;
 }
 
 function assertAzureAccessTokenTenant(

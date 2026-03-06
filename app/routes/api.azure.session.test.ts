@@ -6,6 +6,7 @@ import { AZURE_ARM_SCOPE } from "~/lib/constants";
 
 const {
   authenticateAzure,
+  getAzureBearerToken,
   resetAzureDependencies,
   logServerRouteEvent,
   readAzureArmUserContext,
@@ -14,6 +15,7 @@ const {
   ensureDefaultMcpServersForUser,
 } = vi.hoisted(() => ({
   authenticateAzure: vi.fn(async () => undefined),
+  getAzureBearerToken: vi.fn(async () => "cognitive-token"),
   resetAzureDependencies: vi.fn(),
   logServerRouteEvent: vi.fn(async () => undefined),
   readAzureArmUserContext: vi.fn(
@@ -32,8 +34,10 @@ const {
 }));
 
 vi.mock("~/lib/azure/dependencies", () => ({
+  AZURE_COGNITIVE_SERVICES_SCOPE: "https://cognitiveservices.azure.com/.default",
   getAzureDependencies: () => ({
     authenticateAzure,
+    getAzureBearerToken,
   }),
   resetAzureDependencies,
 }));
@@ -62,6 +66,8 @@ describe("/api/azure/session", () => {
   beforeEach(() => {
     authenticateAzure.mockReset();
     authenticateAzure.mockResolvedValue(undefined);
+    getAzureBearerToken.mockReset();
+    getAzureBearerToken.mockResolvedValue("cognitive-token");
     resetAzureDependencies.mockReset();
     logServerRouteEvent.mockReset();
     logServerRouteEvent.mockResolvedValue(undefined);
@@ -110,6 +116,11 @@ describe("/api/azure/session", () => {
     expect(payload.message).toBe("Azure login completed. Azure projects were refreshed.");
     expect(authenticateAzure).toHaveBeenCalledTimes(1);
     expect(authenticateAzure).toHaveBeenCalledWith(AZURE_ARM_SCOPE);
+    expect(getAzureBearerToken).toHaveBeenCalledTimes(1);
+    expect(getAzureBearerToken).toHaveBeenCalledWith(
+      "https://cognitiveservices.azure.com/.default",
+      "tenant-a",
+    );
     expect(getOrCreateUserByIdentity).toHaveBeenCalledWith({
       tenantId: "tenant-a",
       principalId: "principal-a",
@@ -143,6 +154,11 @@ describe("/api/azure/session", () => {
     expect(response.status).toBe(200);
     expect(authenticateAzure).toHaveBeenCalledTimes(1);
     expect(authenticateAzure).toHaveBeenCalledWith(AZURE_ARM_SCOPE, "tenant-b");
+    expect(getAzureBearerToken).toHaveBeenCalledTimes(1);
+    expect(getAzureBearerToken).toHaveBeenCalledWith(
+      "https://cognitiveservices.azure.com/.default",
+      "tenant-b",
+    );
     expect(getOrCreateUserByIdentity).toHaveBeenCalledWith({
       tenantId: "tenant-b",
       principalId: "principal-b",
@@ -169,6 +185,10 @@ describe("/api/azure/session", () => {
     expect(response.status).toBe(200);
     expect(readMostRecentWorkspaceUserTenantId).toHaveBeenCalledTimes(1);
     expect(authenticateAzure).toHaveBeenCalledWith(AZURE_ARM_SCOPE, "tenant-z");
+    expect(getAzureBearerToken).toHaveBeenCalledWith(
+      "https://cognitiveservices.azure.com/.default",
+      "tenant-z",
+    );
   });
 
   it("returns 500 when identity is unavailable after authentication", async () => {
@@ -239,6 +259,29 @@ describe("/api/azure/session", () => {
 
     const response = await action({
       request: new Request("http://localhost/api/azure/session", { method: "PUT" }),
+    } as never);
+    const payload = (await response.json()) as { error?: string };
+
+    expect(response.status).toBe(500);
+    expect(payload.error).toContain("Failed to run Azure login");
+    expect(logServerRouteEvent).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns 500 when cognitive services token acquisition fails", async () => {
+    getAzureBearerToken.mockRejectedValueOnce(
+      new Error("Azure credential returned tenant tenant-a while tenant tenant-b was requested"),
+    );
+
+    const response = await action({
+      request: new Request("http://localhost/api/azure/session", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          tenantId: "tenant-b",
+        }),
+      }),
     } as never);
     const payload = (await response.json()) as { error?: string };
 

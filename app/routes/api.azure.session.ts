@@ -1,7 +1,11 @@
 /**
  * API route module for /api/azure/session.
  */
-import { getAzureDependencies, resetAzureDependencies } from "~/lib/azure/dependencies";
+import {
+  AZURE_COGNITIVE_SERVICES_SCOPE,
+  getAzureDependencies,
+  resetAzureDependencies,
+} from "~/lib/azure/dependencies";
 import { AZURE_ARM_SCOPE } from "~/lib/constants";
 import { errorResponse, methodNotAllowedResponse } from "~/lib/server/http";
 import {
@@ -66,6 +70,10 @@ export async function action({ request }: Route.ActionArgs) {
           `Azure tenant switch did not complete. Requested tenant: ${resolvedTenantId}, resolved tenant: ${identity.tenantId}.`,
         );
       }
+      await dependencies.getAzureBearerToken(
+        AZURE_COGNITIVE_SERVICES_SCOPE,
+        identity.tenantId,
+      );
       const user = await getOrCreateUserByIdentity({
         tenantId: identity.tenantId,
         principalId: identity.principalId,
