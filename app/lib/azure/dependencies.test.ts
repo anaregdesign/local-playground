@@ -49,9 +49,13 @@ describe("createAzureDependencies", () => {
     expect(createCredential).toHaveBeenCalledTimes(1);
   });
 
-  it("reuses OpenAI clients by normalized base URL and shares scope token cache", async () => {
-    const getToken = vi.fn(async (scope: string) => ({
-      token: `token-for-${scope}`,
+  it("reuses OpenAI clients by normalized base URL and tenant and shares scope token cache", async () => {
+    const getToken = vi.fn(async (scope: string, options?: { tenantId?: string }) => ({
+      token: createAzureAccessToken({
+        tid: options?.tenantId ?? "default",
+        oid: "principal-a",
+        scope,
+      }),
       expiresOnTimestamp: Date.now() + 120_000,
     }));
     const createCredential = vi.fn(() => ({ getToken, authenticate: vi.fn(async () => undefined) }));
@@ -62,13 +66,18 @@ describe("createAzureDependencies", () => {
       createOpenAIClient: createOpenAIClient as never,
     });
 
-    const first = dependencies.getAzureOpenAIClient("https://sample.openai.azure.com/");
-    const second = dependencies.getAzureOpenAIClient("https://sample.openai.azure.com/openai/v1");
-    const third = dependencies.getAzureOpenAIClient("https://other.openai.azure.com");
+    const first = dependencies.getAzureOpenAIClient("https://sample.openai.azure.com/", "tenant-a");
+    const second = dependencies.getAzureOpenAIClient(
+      "https://sample.openai.azure.com/openai/v1",
+      "tenant-a",
+    );
+    const third = dependencies.getAzureOpenAIClient("https://other.openai.azure.com", "tenant-a");
+    const fourth = dependencies.getAzureOpenAIClient("https://sample.openai.azure.com", "tenant-b");
 
     expect(first).toBe(second);
     expect(first).not.toBe(third);
-    expect(createOpenAIClient).toHaveBeenCalledTimes(2);
+    expect(first).not.toBe(fourth);
+    expect(createOpenAIClient).toHaveBeenCalledTimes(3);
 
     const firstCall = createOpenAIClient.mock.calls[0]?.[0] as
       | { baseURL?: string; apiKey?: unknown }
@@ -80,13 +89,24 @@ describe("createAzureDependencies", () => {
       .options.apiKey;
     const secondProvider = ((third as unknown) as { options: { apiKey: () => Promise<string> } })
       .options.apiKey;
-    const [firstToken, secondToken] = await Promise.all([firstProvider(), secondProvider()]);
+    const thirdProvider = ((fourth as unknown) as { options: { apiKey: () => Promise<string> } })
+      .options.apiKey;
+    const firstToken = await firstProvider();
+    const secondToken = await secondProvider();
+    const thirdToken = await thirdProvider();
 
     expect(firstToken).toBe(secondToken);
-    expect(firstToken).toBe(`token-for-${AZURE_COGNITIVE_SERVICES_SCOPE}`);
+    expect(firstToken).not.toBe(thirdToken);
     expect(createCredential).toHaveBeenCalledTimes(1);
-    expect(getToken).toHaveBeenCalledTimes(1);
-    expect(getToken).toHaveBeenCalledWith(AZURE_COGNITIVE_SERVICES_SCOPE);
+    expect(getToken).toHaveBeenCalledTimes(2);
+    expect(getToken.mock.calls[0]).toEqual([
+      AZURE_COGNITIVE_SERVICES_SCOPE,
+      { tenantId: "tenant-a" },
+    ]);
+    expect(getToken.mock.calls[1]).toEqual([
+      AZURE_COGNITIVE_SERVICES_SCOPE,
+      { tenantId: "tenant-b" },
+    ]);
   });
 
   it("throws when base URL is empty", () => {
@@ -101,7 +121,26 @@ describe("createAzureDependencies", () => {
       createOpenAIClient: vi.fn(() => ({}) as never),
     });
 
-    expect(() => dependencies.getAzureOpenAIClient("   ")).toThrow("Azure base URL is missing.");
+    expect(() => dependencies.getAzureOpenAIClient("   ", "tenant-a")).toThrow(
+      "Azure base URL is missing.",
+    );
+  });
+
+  it("throws when tenant ID is empty for Azure OpenAI client creation", () => {
+    const dependencies = createAzureDependencies({
+      createCredential: vi.fn(
+        () =>
+          ({
+            getToken: vi.fn(async () => null),
+            authenticate: vi.fn(async () => undefined),
+          }) as never,
+      ),
+      createOpenAIClient: vi.fn(() => ({}) as never),
+    });
+
+    expect(() => dependencies.getAzureOpenAIClient("https://sample.openai.azure.com", "   ")).toThrow(
+      "Azure tenant ID is missing.",
+    );
   });
 
   it("reuses bearer token for the same normalized scope", async () => {

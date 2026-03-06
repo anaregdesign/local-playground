@@ -163,6 +163,7 @@ const legacyUnavailableDefaultStdioNpxPackageNameSet = new Set<string>(
 const chatTransientTerminationRetryMaxAttempts = 2;
 const chatTransientTerminationRetryDelayMs = 250;
 type ResolvedAzureConfig = {
+  tenantId: string;
   projectName: string;
   baseUrl: string;
   apiVersion: string;
@@ -618,7 +619,11 @@ async function executeChat(
   onEvent?: (event: ChatExecutionEvent) => void,
 ): Promise<ChatExecutionResult> {
   const azureDependencies = getAzureDependencies();
-  const azureOpenAIClient = getAzureOpenAIClient(options.azureConfig.baseUrl, azureDependencies);
+  const azureOpenAIClient = getAzureOpenAIClient(
+    options.azureConfig.baseUrl,
+    options.azureConfig.tenantId,
+    azureDependencies,
+  );
   const connectedMcpServers: MCPServer[] = [];
   const connectedMcpServerLeases: ThreadMcpServerSessionLease[] = [];
   let codeInterpreterContainerId = "";
@@ -694,6 +699,7 @@ async function executeChat(
 
                 const created = getAzureMcpAuthorizationToken(
                   normalizedScope,
+                  options.azureConfig.tenantId,
                   azureDependencies,
                 );
                 azureMcpAuthorizationTokenPromiseByScope.set(normalizedScope, created);
@@ -1162,6 +1168,7 @@ function readOptionalRequestHeaderValue(request: Request, headerName: string): s
 function buildChatExecutionLogContext(options: ChatExecutionOptions): Record<string, unknown> {
   return {
     turnId: options.turnId,
+    tenantId: options.azureConfig.tenantId,
     deploymentName: options.azureConfig.deploymentName,
     messageLength: options.message.length,
     historyCount: options.history.length,
@@ -1419,9 +1426,10 @@ function extractAgentFinalOutput(finalOutput: unknown): string {
 
 function getAzureOpenAIClient(
   baseUrl: string,
+  tenantId: string,
   dependencies: AzureDependencies,
 ) {
-  return dependencies.getAzureOpenAIClient(baseUrl);
+  return dependencies.getAzureOpenAIClient(baseUrl, tenantId);
 }
 
 async function initializeCompactionSession(options: {
@@ -2036,6 +2044,10 @@ function readAzureConfig(payload: unknown): ParseResult<ResolvedAzureConfig> {
     return { ok: false, error: "`azureConfig.projectName` must be a string." };
   }
 
+  if (value.tenantId !== undefined && typeof value.tenantId !== "string") {
+    return { ok: false, error: "`azureConfig.tenantId` must be a string." };
+  }
+
   if (value.baseUrl !== undefined && typeof value.baseUrl !== "string") {
     return { ok: false, error: "`azureConfig.baseUrl` must be a string." };
   }
@@ -2048,12 +2060,17 @@ function readAzureConfig(payload: unknown): ParseResult<ResolvedAzureConfig> {
     return { ok: false, error: "`azureConfig.deploymentName` must be a string." };
   }
 
+  const tenantId = typeof value.tenantId === "string" ? value.tenantId.trim() : "";
   const baseUrl = typeof value.baseUrl === "string" ? normalizeAzureOpenAIBaseURL(value.baseUrl) : "";
   const apiVersion =
     typeof value.apiVersion === "string" && value.apiVersion.trim()
       ? value.apiVersion.trim()
       : "v1";
   const deploymentName = typeof value.deploymentName === "string" ? value.deploymentName.trim() : "";
+
+  if (!tenantId) {
+    return { ok: false, error: "`azureConfig.tenantId` is required." };
+  }
 
   if (!baseUrl) {
     return { ok: false, error: "`azureConfig.baseUrl` is required." };
@@ -2066,6 +2083,7 @@ function readAzureConfig(payload: unknown): ParseResult<ResolvedAzureConfig> {
   return {
     ok: true,
     value: {
+      tenantId,
       projectName: typeof value.projectName === "string" ? value.projectName.trim() : "",
       baseUrl,
       apiVersion,
@@ -3309,10 +3327,11 @@ function isLocalPlaygroundMcpContextUrl(rawUrl: string): boolean {
 
 async function getAzureMcpAuthorizationToken(
   scope: string,
+  tenantId: string,
   dependencies: AzureDependencies,
 ): Promise<string> {
   try {
-    return await dependencies.getAzureBearerToken(scope);
+    return await dependencies.getAzureBearerToken(scope, tenantId);
   } catch {
     throw new Error(
       `Azure credential failed to acquire token for MCP Authorization header (scope: ${scope}). Run Azure Login and try again.`,

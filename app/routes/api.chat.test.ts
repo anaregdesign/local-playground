@@ -1458,6 +1458,7 @@ describe("chat execution success log context", () => {
       clientUserAgent: "local-playground-test",
       clientPlatform: "darwin",
       azureConfig: {
+        tenantId: "tenant-a",
         projectName: "project",
         baseUrl: "https://example.openai.azure.com/openai/v1/",
         apiVersion: "v1",

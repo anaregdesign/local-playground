@@ -32,6 +32,7 @@ import {
 type ParseResult<T> = { ok: true; value: T } | { ok: false; error: string };
 
 type ResolvedAzureConfig = {
+  tenantId: string;
   projectName: string;
   baseUrl: string;
   apiVersion: string;
@@ -194,7 +195,10 @@ export async function action({ request }: Route.ActionArgs) {
 async function generateThreadTitle(options: ThreadTitleOptions): Promise<string> {
   const azureDependencies = getAzureDependencies();
   const model = new OpenAIResponsesModel(
-    azureDependencies.getAzureOpenAIClient(options.azureConfig.baseUrl),
+    azureDependencies.getAzureOpenAIClient(
+      options.azureConfig.baseUrl,
+      options.azureConfig.tenantId,
+    ),
     options.azureConfig.deploymentName,
   );
 
@@ -332,6 +336,10 @@ function readAzureConfig(payload: unknown): ParseResult<ResolvedAzureConfig> {
     return { ok: false, error: "`azureConfig.projectName` must be a string." };
   }
 
+  if (value.tenantId !== undefined && typeof value.tenantId !== "string") {
+    return { ok: false, error: "`azureConfig.tenantId` must be a string." };
+  }
+
   if (value.baseUrl !== undefined && typeof value.baseUrl !== "string") {
     return { ok: false, error: "`azureConfig.baseUrl` must be a string." };
   }
@@ -344,6 +352,8 @@ function readAzureConfig(payload: unknown): ParseResult<ResolvedAzureConfig> {
     return { ok: false, error: "`azureConfig.deploymentName` must be a string." };
   }
 
+  const tenantId =
+    typeof value.tenantId === "string" ? value.tenantId.trim() : "";
   const baseUrl =
     typeof value.baseUrl === "string" ? normalizeAzureOpenAIBaseURL(value.baseUrl) : "";
   const apiVersion =
@@ -352,6 +362,10 @@ function readAzureConfig(payload: unknown): ParseResult<ResolvedAzureConfig> {
       : "v1";
   const deploymentName =
     typeof value.deploymentName === "string" ? value.deploymentName.trim() : "";
+
+  if (!tenantId) {
+    return { ok: false, error: "`azureConfig.tenantId` is required." };
+  }
 
   if (!baseUrl) {
     return { ok: false, error: "`azureConfig.baseUrl` is required." };
@@ -364,6 +378,7 @@ function readAzureConfig(payload: unknown): ParseResult<ResolvedAzureConfig> {
   return {
     ok: true,
     value: {
+      tenantId,
       projectName: typeof value.projectName === "string" ? value.projectName.trim() : "",
       baseUrl,
       apiVersion,

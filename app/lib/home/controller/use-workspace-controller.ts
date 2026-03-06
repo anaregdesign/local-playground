@@ -204,6 +204,7 @@ type AzureDeploymentCatalogCacheByTenantProjectKey = Record<string, AzureDeploym
 type LoadAzureProjectsOptions = {
   force?: boolean;
   preferredTenantId?: string;
+  waitForWorkspaceStateReload?: boolean;
 };
 
 type LoadAzureDeploymentsOptions = {
@@ -2329,6 +2330,7 @@ export function useWorkspaceController() {
           playgroundContent,
           instruction,
           azureConfig: {
+            tenantId: activeAzureTenantIdRef.current,
             projectName: utilityConnection.projectName,
             baseUrl: utilityConnection.baseUrl,
             apiVersion: utilityConnection.apiVersion,
@@ -3281,9 +3283,34 @@ export function useWorkspaceController() {
     return nextWorkspaceUserKey;
   }
 
+  async function reloadWorkspaceStateForActiveIdentity(
+    waitForWorkspaceStateReload: boolean,
+  ): Promise<void> {
+    clearWorkspaceMcpServerProfilesState();
+    clearThreadsState();
+
+    const nextWorkspaceUserKey = activeWorkspaceUserKeyRef.current.trim();
+    if (!nextWorkspaceUserKey) {
+      return;
+    }
+
+    const reloadState = async () => {
+      await loadWorkspaceMcpServerProfiles();
+      await loadThreads();
+    };
+
+    if (waitForWorkspaceStateReload) {
+      await reloadState();
+      return;
+    }
+
+    void reloadState();
+  }
+
   async function loadAzureProjects(options: LoadAzureProjectsOptions = {}): Promise<boolean> {
     const forceReload = options.force === true;
     const preferredTenantId = options.preferredTenantId?.trim() ?? "";
+    const waitForWorkspaceStateReload = options.waitForWorkspaceStateReload === true;
     const requestSeq = azureConnectionsRequestSeqRef.current + 1;
     azureConnectionsRequestSeqRef.current = requestSeq;
     setIsLoadingAzureConnections(true);
@@ -3302,12 +3329,13 @@ export function useWorkspaceController() {
             clearWorkspaceMcpServerProfilesState();
             clearThreadsState();
           } else if (previousWorkspaceUserKey !== nextWorkspaceUserKey) {
-            void (async () => {
-              await loadWorkspaceMcpServerProfiles();
-              await loadThreads();
-            })();
+            await reloadWorkspaceStateForActiveIdentity(waitForWorkspaceStateReload);
           } else if (!isThreadsReadyRef.current && !isLoadingThreads) {
-            void loadThreads();
+            if (waitForWorkspaceStateReload) {
+              await loadThreads();
+            } else {
+              void loadThreads();
+            }
           }
           if (
             shouldScheduleWorkspaceMcpServerProfileLoginRetry(
@@ -3463,12 +3491,13 @@ export function useWorkspaceController() {
         clearWorkspaceMcpServerProfilesState();
         clearThreadsState();
       } else if (previousWorkspaceUserKey !== nextWorkspaceUserKey) {
-        void (async () => {
-          await loadWorkspaceMcpServerProfiles();
-          await loadThreads();
-        })();
+        await reloadWorkspaceStateForActiveIdentity(waitForWorkspaceStateReload);
       } else if (!isThreadsReadyRef.current && !isLoadingThreads) {
-        void loadThreads();
+        if (waitForWorkspaceStateReload) {
+          await loadThreads();
+        } else {
+          void loadThreads();
+        }
       }
       if (shouldScheduleWorkspaceMcpServerProfileLoginRetry(isAzureAuthRequired, nextWorkspaceUserKey)) {
         // After login completes, token propagation can briefly lag for MCP route auth.
@@ -4061,6 +4090,7 @@ export function useWorkspaceController() {
           attachments: requestAttachments,
           history,
           azureConfig: {
+            tenantId: activeAzureTenantIdRef.current,
             projectName: activePlaygroundAzureConnection.projectName,
             baseUrl: activePlaygroundAzureConnection.baseUrl,
             apiVersion: activePlaygroundAzureConnection.apiVersion,
@@ -4205,6 +4235,7 @@ export function useWorkspaceController() {
   // UI event handlers bound to panel props.
   async function runAzureLoginFlow(targetTenantIdRaw = ""): Promise<boolean> {
     const targetTenantId = targetTenantIdRaw.trim();
+    const waitForWorkspaceStateReload = targetTenantId.length > 0;
     const requestInit: RequestInit = {
       method: "PUT",
     };
@@ -4240,9 +4271,11 @@ export function useWorkspaceController() {
           ? {
               preferredTenantId: targetTenantId,
               force: true,
+              waitForWorkspaceStateReload,
             }
           : {
               preferredTenantId: targetTenantId,
+              waitForWorkspaceStateReload,
             },
       );
       if (!stillAuthRequired) {
@@ -5162,6 +5195,7 @@ export function useWorkspaceController() {
         body: JSON.stringify({
           message: enhanceRequestMessage,
           azureConfig: {
+            tenantId: activeAzureTenantIdRef.current,
             projectName: activeUtilityAzureConnection.projectName,
             baseUrl: activeUtilityAzureConnection.baseUrl,
             apiVersion: activeUtilityAzureConnection.apiVersion,

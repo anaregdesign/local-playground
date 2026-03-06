@@ -25,7 +25,7 @@ export type AzureDependencies = {
   getCredential: () => AzureCredential;
   authenticateAzure: (scope: string, tenantId?: string) => Promise<void>;
   getAzureBearerToken: (scope: string, tenantId?: string) => Promise<string>;
-  getAzureOpenAIClient: (baseUrl: string) => OpenAI;
+  getAzureOpenAIClient: (baseUrl: string, tenantId: string) => OpenAI;
 };
 
 type CreateAzureDependenciesOptions = {
@@ -146,22 +146,28 @@ export function createAzureDependencies(
     return createdRequest;
   };
 
-  const getAzureOpenAIClient = (baseUrl: string): OpenAI => {
+  const getAzureOpenAIClient = (baseUrl: string, tenantId: string): OpenAI => {
     const normalizedBaseURL = normalizeAzureOpenAIBaseURL(baseUrl);
+    const normalizedTenantId = normalizeTenantId(tenantId);
     if (!normalizedBaseURL) {
       throw new Error("Azure base URL is missing.");
     }
+    if (!normalizedTenantId) {
+      throw new Error("Azure tenant ID is missing.");
+    }
 
-    const existingClient = clientsByBaseURL.get(normalizedBaseURL);
+    const clientCacheKey = createAzureOpenAIClientCacheKey(normalizedBaseURL, normalizedTenantId);
+
+    const existingClient = clientsByBaseURL.get(clientCacheKey);
     if (existingClient) {
       return existingClient;
     }
 
     const client = createOpenAIClient({
       baseURL: normalizedBaseURL,
-      apiKey: () => getAzureBearerToken(AZURE_COGNITIVE_SERVICES_SCOPE),
+      apiKey: () => getAzureBearerToken(AZURE_COGNITIVE_SERVICES_SCOPE, normalizedTenantId),
     });
-    clientsByBaseURL.set(normalizedBaseURL, client);
+    clientsByBaseURL.set(clientCacheKey, client);
     return client;
   };
 
@@ -209,6 +215,10 @@ function normalizeTenantId(rawValue: string | undefined): string {
 
 function createAccessTokenCacheKey(scope: string, tenantId: string): string {
   return `${tenantId || "default"}::${scope}`;
+}
+
+function createAzureOpenAIClientCacheKey(baseUrl: string, tenantId: string): string {
+  return `${tenantId}::${baseUrl}`;
 }
 
 function requestAzureAccessToken(
