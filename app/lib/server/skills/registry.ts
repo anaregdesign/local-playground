@@ -31,6 +31,7 @@ import {
 
 type ResolveSkillRegistryOptions = {
   workspaceUserId: number;
+  forceRefresh?: boolean;
   foundryConfigDirectory?: string;
   platform?: NodeJS.Platform;
   homeDirectory?: string;
@@ -105,7 +106,12 @@ export async function discoverSkillRegistries(
 
   for (const registry of SKILL_REGISTRY_OPTIONS) {
     try {
-      catalogs.push(await readSkillRegistryCatalog(registry, appDataSkillsRoot));
+      catalogs.push(
+        await readSkillRegistryCatalog(registry, {
+          appDataSkillsRoot,
+          forceRefresh: options.forceRefresh,
+        }),
+      );
     } catch (error) {
       warnings.push(
         `Failed to load ${registry.label} registry: ${readErrorMessage(error)}`,
@@ -153,6 +159,7 @@ export async function installSkillFromRegistry(
     registry,
     sourceRootPath,
     skillPath: registrySkillName,
+    forceRefresh: true,
   });
   const remoteVersionChecksum = buildVersionChecksumFromBlobEntries(matchingBlobEntries);
 
@@ -274,10 +281,15 @@ export async function deleteInstalledSkillFromRegistry(
 
 async function readSkillRegistryCatalog(
   registry: SkillRegistryOption,
-  appDataSkillsRoot: string,
+  options: {
+    appDataSkillsRoot: string;
+    forceRefresh?: boolean;
+  },
 ): Promise<SkillRegistryCatalog> {
-  const registrySkills = await readRegistrySkills(registry);
-  const registryInstallRoot = path.join(appDataSkillsRoot, registry.installDirectoryName);
+  const registrySkills = await readRegistrySkills(registry, {
+    forceRefresh: options.forceRefresh,
+  });
+  const registryInstallRoot = path.join(options.appDataSkillsRoot, registry.installDirectoryName);
   const sourceRootPath = normalizeRepoPath(registry.sourcePath);
   const installedSkillEntries = await Promise.all(
     registrySkills.map(async (registrySkill) => {
@@ -302,6 +314,7 @@ async function readSkillRegistryCatalog(
     ? await readRegistryVersionChecksumBySkillPath({
         registry,
         sourceRootPath,
+        forceRefresh: options.forceRefresh,
       })
     : new Map<string, string>();
   const installedSkillEntryById = new Map(
@@ -350,9 +363,12 @@ async function readSkillRegistryCatalog(
   };
 }
 
-async function readRegistrySkills(registry: SkillRegistryOption): Promise<RegistryCatalogSkill[]> {
+async function readRegistrySkills(
+  registry: SkillRegistryOption,
+  options: { forceRefresh?: boolean } = {},
+): Promise<RegistryCatalogSkill[]> {
   if (registry.skillPathLayout === "tagged") {
-    return await readTaggedRepositorySkills(registry);
+    return await readTaggedRepositorySkills(registry, options);
   }
 
   const cacheKey = buildRegistryListCacheKey(registry);
@@ -372,15 +388,20 @@ async function readRegistrySkills(registry: SkillRegistryOption): Promise<Regist
       throw new Error(`No installable Skill directories were found for ${registry.label}.`);
     }
     return skills;
-  }, SKILL_REGISTRY_LIST_CACHE_TTL_MS);
+  }, SKILL_REGISTRY_LIST_CACHE_TTL_MS, {
+    forceRefresh: options.forceRefresh,
+  });
 }
 
 async function readTaggedRepositorySkills(
   registry: SkillRegistryOption,
+  options: { forceRefresh?: boolean } = {},
 ): Promise<RegistryCatalogSkill[]> {
   const cacheKey = buildRegistryListCacheKey(registry);
   return await readCacheValue(cacheKey, async () => {
-    const blobEntries = await readRegistryBlobEntries(registry);
+    const blobEntries = await readRegistryBlobEntries(registry, {
+      forceRefresh: options.forceRefresh,
+    });
     const sourceRootPath = normalizeRepoPath(registry.sourcePath);
     const sourcePrefix = `${sourceRootPath}/`;
     const skills = new Map<string, RegistryCatalogSkill>();
@@ -431,11 +452,14 @@ async function readTaggedRepositorySkills(
     }
 
     return sortedSkills;
-  }, SKILL_REGISTRY_LIST_CACHE_TTL_MS);
+  }, SKILL_REGISTRY_LIST_CACHE_TTL_MS, {
+    forceRefresh: options.forceRefresh,
+  });
 }
 
 async function readRegistryBlobEntries(
   registry: SkillRegistryOption,
+  options: { forceRefresh?: boolean } = {},
 ): Promise<RegistryBlobEntry[]> {
   const cacheKey = buildRegistryTreeCacheKey(registry);
   return await readCacheValue(cacheKey, async () => {
@@ -445,7 +469,9 @@ async function readRegistryBlobEntries(
     });
     const payload = await fetchJson(endpoint);
     return readBlobEntriesFromTreePayload(payload);
-  }, SKILL_REGISTRY_TREE_CACHE_TTL_MS);
+  }, SKILL_REGISTRY_TREE_CACHE_TTL_MS, {
+    forceRefresh: options.forceRefresh,
+  });
 }
 
 async function validateInstalledSkill(
@@ -496,8 +522,11 @@ async function readRegistrySkillBlobEntries(options: {
   registry: SkillRegistryOption;
   sourceRootPath: string;
   skillPath: string;
+  forceRefresh?: boolean;
 }): Promise<RegistryBlobEntry[]> {
-  const blobEntries = await readRegistryBlobEntries(options.registry);
+  const blobEntries = await readRegistryBlobEntries(options.registry, {
+    forceRefresh: options.forceRefresh,
+  });
   const skillPrefix = `${options.sourceRootPath}/${options.skillPath}/`;
   const matchingBlobEntries = blobEntries
     .filter((blobEntry) => blobEntry.path.startsWith(skillPrefix))
@@ -513,8 +542,11 @@ async function readRegistrySkillBlobEntries(options: {
 async function readRegistryVersionChecksumBySkillPath(options: {
   registry: SkillRegistryOption;
   sourceRootPath: string;
+  forceRefresh?: boolean;
 }): Promise<Map<string, string>> {
-  const blobEntries = await readRegistryBlobEntries(options.registry);
+  const blobEntries = await readRegistryBlobEntries(options.registry, {
+    forceRefresh: options.forceRefresh,
+  });
   const blobEntriesBySkillPath = new Map<string, RegistryBlobEntry[]>();
 
   for (const blobEntry of blobEntries) {
@@ -910,10 +942,13 @@ async function readCacheValue<T>(
   cacheKey: string,
   load: () => Promise<T>,
   ttlMs: number,
+  options: { forceRefresh?: boolean } = {},
 ): Promise<T> {
-  const cached = await readCachedPayload<T>(cacheKey);
-  if (cached !== null) {
-    return cached;
+  if (!options.forceRefresh) {
+    const cached = await readCachedPayload<T>(cacheKey);
+    if (cached !== null) {
+      return cached;
+    }
   }
 
   const loaded = await load();

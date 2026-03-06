@@ -1413,6 +1413,7 @@ export function useWorkspaceController() {
 
   async function loadAvailableSkills(options: {
     clearStatus?: boolean;
+    forceRefresh?: boolean;
   } = {}): Promise<void> {
     const expectedUserKey = activeWorkspaceUserKeyRef.current.trim();
     const requestSeq = skillsRequestSeqRef.current + 1;
@@ -1429,7 +1430,13 @@ export function useWorkspaceController() {
 
     try {
       const response = await fetch("/api/skills", {
-        method: "GET",
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          forceRefresh: options.forceRefresh === true,
+        }),
       });
       const payload = await readJsonPayload<SkillsApiResponse>(response, "Skills");
       if (requestSeq !== skillsRequestSeqRef.current) {
@@ -4373,7 +4380,9 @@ export function useWorkspaceController() {
       return;
     }
     lastManualSkillsReloadAtRef.current = now;
-    void loadAvailableSkills();
+    void loadAvailableSkills({
+      forceRefresh: true,
+    });
   }
 
   function handleToggleRegistrySkill(registryId: SkillRegistryId, skillIdRaw: string) {

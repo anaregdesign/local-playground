@@ -14,6 +14,7 @@ import {
   authRequiredResponse,
   errorResponse,
   methodNotAllowedResponse,
+  validationErrorResponse,
 } from "~/lib/server/http";
 import {
   installGlobalServerErrorLogging,
@@ -28,7 +29,19 @@ import { discoverSkillCatalog } from "~/lib/server/skills/catalog";
 import { discoverSkillRegistries } from "~/lib/server/skills/registry";
 import type { Route } from "./+types/api.skills";
 
-const SKILLS_COLLECTION_ALLOWED_METHODS = ["GET"] as const;
+const SKILLS_COLLECTION_ALLOWED_METHODS = ["GET", "POST"] as const;
+
+type SkillsDiscoveryResult = {
+  skills: SkillCatalogEntry[];
+  registries: SkillRegistryCatalog[];
+  skillWarnings: string[];
+  registryWarnings: string[];
+  warnings: string[];
+};
+
+type WorkspaceSkillProfileReconcilePayload = {
+  forceRefresh: boolean;
+};
 
 export async function loader({ request }: Route.LoaderArgs) {
   installGlobalServerErrorLogging();
@@ -43,17 +56,27 @@ export async function loader({ request }: Route.LoaderArgs) {
   }
 
   try {
-    const [catalogDiscovery, registryDiscovery] = await Promise.all([
-      discoverSkillCatalog({ workspaceUserId: user.id }),
-      discoverSkillRegistries({ workspaceUserId: user.id }),
-    ]);
-    return Response.json({
-      skills: catalogDiscovery.skills,
-      registries: registryDiscovery.catalogs,
-      skillWarnings: catalogDiscovery.warnings,
-      registryWarnings: registryDiscovery.warnings,
-      warnings: [...catalogDiscovery.warnings, ...registryDiscovery.warnings],
+    const forceRefresh = readSkillRegistryRefreshQueryFlag(request.url);
+    if (forceRefresh) {
+      await logServerRouteEvent({
+        request,
+        route: "/api/skills",
+        eventName: "discover_skills_force_refresh_requested",
+        action: "discover_skills",
+        level: "info",
+        message: "Skill registry cache bypass requested.",
+        userId: user.id,
+        context: {
+          forceRefresh,
+        },
+      });
+    }
+
+    const discoveryResult = await discoverWorkspaceSkills({
+      userId: user.id,
+      forceRefresh,
     });
+    return Response.json(discoveryResult);
   } catch (error) {
     await logServerRouteEvent({
       request,
@@ -75,7 +98,101 @@ export async function loader({ request }: Route.LoaderArgs) {
 
 export async function action({ request }: Route.ActionArgs) {
   installGlobalServerErrorLogging();
-  return methodNotAllowedResponse(SKILLS_COLLECTION_ALLOWED_METHODS);
+
+  if (request.method !== "POST") {
+    return methodNotAllowedResponse(SKILLS_COLLECTION_ALLOWED_METHODS);
+  }
+
+  const user = await readAuthenticatedUser();
+  if (!user) {
+    return authRequiredResponse();
+  }
+
+  try {
+    const payloadResult = await readWorkspaceSkillProfileReconcilePayload(request);
+    if (!payloadResult.ok) {
+      await logServerRouteEvent({
+        request,
+        route: "/api/skills",
+        eventName: "invalid_reconcile_workspace_skill_profiles_request",
+        action: "validate_payload",
+        level: "warning",
+        statusCode: 422,
+        message: payloadResult.error,
+        userId: user.id,
+      });
+
+      return validationErrorResponse(
+        "invalid_reconcile_workspace_skill_profiles_request",
+        payloadResult.error,
+      );
+    }
+
+    const forceRefresh = payloadResult.value.forceRefresh;
+    if (forceRefresh) {
+      await logServerRouteEvent({
+        request,
+        route: "/api/skills",
+        eventName: "reconcile_workspace_skill_profiles_force_refresh_requested",
+        action: "reconcile_workspace_skill_profiles",
+        level: "info",
+        message: "Workspace Skill profile reconcile requested with cache bypass.",
+        userId: user.id,
+        context: {
+          forceRefresh,
+        },
+      });
+    }
+
+    const discoveryResult = await discoverWorkspaceSkills({
+      userId: user.id,
+      forceRefresh,
+    });
+    const syncResult = await syncWorkspaceSkillMasters({
+      userId: user.id,
+      skills: discoveryResult.skills,
+      registries: discoveryResult.registries,
+    });
+
+    await logServerRouteEvent({
+      request,
+      route: "/api/skills",
+      eventName: "reconcile_workspace_skill_profiles_completed",
+      action: "reconcile_workspace_skill_profiles",
+      level: "info",
+      message: "Workspace Skill profiles reconciled from installed Skills.",
+      userId: user.id,
+      context: {
+        forceRefresh,
+        discoveredSkillCount: discoveryResult.skills.length,
+        discoveredRegistryCount: discoveryResult.registries.length,
+        warningCount: discoveryResult.warnings.length,
+        workspaceSkillProfileCount: syncResult.workspaceSkillProfileCount,
+        workspaceSkillRegistryProfileCount: syncResult.workspaceSkillRegistryProfileCount,
+      },
+    });
+
+    return Response.json({
+      ...discoveryResult,
+      message: "Workspace Skill profiles reconciled from installed Skills.",
+    });
+  } catch (error) {
+    await logServerRouteEvent({
+      request,
+      route: "/api/skills",
+      eventName: "reconcile_workspace_skill_profiles_failed",
+      action: "reconcile_workspace_skill_profiles",
+      statusCode: 500,
+      error,
+      userId: user.id,
+    });
+
+    return errorResponse({
+      status: 500,
+      code: "reconcile_workspace_skill_profiles_failed",
+      error: `Failed to reconcile Workspace Skill profiles: ${readErrorMessage(error)}`,
+    });
+  }
 }
 
 export function readErrorMessage(error: unknown): string {
@@ -88,6 +205,86 @@ export type SkillRegistryMutationPayload = {
 };
 
 type ParseResult<T> = { ok: true; value: T } | { ok: false; error: string };
+
+export function readSkillRegistryRefreshQueryFlag(requestUrl: string): boolean {
+  let parsedUrl: URL;
+  try {
+    parsedUrl = new URL(requestUrl);
+  } catch {
+    return false;
+  }
+
+  const refreshFlag = parsedUrl.searchParams.get("refresh")?.trim().toLowerCase() ?? "";
+  return refreshFlag === "1" || refreshFlag === "true" || refreshFlag === "yes";
+}
+
+async function readWorkspaceSkillProfileReconcilePayload(
+  request: Request,
+): Promise<ParseResult<WorkspaceSkillProfileReconcilePayload>> {
+  const contentType = request.headers.get("content-type")?.trim().toLowerCase() ?? "";
+  if (!contentType.includes("application/json")) {
+    const content = (await request.text().catch(() => "")).trim();
+    if (!content) {
+      return {
+        ok: true,
+        value: {
+          forceRefresh: false,
+        },
+      };
+    }
+
+    return {
+      ok: false,
+      error: "Request body must be JSON.",
+    };
+  }
+
+  let payload: unknown;
+  try {
+    payload = await request.json();
+  } catch {
+    return {
+      ok: false,
+      error: "Request body must be valid JSON.",
+    };
+  }
+
+  return readWorkspaceSkillProfileReconcilePayloadFromUnknown(payload);
+}
+
+export function readWorkspaceSkillProfileReconcilePayloadFromUnknown(
+  payload: unknown,
+): ParseResult<WorkspaceSkillProfileReconcilePayload> {
+  if (!isRecord(payload)) {
+    return {
+      ok: false,
+      error: "Request body must be a JSON object.",
+    };
+  }
+
+  const forceRefreshValue = payload.forceRefresh;
+  if (forceRefreshValue === undefined) {
+    return {
+      ok: true,
+      value: {
+        forceRefresh: false,
+      },
+    };
+  }
+  if (typeof forceRefreshValue !== "boolean") {
+    return {
+      ok: false,
+      error: "`forceRefresh` must be a boolean.",
+    };
+  }
+
+  return {
+    ok: true,
+    value: {
+      forceRefresh: forceRefreshValue,
+    },
+  };
+}
 
 export function parseSkillRegistryMutationPath(
   registryIdInput: string,
@@ -139,10 +336,13 @@ export async function syncWorkspaceSkillMasters(options: {
   userId: number;
   skills: SkillCatalogEntry[];
   registries: SkillRegistryCatalog[];
-}): Promise<void> {
+}): Promise<{
+  workspaceSkillProfileCount: number;
+  workspaceSkillRegistryProfileCount: number;
+}> {
   await ensurePersistenceDatabaseReady();
 
-  await prisma.$transaction(async (transaction) => {
+  return await prisma.$transaction(async (transaction) => {
     const registryProfileIdByInstallDirectory = new Map<string, number>();
 
     for (const registry of options.registries) {
@@ -214,7 +414,46 @@ export async function syncWorkspaceSkillMasters(options: {
         },
       });
     }
+
+    const [workspaceSkillProfileCount, workspaceSkillRegistryProfileCount] = await Promise.all([
+      transaction.workspaceSkillProfile.count({
+        where: {
+          userId: options.userId,
+        },
+      }),
+      transaction.workspaceSkillRegistryProfile.count({
+        where: {
+          userId: options.userId,
+        },
+      }),
+    ]);
+
+    return {
+      workspaceSkillProfileCount,
+      workspaceSkillRegistryProfileCount,
+    };
   });
+}
+
+async function discoverWorkspaceSkills(options: {
+  userId: number;
+  forceRefresh: boolean;
+}): Promise<SkillsDiscoveryResult> {
+  const [catalogDiscovery, registryDiscovery] = await Promise.all([
+    discoverSkillCatalog({ workspaceUserId: options.userId }),
+    discoverSkillRegistries({
+      workspaceUserId: options.userId,
+      forceRefresh: options.forceRefresh,
+    }),
+  ]);
+
+  return {
+    skills: catalogDiscovery.skills,
+    registries: registryDiscovery.catalogs,
+    skillWarnings: catalogDiscovery.warnings,
+    registryWarnings: registryDiscovery.warnings,
+    warnings: [...catalogDiscovery.warnings, ...registryDiscovery.warnings],
+  };
 }
 
 function readRegistryInstallDirectoryNameFromSkillLocation(location: string): string | null {
@@ -257,6 +496,12 @@ function isPositiveIntegerString(value: string): boolean {
   return /^[1-9]\d*$/.test(value.trim());
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object";
+}
+
 export const skillsRouteTestUtils = {
   parseSkillRegistryMutationPath,
+  readSkillRegistryRefreshQueryFlag,
+  readWorkspaceSkillProfileReconcilePayloadFromUnknown,
 };
