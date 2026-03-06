@@ -142,7 +142,8 @@ async function initializeSchema(databaseUrl) {
       CREATE TABLE IF NOT EXISTS "WorkspaceUser" (
         "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
         "tenantId" TEXT NOT NULL,
-        "principalId" TEXT NOT NULL
+        "principalId" TEXT NOT NULL,
+        "lastUsedAt" TEXT NOT NULL DEFAULT ''
       )
     `);
 
@@ -155,8 +156,11 @@ async function initializeSchema(databaseUrl) {
       CREATE TABLE IF NOT EXISTS "AzureSelectionPreference" (
         "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
         "userId" INTEGER NOT NULL UNIQUE,
-        "projectId" TEXT NOT NULL,
-        "deploymentName" TEXT NOT NULL,
+        "projectId" TEXT NOT NULL DEFAULT '',
+        "deploymentName" TEXT NOT NULL DEFAULT '',
+        "utilityProjectId" TEXT NOT NULL DEFAULT '',
+        "utilityDeploymentName" TEXT NOT NULL DEFAULT '',
+        "utilityReasoningEffort" TEXT NOT NULL DEFAULT 'high',
         FOREIGN KEY ("userId") REFERENCES "WorkspaceUser" ("id") ON DELETE CASCADE
       )
     `);
@@ -166,6 +170,7 @@ async function initializeSchema(databaseUrl) {
         "id" TEXT NOT NULL PRIMARY KEY,
         "userId" INTEGER NOT NULL,
         "profileOrder" INTEGER NOT NULL,
+        "connectOnThreadCreate" BOOLEAN NOT NULL DEFAULT false,
         "configKey" TEXT NOT NULL,
         "name" TEXT NOT NULL,
         "transport" TEXT NOT NULL,
