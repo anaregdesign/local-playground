@@ -19,6 +19,8 @@ export type SelectableCardItem = {
   detail: string;
   isSelected: boolean;
   isAvailable: boolean;
+  selectedActionLabel?: string;
+  selectedActionTitle?: string;
 };
 
 type SelectableCardListProps = {
@@ -55,6 +57,14 @@ export function SelectableCardList(props: SelectableCardListProps) {
         const detail = item.detail.trim();
         const tooltipLines = [description, detail].filter((line) => line.length > 0);
         const contextMenuItems = buildContextMenuItems ? buildContextMenuItems(item) : [];
+        const selectedActionLabel =
+          typeof item.selectedActionLabel === "string" && item.selectedActionLabel.trim()
+            ? item.selectedActionLabel.trim()
+            : selectedButtonLabel;
+        const selectedActionTitle =
+          typeof item.selectedActionTitle === "string" && item.selectedActionTitle.trim()
+            ? item.selectedActionTitle.trim()
+            : `Remove ${item.name}`;
 
         const renderCardContent = (key?: string) => (
           <article
@@ -91,9 +101,9 @@ export function SelectableCardList(props: SelectableCardListProps) {
                   onToggleItem(item.id);
                 }}
                 disabled={isActionDisabled || (!item.isAvailable && !item.isSelected)}
-                title={item.isSelected ? `Remove ${item.name}` : `Add ${item.name}`}
+                title={item.isSelected ? selectedActionTitle : `Add ${item.name}`}
               >
-                {item.isSelected ? selectedButtonLabel : addButtonLabel}
+                {item.isSelected ? selectedActionLabel : addButtonLabel}
               </Button>
             </div>
           </article>

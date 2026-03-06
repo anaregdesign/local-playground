@@ -25,6 +25,7 @@ export type SkillRegistrySkillEntry = {
   remotePath: string;
   installLocation: string;
   isInstalled: boolean;
+  isUpdateAvailable: boolean;
 };
 
 export type SkillRegistryCatalog = {

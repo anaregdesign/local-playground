@@ -103,6 +103,7 @@ describe("readSkillRegistryCatalogList", () => {
             installLocation:
               "/Users/hiroki/.foundry_local_playground/users/42/skills/openai-curated/gh-fix-ci/SKILL.md",
             isInstalled: false,
+            isUpdateAvailable: false,
           },
           {
             id: "gh-fix-ci",
@@ -113,6 +114,7 @@ describe("readSkillRegistryCatalogList", () => {
             installLocation:
               "/Users/hiroki/.foundry_local_playground/users/42/skills/openai-curated/gh-fix-ci/SKILL.md",
             isInstalled: false,
+            isUpdateAvailable: false,
           },
         ],
       },
@@ -142,6 +144,7 @@ describe("readSkillRegistryCatalogList", () => {
             installLocation:
               "/Users/hiroki/.foundry_local_playground/users/42/skills/anthropic-public/pdf/SKILL.md",
             isInstalled: true,
+            isUpdateAvailable: true,
           },
         ],
       },
@@ -171,6 +174,7 @@ describe("readSkillRegistryCatalogList", () => {
             installLocation:
               "/Users/hiroki/.foundry_local_playground/users/42/skills/anaregdesign-public/example/python-current-time/SKILL.md",
             isInstalled: false,
+            isUpdateAvailable: false,
           },
           {
             id: "finance/nisa-growth-tech",
@@ -181,6 +185,7 @@ describe("readSkillRegistryCatalogList", () => {
             installLocation:
               "/Users/hiroki/.foundry_local_playground/users/42/skills/anaregdesign-public/finance/nisa-growth-tech/SKILL.md",
             isInstalled: true,
+            isUpdateAvailable: false,
           },
         ],
       },
@@ -204,6 +209,7 @@ describe("readSkillRegistryCatalogList", () => {
             installLocation:
               "/Users/hiroki/.foundry_local_playground/users/42/skills/openai-curated/gh-fix-ci/SKILL.md",
             isInstalled: false,
+            isUpdateAvailable: false,
           },
         ],
       },
@@ -224,6 +230,7 @@ describe("readSkillRegistryCatalogList", () => {
             installLocation:
               "/Users/hiroki/.foundry_local_playground/users/42/skills/anthropic-public/pdf/SKILL.md",
             isInstalled: true,
+            isUpdateAvailable: true,
           },
         ],
       },
@@ -244,6 +251,7 @@ describe("readSkillRegistryCatalogList", () => {
             installLocation:
               "/Users/hiroki/.foundry_local_playground/users/42/skills/anaregdesign-public/example/python-current-time/SKILL.md",
             isInstalled: false,
+            isUpdateAvailable: false,
           },
           {
             id: "finance/nisa-growth-tech",
@@ -254,6 +262,7 @@ describe("readSkillRegistryCatalogList", () => {
             installLocation:
               "/Users/hiroki/.foundry_local_playground/users/42/skills/anaregdesign-public/finance/nisa-growth-tech/SKILL.md",
             isInstalled: true,
+            isUpdateAvailable: false,
           },
         ],
       },

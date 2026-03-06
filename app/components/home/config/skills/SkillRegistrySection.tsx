@@ -28,6 +28,7 @@ export type SkillRegistryEntryOption = {
   description: string;
   detail: string;
   isInstalled: boolean;
+  isUpdateAvailable: boolean;
 };
 
 type SkillRegistrySectionProps = {
@@ -71,6 +72,8 @@ export function SkillRegistrySection(props: SkillRegistrySectionProps) {
         detail: skill.detail,
         isSelected: skill.isInstalled,
         isAvailable: true,
+        selectedActionLabel: skill.isUpdateAvailable ? "Update" : undefined,
+        selectedActionTitle: skill.isUpdateAvailable ? `Update ${skill.name}` : undefined,
       })),
       listAriaLabel: `Registry Skills (${registry.label})`,
       emptyHint: `No Skills are currently available from ${registry.label}.`,

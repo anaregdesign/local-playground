@@ -178,6 +178,7 @@ function readSkillRegistrySkillEntryFromUnknown(value: unknown): SkillRegistrySk
   const remotePath = readTrimmedString(value.remotePath);
   const installLocation = readTrimmedString(value.installLocation);
   const isInstalled = readBoolean(value.isInstalled);
+  const isUpdateAvailable = readBoolean(value.isUpdateAvailable);
   if (
     !id ||
     !name ||
@@ -185,7 +186,8 @@ function readSkillRegistrySkillEntryFromUnknown(value: unknown): SkillRegistrySk
     tag === undefined ||
     !remotePath ||
     !installLocation ||
-    isInstalled === null
+    isInstalled === null ||
+    isUpdateAvailable === null
   ) {
     return null;
   }
@@ -198,6 +200,7 @@ function readSkillRegistrySkillEntryFromUnknown(value: unknown): SkillRegistrySk
     remotePath,
     installLocation,
     isInstalled,
+    isUpdateAvailable,
   };
 }
 

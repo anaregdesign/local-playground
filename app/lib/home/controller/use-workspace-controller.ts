@@ -595,9 +595,12 @@ export function useWorkspaceController() {
             name: skill.name,
             description: skill.description,
             detail: skill.isInstalled
-              ? `${skill.tag ? `Tag: ${skill.tag} · ` : ""}Installed: ${skill.installLocation}`
+              ? `${skill.tag ? `Tag: ${skill.tag} · ` : ""}${
+                  skill.isUpdateAvailable ? "Update available · " : ""
+                }Installed: ${skill.installLocation}`
               : `${skill.tag ? `Tag: ${skill.tag} · ` : ""}Source: ${skill.remotePath}`,
             isInstalled: skill.isInstalled,
+            isUpdateAvailable: skill.isUpdateAvailable,
           })),
       }));
     }
@@ -4385,7 +4388,10 @@ export function useWorkspaceController() {
     }
 
     void updateSkillRegistrySkill({
-      action: selectedSkill.isInstalled ? "delete_registry_skill" : "install_registry_skill",
+      action:
+        selectedSkill.isInstalled && !selectedSkill.isUpdateAvailable
+          ? "delete_registry_skill"
+          : "install_registry_skill",
       registryId: registryCatalog.registryId,
       skillName: selectedSkill.id,
     });

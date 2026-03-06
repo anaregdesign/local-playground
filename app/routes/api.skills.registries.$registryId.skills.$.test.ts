@@ -27,8 +27,7 @@ const {
   installSkillFromRegistry: vi.fn(async () => ({
     skillName: "gh-fix-ci",
     installLocation: "/tmp/gh-fix-ci/SKILL.md",
-    installed: true,
-    skippedAsDuplicate: false,
+    operation: "installed" as "installed" | "updated" | "unchanged",
   })),
   deleteInstalledSkillFromRegistry: vi.fn(async () => ({
     skillName: "gh-fix-ci",
@@ -84,8 +83,7 @@ describe("/api/skills/registries/:registryId/skills/*", () => {
     installSkillFromRegistry.mockResolvedValue({
       skillName: "gh-fix-ci",
       installLocation: "/tmp/gh-fix-ci/SKILL.md",
-      installed: true,
-      skippedAsDuplicate: false,
+      operation: "installed" as "installed" | "updated" | "unchanged",
     });
     deleteInstalledSkillFromRegistry.mockReset();
     deleteInstalledSkillFromRegistry.mockResolvedValue({
@@ -137,5 +135,50 @@ describe("/api/skills/registries/:registryId/skills/*", () => {
     expect(response.headers.get("location")).toBe(
       "/api/skills/registries/openai_curated/skills/gh-fix-ci",
     );
+  });
+
+  it("returns 200 without Location when installed skill is updated", async () => {
+    installSkillFromRegistry.mockResolvedValueOnce({
+      skillName: "gh-fix-ci",
+      installLocation: "/tmp/gh-fix-ci/SKILL.md",
+      operation: "updated",
+    });
+
+    const response = await action({
+      request: new Request("http://localhost/api/skills/registries/openai_curated/skills/gh-fix-ci", {
+        method: "PUT",
+      }),
+      params: {
+        registryId: "openai_curated",
+        "*": "gh-fix-ci",
+      },
+    } as never);
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("location")).toBeNull();
+    expect(payload.message).toBe('Updated Skill "gh-fix-ci".');
+  });
+
+  it("returns 200 when installed skill is already up-to-date", async () => {
+    installSkillFromRegistry.mockResolvedValueOnce({
+      skillName: "gh-fix-ci",
+      installLocation: "/tmp/gh-fix-ci/SKILL.md",
+      operation: "unchanged",
+    });
+
+    const response = await action({
+      request: new Request("http://localhost/api/skills/registries/openai_curated/skills/gh-fix-ci", {
+        method: "PUT",
+      }),
+      params: {
+        registryId: "openai_curated",
+        "*": "gh-fix-ci",
+      },
+    } as never);
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.message).toBe('Skill "gh-fix-ci" is already up-to-date.');
   });
 });

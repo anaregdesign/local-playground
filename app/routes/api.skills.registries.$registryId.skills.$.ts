@@ -76,10 +76,16 @@ export async function action({ request, params }: Route.ActionArgs) {
         skillName: parsedMutation.value.skillName,
         workspaceUserId: user.id,
       });
-      message = installResult.skippedAsDuplicate
-        ? `Skill "${installResult.skillName}" is already installed.`
-        : `Installed Skill "${installResult.skillName}".`;
-      status = installResult.installed ? 201 : 200;
+      if (installResult.operation === "installed") {
+        message = `Installed Skill "${installResult.skillName}".`;
+        status = 201;
+      } else if (installResult.operation === "updated") {
+        message = `Updated Skill "${installResult.skillName}".`;
+        status = 200;
+      } else {
+        message = `Skill "${installResult.skillName}" is already up-to-date.`;
+        status = 200;
+      }
     } else {
       const deleteResult = await deleteInstalledSkillFromRegistry({
         registryId: parsedMutation.value.registryId,
