@@ -410,23 +410,37 @@ export function useWorkspaceController() {
     (deployment) => deployment.name === selectedUtilityAzureDeploymentName,
   );
   const isPlaygroundReasoningEffortSupported = selectedPlaygroundAzureDeployment
-    ? selectedPlaygroundAzureDeployment.supportsReasoningEffort
+    ? selectedPlaygroundAzureDeployment.reasoningEffortOptions.length > 0
     : true;
   const isUtilityReasoningEffortSupported = selectedUtilityAzureDeployment
-    ? selectedUtilityAzureDeployment.supportsReasoningEffort
+    ? selectedUtilityAzureDeployment.reasoningEffortOptions.length > 0
     : true;
-  const effectivePlaygroundReasoningEffort = isPlaygroundReasoningEffortSupported
-    ? reasoningEffort
-    : HOME_DEFAULT_REASONING_EFFORT;
-  const effectiveUtilityReasoningEffort = isUtilityReasoningEffortSupported
-    ? utilityReasoningEffort
-    : HOME_DEFAULT_REASONING_EFFORT;
+  const selectedPlaygroundDeploymentReasoningEffortOptions = resolveSupportedReasoningEffortOptions(
+    selectedPlaygroundAzureDeployment?.reasoningEffortOptions ?? [],
+  );
+  const selectedUtilityDeploymentReasoningEffortOptions = resolveSupportedReasoningEffortOptions(
+    selectedUtilityAzureDeployment?.reasoningEffortOptions ?? [],
+  );
   const effectivePlaygroundReasoningEffortOptions: ReasoningEffort[] = isPlaygroundReasoningEffortSupported
-    ? reasoningEffortOptions
+    ? selectedPlaygroundDeploymentReasoningEffortOptions.length > 0
+      ? selectedPlaygroundDeploymentReasoningEffortOptions
+      : reasoningEffortOptions
     : [HOME_DEFAULT_REASONING_EFFORT];
   const effectiveUtilityReasoningEffortOptions: ReasoningEffort[] = isUtilityReasoningEffortSupported
-    ? reasoningEffortOptions
+    ? selectedUtilityDeploymentReasoningEffortOptions.length > 0
+      ? selectedUtilityDeploymentReasoningEffortOptions
+      : reasoningEffortOptions
     : [HOME_DEFAULT_REASONING_EFFORT];
+  const effectivePlaygroundReasoningEffort = resolveEffectiveReasoningEffort(
+    reasoningEffort,
+    effectivePlaygroundReasoningEffortOptions,
+    HOME_DEFAULT_REASONING_EFFORT,
+  );
+  const effectiveUtilityReasoningEffort = resolveEffectiveReasoningEffort(
+    utilityReasoningEffort,
+    effectiveUtilityReasoningEffortOptions,
+    HOME_DEFAULT_UTILITY_REASONING_EFFORT,
+  );
   const activeThreadRequestState =
     threadRequestStateById[activeThreadId] ?? HOME_DEFAULT_THREAD_REQUEST_STATE;
   const isSending = activeThreadRequestState.isSending;
@@ -3114,6 +3128,34 @@ export function useWorkspaceController() {
     return deployments.some((deployment) => deployment.name === deploymentName);
   }
 
+  function cloneAzureDeploymentOption(deployment: AzureDeploymentOption): AzureDeploymentOption {
+    return {
+      ...deployment,
+      reasoningEffortOptions: [...deployment.reasoningEffortOptions],
+    };
+  }
+
+  function resolveSupportedReasoningEffortOptions(options: ReasoningEffort[]): ReasoningEffort[] {
+    const optionSet = new Set(options);
+    return HOME_REASONING_EFFORT_OPTIONS.filter((effort) => optionSet.has(effort));
+  }
+
+  function resolveEffectiveReasoningEffort(
+    current: ReasoningEffort,
+    options: ReasoningEffort[],
+    fallback: ReasoningEffort,
+  ): ReasoningEffort {
+    if (options.includes(current)) {
+      return current;
+    }
+
+    if (options.includes(fallback)) {
+      return fallback;
+    }
+
+    return options[0] ?? HOME_DEFAULT_REASONING_EFFORT;
+  }
+
   function readCachedAzureProjectCatalog(
     tenantIdRaw: string,
   ): AzureProjectCatalogCacheEntry | null {
@@ -3150,7 +3192,7 @@ export function useWorkspaceController() {
       return null;
     }
     const cached = azureDeploymentCatalogCacheByTenantProjectKey[deploymentKey];
-    return cached ? cached.map((deployment) => ({ ...deployment })) : null;
+    return cached ? cached.map(cloneAzureDeploymentOption) : null;
   }
 
   function cacheAzureDeployments(
@@ -3164,7 +3206,7 @@ export function useWorkspaceController() {
     }
     setAzureDeploymentCatalogCacheByTenantProjectKey((current) => ({
       ...current,
-      [deploymentKey]: deployments.map((deployment) => ({ ...deployment })),
+      [deploymentKey]: deployments.map(cloneAzureDeploymentOption),
     }));
   }
 
@@ -3190,7 +3232,7 @@ export function useWorkspaceController() {
           changed = true;
           continue;
         }
-        next[key] = deployments.map((deployment) => ({ ...deployment }));
+        next[key] = deployments.map(cloneAzureDeploymentOption);
       }
       return changed ? next : current;
     });
@@ -4900,12 +4942,18 @@ export function useWorkspaceController() {
     if (!isUtilityReasoningEffortSupported) {
       return;
     }
+    if (!effectiveUtilityReasoningEffortOptions.includes(nextValue)) {
+      return;
+    }
     setUtilityReasoningEffort(nextValue);
     setInstructionEnhanceError(null);
   }
 
   function handleReasoningEffortChange(nextValue: ReasoningEffort) {
     if (!isPlaygroundReasoningEffortSupported) {
+      return;
+    }
+    if (!effectivePlaygroundReasoningEffortOptions.includes(nextValue)) {
       return;
     }
     setReasoningEffort(nextValue);

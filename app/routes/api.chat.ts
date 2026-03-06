@@ -68,6 +68,7 @@ import {
   CHAT_MAX_MCP_SERVERS,
   CHAT_MODEL_RUN_TIMEOUT_MS,
   DEFAULT_AGENT_INSTRUCTION,
+  HOME_REASONING_EFFORT_OPTIONS,
   AGENT_SKILL_PROMPT_RESOURCE_PREVIEW_MAX_FILES,
   AGENT_SKILL_READ_TEXT_DEFAULT_MAX_CHARS,
   AGENT_SKILL_READ_TEXT_MAX_CHARS,
@@ -102,6 +103,7 @@ import {
   THREAD_ENVIRONMENT_VARIABLES_MAX,
 } from "~/lib/constants";
 import type { AzureDependencies } from "~/lib/azure/dependencies";
+import type { ReasoningEffort } from "~/lib/home/shared/view-types";
 import type { ThreadSkillActivation } from "~/lib/home/skills/types";
 import {
   cloneThreadEnvironment,
@@ -133,7 +135,6 @@ type ClientMessage = {
   attachments: ClientAttachment[];
 };
 
-type ReasoningEffort = "none" | "low" | "medium" | "high";
 type McpTransport = "streamable_http" | "sse" | "stdio";
 type ClientMcpHttpServerConfig = {
   name: string;
@@ -1809,8 +1810,11 @@ function readReasoningEffort(payload: unknown): ReasoningEffort {
   }
 
   const value = payload.reasoningEffort;
-  if (value === "none" || value === "low" || value === "medium" || value === "high") {
-    return value;
+  if (
+    typeof value === "string" &&
+    HOME_REASONING_EFFORT_OPTIONS.includes(value as ReasoningEffort)
+  ) {
+    return value as ReasoningEffort;
   }
   return "none";
 }

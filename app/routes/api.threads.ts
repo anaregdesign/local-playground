@@ -5,6 +5,7 @@ import { Prisma } from "@prisma/client";
 import {
   DEFAULT_AGENT_INSTRUCTION,
   HOME_DEFAULT_REASONING_EFFORT,
+  HOME_REASONING_EFFORT_OPTIONS,
   HOME_THREAD_NAME_MAX_LENGTH,
   THREAD_DEFAULT_NAME,
 } from "~/lib/constants";
@@ -1193,8 +1194,8 @@ function normalizeThreadName(value: string): string {
 }
 
 function readThreadReasoningEffort(value: string): ThreadSnapshot["reasoningEffort"] {
-  if (value === "none" || value === "low" || value === "medium" || value === "high") {
-    return value;
+  if (HOME_REASONING_EFFORT_OPTIONS.includes(value as ThreadSnapshot["reasoningEffort"])) {
+    return value as ThreadSnapshot["reasoningEffort"];
   }
 
   return HOME_DEFAULT_REASONING_EFFORT;

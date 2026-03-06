@@ -22,12 +22,20 @@ describe("parseThreadTitleReasoningEffort", () => {
       ok: true,
       value: "medium",
     });
+    expect(parseThreadTitleReasoningEffort({ reasoningEffort: "xhigh" })).toEqual({
+      ok: true,
+      value: "xhigh",
+    });
+    expect(parseThreadTitleReasoningEffort({ reasoningEffort: "minimal" })).toEqual({
+      ok: true,
+      value: "minimal",
+    });
   });
 
   it("rejects invalid values", () => {
     expect(parseThreadTitleReasoningEffort({ reasoningEffort: "fast" })).toEqual({
       ok: false,
-      error: "`reasoningEffort` must be one of: none, low, medium, high.",
+      error: "`reasoningEffort` must be one of: none, minimal, low, medium, high, xhigh.",
     });
     expect(parseThreadTitleReasoningEffort({ reasoningEffort: 1 })).toEqual({
       ok: false,

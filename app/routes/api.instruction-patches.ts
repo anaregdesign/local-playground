@@ -441,7 +441,7 @@ export function parseInstructionReasoningEffort(payload: unknown): ParseResult<R
 
   return {
     ok: false,
-    error: "`reasoningEffort` must be one of: none, low, medium, high.",
+    error: `\`reasoningEffort\` must be one of: ${HOME_REASONING_EFFORT_OPTIONS.join(", ")}.`,
   };
 }
 

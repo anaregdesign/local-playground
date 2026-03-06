@@ -59,12 +59,20 @@ describe("parseInstructionReasoningEffort", () => {
       ok: true,
       value: "medium",
     });
+    expect(parseInstructionReasoningEffort({ reasoningEffort: "xhigh" })).toEqual({
+      ok: true,
+      value: "xhigh",
+    });
+    expect(parseInstructionReasoningEffort({ reasoningEffort: "minimal" })).toEqual({
+      ok: true,
+      value: "minimal",
+    });
   });
 
   it("rejects invalid values", () => {
     expect(parseInstructionReasoningEffort({ reasoningEffort: "fast" })).toEqual({
       ok: false,
-      error: "`reasoningEffort` must be one of: none, low, medium, high.",
+      error: "`reasoningEffort` must be one of: none, minimal, low, medium, high, xhigh.",
     });
     expect(parseInstructionReasoningEffort({ reasoningEffort: 1 })).toEqual({
       ok: false,

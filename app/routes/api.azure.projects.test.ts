@@ -11,7 +11,12 @@ import {
   readPrincipalTypeFromAccessToken,
   readTenantIdFromAccessToken,
 } from "~/lib/server/auth/azure-user";
-import { getArmAccessToken, isLikelyAzureAuthError } from "./api.azure.projects";
+import {
+  getArmAccessToken,
+  isLikelyAzureAuthError,
+  parseReasoningEffortOptionsFromString,
+  resolveReasoningEffortOptionsByModelName,
+} from "./api.azure.projects";
 
 function createAccessToken(payload: unknown): string {
   const encodedPayload = Buffer.from(JSON.stringify(payload)).toString("base64url");
@@ -197,5 +202,49 @@ describe("getArmAccessToken", () => {
 
     expect(result).toEqual({ ok: false });
     expect(tokenCallCount).toBe(2);
+  });
+});
+
+describe("parseReasoningEffortOptionsFromString", () => {
+  it("extracts canonical reasoning effort values from delimited strings", () => {
+    expect(parseReasoningEffortOptionsFromString("none, low, medium, high, xhigh")).toEqual([
+      "none",
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+    ]);
+  });
+
+  it("extracts reasoning effort values from JSON arrays", () => {
+    expect(parseReasoningEffortOptionsFromString("[\"xhigh\", \"low\", \"minimal\"]")).toEqual([
+      "minimal",
+      "low",
+      "xhigh",
+    ]);
+  });
+});
+
+describe("resolveReasoningEffortOptionsByModelName", () => {
+  it("returns model-specific options for GPT-5.2 family", () => {
+    expect(resolveReasoningEffortOptionsByModelName("gpt-5.2")).toEqual([
+      "none",
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+    ]);
+  });
+
+  it("returns model-specific options for o3-pro", () => {
+    expect(resolveReasoningEffortOptionsByModelName("o3-pro")).toEqual(["high"]);
+  });
+
+  it("falls back to baseline options for unknown reasoning models", () => {
+    expect(resolveReasoningEffortOptionsByModelName("o9-experimental")).toEqual([
+      "low",
+      "medium",
+      "high",
+    ]);
   });
 });

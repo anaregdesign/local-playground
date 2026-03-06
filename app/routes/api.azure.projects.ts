@@ -9,6 +9,7 @@ import {
   AZURE_ARM_SCOPE,
   AZURE_COGNITIVE_API_VERSION,
   AZURE_GRAPH_SCOPE,
+  HOME_REASONING_EFFORT_OPTIONS,
   AZURE_MAX_ACCOUNTS_PER_SUBSCRIPTION,
   AZURE_MAX_DEPLOYMENTS_PER_ACCOUNT,
   AZURE_MAX_MODELS_PER_ACCOUNT,
@@ -32,6 +33,7 @@ import {
   methodNotAllowedResponse,
 } from "~/lib/server/http";
 import type { AzureDependencies } from "~/lib/azure/dependencies";
+import type { ReasoningEffort } from "~/lib/home/shared/view-types";
 import type { Route } from "./+types/api.azure.projects";
 
 const AZURE_PROJECTS_ALLOWED_METHODS = ["GET"] as const;
@@ -47,7 +49,7 @@ export type AzureProject = {
 
 export type AzureDeployment = {
   name: string;
-  supportsReasoningEffort: boolean;
+  reasoningEffortOptions: ReasoningEffort[];
 };
 
 export type AzureTenant = {
@@ -105,6 +107,11 @@ type ArmCognitiveDeployment = {
 
 type ArmAccountModel = {
   model?: ArmModelInfo;
+};
+
+type ModelCapabilities = {
+  flags: Record<string, boolean>;
+  reasoningEffortOptions: ReasoningEffort[];
 };
 
 export type AzurePrincipalProfile = {
@@ -458,20 +465,21 @@ export async function listProjectDeployments(
     const capabilities =
       modelCapabilities.get(createModelKey(modelName, modelVersion)) ??
       modelCapabilities.get(createModelKey(modelName, ""));
-    const supportsReasoningEffort = supportsDeploymentReasoningEffort(modelName, capabilities);
+    const reasoningEffortOptions = resolveDeploymentReasoningEffortOptions(modelName, capabilities);
 
     const key = name.toLowerCase();
     const existing = deploymentsByName.get(key);
     if (existing) {
-      if (supportsReasoningEffort && !existing.supportsReasoningEffort) {
-        existing.supportsReasoningEffort = true;
-      }
+      existing.reasoningEffortOptions = mergeReasoningEffortOptions(
+        existing.reasoningEffortOptions,
+        reasoningEffortOptions,
+      );
       continue;
     }
 
     deploymentsByName.set(key, {
       name,
-      supportsReasoningEffort,
+      reasoningEffortOptions,
     });
   }
 
@@ -508,8 +516,8 @@ async function listAccountModels(
 
 function buildModelCapabilitiesMap(
   models: ArmAccountModel[],
-): Map<string, Record<string, boolean>> {
-  const map = new Map<string, Record<string, boolean>>();
+): Map<string, ModelCapabilities> {
+  const map = new Map<string, ModelCapabilities>();
 
   for (const entry of models) {
     const model = entry.model;
@@ -523,7 +531,7 @@ function buildModelCapabilitiesMap(
       continue;
     }
 
-    const capabilities = normalizeCapabilities(model.capabilities);
+    const capabilities = readModelCapabilities(model.capabilities);
     map.set(createModelKey(name, version), capabilities);
     if (version) {
       map.set(createModelKey(name, ""), capabilities);
@@ -533,21 +541,29 @@ function buildModelCapabilitiesMap(
   return map;
 }
 
-function normalizeCapabilities(value: unknown): Record<string, boolean> {
+function readModelCapabilities(value: unknown): ModelCapabilities {
   if (!isRecord(value)) {
-    return {};
+    return {
+      flags: {},
+      reasoningEffortOptions: [],
+    };
   }
 
-  const normalized: Record<string, boolean> = {};
+  const flags: Record<string, boolean> = {};
+  const reasoningEffortOptionSet = new Set<ReasoningEffort>();
   for (const [rawKey, rawValue] of Object.entries(value)) {
     const key = rawKey.trim().toLowerCase();
     if (!key) {
       continue;
     }
-    normalized[key] = parseCapabilityBoolean(rawValue);
+    flags[key] = parseCapabilityBoolean(rawValue);
+    collectReasoningEffortOptionsFromCapability(rawKey, rawValue, reasoningEffortOptionSet);
   }
 
-  return normalized;
+  return {
+    flags,
+    reasoningEffortOptions: orderReasoningEffortOptions([...reasoningEffortOptionSet]),
+  };
 }
 
 function parseCapabilityBoolean(value: unknown): boolean {
@@ -567,7 +583,7 @@ function parseCapabilityBoolean(value: unknown): boolean {
 
 function isAgentsSdkCompatibleDeployment(
   deployment: ArmCognitiveDeployment,
-  modelCapabilities: Map<string, Record<string, boolean>>,
+  modelCapabilities: Map<string, ModelCapabilities>,
 ): boolean {
   const model = deployment.properties?.model;
   if (!model) {
@@ -591,11 +607,11 @@ function isAgentsSdkCompatibleDeployment(
     modelCapabilities.get(createModelKey(modelName, ""));
 
   if (capabilities) {
-    if (supportsChatCompletion(capabilities)) {
+    if (supportsChatCompletion(capabilities.flags)) {
       return true;
     }
 
-    if (supportsNonChatOnly(capabilities)) {
+    if (supportsNonChatOnly(capabilities.flags)) {
       return false;
     }
   }
@@ -629,25 +645,186 @@ function supportsNonChatOnly(capabilities: Record<string, boolean>): boolean {
   );
 }
 
-function supportsDeploymentReasoningEffort(
+function resolveDeploymentReasoningEffortOptions(
   modelName: string,
-  capabilities: Record<string, boolean> | undefined,
-): boolean {
+  capabilities: ModelCapabilities | undefined,
+): ReasoningEffort[] {
   if (capabilities) {
-    const reasoningCapability =
-      capabilities.reasoning === true ||
-      capabilities.reasoningeffort === true ||
-      capabilities.reasoningtokens === true ||
-      capabilities.reasoningoutput === true;
-    if (reasoningCapability) {
-      return true;
+    if (capabilities.reasoningEffortOptions.length > 0) {
+      return capabilities.reasoningEffortOptions;
     }
-    if (capabilities.reasoning === false || capabilities.reasoningeffort === false) {
-      return false;
+
+    const flags = capabilities.flags;
+    const reasoningCapability =
+      flags.reasoning === true ||
+      flags.reasoningeffort === true ||
+      flags.reasoningtokens === true ||
+      flags.reasoningoutput === true;
+    if (flags.reasoning === false || flags.reasoningeffort === false) {
+      return [];
+    }
+
+    if (!reasoningCapability) {
+      if (!looksLikeReasoningModelName(modelName)) {
+        return [];
+      }
     }
   }
 
-  return looksLikeReasoningModelName(modelName);
+  if (!capabilities && !looksLikeReasoningModelName(modelName)) {
+    return [];
+  }
+
+  const fallbackOptions = resolveReasoningEffortOptionsByModelName(modelName);
+  return fallbackOptions.length > 0 ? fallbackOptions : ["low", "medium", "high"];
+}
+
+export function resolveReasoningEffortOptionsByModelName(modelName: string): ReasoningEffort[] {
+  if (!modelName) {
+    return [];
+  }
+
+  // Fallback matrix from official OpenAI model reference pages when ARM capabilities
+  // do not enumerate reasoning effort values for a model.
+  if (modelName.startsWith("o3-pro")) {
+    return ["high"];
+  }
+
+  if (modelName.startsWith("gpt-5.4")) {
+    return ["minimal", "low", "medium", "high", "xhigh"];
+  }
+
+  if (modelName.startsWith("gpt-5.2")) {
+    return ["none", "low", "medium", "high", "xhigh"];
+  }
+
+  if (modelName.startsWith("gpt-5-chat") || modelName.startsWith("gpt-5-codex")) {
+    return ["low", "medium", "high", "xhigh"];
+  }
+
+  if (modelName.startsWith("gpt-5")) {
+    return ["minimal", "low", "medium", "high"];
+  }
+
+  if (modelName.startsWith("o1")) {
+    return ["none", "low", "medium", "high"];
+  }
+
+  if (modelName.startsWith("o3") || modelName.startsWith("o4-mini")) {
+    return ["low", "medium", "high"];
+  }
+
+  if (looksLikeReasoningModelName(modelName)) {
+    return ["low", "medium", "high"];
+  }
+
+  return [];
+}
+
+function collectReasoningEffortOptionsFromCapability(
+  rawKey: string,
+  rawValue: unknown,
+  target: Set<ReasoningEffort>,
+): void {
+  const key = rawKey.trim().toLowerCase();
+  if (!key) {
+    return;
+  }
+
+  const keyLooksLikeReasoningEffort =
+    key.includes("reasoning") &&
+    (key.includes("effort") || key.includes("level") || key.includes("setting"));
+  const keyLooksLikeReasoning = key.includes("reasoning");
+
+  if (keyLooksLikeReasoningEffort) {
+    addReasoningEffortOptionsFromUnknown(rawValue, target);
+    return;
+  }
+
+  if (keyLooksLikeReasoning) {
+    addReasoningEffortOptionsFromUnknown(rawValue, target);
+  }
+}
+
+function addReasoningEffortOptionsFromUnknown(
+  value: unknown,
+  target: Set<ReasoningEffort>,
+): void {
+  if (typeof value === "string") {
+    for (const effort of parseReasoningEffortOptionsFromString(value)) {
+      target.add(effort);
+    }
+    return;
+  }
+
+  if (Array.isArray(value)) {
+    for (const entry of value) {
+      addReasoningEffortOptionsFromUnknown(entry, target);
+    }
+    return;
+  }
+
+  if (!isRecord(value)) {
+    return;
+  }
+
+  for (const [rawKey, rawEntryValue] of Object.entries(value)) {
+    const key = rawKey.trim().toLowerCase();
+    if (!key) {
+      continue;
+    }
+    if (
+      key.includes("reasoning") ||
+      key.includes("effort") ||
+      key.includes("supported") ||
+      key.includes("value")
+    ) {
+      addReasoningEffortOptionsFromUnknown(rawEntryValue, target);
+    }
+  }
+}
+
+export function parseReasoningEffortOptionsFromString(value: string): ReasoningEffort[] {
+  const normalized = value.trim().toLowerCase();
+  if (!normalized) {
+    return [];
+  }
+
+  let tokens = normalized.split(/[^a-z]+/g).filter(Boolean);
+  if (tokens.length === 1) {
+    try {
+      const parsed = JSON.parse(normalized.replace(/'/g, "\"")) as unknown;
+      if (Array.isArray(parsed)) {
+        tokens = parsed
+          .filter((entry): entry is string => typeof entry === "string")
+          .map((entry) => entry.trim().toLowerCase())
+          .filter(Boolean);
+      }
+    } catch {
+      // Best effort parsing only.
+    }
+  }
+
+  const tokenSet = new Set(tokens);
+  return HOME_REASONING_EFFORT_OPTIONS.filter((option) => tokenSet.has(option));
+}
+
+function mergeReasoningEffortOptions(
+  current: ReasoningEffort[],
+  incoming: ReasoningEffort[],
+): ReasoningEffort[] {
+  if (current.length === 0) {
+    return [...incoming];
+  }
+  if (incoming.length === 0) {
+    return [...current];
+  }
+  return orderReasoningEffortOptions([...current, ...incoming]);
+}
+
+function orderReasoningEffortOptions(options: ReasoningEffort[]): ReasoningEffort[] {
+  const optionSet = new Set(options);
+  return HOME_REASONING_EFFORT_OPTIONS.filter((effort) => optionSet.has(effort));
 }
 
 function looksLikeReasoningModelName(modelName: string): boolean {

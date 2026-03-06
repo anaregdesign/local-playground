@@ -7,6 +7,7 @@ import type { ThreadOperationLogEntry } from "~/lib/home/chat/stream";
 import {
   readThreadOperationLogEntryFromUnknown as readThreadOperationLogEntryFromStream,
 } from "~/lib/home/chat/stream";
+import { HOME_REASONING_EFFORT_OPTIONS } from "~/lib/constants";
 import { readMcpServerFromUnknown } from "~/lib/home/mcp/profile";
 import type { ReasoningEffort } from "~/lib/home/shared/view-types";
 import { readThreadSkillActivationList } from "~/lib/home/skills/parsers";
@@ -282,8 +283,11 @@ function readSafeInteger(value: unknown): number | null {
 }
 
 function readReasoningEffortFromUnknown(value: unknown): ReasoningEffort | null {
-  if (value === "none" || value === "low" || value === "medium" || value === "high") {
-    return value;
+  if (
+    typeof value === "string" &&
+    HOME_REASONING_EFFORT_OPTIONS.includes(value as ReasoningEffort)
+  ) {
+    return value as ReasoningEffort;
   }
 
   return null;

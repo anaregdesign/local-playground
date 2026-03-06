@@ -6,6 +6,7 @@ import { ConfigSection } from "~/components/home/shared/ConfigSection";
 import { StatusMessageList } from "~/components/home/shared/StatusMessageList";
 import type { ReasoningEffort } from "~/lib/home/shared/view-types";
 import {
+  HOME_REASONING_EFFORT_OPTIONS,
   HOME_NO_AVAILABLE_DEPLOYMENTS_OPTION_LABEL,
   HOME_NO_AVAILABLE_PROJECTS_OPTION_LABEL,
 } from "~/lib/constants";
@@ -134,13 +135,8 @@ export function UtilityModelSection(props: UtilityModelSectionProps) {
             id="utility-model-reasoning-effort"
             value={utilityReasoningEffort}
             onChange={(_, data) => {
-              if (
-                data.value === "none" ||
-                data.value === "low" ||
-                data.value === "medium" ||
-                data.value === "high"
-              ) {
-                onUtilityReasoningEffortChange(data.value);
+              if (HOME_REASONING_EFFORT_OPTIONS.includes(data.value as ReasoningEffort)) {
+                onUtilityReasoningEffortChange(data.value as ReasoningEffort);
               }
             }}
             disabled={isSending || isLoadingAzureConnections || !isUtilityReasoningEffortSupported}
@@ -169,14 +165,20 @@ export function UtilityModelSection(props: UtilityModelSectionProps) {
 }
 
 function formatReasoningEffortLabel(value: ReasoningEffort): string {
-  if (value === "none") {
-    return "None";
+  switch (value) {
+    case "none":
+      return "None";
+    case "minimal":
+      return "Minimal";
+    case "low":
+      return "Low";
+    case "medium":
+      return "Medium";
+    case "high":
+      return "High";
+    case "xhigh":
+      return "XHigh";
+    default:
+      return value;
   }
-  if (value === "low") {
-    return "Low";
-  }
-  if (value === "medium") {
-    return "Medium";
-  }
-  return "High";
 }

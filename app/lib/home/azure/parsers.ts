@@ -1,6 +1,7 @@
 /**
  * Home runtime support module.
  */
+import { HOME_REASONING_EFFORT_OPTIONS } from "~/lib/constants";
 import type { ReasoningEffort } from "~/lib/home/shared/view-types";
 
 export type AzureProjectOption = {
@@ -18,7 +19,7 @@ export type AzureTenantOption = {
 
 export type AzureDeploymentOption = {
   name: string;
-  supportsReasoningEffort: boolean;
+  reasoningEffortOptions: ReasoningEffort[];
 };
 
 export type AzurePrincipalProfile = {
@@ -178,9 +179,10 @@ export function readAzureDeploymentList(value: unknown): AzureDeploymentOption[]
     const deploymentKey = deployment.name.toLowerCase();
     const existing = deploymentByName.get(deploymentKey);
     if (existing) {
-      if (deployment.supportsReasoningEffort && !existing.supportsReasoningEffort) {
-        existing.supportsReasoningEffort = true;
-      }
+      existing.reasoningEffortOptions = mergeReasoningEffortOptions(
+        existing.reasoningEffortOptions,
+        deployment.reasoningEffortOptions,
+      );
       continue;
     }
 
@@ -245,9 +247,11 @@ function readAzureDeploymentFromUnknown(value: unknown): AzureDeploymentOption |
     return null;
   }
 
+  const reasoningEffortOptions = readReasoningEffortOptionsFromUnknown(value.reasoningEffortOptions);
+
   return {
     name,
-    supportsReasoningEffort: value.supportsReasoningEffort === true,
+    reasoningEffortOptions,
   };
 }
 
@@ -307,9 +311,48 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function readReasoningEffortFromUnknown(value: unknown): ReasoningEffort | null {
-  if (value === "none" || value === "low" || value === "medium" || value === "high") {
-    return value;
+  if (
+    typeof value === "string" &&
+    HOME_REASONING_EFFORT_OPTIONS.includes(value as ReasoningEffort)
+  ) {
+    return value as ReasoningEffort;
   }
 
   return null;
+}
+
+function readReasoningEffortOptionsFromUnknown(value: unknown): ReasoningEffort[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const options: ReasoningEffort[] = [];
+  for (const entry of value) {
+    const effort = readReasoningEffortFromUnknown(entry);
+    if (!effort || options.includes(effort)) {
+      continue;
+    }
+    options.push(effort);
+  }
+
+  return orderReasoningEffortOptions(options);
+}
+
+function mergeReasoningEffortOptions(
+  current: ReasoningEffort[],
+  incoming: ReasoningEffort[],
+): ReasoningEffort[] {
+  if (current.length === 0) {
+    return [...incoming];
+  }
+  if (incoming.length === 0) {
+    return [...current];
+  }
+
+  return orderReasoningEffortOptions([...current, ...incoming]);
+}
+
+function orderReasoningEffortOptions(options: ReasoningEffort[]): ReasoningEffort[] {
+  const optionSet = new Set(options);
+  return HOME_REASONING_EFFORT_OPTIONS.filter((effort) => optionSet.has(effort));
 }

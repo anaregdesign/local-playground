@@ -176,6 +176,33 @@ describe("readAzureSelectionFromUnknown", () => {
     ).toBeNull();
   });
 
+  it("accepts extended reasoning effort values", () => {
+    expect(
+      readAzureSelectionFromUnknown(
+        {
+          tenantId: "tenant-a",
+          principalId: "principal-a",
+          utility: {
+            projectId: "project-a",
+            deploymentName: "deploy-a",
+            reasoningEffort: "xhigh",
+          },
+        },
+        "tenant-a",
+        "principal-a",
+      ),
+    ).toEqual({
+      tenantId: "tenant-a",
+      principalId: "principal-a",
+      playground: null,
+      utility: {
+        projectId: "project-a",
+        deploymentName: "deploy-a",
+        reasoningEffort: "xhigh",
+      },
+    });
+  });
+
   it("returns null when tenant does not match expected tenant", () => {
     expect(
       readAzureSelectionFromUnknown(
@@ -292,30 +319,46 @@ describe("readAzureTenantList", () => {
 });
 
 describe("readAzureDeploymentList", () => {
-  it("deduplicates deployments and keeps reasoning support metadata", () => {
+  it("deduplicates deployments and keeps reasoning effort options", () => {
     expect(
       readAzureDeploymentList([
         {
           name: "A",
-          supportsReasoningEffort: false,
+          reasoningEffortOptions: [],
         },
         {
           name: "a",
-          supportsReasoningEffort: true,
+          reasoningEffortOptions: ["low", "xhigh"],
         },
         {
           name: " B ",
-          supportsReasoningEffort: false,
+          reasoningEffortOptions: ["medium"],
         },
       ]),
     ).toEqual([
       {
         name: "A",
-        supportsReasoningEffort: true,
+        reasoningEffortOptions: ["low", "xhigh"],
       },
       {
         name: "B",
-        supportsReasoningEffort: false,
+        reasoningEffortOptions: ["medium"],
+      },
+    ]);
+  });
+
+  it("orders reasoning options using canonical order", () => {
+    expect(
+      readAzureDeploymentList([
+        {
+          name: "A",
+          reasoningEffortOptions: ["xhigh", "low", "none", "high"],
+        },
+      ]),
+    ).toEqual([
+      {
+        name: "A",
+        reasoningEffortOptions: ["none", "low", "high", "xhigh"],
       },
     ]);
   });

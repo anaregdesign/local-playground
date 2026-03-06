@@ -928,7 +928,9 @@ export function PlaygroundPanel<
                 {renderLabeledTooltip(
                   "Reasoning Effort",
                   isReasoningEffortSupported
-                    ? ["Controls how much internal reasoning the model uses."]
+                    ? [
+                        "Controls how much internal reasoning the model uses. Available values are loaded per deployment.",
+                      ]
                     : [
                         "This deployment does not support Reasoning Effort. Value is fixed to None and omitted from requests.",
                       ],
