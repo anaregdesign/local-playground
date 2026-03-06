@@ -437,7 +437,7 @@ describe("mergeDefaultWorkspaceMcpServerProfiles", () => {
           args: [...defaultFilesystemMcpServerProfile.args],
           cwd: expectedFilesystemWorkingDirectory,
           env: {},
-          connectOnThreadCreate: true,
+          connectOnThreadCreate: defaultFilesystemMcpServerProfile.connectOnThreadCreate,
         }),
         expect.objectContaining({
           name: defaultWorkiqMcpServerProfile.name,
@@ -577,7 +577,7 @@ describe("mergeDefaultWorkspaceMcpServerProfiles", () => {
       {
         id: "profile-filesystem",
         name: "Filesystem (Custom Name)",
-        connectOnThreadCreate: true,
+        connectOnThreadCreate: defaultFilesystemMcpServerProfile.connectOnThreadCreate,
         transport: "stdio" as const,
         command: defaultFilesystemMcpServerProfile.command,
         args: [...defaultFilesystemMcpServerProfile.args],

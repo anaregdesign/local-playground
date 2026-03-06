@@ -7,6 +7,7 @@ import {
   MCP_LOCAL_PLAYGROUND_THREAD_ID_HEADER,
   MCP_LOCAL_PLAYGROUND_TURN_ID_HEADER,
 } from "~/lib/constants";
+import { resolveFoundryWorkspaceUserDirectory } from "~/lib/foundry/config";
 
 const {
   readAzureArmUserContextMock,
@@ -186,6 +187,7 @@ describe("mcp system route", () => {
     expect(contextTool.description).toContain("azureContext.playgroundProject");
     expect(contextTool.description).toContain("azureContext.endpoint");
     expect(contextTool.description).toContain("userContext.userId");
+    expect(contextTool.description).toContain("userContext.workspaceDirectoryPath");
     expect(contextTool.description).toContain("threadContext.threadId");
     expect(contextTool.description).toContain("threadContext.turnId");
     expect(contextTool.description).toContain("latestThreadName");
@@ -198,6 +200,9 @@ describe("mcp system route", () => {
   });
 
   it("returns dynamic principal and playground metadata", async () => {
+    const workspaceDirectoryPath = resolveFoundryWorkspaceUserDirectory({
+      workspaceUserId: 42,
+    });
     const response = await action({
       request: new Request("http://localhost/mcp/system", {
         method: "POST",
@@ -226,6 +231,7 @@ describe("mcp system route", () => {
     expect(body.result?.structuredContent).toMatchObject({
       userContext: {
         userId: 42,
+        workspaceDirectoryPath,
       },
       threadContext: {
         threadId: "thread-1",
@@ -266,6 +272,9 @@ describe("mcp system route", () => {
         },
         principalId: {
           fieldPath: "azureContext.principalId",
+        },
+        workspaceDirectoryPath: {
+          fieldPath: "userContext.workspaceDirectoryPath",
         },
         playgroundProject: {
           fieldPath: "azureContext.playgroundProject",

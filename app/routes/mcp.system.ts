@@ -20,6 +20,7 @@ import {
   installGlobalServerErrorLogging,
   logServerRouteEvent,
 } from "~/lib/server/observability/runtime-event-log";
+import { resolveFoundryWorkspaceUserDirectory } from "~/lib/foundry/config";
 import { getOrCreateUserByIdentity } from "~/lib/server/persistence/user";
 import { ensurePersistenceDatabaseReady, prisma } from "~/lib/server/persistence/prisma";
 import {
@@ -39,6 +40,9 @@ const SYSTEM_READ_THREAD_CONTEXT_TOOL_DESCRIPTION = [
   "- userContext.userId: Authenticated WorkspaceUser primary key (`WorkspaceUser.id`) scoped to this Local Playground database.",
   "  This is NOT Azure `principalId`/`oid`.",
   "  Synonyms often used in other systems: `workspace user id`, `account id`, `owner user id`, `local user id`.",
+  "- userContext.workspaceDirectoryPath: Full path to the authenticated user's Local Playground workspace directory.",
+  "  Format: `<foundry-config-dir>/users/<workspace-user-id>` (for example: `~/.foundry_local_playground/users/42`).",
+  "  Synonyms often used in other systems: `workspace directory`, `workspace root`, `workspace path`, `user workspace directory`.",
   "- threadContext.threadId: Current Thread primary key (`Thread.id`) propagated from chat runtime headers.",
   "  `null` when the current request has no active thread context.",
   "  Synonyms often used in other systems: `conversation id`, `chat id`, `dialog id`, `session thread id`.",
@@ -216,6 +220,9 @@ function createSystemMcpServer(requestContext: McpSystemRequestContext): McpServ
     async () => {
       await ensurePersistenceDatabaseReady();
       const latestThreadName = await readLatestThreadName(requestContext.userId);
+      const workspaceDirectoryPath = resolveFoundryWorkspaceUserDirectory({
+        workspaceUserId: requestContext.userId,
+      });
       const playgroundAzureRuntime = await readPlaygroundAzureRuntimeContext(
         requestContext.userId,
         requestContext.armAccessToken,
@@ -223,6 +230,7 @@ function createSystemMcpServer(requestContext: McpSystemRequestContext): McpServ
       const payload: Record<string, unknown> = {
         userContext: {
           userId: requestContext.userId,
+          workspaceDirectoryPath,
         },
         threadContext: {
           threadId: requestContext.threadId,
@@ -251,6 +259,13 @@ function createSystemMcpServer(requestContext: McpSystemRequestContext): McpServ
             identifies:
               "Authenticated WorkspaceUser primary key (`WorkspaceUser.id`) in Local Playground; not Azure principalId/oid.",
             synonyms: ["workspace user id", "account id", "owner user id", "local user id"],
+            nullWhen: "Never null for successful authenticated requests.",
+          },
+          workspaceDirectoryPath: {
+            fieldPath: "userContext.workspaceDirectoryPath",
+            identifies:
+              "Full path of the authenticated user's Local Playground workspace directory (`<foundry-config-dir>/users/<workspace-user-id>`).",
+            synonyms: ["workspace directory", "workspace root", "workspace path", "user workspace directory"],
             nullWhen: "Never null for successful authenticated requests.",
           },
           threadId: {

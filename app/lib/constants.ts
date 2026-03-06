@@ -264,7 +264,7 @@ export const HOME_DEFAULT_WORKSPACE_MCP_SERVER_PROFILE_ROWS = [
     args: ["-y", "@modelcontextprotocol/server-filesystem", "."],
     cwd: "default",
     env: {},
-    connectOnThreadCreate: true,
+    connectOnThreadCreate: false,
   },
   {
     name: "workiq",
