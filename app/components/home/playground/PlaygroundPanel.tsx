@@ -179,6 +179,7 @@ type PlaygroundPanelProps<
   onDeploymentChange: (deploymentName: string) => void;
   reasoningEffort: ReasoningEffort;
   reasoningEffortOptions: ReasoningEffort[];
+  isReasoningEffortSupported: boolean;
   onReasoningEffortChange: (value: ReasoningEffort) => void;
   webSearchEnabled: boolean;
   onWebSearchEnabledChange: (value: boolean) => void;
@@ -257,6 +258,7 @@ export function PlaygroundPanel<
     onDeploymentChange,
     reasoningEffort,
     reasoningEffortOptions,
+    isReasoningEffortSupported,
     onReasoningEffortChange,
     webSearchEnabled,
     onWebSearchEnabledChange,
@@ -925,16 +927,24 @@ export function PlaygroundPanel<
                 )}
                 {renderLabeledTooltip(
                   "Reasoning Effort",
-                  ["Controls how much internal reasoning the model uses."],
+                  isReasoningEffortSupported
+                    ? ["Controls how much internal reasoning the model uses."]
+                    : [
+                        "This deployment does not support Reasoning Effort. Value is fixed to None and omitted from requests.",
+                      ],
                   <div className="chat-quick-control">
                     <QuickControlFrame className="chat-quick-control-frame">
                       <Select
                         id="chat-reasoning-effort"
                         aria-label="Reasoning Effort"
-                        title="Reasoning effort level for the model."
+                        title={
+                          isReasoningEffortSupported
+                            ? "Reasoning effort level for the model."
+                            : "This deployment does not support Reasoning Effort."
+                        }
                         value={reasoningEffort}
                         onChange={(event) => onReasoningEffortChange(event.target.value as ReasoningEffort)}
-                        disabled={isSending}
+                        disabled={isSending || !isReasoningEffortSupported}
                       >
                         <optgroup label="Reasoning effort">
                           {reasoningEffortOptions.map((option) => (

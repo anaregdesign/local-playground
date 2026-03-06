@@ -180,7 +180,7 @@ type ChatExecutionOptions = {
   message: string;
   attachments: ClientAttachment[];
   history: ClientMessage[];
-  reasoningEffort: ReasoningEffort;
+  reasoningEffort: ReasoningEffort | null;
   webSearchEnabled: boolean;
   temperature: number | null;
   agentInstruction: string;
@@ -421,7 +421,8 @@ export async function action({ request }: Route.ActionArgs) {
 
     return validationErrorResponse("invalid_attachments_payload", attachmentsResult.error);
   }
-  const reasoningEffort = readReasoningEffort(payload);
+  const supportsReasoningEffort = readSupportsReasoningEffort(payload);
+  const reasoningEffort = supportsReasoningEffort ? readReasoningEffort(payload) : null;
   const webSearchEnabled = readWebSearchEnabled(payload);
   const temperatureResult = readTemperature(payload);
   if (!temperatureResult.ok) {
@@ -879,9 +880,7 @@ async function executeChat(
       model,
       modelSettings: {
         ...(options.temperature !== null ? { temperature: options.temperature } : {}),
-        reasoning: {
-          effort: options.reasoningEffort,
-        },
+        ...(options.reasoningEffort ? { reasoning: { effort: options.reasoningEffort } } : {}),
       },
       tools: [
         ...webSearchTools,
@@ -1814,6 +1813,14 @@ function readReasoningEffort(payload: unknown): ReasoningEffort {
     return value;
   }
   return "none";
+}
+
+function readSupportsReasoningEffort(payload: unknown): boolean {
+  if (!isRecord(payload)) {
+    return true;
+  }
+
+  return payload.supportsReasoningEffort !== false;
 }
 
 function readWebSearchEnabled(payload: unknown): boolean {

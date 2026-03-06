@@ -42,6 +42,7 @@ import {
   THREAD_DEFAULT_NAME,
 } from "~/lib/constants";
 import type {
+  AzureDeploymentOption,
   AzureProjectOption,
   AzurePrincipalProfile,
   AzureSelectionPreference,
@@ -198,7 +199,7 @@ type AzureProjectCatalogCacheEntry = {
 };
 
 type AzureProjectCatalogCacheByTenantId = Record<string, AzureProjectCatalogCacheEntry>;
-type AzureDeploymentCatalogCacheByTenantProjectKey = Record<string, string[]>;
+type AzureDeploymentCatalogCacheByTenantProjectKey = Record<string, AzureDeploymentOption[]>;
 
 type LoadAzureProjectsOptions = {
   force?: boolean;
@@ -219,8 +220,10 @@ export function useWorkspaceController() {
   // Primary runtime state for Home.
   const [azureConnections, setAzureConnections] = useState<AzureProjectOption[]>([]);
   const [azureTenants, setAzureTenants] = useState<AzureTenantOption[]>([]);
-  const [playgroundAzureDeployments, setPlaygroundAzureDeployments] = useState<string[]>([]);
-  const [utilityAzureDeployments, setUtilityAzureDeployments] = useState<string[]>([]);
+  const [playgroundAzureDeployments, setPlaygroundAzureDeployments] = useState<AzureDeploymentOption[]>(
+    [],
+  );
+  const [utilityAzureDeployments, setUtilityAzureDeployments] = useState<AzureDeploymentOption[]>([]);
   const [activeAzurePrincipal, setActiveAzurePrincipal] = useState<AzurePrincipalProfile | null>(
     null,
   );
@@ -396,6 +399,34 @@ export function useWorkspaceController() {
   const canSaveAgentInstructionPrompt = agentInstruction.trim().length > 0;
   const canEnhanceAgentInstruction = agentInstruction.trim().length > 0;
   const reasoningEffortOptions: ReasoningEffort[] = [...HOME_REASONING_EFFORT_OPTIONS];
+  const playgroundAzureDeploymentNames = playgroundAzureDeployments.map(
+    (deployment) => deployment.name,
+  );
+  const utilityAzureDeploymentNames = utilityAzureDeployments.map((deployment) => deployment.name);
+  const selectedPlaygroundAzureDeployment = playgroundAzureDeployments.find(
+    (deployment) => deployment.name === selectedPlaygroundAzureDeploymentName,
+  );
+  const selectedUtilityAzureDeployment = utilityAzureDeployments.find(
+    (deployment) => deployment.name === selectedUtilityAzureDeploymentName,
+  );
+  const isPlaygroundReasoningEffortSupported = selectedPlaygroundAzureDeployment
+    ? selectedPlaygroundAzureDeployment.supportsReasoningEffort
+    : true;
+  const isUtilityReasoningEffortSupported = selectedUtilityAzureDeployment
+    ? selectedUtilityAzureDeployment.supportsReasoningEffort
+    : true;
+  const effectivePlaygroundReasoningEffort = isPlaygroundReasoningEffortSupported
+    ? reasoningEffort
+    : HOME_DEFAULT_REASONING_EFFORT;
+  const effectiveUtilityReasoningEffort = isUtilityReasoningEffortSupported
+    ? utilityReasoningEffort
+    : HOME_DEFAULT_REASONING_EFFORT;
+  const effectivePlaygroundReasoningEffortOptions: ReasoningEffort[] = isPlaygroundReasoningEffortSupported
+    ? reasoningEffortOptions
+    : [HOME_DEFAULT_REASONING_EFFORT];
+  const effectiveUtilityReasoningEffortOptions: ReasoningEffort[] = isUtilityReasoningEffortSupported
+    ? reasoningEffortOptions
+    : [HOME_DEFAULT_REASONING_EFFORT];
   const activeThreadRequestState =
     threadRequestStateById[activeThreadId] ?? HOME_DEFAULT_THREAD_REQUEST_STATE;
   const isSending = activeThreadRequestState.isSending;
@@ -947,7 +978,7 @@ export function useWorkspaceController() {
       return;
     }
 
-    if (!playgroundAzureDeployments.includes(deploymentName)) {
+    if (!includesAzureDeploymentName(playgroundAzureDeployments, deploymentName)) {
       return;
     }
 
@@ -986,7 +1017,7 @@ export function useWorkspaceController() {
     const principalId = activeAzurePrincipalIdRef.current.trim();
     const projectId = selectedUtilityAzureConnectionId.trim();
     const deploymentName = selectedUtilityAzureDeploymentName.trim();
-    const nextUtilityReasoningEffort = utilityReasoningEffort;
+    const nextUtilityReasoningEffort = effectiveUtilityReasoningEffort;
     if (!tenantId || !principalId || !projectId || !deploymentName) {
       return;
     }
@@ -995,7 +1026,7 @@ export function useWorkspaceController() {
       return;
     }
 
-    if (!utilityAzureDeployments.includes(deploymentName)) {
+    if (!includesAzureDeploymentName(utilityAzureDeployments, deploymentName)) {
       return;
     }
 
@@ -1025,7 +1056,7 @@ export function useWorkspaceController() {
     isAzureAuthRequired,
     selectedUtilityAzureConnectionId,
     selectedUtilityAzureDeploymentName,
-    utilityReasoningEffort,
+    effectiveUtilityReasoningEffort,
   ]);
 
   useEffect(() => {
@@ -1308,7 +1339,7 @@ export function useWorkspaceController() {
     }
 
     const deploymentName = selectedUtilityAzureDeploymentName.trim();
-    if (!deploymentName || !utilityAzureDeployments.includes(deploymentName)) {
+    if (!deploymentName || !includesAzureDeploymentName(utilityAzureDeployments, deploymentName)) {
       return;
     }
 
@@ -2248,7 +2279,11 @@ export function useWorkspaceController() {
 
     const utilityConnection = activeUtilityAzureConnection;
     const deploymentName = selectedUtilityAzureDeploymentName.trim();
-    if (!utilityConnection || !deploymentName || !utilityAzureDeployments.includes(deploymentName)) {
+    if (
+      !utilityConnection ||
+      !deploymentName ||
+      !includesAzureDeploymentName(utilityAzureDeployments, deploymentName)
+    ) {
       return;
     }
 
@@ -2285,7 +2320,10 @@ export function useWorkspaceController() {
             apiVersion: utilityConnection.apiVersion,
             deploymentName,
           },
-          reasoningEffort: utilityReasoningEffort,
+          supportsReasoningEffort: isUtilityReasoningEffortSupported,
+          ...(isUtilityReasoningEffortSupported
+            ? { reasoningEffort: effectiveUtilityReasoningEffort }
+            : {}),
         }),
       });
 
@@ -3064,6 +3102,18 @@ export function useWorkspaceController() {
     return `${tenantKey}::${projectId}`;
   }
 
+  function includesAzureDeploymentName(
+    deployments: AzureDeploymentOption[],
+    deploymentNameRaw: string,
+  ): boolean {
+    const deploymentName = deploymentNameRaw.trim();
+    if (!deploymentName) {
+      return false;
+    }
+
+    return deployments.some((deployment) => deployment.name === deploymentName);
+  }
+
   function readCachedAzureProjectCatalog(
     tenantIdRaw: string,
   ): AzureProjectCatalogCacheEntry | null {
@@ -3091,23 +3141,30 @@ export function useWorkspaceController() {
     }));
   }
 
-  function readCachedAzureDeployments(tenantIdRaw: string, projectIdRaw: string): string[] | null {
+  function readCachedAzureDeployments(
+    tenantIdRaw: string,
+    projectIdRaw: string,
+  ): AzureDeploymentOption[] | null {
     const deploymentKey = readAzureDeploymentCacheKey(tenantIdRaw, projectIdRaw);
     if (!deploymentKey) {
       return null;
     }
     const cached = azureDeploymentCatalogCacheByTenantProjectKey[deploymentKey];
-    return cached ? [...cached] : null;
+    return cached ? cached.map((deployment) => ({ ...deployment })) : null;
   }
 
-  function cacheAzureDeployments(tenantIdRaw: string, projectIdRaw: string, deployments: string[]): void {
+  function cacheAzureDeployments(
+    tenantIdRaw: string,
+    projectIdRaw: string,
+    deployments: AzureDeploymentOption[],
+  ): void {
     const deploymentKey = readAzureDeploymentCacheKey(tenantIdRaw, projectIdRaw);
     if (!deploymentKey) {
       return;
     }
     setAzureDeploymentCatalogCacheByTenantProjectKey((current) => ({
       ...current,
-      [deploymentKey]: [...deployments],
+      [deploymentKey]: deployments.map((deployment) => ({ ...deployment })),
     }));
   }
 
@@ -3133,7 +3190,7 @@ export function useWorkspaceController() {
           changed = true;
           continue;
         }
-        next[key] = deployments;
+        next[key] = deployments.map((deployment) => ({ ...deployment }));
       }
       return changed ? next : current;
     });
@@ -3506,7 +3563,7 @@ export function useWorkspaceController() {
       return;
     }
 
-    const applyDeployments = (deployments: string[]) => {
+    const applyDeployments = (deployments: AzureDeploymentOption[]) => {
       const preferredSelection = preferredAzureSelectionRef.current;
       const preferredDeploymentName =
         preferredSelection &&
@@ -3524,11 +3581,12 @@ export function useWorkspaceController() {
       if (target === "playground") {
         setPlaygroundAzureDeployments(deployments);
         setSelectedPlaygroundAzureDeploymentName((current) =>
-          deployments.includes(current)
+          deployments.some((deployment) => deployment.name === current)
             ? current
-            : preferredDeploymentName && deployments.includes(preferredDeploymentName)
+            : preferredDeploymentName &&
+                deployments.some((deployment) => deployment.name === preferredDeploymentName)
               ? preferredDeploymentName
-              : deployments[0] ?? "",
+              : deployments[0]?.name ?? "",
         );
         setPlaygroundAzureDeploymentError(
           deployments.length === 0
@@ -3538,11 +3596,12 @@ export function useWorkspaceController() {
       } else {
         setUtilityAzureDeployments(deployments);
         setSelectedUtilityAzureDeploymentName((current) =>
-          deployments.includes(current)
+          deployments.some((deployment) => deployment.name === current)
             ? current
-            : preferredDeploymentName && deployments.includes(preferredDeploymentName)
+            : preferredDeploymentName &&
+                deployments.some((deployment) => deployment.name === preferredDeploymentName)
               ? preferredDeploymentName
-              : deployments[0] ?? "",
+              : deployments[0]?.name ?? "",
         );
         setUtilityAzureDeploymentError(
           deployments.length === 0
@@ -3857,7 +3916,7 @@ export function useWorkspaceController() {
       return;
     }
 
-    if (!deploymentName || !playgroundAzureDeployments.includes(deploymentName)) {
+    if (!deploymentName || !includesAzureDeploymentName(playgroundAzureDeployments, deploymentName)) {
       setUiError("Select an Azure deployment before sending.");
       return;
     }
@@ -3965,7 +4024,10 @@ export function useWorkspaceController() {
             apiVersion: activePlaygroundAzureConnection.apiVersion,
             deploymentName,
           },
-          reasoningEffort,
+          supportsReasoningEffort: isPlaygroundReasoningEffortSupported,
+          ...(isPlaygroundReasoningEffortSupported
+            ? { reasoningEffort: effectivePlaygroundReasoningEffort }
+            : {}),
           webSearchEnabled,
           agentInstruction: requestAgentInstruction,
           threadEnvironment: requestThreadEnvironment,
@@ -4788,7 +4850,7 @@ export function useWorkspaceController() {
       return;
     }
 
-    if (!playgroundAzureDeployments.includes(nextDeploymentName)) {
+    if (!includesAzureDeploymentName(playgroundAzureDeployments, nextDeploymentName)) {
       return;
     }
 
@@ -4820,7 +4882,7 @@ export function useWorkspaceController() {
       return;
     }
 
-    if (!utilityAzureDeployments.includes(nextDeploymentName)) {
+    if (!includesAzureDeploymentName(utilityAzureDeployments, nextDeploymentName)) {
       return;
     }
 
@@ -4830,16 +4892,22 @@ export function useWorkspaceController() {
       principalId,
       projectId,
       deploymentName: nextDeploymentName,
-      reasoningEffort: utilityReasoningEffort,
+      reasoningEffort: effectiveUtilityReasoningEffort,
     });
   }
 
   function handleUtilityReasoningEffortChange(nextValue: ReasoningEffort) {
+    if (!isUtilityReasoningEffortSupported) {
+      return;
+    }
     setUtilityReasoningEffort(nextValue);
     setInstructionEnhanceError(null);
   }
 
   function handleReasoningEffortChange(nextValue: ReasoningEffort) {
+    if (!isPlaygroundReasoningEffortSupported) {
+      return;
+    }
     setReasoningEffort(nextValue);
     setUiError(null);
   }
@@ -5016,7 +5084,7 @@ export function useWorkspaceController() {
       return;
     }
 
-    if (!deploymentName || !utilityAzureDeployments.includes(deploymentName)) {
+    if (!deploymentName || !includesAzureDeploymentName(utilityAzureDeployments, deploymentName)) {
       setInstructionEnhanceError("Select a Utility deployment before enhancing.");
       return;
     }
@@ -5051,7 +5119,10 @@ export function useWorkspaceController() {
             apiVersion: activeUtilityAzureConnection.apiVersion,
             deploymentName,
           },
-          reasoningEffort: utilityReasoningEffort,
+          supportsReasoningEffort: isUtilityReasoningEffortSupported,
+          ...(isUtilityReasoningEffortSupported
+            ? { reasoningEffort: effectiveUtilityReasoningEffort }
+            : {}),
           enhanceAgentInstruction: INSTRUCTION_ENHANCE_SYSTEM_PROMPT,
         }),
       });
@@ -5619,9 +5690,10 @@ export function useWorkspaceController() {
       azureConnections,
       selectedUtilityAzureConnectionId,
       selectedUtilityAzureDeploymentName,
-      utilityAzureDeployments,
-      utilityReasoningEffort,
-      utilityReasoningEffortOptions: reasoningEffortOptions,
+      utilityAzureDeployments: utilityAzureDeploymentNames,
+      utilityReasoningEffort: effectiveUtilityReasoningEffort,
+      utilityReasoningEffortOptions: effectiveUtilityReasoningEffortOptions,
+      isUtilityReasoningEffortSupported,
       utilityAzureDeploymentError,
       onUtilityProjectChange: handleUtilityProjectChange,
       onUtilityDeploymentChange: handleUtilityDeploymentChange,
@@ -5881,10 +5953,11 @@ export function useWorkspaceController() {
     activeAzureConnectionId: activePlaygroundAzureConnection?.id ?? "",
     onProjectChange: handleChatProjectChange,
     selectedAzureDeploymentName: selectedPlaygroundAzureDeploymentName,
-    azureDeployments: playgroundAzureDeployments,
+    azureDeployments: playgroundAzureDeploymentNames,
     onDeploymentChange: handleChatDeploymentChange,
-    reasoningEffort,
-    reasoningEffortOptions,
+    reasoningEffort: effectivePlaygroundReasoningEffort,
+    reasoningEffortOptions: effectivePlaygroundReasoningEffortOptions,
+    isReasoningEffortSupported: isPlaygroundReasoningEffortSupported,
     onReasoningEffortChange: handleReasoningEffortChange,
     webSearchEnabled,
     onWebSearchEnabledChange: handleWebSearchEnabledChange,

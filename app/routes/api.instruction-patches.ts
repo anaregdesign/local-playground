@@ -56,7 +56,7 @@ type InstructionEnhanceOptions = {
   message: string;
   enhanceAgentInstruction: string;
   azureConfig: ResolvedAzureConfig;
-  reasoningEffort: ReasoningEffort;
+  reasoningEffort: ReasoningEffort | null;
 };
 
 type InstructionDiffPatchLineOutput = {
@@ -128,21 +128,25 @@ export async function action({ request }: Route.ActionArgs) {
   }
 
   const enhanceAgentInstruction = readEnhanceAgentInstruction(payload);
-  const reasoningEffortResult = parseInstructionReasoningEffort(payload);
-  if (!reasoningEffortResult.ok) {
-    await logServerRouteEvent({
-      request,
-      route: "/api/instruction-patches",
-      eventName: "invalid_reasoning_effort",
-      action: "validate_payload",
-      level: "warning",
-      statusCode: 422,
-      message: reasoningEffortResult.error,
-    });
+  const supportsReasoningEffort = readSupportsReasoningEffort(payload);
+  let reasoningEffort: ReasoningEffort | null = null;
+  if (supportsReasoningEffort) {
+    const reasoningEffortResult = parseInstructionReasoningEffort(payload);
+    if (!reasoningEffortResult.ok) {
+      await logServerRouteEvent({
+        request,
+        route: "/api/instruction-patches",
+        eventName: "invalid_reasoning_effort",
+        action: "validate_payload",
+        level: "warning",
+        statusCode: 422,
+        message: reasoningEffortResult.error,
+      });
 
-    return validationErrorResponse("invalid_reasoning_effort", reasoningEffortResult.error);
+      return validationErrorResponse("invalid_reasoning_effort", reasoningEffortResult.error);
+    }
+    reasoningEffort = reasoningEffortResult.value;
   }
-  const reasoningEffort = reasoningEffortResult.value;
   const azureConfigResult = readAzureConfig(payload);
   if (!azureConfigResult.ok) {
     await logServerRouteEvent({
@@ -223,9 +227,7 @@ async function enhanceInstruction(options: InstructionEnhanceOptions): Promise<s
     instructions: options.enhanceAgentInstruction,
     model,
     modelSettings: {
-      reasoning: {
-        effort: options.reasoningEffort,
-      },
+      ...(options.reasoningEffort ? { reasoning: { effort: options.reasoningEffort } } : {}),
     },
     outputType: INSTRUCTION_DIFF_PATCH_OUTPUT_TYPE,
   });
@@ -441,6 +443,14 @@ export function parseInstructionReasoningEffort(payload: unknown): ParseResult<R
     ok: false,
     error: "`reasoningEffort` must be one of: none, low, medium, high.",
   };
+}
+
+function readSupportsReasoningEffort(payload: unknown): boolean {
+  if (!isRecord(payload)) {
+    return true;
+  }
+
+  return payload.supportsReasoningEffort !== false;
 }
 
 function readAzureConfig(payload: unknown): ParseResult<ResolvedAzureConfig> {

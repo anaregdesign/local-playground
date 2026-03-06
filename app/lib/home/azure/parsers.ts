@@ -2,7 +2,6 @@
  * Home runtime support module.
  */
 import type { ReasoningEffort } from "~/lib/home/shared/view-types";
-import { uniqueStringsCaseInsensitive } from "~/lib/home/shared/collections";
 
 export type AzureProjectOption = {
   id: string;
@@ -15,6 +14,11 @@ export type AzureTenantOption = {
   tenantId: string;
   displayName: string;
   defaultDomain: string;
+};
+
+export type AzureDeploymentOption = {
+  name: string;
+  supportsReasoningEffort: boolean;
 };
 
 export type AzurePrincipalProfile = {
@@ -159,17 +163,31 @@ export function readAzureTenantList(value: unknown): AzureTenantOption[] {
   return tenants;
 }
 
-export function readAzureDeploymentList(value: unknown): string[] {
+export function readAzureDeploymentList(value: unknown): AzureDeploymentOption[] {
   if (!Array.isArray(value)) {
     return [];
   }
 
-  return uniqueStringsCaseInsensitive(
-    value
-      .filter((entry): entry is string => typeof entry === "string")
-      .map((entry) => entry.trim())
-      .filter(Boolean),
-  );
+  const deploymentByName = new Map<string, AzureDeploymentOption>();
+  for (const entry of value) {
+    const deployment = readAzureDeploymentFromUnknown(entry);
+    if (!deployment) {
+      continue;
+    }
+
+    const deploymentKey = deployment.name.toLowerCase();
+    const existing = deploymentByName.get(deploymentKey);
+    if (existing) {
+      if (deployment.supportsReasoningEffort && !existing.supportsReasoningEffort) {
+        existing.supportsReasoningEffort = true;
+      }
+      continue;
+    }
+
+    deploymentByName.set(deploymentKey, deployment);
+  }
+
+  return [...deploymentByName.values()].sort((left, right) => left.name.localeCompare(right.name));
 }
 
 function readAzureProjectFromUnknown(value: unknown): AzureProjectOption | null {
@@ -214,6 +232,22 @@ function readAzureTenantFromUnknown(value: unknown): AzureTenantOption | null {
     tenantId,
     displayName,
     defaultDomain,
+  };
+}
+
+function readAzureDeploymentFromUnknown(value: unknown): AzureDeploymentOption | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const name = typeof value.name === "string" ? value.name.trim() : "";
+  if (!name) {
+    return null;
+  }
+
+  return {
+    name,
+    supportsReasoningEffort: value.supportsReasoningEffort === true,
   };
 }
 

@@ -28,6 +28,7 @@ type UtilityModelSectionProps = {
   utilityAzureDeployments: string[];
   utilityReasoningEffort: ReasoningEffort;
   utilityReasoningEffortOptions: ReasoningEffort[];
+  isUtilityReasoningEffortSupported: boolean;
   utilityAzureDeploymentError: string | null;
   onUtilityProjectChange: (projectId: string) => void;
   onUtilityDeploymentChange: (deploymentName: string) => void;
@@ -46,6 +47,7 @@ export function UtilityModelSection(props: UtilityModelSectionProps) {
     utilityAzureDeployments,
     utilityReasoningEffort,
     utilityReasoningEffortOptions,
+    isUtilityReasoningEffortSupported,
     utilityAzureDeploymentError,
     onUtilityProjectChange,
     onUtilityDeploymentChange,
@@ -141,8 +143,12 @@ export function UtilityModelSection(props: UtilityModelSectionProps) {
                 onUtilityReasoningEffortChange(data.value);
               }
             }}
-            disabled={isSending || isLoadingAzureConnections}
-            title="Select reasoning effort for Utility Model runs."
+            disabled={isSending || isLoadingAzureConnections || !isUtilityReasoningEffortSupported}
+            title={
+              isUtilityReasoningEffortSupported
+                ? "Select reasoning effort for Utility Model runs."
+                : "This Utility deployment does not support Reasoning Effort."
+            }
           >
             {utilityReasoningEffortOptions.map((effort) => (
               <option key={effort} value={effort}>
@@ -150,6 +156,12 @@ export function UtilityModelSection(props: UtilityModelSectionProps) {
               </option>
             ))}
           </Select>
+          {isUtilityReasoningEffortSupported ? null : (
+            <p className="field-hint">
+              This deployment does not support Reasoning Effort. Value is fixed to None and omitted
+              from requests.
+            </p>
+          )}
         </>
       )}
     </ConfigSection>

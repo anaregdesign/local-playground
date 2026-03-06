@@ -48,7 +48,7 @@ type ThreadTitleOptions = {
   playgroundContent: string;
   instruction: string;
   azureConfig: ResolvedAzureConfig;
-  reasoningEffort: ReasoningEffort;
+  reasoningEffort: ReasoningEffort | null;
 };
 
 const threadTitleMaxPlaygroundContentLength = 12_000;
@@ -101,21 +101,25 @@ export async function action({ request }: Route.ActionArgs) {
   const playgroundContent = playgroundContentResult.value;
 
   const instruction = readInstruction(payload);
-  const reasoningEffortResult = parseThreadTitleReasoningEffort(payload);
-  if (!reasoningEffortResult.ok) {
-    await logServerRouteEvent({
-      request,
-      route: "/api/threads/title-suggestions",
-      eventName: "invalid_reasoning_effort",
-      action: "validate_payload",
-      level: "warning",
-      statusCode: 422,
-      message: reasoningEffortResult.error,
-    });
+  const supportsReasoningEffort = readSupportsReasoningEffort(payload);
+  let reasoningEffort: ReasoningEffort | null = null;
+  if (supportsReasoningEffort) {
+    const reasoningEffortResult = parseThreadTitleReasoningEffort(payload);
+    if (!reasoningEffortResult.ok) {
+      await logServerRouteEvent({
+        request,
+        route: "/api/threads/title-suggestions",
+        eventName: "invalid_reasoning_effort",
+        action: "validate_payload",
+        level: "warning",
+        statusCode: 422,
+        message: reasoningEffortResult.error,
+      });
 
-    return validationErrorResponse("invalid_reasoning_effort", reasoningEffortResult.error);
+      return validationErrorResponse("invalid_reasoning_effort", reasoningEffortResult.error);
+    }
+    reasoningEffort = reasoningEffortResult.value;
   }
-  const reasoningEffort = reasoningEffortResult.value;
 
   const azureConfigResult = readAzureConfig(payload);
   if (!azureConfigResult.ok) {
@@ -199,9 +203,7 @@ async function generateThreadTitle(options: ThreadTitleOptions): Promise<string>
     instructions: THREAD_AUTO_TITLE_SYSTEM_PROMPT,
     model,
     modelSettings: {
-      reasoning: {
-        effort: options.reasoningEffort,
-      },
+      ...(options.reasoningEffort ? { reasoning: { effort: options.reasoningEffort } } : {}),
     },
   });
 
@@ -302,6 +304,14 @@ export function parseThreadTitleReasoningEffort(payload: unknown): ParseResult<R
     ok: false,
     error: "`reasoningEffort` must be one of: none, low, medium, high.",
   };
+}
+
+function readSupportsReasoningEffort(payload: unknown): boolean {
+  if (!isRecord(payload)) {
+    return true;
+  }
+
+  return payload.supportsReasoningEffort !== false;
 }
 
 function readAzureConfig(payload: unknown): ParseResult<ResolvedAzureConfig> {

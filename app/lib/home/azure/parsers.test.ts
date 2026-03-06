@@ -292,7 +292,31 @@ describe("readAzureTenantList", () => {
 });
 
 describe("readAzureDeploymentList", () => {
-  it("deduplicates deployments case-insensitively", () => {
-    expect(readAzureDeploymentList(["A", "a", "B", " b "])).toEqual(["A", "B"]);
+  it("deduplicates deployments and keeps reasoning support metadata", () => {
+    expect(
+      readAzureDeploymentList([
+        {
+          name: "A",
+          supportsReasoningEffort: false,
+        },
+        {
+          name: "a",
+          supportsReasoningEffort: true,
+        },
+        {
+          name: " B ",
+          supportsReasoningEffort: false,
+        },
+      ]),
+    ).toEqual([
+      {
+        name: "A",
+        supportsReasoningEffort: true,
+      },
+      {
+        name: "B",
+        supportsReasoningEffort: false,
+      },
+    ]);
   });
 });

@@ -45,6 +45,11 @@ export type AzureProject = {
   apiVersion: string;
 };
 
+export type AzureDeployment = {
+  name: string;
+  supportsReasoningEffort: boolean;
+};
+
 export type AzureTenant = {
   tenantId: string;
   displayName: string;
@@ -420,7 +425,7 @@ export async function listAzureTenants(
 export async function listProjectDeployments(
   accessToken: string,
   projectRef: AzureProjectRef,
-): Promise<string[]> {
+): Promise<AzureDeployment[]> {
   const { subscriptionId, resourceGroup, accountName } = projectRef;
   const deployments = await fetchArmPaged<ArmCognitiveDeployment>(
     `https://management.azure.com/subscriptions/${encodeURIComponent(subscriptionId)}/resourceGroups/${encodeURIComponent(resourceGroup)}/providers/Microsoft.CognitiveServices/accounts/${encodeURIComponent(accountName)}/deployments?api-version=${AZURE_COGNITIVE_API_VERSION}`,
@@ -431,8 +436,7 @@ export async function listProjectDeployments(
   const accountModels = await listAccountModels(accessToken, projectRef);
   const modelCapabilities = buildModelCapabilitiesMap(accountModels);
 
-  const names: string[] = [];
-  const seen = new Set<string>();
+  const deploymentsByName = new Map<string, AzureDeployment>();
 
   for (const deployment of deployments) {
     const name = typeof deployment.name === "string" ? deployment.name.trim() : "";
@@ -448,16 +452,30 @@ export async function listProjectDeployments(
       continue;
     }
 
+    const model = deployment.properties?.model;
+    const modelName = typeof model?.name === "string" ? model.name.trim().toLowerCase() : "";
+    const modelVersion = typeof model?.version === "string" ? model.version.trim().toLowerCase() : "";
+    const capabilities =
+      modelCapabilities.get(createModelKey(modelName, modelVersion)) ??
+      modelCapabilities.get(createModelKey(modelName, ""));
+    const supportsReasoningEffort = supportsDeploymentReasoningEffort(modelName, capabilities);
+
     const key = name.toLowerCase();
-    if (seen.has(key)) {
+    const existing = deploymentsByName.get(key);
+    if (existing) {
+      if (supportsReasoningEffort && !existing.supportsReasoningEffort) {
+        existing.supportsReasoningEffort = true;
+      }
       continue;
     }
 
-    seen.add(key);
-    names.push(name);
+    deploymentsByName.set(key, {
+      name,
+      supportsReasoningEffort,
+    });
   }
 
-  return names.sort((left, right) => left.localeCompare(right));
+  return [...deploymentsByName.values()].sort((left, right) => left.name.localeCompare(right.name));
 }
 
 async function listAccountModels(
@@ -609,6 +627,31 @@ function supportsNonChatOnly(capabilities: Record<string, boolean>): boolean {
     capabilities.imagegeneration === true ||
     capabilities.images === true
   );
+}
+
+function supportsDeploymentReasoningEffort(
+  modelName: string,
+  capabilities: Record<string, boolean> | undefined,
+): boolean {
+  if (capabilities) {
+    const reasoningCapability =
+      capabilities.reasoning === true ||
+      capabilities.reasoningeffort === true ||
+      capabilities.reasoningtokens === true ||
+      capabilities.reasoningoutput === true;
+    if (reasoningCapability) {
+      return true;
+    }
+    if (capabilities.reasoning === false || capabilities.reasoningeffort === false) {
+      return false;
+    }
+  }
+
+  return looksLikeReasoningModelName(modelName);
+}
+
+function looksLikeReasoningModelName(modelName: string): boolean {
+  return /^o[1-9]/.test(modelName) || modelName.startsWith("gpt-5");
 }
 
 function isUnsupportedModelName(modelName: string): boolean {
