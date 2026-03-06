@@ -311,8 +311,8 @@ jobs:
           push: true
           tags: ${{ steps.metadata.outputs.tags }}
           labels: ${{ steps.metadata.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=container-image
+          cache-to: type=gha,scope=container-image,mode=max
 
   release:
     name: Publish Release Assets
