@@ -5,6 +5,7 @@ import { InteractiveBrowserCredential } from "@azure/identity";
 import OpenAI from "openai";
 import {
   AZURE_ACCESS_TOKEN_REFRESH_BUFFER_MS,
+  AZURE_ARM_SCOPE,
   AZURE_COGNITIVE_SERVICES_SCOPE,
 } from "~/lib/constants";
 
@@ -86,7 +87,9 @@ export function createAzureDependencies(
         `Azure credential failed to acquire Azure token (scope: ${normalizedScope}).`,
       );
     }
-    assertAzureAccessTokenTenant(accessToken.token, normalizedTenantId, normalizedScope);
+    if (shouldValidateAzureAccessTokenTenant(normalizedScope)) {
+      assertAzureAccessTokenTenant(accessToken.token, normalizedTenantId, normalizedScope);
+    }
     accessTokenByScope.set(
       createAccessTokenCacheKey(normalizedScope, normalizedTenantId),
       mapCachedAzureAccessToken(accessToken),
@@ -129,7 +132,9 @@ export function createAzureDependencies(
             `Azure credential failed to acquire Azure token (scope: ${normalizedScope}).`,
           );
         }
-        assertAzureAccessTokenTenant(token.token, resolvedTenantId, normalizedScope);
+        if (shouldValidateAzureAccessTokenTenant(normalizedScope)) {
+          assertAzureAccessTokenTenant(token.token, resolvedTenantId, normalizedScope);
+        }
         accessTokenByScope.set(cacheKey, mapCachedAzureAccessToken(token));
         return token.token;
       })
@@ -248,6 +253,10 @@ function isAzureAccessTokenReusable(token: CachedAzureAccessToken): boolean {
     return false;
   }
   return token.expiresOnTimestamp - AZURE_ACCESS_TOKEN_REFRESH_BUFFER_MS > now;
+}
+
+function shouldValidateAzureAccessTokenTenant(scope: string): boolean {
+  return scope.trim().toLowerCase() === AZURE_ARM_SCOPE.toLowerCase();
 }
 
 function assertAzureAccessTokenTenant(

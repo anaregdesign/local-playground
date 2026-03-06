@@ -2,6 +2,7 @@
  * Test module verifying dependencies behavior.
  */
 import { describe, expect, it, vi } from "vitest";
+import { AZURE_ARM_SCOPE } from "~/lib/constants";
 import {
   AZURE_COGNITIVE_SERVICES_SCOPE,
   createAzureDependencies,
@@ -273,7 +274,7 @@ describe("createAzureDependencies", () => {
     expect(getToken.mock.calls[1]).toEqual(["scope-b", { tenantId: "tenant-b" }]);
   });
 
-  it("rejects token when requested tenant and tid do not match", async () => {
+  it("rejects ARM token when requested tenant and tid do not match", async () => {
     const getToken = vi.fn(async () => ({
       token: createAzureAccessToken({
         tid: "tenant-a",
@@ -288,8 +289,32 @@ describe("createAzureDependencies", () => {
       createOpenAIClient: vi.fn(() => ({}) as never),
     });
 
-    await expect(dependencies.getAzureBearerToken("scope-a", "tenant-b")).rejects.toThrow(
+    await expect(dependencies.getAzureBearerToken(AZURE_ARM_SCOPE, "tenant-b")).rejects.toThrow(
       "Azure credential returned tenant tenant-a while tenant tenant-b was requested",
     );
+  });
+
+  it("accepts tenant mismatch for non-ARM scope tokens", async () => {
+    const token = createAzureAccessToken({
+      tid: "tenant-a",
+      oid: "principal-a",
+    });
+    const getToken = vi.fn(async () => ({
+      token,
+      expiresOnTimestamp: Date.now() + 120_000,
+    }));
+    const authenticate = vi.fn(async () => undefined);
+
+    const dependencies = createAzureDependencies({
+      createCredential: vi.fn(() => ({ getToken, authenticate })) as never,
+      createOpenAIClient: vi.fn(() => ({}) as never),
+    });
+
+    await expect(
+      dependencies.getAzureBearerToken(AZURE_COGNITIVE_SERVICES_SCOPE, "tenant-b"),
+    ).resolves.toBe(token);
+    expect(getToken).toHaveBeenCalledWith(AZURE_COGNITIVE_SERVICES_SCOPE, {
+      tenantId: "tenant-b",
+    });
   });
 });
