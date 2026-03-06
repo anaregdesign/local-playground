@@ -25,6 +25,7 @@ import {
   HOME_DEFAULT_REASONING_EFFORT,
   HOME_DEFAULT_UTILITY_REASONING_EFFORT,
   HOME_DEFAULT_WEB_SEARCH_ENABLED,
+  HOME_SKILLS_RELOAD_MIN_INTERVAL_MS,
   HOME_DEFAULT_THREAD_REQUEST_STATE,
   HOME_INITIAL_MESSAGES,
   HOME_MAIN_SPLITTER_MIN_RIGHT_WIDTH_PX,
@@ -354,6 +355,7 @@ export function useWorkspaceController() {
   const workspaceMcpServerProfileLoginRetryTimeoutRef = useRef<number | null>(null);
   const workspaceMcpServerProfileRequestSeqRef = useRef(0);
   const skillsRequestSeqRef = useRef(0);
+  const lastManualSkillsReloadAtRef = useRef(0);
   const previousIsAzureAuthRequiredRef = useRef(isAzureAuthRequired);
   const lastLoadedSkillsUserKeyRef = useRef("");
   const preferredAzureSelectionRef = useRef<AzureSelectionPreference | null>(null);
@@ -4366,6 +4368,11 @@ export function useWorkspaceController() {
   }
 
   function handleReloadSkills() {
+    const now = Date.now();
+    if (now - lastManualSkillsReloadAtRef.current < HOME_SKILLS_RELOAD_MIN_INTERVAL_MS) {
+      return;
+    }
+    lastManualSkillsReloadAtRef.current = now;
     void loadAvailableSkills();
   }
 
