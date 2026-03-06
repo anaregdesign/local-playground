@@ -2085,6 +2085,16 @@ export function useWorkspaceController() {
     }, 0);
   }
 
+  function showThreadReloadPlaceholder(): void {
+    const localThread = createLocalThreadSnapshot();
+    isThreadsReadyRef.current = true;
+    setThreadsState([localThread]);
+    setThreadRequestStateById({});
+    applyThreadSnapshotToState(localThread);
+    setThreadError(null);
+    setIsLoadingThreads(true);
+  }
+
   // Thread persistence and title-refresh orchestration.
   async function saveThreadSnapshotToDatabase(
     snapshot: ThreadSnapshot,
@@ -3298,6 +3308,8 @@ export function useWorkspaceController() {
     if (!nextWorkspaceUserKey) {
       return;
     }
+
+    showThreadReloadPlaceholder();
 
     const reloadState = async () => {
       await loadWorkspaceMcpServerProfiles();
