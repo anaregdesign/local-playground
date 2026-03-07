@@ -26,6 +26,7 @@ model AzureSelectionPreference {
   userId                Int           @unique
   projectId             String        @default("")
   deploymentName        String        @default("")
+  homeTheme             String        @default("light")
   utilityProjectId      String        @default("")
   utilityDeploymentName String        @default("")
   utilityReasoningEffort String       @default("high")

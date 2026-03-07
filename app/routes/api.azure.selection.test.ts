@@ -64,6 +64,7 @@ describe("parseAzureSelectionPreference", () => {
     expect(result?.projectId).toBe("project-a");
     expect(result?.deploymentName).toBe("deploy-a");
     expect(result?.reasoningEffort).toBeNull();
+    expect(result?.homeTheme).toBeNull();
   });
 
   it("accepts utility target", () => {
@@ -79,6 +80,21 @@ describe("parseAzureSelectionPreference", () => {
       projectId: "project-b",
       deploymentName: "deploy-b",
       reasoningEffort: "medium",
+      homeTheme: null,
+    });
+  });
+
+  it("accepts theme-only payload", () => {
+    const result = parseAzureSelectionPreference({
+      homeTheme: "dark",
+    });
+
+    expect(result).toEqual({
+      target: null,
+      projectId: "",
+      deploymentName: "",
+      reasoningEffort: null,
+      homeTheme: "dark",
     });
   });
 
@@ -110,6 +126,11 @@ describe("parseAzureSelectionPreference", () => {
         deploymentName: "deploy-b",
       }),
     ).toBeNull();
+    expect(
+      parseAzureSelectionPreference({
+        projectId: "project-a",
+      }),
+    ).toBeNull();
     expect(parseAzureSelectionPreference("invalid")).toBeNull();
   });
 });
@@ -128,6 +149,7 @@ describe("/api/azure/selection", () => {
       azureSelection: {
         projectId: "project-a",
         deploymentName: "deploy-a",
+        homeTheme: "dark",
         utilityProjectId: "project-b",
         utilityDeploymentName: "deploy-b",
         utilityReasoningEffort: "medium",
@@ -138,6 +160,7 @@ describe("/api/azure/selection", () => {
     azureSelectionUpsertMock.mockResolvedValue({
       projectId: "project-a",
       deploymentName: "deploy-a",
+      homeTheme: "dark",
       utilityProjectId: "project-b",
       utilityDeploymentName: "deploy-b",
       utilityReasoningEffort: "medium",
@@ -201,6 +224,29 @@ describe("/api/azure/selection", () => {
     } as never);
 
     expect(response.status).toBe(422);
+  });
+
+  it("accepts theme-only patch payload", async () => {
+    const response = await action({
+      request: new Request("http://localhost/api/azure/selection", {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          homeTheme: "dark",
+        }),
+      }),
+    } as never);
+
+    expect(response.status).toBe(200);
+    expect(azureSelectionUpsertMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        update: expect.objectContaining({
+          homeTheme: "dark",
+        }),
+      }),
+    );
   });
 
   it("deletes selection and returns 204", async () => {

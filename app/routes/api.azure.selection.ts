@@ -17,17 +17,19 @@ import {
   methodNotAllowedResponse,
   validationErrorResponse,
 } from "~/lib/server/http";
-import { HOME_REASONING_EFFORT_OPTIONS } from "~/lib/constants";
-import type { ReasoningEffort } from "~/lib/home/shared/view-types";
+import { HOME_DEFAULT_THEME, HOME_REASONING_EFFORT_OPTIONS } from "~/lib/constants";
+import type { HomeTheme, ReasoningEffort } from "~/lib/home/shared/view-types";
+import { readHomeThemeFromUnknown } from "~/lib/home/theme/preference";
 import type { Route } from "./+types/api.azure.selection";
 
 const AZURE_SELECTION_ALLOWED_METHODS = ["GET", "PATCH", "DELETE"] as const;
 
 type AzureSelectionPreferencePayload = {
-  target: AzureSelectionTarget;
+  target: AzureSelectionTarget | null;
   projectId: string;
   deploymentName: string;
   reasoningEffort: ReasoningEffort | null;
+  homeTheme: HomeTheme | null;
 };
 
 type AzureSelectionTarget = "playground" | "utility";
@@ -44,6 +46,7 @@ type AzureUtilitySelectionTargetPreference = AzureSelectionTargetPreference & {
 type AzureSelectionPreference = {
   tenantId: string;
   principalId: string;
+  homeTheme: HomeTheme;
   playground: AzureSelectionTargetPreference | null;
   utility: AzureUtilitySelectionTargetPreference | null;
 };
@@ -158,12 +161,12 @@ export async function action({ request }: Route.ActionArgs) {
       level: "warning",
       statusCode: 422,
       message:
-        "`target`, `projectId`, and `deploymentName` are required. `reasoningEffort` is required for `utility` target.",
+        "Provide valid selection fields (`target`, `projectId`, `deploymentName`, and utility `reasoningEffort`) or `homeTheme` only.",
     });
 
     return validationErrorResponse(
       "invalid_selection_payload",
-      "`target`, `projectId`, and `deploymentName` are required. `reasoningEffort` is required for `utility` target.",
+      "Provide valid selection fields (`target`, `projectId`, `deploymentName`, and utility `reasoningEffort`) or `homeTheme` only.",
     );
   }
 
@@ -195,6 +198,7 @@ export async function action({ request }: Route.ActionArgs) {
         projectId: preference.projectId,
         deploymentName: preference.deploymentName,
         reasoningEffort: preference.reasoningEffort,
+        homeTheme: preference.homeTheme,
       },
     });
 
@@ -218,6 +222,26 @@ export function parseAzureSelectionPreference(value: unknown): AzureSelectionPre
     typeof value.reasoningEffort === "string"
       ? readReasoningEffortFromUnknown(value.reasoningEffort)
       : null;
+  const homeTheme = readHomeThemeFromUnknown(value.homeTheme);
+  const hasSelectionInput =
+    value.target !== undefined ||
+    value.projectId !== undefined ||
+    value.deploymentName !== undefined ||
+    value.reasoningEffort !== undefined;
+
+  if (!hasSelectionInput) {
+    if (!homeTheme) {
+      return null;
+    }
+    return {
+      target: null,
+      projectId: "",
+      deploymentName: "",
+      reasoningEffort: null,
+      homeTheme,
+    };
+  }
+
   if (
     (target !== "playground" && target !== "utility") ||
     !projectId ||
@@ -232,6 +256,7 @@ export function parseAzureSelectionPreference(value: unknown): AzureSelectionPre
     projectId,
     deploymentName,
     reasoningEffort,
+    homeTheme,
   };
 }
 
@@ -290,35 +315,36 @@ async function saveStoredSelection(
 
   const saved = await prisma.azureSelectionPreference.upsert({
     where: { userId: user.id },
-    create:
-      preference.target === "playground"
-        ? {
-            userId: user.id,
-            projectId: preference.projectId,
-            deploymentName: preference.deploymentName,
-            utilityProjectId: "",
-            utilityDeploymentName: "",
-            utilityReasoningEffort: "high",
-          }
-        : {
-            userId: user.id,
-            projectId: "",
-            deploymentName: "",
-            utilityProjectId: preference.projectId,
-            utilityDeploymentName: preference.deploymentName,
-            utilityReasoningEffort: preference.reasoningEffort ?? "high",
-          },
-    update:
-      preference.target === "playground"
+    create: {
+      userId: user.id,
+      projectId: preference.target === "playground" ? preference.projectId : "",
+      deploymentName: preference.target === "playground" ? preference.deploymentName : "",
+      homeTheme: preference.homeTheme ?? HOME_DEFAULT_THEME,
+      utilityProjectId: preference.target === "utility" ? preference.projectId : "",
+      utilityDeploymentName: preference.target === "utility" ? preference.deploymentName : "",
+      utilityReasoningEffort:
+        preference.target === "utility" ? preference.reasoningEffort ?? "high" : "high",
+    },
+    update: {
+      ...(preference.target === "playground"
         ? {
             projectId: preference.projectId,
             deploymentName: preference.deploymentName,
           }
-        : {
+        : {}),
+      ...(preference.target === "utility"
+        ? {
             utilityProjectId: preference.projectId,
             utilityDeploymentName: preference.deploymentName,
             utilityReasoningEffort: preference.reasoningEffort ?? "high",
-          },
+          }
+        : {}),
+      ...(preference.homeTheme
+        ? {
+            homeTheme: preference.homeTheme,
+          }
+        : {}),
+    },
   });
 
   return {
@@ -375,6 +401,7 @@ function mapSelectionRecord(
   selection: {
     projectId: string;
     deploymentName: string;
+    homeTheme: string;
     utilityProjectId: string;
     utilityDeploymentName: string;
     utilityReasoningEffort: string;
@@ -383,6 +410,7 @@ function mapSelectionRecord(
   return {
     tenantId: user.tenantId,
     principalId: user.principalId,
+    homeTheme: readHomeThemeFromUnknown(selection.homeTheme) ?? HOME_DEFAULT_THEME,
     playground: mapSelectionTarget(selection.projectId, selection.deploymentName),
     utility: mapUtilitySelectionTarget(
       selection.utilityProjectId,

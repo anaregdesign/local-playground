@@ -158,6 +158,7 @@ async function initializeSchema(databaseUrl) {
         "userId" INTEGER NOT NULL UNIQUE,
         "projectId" TEXT NOT NULL DEFAULT '',
         "deploymentName" TEXT NOT NULL DEFAULT '',
+        "homeTheme" TEXT NOT NULL DEFAULT 'light',
         "utilityProjectId" TEXT NOT NULL DEFAULT '',
         "utilityDeploymentName" TEXT NOT NULL DEFAULT '',
         "utilityReasoningEffort" TEXT NOT NULL DEFAULT 'high',

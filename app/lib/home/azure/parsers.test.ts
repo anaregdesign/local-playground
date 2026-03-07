@@ -104,6 +104,7 @@ describe("readAzureSelectionFromUnknown", () => {
         {
           tenantId: " tenant-a ",
           principalId: " principal-a ",
+          homeTheme: "dark",
           playground: {
             projectId: " project-a ",
             deploymentName: " deploy-a ",
@@ -120,6 +121,7 @@ describe("readAzureSelectionFromUnknown", () => {
     ).toEqual({
       tenantId: "tenant-a",
       principalId: "principal-a",
+      homeTheme: "dark",
       playground: {
         projectId: "project-a",
         deploymentName: "deploy-a",
@@ -150,6 +152,7 @@ describe("readAzureSelectionFromUnknown", () => {
     ).toEqual({
       tenantId: "tenant-a",
       principalId: "principal-a",
+      homeTheme: "light",
       playground: {
         projectId: "project-a",
         deploymentName: "deploy-a",
@@ -194,12 +197,33 @@ describe("readAzureSelectionFromUnknown", () => {
     ).toEqual({
       tenantId: "tenant-a",
       principalId: "principal-a",
+      homeTheme: "light",
       playground: null,
       utility: {
         projectId: "project-a",
         deploymentName: "deploy-a",
         reasoningEffort: "xhigh",
       },
+    });
+  });
+
+  it("returns selection when only theme is persisted", () => {
+    expect(
+      readAzureSelectionFromUnknown(
+        {
+          tenantId: "tenant-a",
+          principalId: "principal-a",
+          homeTheme: "dark",
+        },
+        "tenant-a",
+        "principal-a",
+      ),
+    ).toEqual({
+      tenantId: "tenant-a",
+      principalId: "principal-a",
+      homeTheme: "dark",
+      playground: null,
+      utility: null,
     });
   });
 

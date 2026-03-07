@@ -428,7 +428,6 @@ export const HOME_THREAD_NAME_MAX_LENGTH = 80;
  * Changing them affects runtime theme switching and local preference persistence.
  */
 export const HOME_DEFAULT_THEME = "light" as const;
-export const HOME_THEME_STORAGE_KEY = "local-playground:home-theme";
 export const HOME_THEME_OPTIONS = [
   { id: "light", label: "Light" },
   { id: "dark", label: "Dark" },

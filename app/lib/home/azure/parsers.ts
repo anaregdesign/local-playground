@@ -1,8 +1,9 @@
 /**
  * Home runtime support module.
  */
-import { HOME_REASONING_EFFORT_OPTIONS } from "~/lib/constants";
-import type { ReasoningEffort } from "~/lib/home/shared/view-types";
+import { HOME_DEFAULT_THEME, HOME_REASONING_EFFORT_OPTIONS } from "~/lib/constants";
+import type { HomeTheme, ReasoningEffort } from "~/lib/home/shared/view-types";
+import { readHomeThemeFromUnknown } from "~/lib/home/theme/preference";
 
 export type AzureProjectOption = {
   id: string;
@@ -33,6 +34,7 @@ export type AzurePrincipalProfile = {
 export type AzureSelectionPreference = {
   tenantId: string;
   principalId: string;
+  homeTheme: HomeTheme;
   playground: AzureSelectionTargetPreference | null;
   utility: AzureUtilitySelectionTargetPreference | null;
 };
@@ -110,13 +112,15 @@ export function readAzureSelectionFromUnknown(
 
   const playground = readAzureSelectionTargetFromUnknown(value.playground);
   const utility = readAzureUtilitySelectionTargetFromUnknown(value.utility);
-  if (!playground && !utility) {
+  const homeTheme = readHomeThemeFromUnknown(value.homeTheme);
+  if (!playground && !utility && !homeTheme) {
     return null;
   }
 
   return {
     tenantId,
     principalId,
+    homeTheme: homeTheme ?? HOME_DEFAULT_THEME,
     playground,
     utility,
   };
