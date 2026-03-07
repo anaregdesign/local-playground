@@ -24,7 +24,7 @@ function resolveFluentUIExports<T extends object>(moduleExports: T): T {
 }
 
 const FluentUI = resolveFluentUIExports(FluentUIComponents);
-const { FluentProvider, SSRProvider, webLightTheme } = FluentUI;
+const { SSRProvider } = FluentUI;
 
 export const links: Route.LinksFunction = () => [
   { rel: "icon", href: "/favicon.ico", sizes: "any" },
@@ -61,9 +61,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
 export default function App() {
   return (
     <SSRProvider>
-      <FluentProvider theme={webLightTheme}>
-        <Outlet />
-      </FluentProvider>
+      <Outlet />
     </SSRProvider>
   );
 }

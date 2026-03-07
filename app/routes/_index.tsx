@@ -9,8 +9,11 @@ import {
   renderMessageContent,
   renderTurnOperationLog,
 } from "~/components/home/playground/PlaygroundRenderers";
+import { FluentUI } from "~/components/home/shared/fluent";
 import { useWorkspaceController } from "~/lib/home/controller/use-workspace-controller";
 import type { Route } from "./+types/_index";
+
+const { FluentProvider, webDarkTheme, webLightTheme } = FluentUI;
 
 export function meta({}: Route.MetaArgs) {
   return [
@@ -26,47 +29,54 @@ export default function Home() {
     isMainSplitterResizing,
     onMainSplitterPointerDown,
     isAzureAuthRequired,
+    homeTheme,
     unauthenticatedPanelProps,
     configPanelProps,
     playgroundPanelProps,
   } = useWorkspaceController();
 
+  const fluentTheme = homeTheme === "dark" ? webDarkTheme : webLightTheme;
+
   if (isAzureAuthRequired) {
     return (
-      <main className="chat-page chat-page-unauth">
-        <UnauthenticatedPanel {...unauthenticatedPanelProps} />
-      </main>
+      <FluentProvider theme={fluentTheme}>
+        <main className="chat-page chat-page-unauth">
+          <UnauthenticatedPanel {...unauthenticatedPanelProps} />
+        </main>
+      </FluentProvider>
     );
   }
 
   return (
-    <main className="chat-page">
-      <div
-        className="chat-layout workspace-layout"
-        ref={layoutRef}
-        style={
-          {
-            "--right-pane-width": `${rightPaneWidth}px`,
-          } as CSSProperties
-        }
-      >
-        <PlaygroundPanel
-          {...playgroundPanelProps}
-          renderMessageContent={renderMessageContent}
-          renderTurnOperationLog={renderTurnOperationLog}
-        />
-
+    <FluentProvider theme={fluentTheme}>
+      <main className="chat-page">
         <div
-          className={`layout-splitter main-splitter ${isMainSplitterResizing ? "resizing" : ""}`}
-          role="separator"
-          aria-orientation="vertical"
-          aria-label="Resize panels"
-          title="Drag to resize Playground and side panels."
-          onPointerDown={onMainSplitterPointerDown}
-        />
+          className="chat-layout workspace-layout"
+          ref={layoutRef}
+          style={
+            {
+              "--right-pane-width": `${rightPaneWidth}px`,
+            } as CSSProperties
+          }
+        >
+          <PlaygroundPanel
+            {...playgroundPanelProps}
+            renderMessageContent={renderMessageContent}
+            renderTurnOperationLog={renderTurnOperationLog}
+          />
 
-        <ConfigPanel {...configPanelProps} />
-      </div>
-    </main>
+          <div
+            className={`layout-splitter main-splitter ${isMainSplitterResizing ? "resizing" : ""}`}
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="Resize panels"
+            title="Drag to resize Playground and side panels."
+            onPointerDown={onMainSplitterPointerDown}
+          />
+
+          <ConfigPanel {...configPanelProps} />
+        </div>
+      </main>
+    </FluentProvider>
   );
 }

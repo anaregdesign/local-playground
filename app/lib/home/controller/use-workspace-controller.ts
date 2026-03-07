@@ -9,7 +9,12 @@ import {
   type PointerEvent as ReactPointerEvent,
   type SyntheticEvent,
 } from "react";
-import type { MainViewTab, McpTransport, ReasoningEffort } from "~/lib/home/shared/view-types";
+import type {
+  HomeTheme,
+  MainViewTab,
+  McpTransport,
+  ReasoningEffort,
+} from "~/lib/home/shared/view-types";
 import {
   CHAT_ATTACHMENT_ALLOWED_EXTENSIONS,
   CHAT_ATTACHMENT_MAX_FILE_NAME_LENGTH,
@@ -161,6 +166,7 @@ import {
   readDesktopApi,
   readDesktopUpdaterStatusFromUnknown,
 } from "~/lib/home/controller/desktop-updater";
+import { readHomeThemeFromStorage, saveHomeThemeToStorage } from "~/lib/home/theme/preference";
 import { readJsonPayload } from "~/lib/home/controller/http";
 import {
   type AzureActionApiResponse,
@@ -235,6 +241,9 @@ export function useWorkspaceController() {
   const [draftAttachments, setDraftAttachments] = useState<DraftChatAttachment[]>([]);
   const [chatAttachmentError, setChatAttachmentError] = useState<string | null>(null);
   const [activeMainTab, setActiveMainTab] = useState<MainViewTab>("threads");
+  const [homeTheme, setHomeTheme] = useState<HomeTheme>(() =>
+    readHomeThemeFromStorage(readLocalStorageSafely()),
+  );
   const [selectedPlaygroundAzureConnectionId, setSelectedPlaygroundAzureConnectionId] = useState("");
   const [selectedPlaygroundAzureDeploymentName, setSelectedPlaygroundAzureDeploymentName] =
     useState("");
@@ -757,6 +766,13 @@ export function useWorkspaceController() {
   }
 
   // Keep refs synchronized with state to avoid stale closures in async handlers.
+  useEffect(() => {
+    saveHomeThemeToStorage(readLocalStorageSafely(), homeTheme);
+    if (typeof document !== "undefined") {
+      document.documentElement.dataset.homeTheme = homeTheme;
+    }
+  }, [homeTheme]);
+
   useEffect(() => {
     activeMainTabRef.current = activeMainTab;
   }, [activeMainTab]);
@@ -5758,6 +5774,12 @@ export function useWorkspaceController() {
 
   // Panel prop composition for Home route rendering.
   const settingsTabProps = {
+    appearanceSectionProps: {
+      homeTheme,
+      onHomeThemeChange: (nextTheme: HomeTheme) => {
+        setHomeTheme(nextTheme);
+      },
+    },
     azureConnectionSectionProps: {
       isAzureAuthRequired,
       isSending,
@@ -6081,6 +6103,7 @@ export function useWorkspaceController() {
     isMainSplitterResizing: activeResizeHandle === "main",
     onMainSplitterPointerDown: handleMainSplitterPointerDown,
     isAzureAuthRequired,
+    homeTheme,
     unauthenticatedPanelProps,
     configPanelProps: {
       activeMainTab,
@@ -6093,6 +6116,14 @@ export function useWorkspaceController() {
     },
     playgroundPanelProps,
   };
+}
+
+function readLocalStorageSafely(): Storage | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  return window.localStorage;
 }
 
 function resolveAzureTenantOptions(
